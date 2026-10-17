@@ -152,9 +152,10 @@ public sealed partial class VaultFixture : IAsyncLifetime
     /// and the vault allows each address only a few sign-in steps per window.
     /// </summary>
     public async Task<VaultSession> SignInNewAccountAsync(
-        string username, IPAddress? source = null, ClearanceLevel clearance = ClearanceLevel.Standard, string project = "GLOBAL")
+        string username, IPAddress? source = null, ClearanceLevel clearance = ClearanceLevel.Standard, string project = "GLOBAL",
+        string? password = null)
     {
-        var password = "It-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+        password ??= "It-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
         var created = await PostFormAsync(await AdminClientAsync(), "/Admin/CreateUser", new()
         {
             ["Username"] = username,

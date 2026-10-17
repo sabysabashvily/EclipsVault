@@ -6,6 +6,7 @@ using System.Text.Json;
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
+using EclipsVault.Web.Extensions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.Extensions.DependencyInjection;
@@ -59,20 +60,19 @@ public sealed class SelfServiceApiTests(VaultFixture vault)
         Assert.Equal(25, activity.GetProperty("pageSize").GetInt32());
         Assert.False(activity.GetProperty("hasMore").GetBoolean());
         Assert.False(activity.GetProperty("hasPrevious").GetBoolean());
-        Assert.Equal(2, activity.GetProperty("notableCount").GetInt32());
+        Assert.Equal(1, activity.GetProperty("notableCount").GetInt32());
 
-        // Newest first: the first sign-in signs in after enrolling an authenticator. The oldest row is
-        // the administrator creating the account, which the audit trail records under the new
-        // account's id, from no request address; the Legacy page shows it the same way.
+        // Newest first: the first sign-in signs in after enrolling an authenticator.
+        // Creating the account belongs to the administrator's own activity.
         var items = activity.GetProperty("items").EnumerateArray().ToArray();
-        Assert.Equal(3, items.Length);
+        Assert.Equal(2, items.Length);
         Assert.All(items, item => Assert.Equal(
             ["category", "resourceName", "severity", "sourceIp", "timestampUtc", "title"], NamesOf(item)));
-        Assert.Equal(["Signed in", "Set up your authenticator", "Created a user"], items.Select(item => item.GetProperty("title").GetString()));
-        Assert.Equal(["Authentication", "Account", "Administration"], items.Select(item => item.GetProperty("category").GetString()));
-        Assert.Equal(["Routine", "Notable", "Notable"], items.Select(item => item.GetProperty("severity").GetString()));
+        Assert.Equal(["Signed in", "Set up your authenticator"], items.Select(item => item.GetProperty("title").GetString()));
+        Assert.Equal(["Authentication", "Account"], items.Select(item => item.GetProperty("category").GetString()));
+        Assert.Equal(["Routine", "Notable"], items.Select(item => item.GetProperty("severity").GetString()));
         Assert.All(items, item => Assert.Equal(JsonValueKind.Null, item.GetProperty("resourceName").ValueKind));
-        Assert.Equal(["198.51.100.60", "198.51.100.60", "internal"], items.Select(item => item.GetProperty("sourceIp").GetString()));
+        Assert.Equal(["198.51.100.60", "198.51.100.60"], items.Select(item => item.GetProperty("sourceIp").GetString()));
         Assert.All(items, item => AssertUtcSince(started, item.GetProperty("timestampUtc")));
     }
 
@@ -216,7 +216,7 @@ public sealed class SelfServiceApiTests(VaultFixture vault)
         var session = await vault.SignInNewAccountAsync(username, IPAddress.Parse("198.51.100.67"));
         using var before = JsonDocument.Parse(await session.Client.GetStringAsync("/api/ui/activity"));
         var ownRows = before.RootElement.GetProperty("items").EnumerateArray().Select(item => item.GetRawText()).ToArray();
-        Assert.Equal(3, ownRows.Length);
+        Assert.Equal(2, ownRows.Length);
 
         // Thirty newer rows, all at one instant, so the page boundary falls inside the tie.
         var names = await WriteRowsAtOneInstantAsync(AccountIdOf(session), username, 30);
@@ -239,15 +239,15 @@ public sealed class SelfServiceApiTests(VaultFixture vault)
         Assert.Equal(2, second.GetProperty("page").GetInt32());
         Assert.False(second.GetProperty("hasMore").GetBoolean());
         Assert.True(second.GetProperty("hasPrevious").GetBoolean());
-        Assert.Equal(5, second.GetProperty("notableCount").GetInt32());
+        Assert.Equal(4, second.GetProperty("notableCount").GetInt32());
         var secondItems = second.GetProperty("items").EnumerateArray().ToArray();
         Assert.Equal(newestFirst.Skip(25), secondItems.Take(5).Select(item => item.GetProperty("resourceName").GetString()!));
         Assert.Equal(ownRows, secondItems.Skip(5).Select(item => item.GetRawText()));
 
         // Every row exactly once across the two pages.
         var all = firstItems.Concat(secondItems).Select(item => item.GetRawText()).ToArray();
-        Assert.Equal(33, all.Length);
-        Assert.Equal(33, all.Distinct().Count());
+        Assert.Equal(32, all.Length);
+        Assert.Equal(32, all.Distinct().Count());
     }
 
     [Fact]
@@ -257,7 +257,7 @@ public sealed class SelfServiceApiTests(VaultFixture vault)
         var pageOne = await session.Client.GetStringAsync("/api/ui/activity?page=1");
         using (var document = JsonDocument.Parse(pageOne))
         {
-            Assert.Equal(3, document.RootElement.GetProperty("items").GetArrayLength());
+            Assert.Equal(2, document.RootElement.GetProperty("items").GetArrayLength());
         }
 
         foreach (var query in new[] { "", "?page=", "?page=0", "?page=-3", "?page=abc", "?page=2.5" })
@@ -298,7 +298,7 @@ public sealed class SelfServiceApiTests(VaultFixture vault)
     private Guid AccountIdOf(VaultSession session)
     {
         var ticket = Assert.IsType<AuthenticationTicket>(TicketFormat().Unprotect(Assert.IsType<Cookie>(session.SessionCookie).Value));
-        return Guid.Parse(ticket.Principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        return ticket.Principal.GetUserId();
     }
 
     /// <summary>

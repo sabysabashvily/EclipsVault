@@ -50,8 +50,16 @@ public sealed class UserAdminService : IUserAdminService
         _clock = clock;
     }
 
-    private Task AuditUserAsync(AuditAction action, Guid? userId, string username, string? details, CancellationToken ct)
-        => _audit.WriteUserEventAsync(action, userId, username, details, ct);
+    private Task AuditUserAsync(AuditAction action, Guid? targetUserId, string username, string? details, CancellationToken ct)
+        => _audit.WriteAsync(new AuditEntry
+        {
+            Action = action,
+            ResourceType = "User",
+            ResourceId = targetUserId,
+            ActorUserId = _actor.UserId,
+            ActorUsername = username,
+            Details = details
+        }, ct);
 
     public async Task<IReadOnlyList<UserSummaryDto>> ListAsync(CancellationToken ct)
     {
@@ -300,7 +308,10 @@ public sealed class UserAdminService : IUserAdminService
         user.FailedAccessCount = 0;
         user.LockedUntilUtc = null;
         await _users.UpdateAsync(user, ct);
-        await AuditUserAsync(
+        // This is an authentication lifecycle event for the affected account, like AccountLockedOut;
+        // keep it in that account's sign-in history. The User* administrative actions above instead
+        // belong to the administrator's own activity.
+        await _audit.WriteUserEventAsync(
             AuditAction.AccountUnlocked, user.Id, _actor.Username ?? "system",
             $"Lockout cleared for '{user.Username}'", ct);
         return true;

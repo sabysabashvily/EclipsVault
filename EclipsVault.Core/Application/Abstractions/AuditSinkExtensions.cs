@@ -6,9 +6,10 @@ namespace EclipsVault.Core.Application.Abstractions;
 public static class AuditSinkExtensions
 {
     /// <summary>
-    /// Writes a User-scoped audit entry where the acting user is also the subject — the shape
-    /// shared by the authentication, self-service profile, and admin user services. Centralising
-    /// it here keeps the <see cref="AuditEntry"/> field mapping in one place.
+    /// Writes a User-scoped authentication or self-service event attributed to the affected account.
+    /// Administrative User* actions on another account must supply their actor separately instead
+    /// of using the target account as the actor. Centralising this shape here keeps the
+    /// <see cref="AuditEntry"/> field mapping in one place.
     /// </summary>
     public static Task WriteUserEventAsync(
         this IAuditSink audit, AuditAction action, Guid? userId, string username, string? details, CancellationToken ct)
