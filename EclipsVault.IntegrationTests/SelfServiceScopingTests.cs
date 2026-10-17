@@ -1,8 +1,10 @@
 using System.Net;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Extensions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -290,6 +292,63 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         {
             var after = await ReadEndpointsAsync(clients[i]);
             Assert.All(after, body => Assert.DoesNotContain(source, body));
+            Assert.Equal(before[i], after);
+        }
+    }
+
+    [Fact]
+    public async Task An_unknown_sso_identity_with_an_existing_session_appears_in_no_accounts_history()
+    {
+        var a = await vault.SignInNewAccountAsync("it-scope-sso-unknown-a", IPAddress.Parse("198.51.100.99"));
+        var b = await vault.SignInNewAccountAsync("it-scope-sso-unknown-b", IPAddress.Parse("198.51.100.100"));
+        var clients = new[] { a.Client, b.Client, await vault.AdminClientAsync() };
+        var before = new List<string[]>();
+        foreach (var client in clients) before.Add(await ReadEndpointsAsync(client));
+
+        const string unknown = "it-scope-idp-only@example.test";
+        const string source = "198.51.100.101";
+        var callback = vault.CreateSession(Assert.IsType<Cookie>(a.SessionCookie), IPAddress.Parse(source));
+        var options = vault.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
+            .Get(AuthSchemes.OidcCorrelation);
+        // The seam begins AFTER OIDC verification. Use the real production cookie scheme and
+        // protector for its IdP assertion, alongside A's independently issued vault session.
+        // This exercises account matching and audit attribution, not the IdP's token validation.
+        var assertion = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim("iss", "https://idp.example.test/realms/integration"),
+            new Claim("sub", "it-scope-idp-only"),
+            new Claim("email", unknown),
+            new Claim("email_verified", "true"),
+        ], AuthSchemes.Oidc));
+        var ticket = new AuthenticationTicket(assertion, new AuthenticationProperties
+        {
+            IssuedUtc = DateTimeOffset.UtcNow,
+            ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(10),
+        }, AuthSchemes.OidcCorrelation);
+        var cookieName = Assert.IsType<string>(options.Cookie.Name);
+        callback.Cookies.Add(callback.Client.BaseAddress!, new Cookie(cookieName, options.TicketDataFormat.Protect(ticket), "/")
+        {
+            Secure = true,
+            HttpOnly = true,
+        });
+
+        var response = await callback.Client.GetAsync("/Account/ExternalCallback");
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/Account/Login", response.Headers.Location?.OriginalString);
+        Assert.Null(callback.Cookies.GetCookies(callback.Client.BaseAddress!)[cookieName]);
+        Assert.NotNull(callback.SessionCookie);
+        var audit = await clients[2].GetStringAsync("/Audit");
+        Assert.Contains(unknown, audit);
+        Assert.Contains(source, audit);
+        for (var i = 0; i < clients.Length; i++)
+        {
+            var after = await ReadEndpointsAsync(clients[i]);
+            Assert.All(after, body =>
+            {
+                Assert.DoesNotContain(unknown, body);
+                Assert.DoesNotContain(source, body);
+            });
             Assert.Equal(before[i], after);
         }
     }
