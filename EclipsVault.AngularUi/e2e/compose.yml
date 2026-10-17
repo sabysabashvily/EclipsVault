@@ -25,6 +25,7 @@ services:
       ECLIPSVAULT_AUDIT_SIGNING_KEY: ${ECLIPSVAULT_AUDIT_SIGNING_KEY:?Set by run.mjs}
       DataProtection__KeyRingPath: /tmp/keyring
       Email__Enabled: 'false'
+      WebAuthn__Origins__0: ${E2E_BASE_URL:-https://localhost}
     depends_on:
       sql:
         condition: service_healthy

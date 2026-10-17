@@ -10,6 +10,7 @@
     <p class="muted">Step 2 of 2 — enter the 6-digit code from your authenticator app.</p>
 
     <form asp-action="Totp" method="post">
+        <input asp-for="ReturnUrl" type="hidden" />
         <div asp-validation-summary="ModelOnly" class="validation-summary"></div>
 
         <div class="field">
@@ -22,6 +23,6 @@
     </form>
 
     <p class="footnote">
-        Lost your authenticator? <a asp-action="RecoveryCode">Use a recovery code</a>.
+        Lost your authenticator? <a asp-action="RecoveryCode" asp-route-ReturnUrl="@Model.ReturnUrl">Use a recovery code</a>.
     </p>
 </section>

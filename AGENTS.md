@@ -75,6 +75,7 @@ The first run downloads SQL Server (~2.5 GB) and the build images. `E2E_IMAGE=<l
 build to test an already-built production image, as CI does.
 Specs get `E2E_COMPOSE_PROJECT`, naming the run's own disposable stack, for state no production screen
 can create: `e2e/palette.ts` marks a honey-token decoy in that run's database this way.
+The runner always picks that name itself, with a random suffix; `E2E_PROJECT_PREFIX` sets only the prefix.
 An image you tag for E2E_IMAGE reuse is yours to remove: delete it with docker rmi when the ticket is
 done. Never remove images or containers you did not create.
 The suite uses the proxy's disposable

@@ -9,7 +9,10 @@ const ui = fileURLToPath(new URL('../', import.meta.url));
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const probes = process.argv.includes('--verify-guards');
 const output = probes ? 'guard-results' : 'test-results';
-const project = `eclipsvault-e2e-${randomUUID().slice(0, 8)}`;
+// Cleanup removes this project's containers and volumes, so the runner always names a project of its
+// own: a prefix may be chosen, the random suffix may not, and an existing project is never adopted.
+// Specs still receive the name as E2E_COMPOSE_PROJECT.
+const project = `${process.env.E2E_PROJECT_PREFIX || 'eclipsvault-e2e'}-${randomUUID().slice(0, 8)}`;
 const image = process.env.E2E_IMAGE || `${project}:test`;
 const abort = new AbortController();
 for (const signal of ['SIGINT', 'SIGTERM']) {
@@ -122,9 +125,9 @@ async function main() {
     await compose(['up', '-d', '--wait', '--wait-timeout', '180', 'sql', 'proxy']);
     const proxyId = await compose(['ps', '-q', 'proxy'], { capture: true });
     env.E2E_PROXY_IP = await checked('docker', ['inspect', '--format', '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}', proxyId], env, { capture: true });
-    await compose(['up', '-d', 'vault']);
     const address = await compose(['port', 'proxy', '443'], { capture: true });
     env.E2E_BASE_URL = `https://localhost:${address.split(':').at(-1)}`;
+    await compose(['up', '-d', 'vault']);
     await waitForVault(env.E2E_BASE_URL);
 
     // A failed runner must never be mistaken for the previous invocation's expected failures.

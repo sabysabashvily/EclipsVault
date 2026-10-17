@@ -274,7 +274,8 @@ async function loginWithPasskey(button) {
         button.disabled = true;
 
         const options = await passkeyPost('/Account/PasskeyLoginBegin', {
-            username: usernameInput ? usernameInput.value : null
+            username: usernameInput ? usernameInput.value : null,
+            returnUrl: button.dataset.returnUrl || null
         }).then(readJson);
         options.challenge = base64urlToBuffer(options.challenge);
         options.allowCredentials = (options.allowCredentials || []).map(withBufferId);
@@ -291,7 +292,7 @@ async function loginWithPasskey(button) {
         }).then(readJson);
 
         if (result.success) {
-            window.location.href = result.redirect || '/';
+            window.location.href = result.redirect;
         } else {
             setPasskeyStatus(status, result.error || 'Sign-in failed.', true);
             button.disabled = false;

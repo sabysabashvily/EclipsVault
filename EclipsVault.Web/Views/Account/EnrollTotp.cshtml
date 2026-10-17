@@ -20,6 +20,7 @@
     </div>
 
     <form asp-action="EnrollTotp" method="post">
+        <input asp-for="ReturnUrl" type="hidden" />
         <div asp-validation-summary="ModelOnly" class="validation-summary"></div>
 
         <div class="field">

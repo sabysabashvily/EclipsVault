@@ -10,6 +10,7 @@
     <p class="muted">Step 1 of 2 — password. An authenticator code is always required next.</p>
 
     <form asp-action="Login" method="post">
+        <input asp-for="ReturnUrl" type="hidden" />
         <div asp-validation-summary="ModelOnly" class="validation-summary"></div>
 
         <div class="field">
@@ -28,7 +29,7 @@
     </form>
 
     <div class="auth-divider" data-passkey-panel><span>or</span></div>
-    <button type="button" class="button wide" data-passkey-login data-username="#Username">
+    <button type="button" class="button wide" data-passkey-login data-username="#Username" data-return-url="@Model.ReturnUrl">
         Sign in with a passkey
     </button>
     <p class="passkey-status" data-passkey-status role="status" aria-live="polite"></p>
@@ -37,6 +38,7 @@
     {
         <div class="auth-divider"><span>or</span></div>
         <form asp-action="ExternalLogin" method="post">
+            <input asp-for="ReturnUrl" type="hidden" id="sso-return-url" />
             <button type="submit" class="button wide">Sign in with @Model.SsoDisplayName</button>
         </form>
     }

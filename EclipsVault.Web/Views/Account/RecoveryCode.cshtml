@@ -10,6 +10,7 @@
     <p class="muted">Step 2 of 2 — enter one of the single-use recovery codes you saved when you set up MFA. Each code works only once.</p>
 
     <form asp-action="RecoveryCode" method="post">
+        <input asp-for="ReturnUrl" type="hidden" />
         <div asp-validation-summary="ModelOnly" class="validation-summary"></div>
 
         <div class="field">
@@ -23,6 +24,6 @@
     </form>
 
     <p class="footnote">
-        Have your authenticator? <a asp-action="Totp">Enter a 6-digit code instead</a>.
+        Have your authenticator? <a asp-action="Totp" asp-route-ReturnUrl="@Model.ReturnUrl">Enter a 6-digit code instead</a>.
     </p>
 </section>

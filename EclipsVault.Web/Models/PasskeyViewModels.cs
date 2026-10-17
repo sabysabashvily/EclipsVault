@@ -16,6 +16,8 @@ public sealed class PasskeyRegistrationCompletion
 public sealed class PasskeyLoginRequest
 {
     public string? Username { get; set; }
+
+    public string? ReturnUrl { get; set; }
 }
 
 /// <summary>Body posted by the browser to complete a passkey sign-in ceremony.</summary>

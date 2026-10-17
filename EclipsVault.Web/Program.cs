@@ -95,6 +95,15 @@ try
                         // Account-wide kill switch: sessions issued at or before a revocation instant die.
                         isValid = !await revocation.IsRevokedAsync(userId, DateTimeOffset.FromUnixTimeSeconds(authTimeUnix));
 
+                        // In-memory revocation is lost on restart, but account removal is durable.
+                        // A decryptable cookie must still belong to an existing, enabled account.
+                        if (isValid)
+                        {
+                            var users = context.HttpContext.RequestServices.GetRequiredService<IUserRepository>();
+                            isValid = await users.FindByIdAsync(userId, context.HttpContext.RequestAborted)
+                                is { IsDisabled: false };
+                        }
+
                         // Per-session kill switch + activity tracking, for sessions that carry a session id.
                         if (isValid && Guid.TryParse(context.Principal?.FindFirstValue(VaultClaimTypes.SessionId), out var sessionId))
                         {

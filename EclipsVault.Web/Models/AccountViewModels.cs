@@ -4,6 +4,8 @@ namespace EclipsVault.Web.Models;
 
 public sealed class LoginViewModel
 {
+    public string? ReturnUrl { get; set; }
+
     [Required]
     [StringLength(256)]
     [Display(Name = "Username or email")]
@@ -23,6 +25,8 @@ public sealed class LoginViewModel
 
 public sealed class TotpViewModel
 {
+    public string? ReturnUrl { get; set; }
+
     [Required]
     [RegularExpression(@"^\d{6}$", ErrorMessage = "Enter the 6-digit code from your authenticator app.")]
     [Display(Name = "Authenticator code")]
@@ -31,6 +35,8 @@ public sealed class TotpViewModel
 
 public sealed class RecoveryCodeViewModel
 {
+    public string? ReturnUrl { get; set; }
+
     [Required]
     [RegularExpression(@"^[A-Za-z0-9\- ]{10,16}$", ErrorMessage = "Enter one of your recovery codes.")]
     [Display(Name = "Recovery code")]
@@ -67,6 +73,8 @@ public sealed class AccessDeniedViewModel
 
 public sealed class EnrollTotpViewModel
 {
+    public string? ReturnUrl { get; set; }
+
     /// <summary>Display-only; never bound from the request.</summary>
     public string SecretBase32 { get; set; } = string.Empty;
 

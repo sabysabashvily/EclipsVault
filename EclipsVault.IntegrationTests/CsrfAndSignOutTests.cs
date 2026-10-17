@@ -1,6 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using EclipsVault.Infrastructure.Security;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 using Xunit;
 
@@ -73,6 +76,10 @@ public sealed class CsrfAndSignOutTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await session.Client.GetAsync("/api/ui/me")).StatusCode);
 
+        var invalid = await session.Client.SendAsync(PostWithToken("/Account/Logout", "invalid-antiforgery-token"));
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await session.Client.GetAsync("/api/ui/me")).StatusCode);
+
         var signedOut = await session.Client.SendAsync(PostWithToken("/Account/Logout", token));
         Assert.Equal(HttpStatusCode.Redirect, signedOut.StatusCode);
         Assert.Null(session.SessionCookie);
@@ -81,6 +88,70 @@ public sealed class CsrfAndSignOutTests(VaultFixture vault)
         var replayed = await vault.CreateSession(copied).Client.GetAsync("/api/ui/me");
         await UiApiFailureContractTests.AssertProblemAsync(replayed, 401, "unauthenticated");
     }
+
+    [Fact]
+    public async Task An_exhausted_shared_credential_budget_cannot_prevent_protected_sign_out()
+    {
+        var source = IPAddress.Parse("198.51.100.91");
+        var session = await vault.SignInNewAccountAsync("it-throttled-sign-out", source);
+        var copied = Assert.IsType<Cookie>(session.SessionCookie);
+        var token = XsrfCookieOf(await session.Client.GetAsync("/api/ui/me")).Value.ToString();
+
+        // An anonymous caller behind the same address spends the real shared credential budget.
+        // Empty login models reach the throttle without guessing a password or tripping lockout.
+        var guesser = vault.CreateSession(source: source.MapToIPv6()).Client;
+        var guessToken = VaultFixture.FormTokenOf(await guesser.GetStringAsync("/Account/Login"), "/Account/Login");
+        for (var i = 0; i < PermitLimit; i++)
+        {
+            await guesser.SendAsync(PostWithToken("/Account/Login", guessToken));
+        }
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await guesser.SendAsync(PostWithToken("/Account/Login", guessToken))).StatusCode);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await session.Client.PostAsync("/Account/Logout", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await session.Client.SendAsync(PostWithToken("/Account/Logout", "invalid"))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await session.Client.GetAsync("/api/ui/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await vault.CreateSession(copied).Client.GetAsync("/api/ui/me")).StatusCode);
+
+        var signedOut = await session.Client.SendAsync(PostWithToken("/Account/Logout", token));
+        Assert.Equal(HttpStatusCode.Redirect, signedOut.StatusCode);
+        Assert.Equal("/", signedOut.Headers.Location?.OriginalString);
+        Assert.Null(session.SessionCookie);
+        await UiApiFailureContractTests.AssertProblemAsync(
+            await vault.CreateSession(copied).Client.GetAsync("/api/ui/me"), 401, "unauthenticated");
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await guesser.SendAsync(PostWithToken("/Account/Login", guessToken))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Protected_sign_out_leaves_the_last_credential_attempt_available()
+    {
+        // Copy a genuinely authenticated session to a fresh source with an untouched budget.
+        var original = await vault.SignInNewAccountAsync("it-sign-out-budget", IPAddress.Parse("198.51.100.92"));
+        var session = vault.CreateSession(Assert.IsType<Cookie>(original.SessionCookie), IPAddress.Parse("198.51.100.93"));
+        var guesser = vault.CreateSession(source: IPAddress.Parse("198.51.100.93")).Client;
+        var guessToken = VaultFixture.FormTokenOf(await guesser.GetStringAsync("/Account/Login"), "/Account/Login");
+        for (var i = 0; i < PermitLimit - 1; i++)
+        {
+            Assert.Equal(HttpStatusCode.OK, (await guesser.SendAsync(PostWithToken("/Account/Login", guessToken))).StatusCode);
+        }
+        var token = XsrfCookieOf(await session.Client.GetAsync("/api/ui/me")).Value.ToString();
+
+        Assert.Equal(HttpStatusCode.Redirect, (await session.Client.SendAsync(PostWithToken("/Account/Logout", token))).StatusCode);
+        Assert.Null(session.SessionCookie);
+        Assert.Equal(HttpStatusCode.OK, (await guesser.SendAsync(PostWithToken("/Account/Login", guessToken))).StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await guesser.SendAsync(PostWithToken("/Account/Login", guessToken))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Sign_out_still_requires_a_session_and_post()
+    {
+        var anonymous = vault.CreateClient();
+        Assert.Equal(HttpStatusCode.Redirect, (await anonymous.PostAsync("/Account/Logout", null)).StatusCode);
+        var session = await vault.SignInNewAccountAsync("it-sign-out-post", IPAddress.Parse("198.51.100.94"));
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, (await session.Client.GetAsync("/Account/Logout")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await session.Client.GetAsync("/api/ui/me")).StatusCode);
+    }
+
+    private int PermitLimit => vault.Services.GetRequiredService<IOptions<AuthThrottleOptions>>().Value.PermitLimit;
 
     [Fact]
     public async Task The_legacy_passkey_calls_still_send_the_page_token_in_the_same_header()
