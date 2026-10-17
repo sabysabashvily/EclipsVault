@@ -40,7 +40,7 @@ public sealed class AuditSink : IAuditSink
         {
             Id = Guid.NewGuid(),
             TimestampUtc = _clock.GetUtcNow(),
-            UserId = entry.ActorUserId ?? _actor.UserId,
+            UserId = entry.ActorUserId ?? (entry.InheritActorUserId ? _actor.UserId : null),
             Username = entry.ActorUsername ?? _actor.Username ?? "system",
             SourceIp = _actor.SourceIp ?? "internal",
             Action = entry.Action,

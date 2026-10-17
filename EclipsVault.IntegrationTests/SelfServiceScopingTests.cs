@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Web.Extensions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -54,19 +55,28 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         const string username = "it-scope-unlocked";
         var target = await vault.SignInNewAccountAsync(username, IPAddress.Parse("198.51.100.93"));
         await FailSignInAsync(username, "198.51.100.94");
-        var admin = await vault.AdminClientAsync();
+        var admin = (await vault.SignInNewAccountAsync("it-scope-unlock-admin", IPAddress.Parse("198.51.100.95"),
+            ClearanceLevel.TopSecret)).Client;
         var adminHistory = await admin.GetStringAsync("/api/ui/sign-ins");
 
         var response = await PostFormAsync(admin, $"/Admin/Unlock/{AccountIdOf(target):D}", new(), "/Admin/Users");
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal(adminHistory, await admin.GetStringAsync("/api/ui/sign-ins"));
-        using var history = JsonDocument.Parse(await target.Client.GetStringAsync("/api/ui/sign-ins"));
-        AssertSummary(history.RootElement, 1, 1, 1, 3);
+        var activityBody = await target.Client.GetStringAsync("/api/ui/activity");
+        var historyBody = await target.Client.GetStringAsync("/api/ui/sign-ins");
+        Assert.DoesNotContain("198.51.100.95", activityBody);
+        Assert.DoesNotContain("198.51.100.95", historyBody);
+        Assert.Contains("Your account was unlocked", activityBody);
+        // The global audit retains the actual source; self-service projections hide it.
+        Assert.Contains("198.51.100.95", await admin.GetStringAsync("/Audit"));
+        using var history = JsonDocument.Parse(historyBody);
+        AssertSummary(history.RootElement, 1, 1, 1, 2);
         var unlocked = Assert.Single(history.RootElement.GetProperty("events").EnumerateArray(),
             item => item.GetProperty("title").GetString() == "Account unlocked");
         Assert.Equal("Info", unlocked.GetProperty("outcome").GetString());
         Assert.Equal("System", unlocked.GetProperty("method").GetString());
+        Assert.Equal("internal", unlocked.GetProperty("sourceIp").GetString());
     }
 
     [Fact]
@@ -247,6 +257,40 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
                 Assert.DoesNotContain(unknown, body);
                 Assert.DoesNotContain(source, body);
             });
+        }
+    }
+
+    [Fact]
+    public async Task An_unknown_username_attempt_with_an_existing_session_appears_in_no_accounts_history()
+    {
+        var a = await vault.SignInNewAccountAsync("it-scope-authenticated-unknown-a", IPAddress.Parse("198.51.100.96"));
+        var b = await vault.SignInNewAccountAsync("it-scope-authenticated-unknown-b", IPAddress.Parse("198.51.100.98"));
+        var clients = new[] { a.Client, b.Client, await vault.AdminClientAsync() };
+        var before = new List<string[]>();
+        foreach (var client in clients) before.Add(await ReadEndpointsAsync(client));
+
+        const string unknown = "it-scope-authenticated-does-not-exist";
+        const string source = "198.51.100.97";
+        var signedIn = vault.CreateSession(Assert.IsType<Cookie>(a.SessionCookie), IPAddress.Parse(source));
+        // Login's GET redirects a signed-in caller. A token from Profile is valid for their
+        // current identity and proves this unsafe request genuinely carries A's session.
+        var response = await PostFormAsync(signedIn.Client, "/Account/Login", new()
+        {
+            ["Username"] = unknown,
+            ["Password"] = "An-intentionally-incorrect-password-57!",
+        }, "/Profile");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Invalid username or password.", await response.Content.ReadAsStringAsync());
+        Assert.NotNull(signedIn.SessionCookie);
+        var audit = await clients[2].GetStringAsync("/Audit");
+        Assert.Contains(unknown, audit);
+        Assert.Contains(source, audit);
+
+        for (var i = 0; i < clients.Length; i++)
+        {
+            var after = await ReadEndpointsAsync(clients[i]);
+            Assert.All(after, body => Assert.DoesNotContain(source, body));
+            Assert.Equal(before[i], after);
         }
     }
 

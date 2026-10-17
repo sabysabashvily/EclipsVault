@@ -19,6 +19,7 @@ public static class AuditSinkExtensions
             ResourceType = "User",
             ResourceId = userId,
             ActorUserId = userId,
+            InheritActorUserId = false,
             ActorUsername = username,
             Details = details
         }, ct);
