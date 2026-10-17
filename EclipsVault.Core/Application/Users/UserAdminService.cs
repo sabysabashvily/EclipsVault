@@ -277,10 +277,13 @@ public sealed class UserAdminService : IUserAdminService
             throw new VaultAdminException("Cannot delete the last TopSecret administrator — the vault would become unmanageable.");
         }
 
+        // A session carries the account's clearance and project, so one that outlived the account
+        // would keep its access. Revoked first: if the delete then fails, the account only lost its sessions.
+        await _revocation.RevokeAsync(user.Id, _clock.GetUtcNow(), ct);
         await _users.DeleteAsync(user, ct);
         await AuditUserAsync(
             AuditAction.UserDeleted, userId, _actor.Username ?? "system",
-            $"Deleted '{user.Username}'", ct);
+            $"Deleted '{user.Username}'; sessions revoked", ct);
         return true;
     }
 

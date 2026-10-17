@@ -224,6 +224,22 @@ public sealed partial class VaultFixture : IAsyncLifetime
         }
     }
 
+    /// <summary>Deletes an account the way an administrator does, from the Users page.</summary>
+    public async Task DeleteAccountAsync(string username)
+    {
+        var admin = await AdminClientAsync();
+        var users = await admin.GetStringAsync("/Admin/Users");
+        var delete = DeleteUserForm().Matches(users)
+            .FirstOrDefault(m => WebUtility.HtmlDecode(m.Value).Contains($"Delete user '{username}' permanently?", StringComparison.Ordinal))?.Groups[1].Value
+            ?? throw new InvalidOperationException($"The Users page offered no way to delete {username}.");
+
+        var response = await PostFormAsync(admin, delete, new(), formPage: "/Admin/Users");
+        if (response.StatusCode != HttpStatusCode.Redirect)
+        {
+            throw new InvalidOperationException($"Deleting {username} answered {(int)response.StatusCode}, not a redirect.");
+        }
+    }
+
     /// <summary>
     /// Sends one anonymous GET from <paramref name="source"/>. The test server has no network, so the
     /// test supplies the address the vault would otherwise read from the connection.
@@ -318,6 +334,9 @@ public sealed partial class VaultFixture : IAsyncLifetime
     // The form tag helper writes action after the view's own attributes, so match the whole tag.
     [GeneratedRegex("<form\\b[^>]*\\baction=\"(/Admin/ForceLogout/[0-9a-fA-F-]{36})\"[^>]*>")]
     private static partial Regex ForceLogoutForm();
+
+    [GeneratedRegex("<form\\b[^>]*\\baction=\"(/Admin/DeleteUser/[0-9a-fA-F-]{36})\"[^>]*>")]
+    private static partial Regex DeleteUserForm();
 }
 
 /// <summary>A client and the cookies it holds, so a test can inspect or copy its session cookie.</summary>
