@@ -2,15 +2,19 @@ using System.Globalization;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
+using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Infrastructure.Security;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Mvc.Testing.Handlers;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Testcontainers.MsSql;
 using Xunit;
 
@@ -18,10 +22,11 @@ namespace EclipsVault.IntegrationTests;
 
 /// <summary>
 /// One real vault per test run: the unmodified <c>Program</c> entry point, in Production, against a
-/// SQL Server container (ADR-0010). Nothing is replaced or faked. It is configured the way a container
+/// SQL Server container (ADR-0010). Authentication and persistence are real. It is configured the way a container
 /// deployment configures it, through environment variables, so startup runs its real tasks: the
 /// crypto check, migrations, the bootstrap administrator, the legacy-blob upgrade and the audit chain.
-/// The one addition is the test-only endpoints in <c>TestOnlyEndpoints.cs</c>, which raise each failure
+/// Only the auth throttle's clock is frozen, so HTTP budget assertions cannot cross a rate window.
+/// The other addition is the test-only endpoints in <c>TestOnlyEndpoints.cs</c>, which raise each failure
 /// the error mapping must handle; they live in this assembly, so the vault itself never has them.
 /// </summary>
 public sealed partial class VaultFixture : IAsyncLifetime
@@ -72,7 +77,16 @@ public sealed partial class VaultFixture : IAsyncLifetime
         _factory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(host => host
                 .UseEnvironment("Production")
-                .ConfigureTestServices(services => services.AddMvcCore().AddApplicationPart(typeof(VaultFixture).Assembly)));
+                .ConfigureTestServices(services =>
+                {
+                    services.AddMvcCore().AddApplicationPart(typeof(VaultFixture).Assembly);
+                    // Keep the real counter, cache and configured thresholds. Freeze only its window;
+                    // TOTP, cookie expiry and all other services retain the production clock.
+                    services.AddSingleton<IAuthThrottle>(sp => new InMemoryAuthThrottle(
+                        sp.GetRequiredService<IMemoryCache>(),
+                        sp.GetRequiredService<IOptions<AuthThrottleOptions>>(),
+                        new AuthThrottleClock()));
+                }));
 
         // Program catches a refused boot, logs it and exits 1, so the factory still returns a host:
         // one that never started. Fail here, pointing at the log, rather than in every test.
@@ -225,6 +239,12 @@ public sealed partial class VaultFixture : IAsyncLifetime
 
     /// <summary>The vault's own services, for the few things a test cannot do through HTTP.</summary>
     public IServiceProvider Services => _factory!.Services;
+
+    private sealed class AuthThrottleClock : TimeProvider
+    {
+        private readonly DateTimeOffset _now = DateTimeOffset.UtcNow;
+        public override DateTimeOffset GetUtcNow() => _now;
+    }
 
     private async Task<HttpClient> SignInAdministratorAsync()
     {

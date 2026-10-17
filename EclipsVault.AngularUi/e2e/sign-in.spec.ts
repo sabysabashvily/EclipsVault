@@ -539,6 +539,19 @@ test('a stale-session problem ends the real session through protected sign-out b
   expect(session).toBeDefined();
   const xsrf = (await context.cookies()).find((cookie) => cookie.name === 'XSRF-TOKEN');
   expect(xsrf).toBeDefined();
+  // Exhaust the real credential budget deliberately, instead of depending on how many earlier
+  // sign-ins happen to land in this rate window. Empty models cannot lock out an account.
+  // API requests generate no browser console errors; the shared browser-health guard stays strict.
+  let credentialStatus = 0;
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const response = await page.request.post('/Account/Login', {
+      headers: { RequestVerificationToken: xsrf!.value },
+    });
+    credentialStatus = response.status();
+    if (credentialStatus === 429) break;
+    expect(credentialStatus).toBe(200);
+  }
+  expect(credentialStatus).toBe(429);
   // Integration tests exercise real protected cookies with missing claims. Here the transport
   // supplies that contract so a production browser must perform the real CSRF-protected sign-out.
   browserHealth.expectConsoleError({ text: /status of 401/, url: /\/api\/ui\/access$/ });
@@ -546,8 +559,11 @@ test('a stale-session problem ends the real session through protected sign-out b
     await route.fulfill({ status: 401, contentType: 'application/problem+json', body: JSON.stringify({ code: 'stale_session' }) });
   }, { times: 1 });
   const logout = page.waitForRequest((request) => request.method() === 'POST' && new URL(request.url()).pathname === '/Account/Logout');
+  const logoutResponse = page.waitForResponse((response) =>
+    response.request().method() === 'POST' && new URL(response.url()).pathname === '/Account/Logout');
   await page.getByRole('link', { name: 'My access', exact: true }).click();
   expect((await logout).headers()['requestverificationtoken']).toBe(xsrf?.value);
+  expect((await logoutResponse).status()).toBe(302);
   await expect(page).toHaveURL(/\/Account\/Login$/);
   expect((await context.cookies()).some((cookie) => cookie.name === 'EclipsVault.Session')).toBe(false);
   const replay = await browserHealth.newContext();
