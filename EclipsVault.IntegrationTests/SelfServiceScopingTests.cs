@@ -35,7 +35,7 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
     public async Task Creating_resetting_and_deleting_an_account_are_the_administrators_own_activity()
     {
         const string username = "it-scope-admin-actions";
-        var target = await vault.SignInNewAccountAsync(username, IPAddress.Parse("198.51.100.92"));
+        var target = await vault.SignInNewAccountAsync(username, IPAddress.Parse("198.51.100.111"));
         var before = await target.Client.GetStringAsync("/api/ui/activity");
         var admin = await vault.AdminClientAsync();
 
@@ -55,9 +55,9 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
     public async Task An_account_unlock_stays_in_the_affected_accounts_sign_in_history()
     {
         const string username = "it-scope-unlocked";
-        var target = await vault.SignInNewAccountAsync(username, IPAddress.Parse("198.51.100.93"));
-        await FailSignInAsync(username, "198.51.100.94");
-        var admin = (await vault.SignInNewAccountAsync("it-scope-unlock-admin", IPAddress.Parse("198.51.100.95"),
+        var target = await vault.SignInNewAccountAsync(username, IPAddress.Parse("198.51.100.112"));
+        await FailSignInAsync(username, "198.51.100.113");
+        var admin = (await vault.SignInNewAccountAsync("it-scope-unlock-admin", IPAddress.Parse("198.51.100.114"),
             ClearanceLevel.TopSecret)).Client;
         var adminHistory = await admin.GetStringAsync("/api/ui/sign-ins");
 
@@ -67,11 +67,11 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         Assert.Equal(adminHistory, await admin.GetStringAsync("/api/ui/sign-ins"));
         var activityBody = await target.Client.GetStringAsync("/api/ui/activity");
         var historyBody = await target.Client.GetStringAsync("/api/ui/sign-ins");
-        Assert.DoesNotContain("198.51.100.95", activityBody);
-        Assert.DoesNotContain("198.51.100.95", historyBody);
+        Assert.DoesNotContain("198.51.100.114", activityBody);
+        Assert.DoesNotContain("198.51.100.114", historyBody);
         Assert.Contains("Your account was unlocked", activityBody);
         // The global audit retains the actual source; self-service projections hide it.
-        Assert.Contains("198.51.100.95", await admin.GetStringAsync("/Audit"));
+        Assert.Contains("198.51.100.114", await admin.GetStringAsync("/Audit"));
         using var history = JsonDocument.Parse(historyBody);
         AssertSummary(history.RootElement, 1, 1, 1, 2);
         var unlocked = Assert.Single(history.RootElement.GetProperty("events").EnumerateArray(),
@@ -356,7 +356,7 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
     [Fact]
     public async Task Reading_all_three_endpoints_adds_no_activity_for_the_caller()
     {
-        var session = await vault.SignInNewAccountAsync("it-scope-read-only", IPAddress.Parse("198.51.100.91"));
+        var session = await vault.SignInNewAccountAsync("it-scope-read-only", IPAddress.Parse("198.51.100.110"));
         var before = await session.Client.GetStringAsync("/api/ui/activity");
         using (var activity = JsonDocument.Parse(before))
         {

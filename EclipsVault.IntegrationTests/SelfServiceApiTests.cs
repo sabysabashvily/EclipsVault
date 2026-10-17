@@ -154,15 +154,14 @@ public sealed class SelfServiceApiTests(VaultFixture vault)
 
     /// <summary>
     /// The endpoints refuse a session without an account id the vault issued. The cookie handler
-    /// already rejects a ticket whose account id is missing or does not parse, before any endpoint
-    /// runs, so those two answer <c>unauthenticated</c> and clear the cookie. An all-zero id parses
-    /// and passes the cookie handler; the endpoints themselves answer it with <c>stale_session</c>.
+    /// rejects a ticket whose account id is missing, does not parse, or names no existing enabled
+    /// account, before any endpoint runs, so each answers <c>unauthenticated</c> and clears the cookie.
     /// </summary>
     [Theory]
-    [InlineData(null, "unauthenticated", "198.51.100.63")]
-    [InlineData("not-an-account-id", "unauthenticated", "198.51.100.64")]
-    [InlineData("00000000-0000-0000-0000-000000000000", "stale_session", "198.51.100.65")]
-    public async Task A_session_without_a_usable_account_id_is_refused_before_any_read(string? accountId, string code, string address)
+    [InlineData(null, "198.51.100.63")]
+    [InlineData("not-an-account-id", "198.51.100.64")]
+    [InlineData("00000000-0000-0000-0000-000000000000", "198.51.100.65")]
+    public async Task A_session_without_a_usable_account_id_is_refused_before_any_read(string? accountId, string address)
     {
         var source = IPAddress.Parse(address);
         var original = await vault.SignInNewAccountAsync($"it-self-service-stale-{accountId ?? "missing"}", source);
@@ -177,26 +176,18 @@ public sealed class SelfServiceApiTests(VaultFixture vault)
             // A fresh client per endpoint, so a cookie cleared by one refusal cannot explain the next.
             var stale = vault.CreateSession(tampered, source);
             var response = await stale.Client.GetAsync(path);
-            await UiApiFailureContractTests.AssertProblemAsync(response, 401, code);
+            await UiApiFailureContractTests.AssertProblemAsync(response, 401, "unauthenticated");
             Assert.Null(response.Headers.Location);
-            if (code == "unauthenticated")
-            {
-                Assert.Null(stale.SessionCookie);
-            }
-            else
-            {
-                // The Angular UI can still post the protected sign-out.
-                Assert.NotNull(stale.Cookies.GetCookies(stale.Client.BaseAddress!)["XSRF-TOKEN"]);
-            }
+            Assert.Null(stale.SessionCookie);
         }
     }
 
     /// <summary>
-    /// Deleting an account does not revoke its sessions, so the session still reaches the endpoint,
-    /// which finds no account behind it and answers <c>stale_session</c>.
+    /// Deleting an account ends its sessions, so the cookie is refused before the endpoint runs: the
+    /// security checkup answers <c>unauthenticated</c> and clears the cookie.
     /// </summary>
     [Fact]
-    public async Task Security_checkup_for_a_deleted_account_is_a_stale_session()
+    public async Task Security_checkup_for_a_deleted_account_requires_signing_in_again()
     {
         const string username = "it-security-deleted";
         var session = await vault.SignInNewAccountAsync(username, IPAddress.Parse("198.51.100.66"));
@@ -205,8 +196,9 @@ public sealed class SelfServiceApiTests(VaultFixture vault)
         await vault.DeleteAccountAsync(username);
         var response = await session.Client.GetAsync("/api/ui/security");
 
-        await UiApiFailureContractTests.AssertProblemAsync(response, 401, "stale_session");
+        await UiApiFailureContractTests.AssertProblemAsync(response, 401, "unauthenticated");
         Assert.Null(response.Headers.Location);
+        Assert.Null(session.SessionCookie);
     }
 
     [Fact]
