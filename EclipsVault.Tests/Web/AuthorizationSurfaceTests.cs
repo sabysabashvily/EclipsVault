@@ -231,7 +231,7 @@ public class AuthorizationSurfaceTests
             ["security"] = typeof(SecurityController),
             ["sign-ins"] = typeof(SignInsController),
             ["sessions"] = typeof(SessionsController),
-            ["activity"] = typeof(ActivityController),
+            ["activity"] = typeof(EclipsVault.Web.Controllers.Ui.ActivityController),
             ["data"] = typeof(DataController),
             ["profile"] = typeof(ProfileController),
             ["users"] = typeof(AdminController),

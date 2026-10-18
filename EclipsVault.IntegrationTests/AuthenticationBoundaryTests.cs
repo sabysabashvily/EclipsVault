@@ -57,17 +57,20 @@ public sealed class AuthenticationBoundaryTests(VaultFixture vault)
     /// <summary>
     /// Pins what a bookmark sees before the Angular document is served.
     /// </summary>
-    [Fact]
-    public async Task An_anonymous_request_for_an_angular_owned_path_is_sent_to_sign_in()
+    [Theory]
+    [InlineData("/Access", "?ReturnUrl=%2FAccess")]
+    [InlineData("/Activity", "?ReturnUrl=%2FActivity")]
+    [InlineData("/Activity/Index", "?ReturnUrl=%2FActivity%2FIndex")]
+    public async Task An_anonymous_request_for_an_angular_owned_path_is_sent_to_sign_in(string path, string query)
     {
         var anonymous = vault.CreateClient();
 
-        var response = await anonymous.GetAsync("/Access");
+        var response = await anonymous.GetAsync(path);
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         var location = Assert.IsType<Uri>(response.Headers.Location);
         var target = location.IsAbsoluteUri ? location : new Uri(anonymous.BaseAddress!, location);
         Assert.Equal("/Account/Login", target.AbsolutePath);
-        Assert.Equal("?ReturnUrl=%2FAccess", target.Query);
+        Assert.Equal(query, target.Query);
     }
 }

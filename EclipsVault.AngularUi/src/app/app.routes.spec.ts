@@ -1,5 +1,6 @@
 import { Route, UrlSegment, UrlSegmentGroup } from '@angular/router';
 import { AccessPage } from './access/access-page';
+import { ActivityPage } from './activity/activity-page';
 import { routes } from './app.routes';
 
 /** The route the router picks for `url`: the first whose matcher accepts its segments. */
@@ -23,7 +24,18 @@ describe('routes', () => {
     },
   );
 
-  it.each(['/', '/Index', '/Accessories', '/Access/Index/extra', '/Secrets'])(
+  it.each(['/Activity', '/Activity/Index', '/activity', '/ACTIVITY/index'])(
+    'opens My activity at %s',
+    async (url) => {
+      const route = routeFor(url);
+
+      expect(route).toBeDefined();
+      expect(route?.title).toBe('My activity — EclipsVault');
+      expect(await route?.loadComponent?.()).toBe(ActivityPage);
+    },
+  );
+
+  it.each(['/', '/Index', '/Accessories', '/Access/Index/extra', '/Activityfeed', '/Activity/Index/extra', '/Secrets'])(
     'leaves %s unmatched',
     (url) => {
       expect(routeFor(url)).toBeUndefined();

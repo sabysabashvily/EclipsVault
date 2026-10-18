@@ -26,6 +26,10 @@ public static class AngularUiRoutes
         // My access
         "/Access",
         "/Access/Index",
+
+        // My activity
+        "/Activity",
+        "/Activity/Index",
     ];
 
     /// <summary>

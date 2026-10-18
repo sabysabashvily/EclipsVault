@@ -1,6 +1,7 @@
 import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { test, expect } from './fixtures';
+import { type Activity, feedIcons, feedRows, fulfilActivity, verifyMyActivity } from './activity';
 import { createSecret, markDecoy, openPalette, paletteEntries, searchSecrets, sidebarPages } from './palette';
 import { verifySidebar } from './sidebar';
 import { freshTotp } from './totp';
@@ -193,6 +194,41 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
   expect(signInRequests).toEqual([]);
   expect((await context.cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')?.value).toBe(session?.value);
   administratorCookies = await context.cookies();
+});
+
+test('My activity shows the administrator\'s own rows in both themes, and nothing past the end', async ({ page }, info) => {
+  await page.context().addCookies(administratorCookies);
+  await page.goto('/Access');
+  await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
+  // The first test's own actions, newest first: the ordinary two-factor sign-in, then the sign-in
+  // that confirming enrolment completes, then the enrolment itself.
+  const rows: [string, string, string][] = [
+    ['Signed in', 'Sign-in', 'sev-muted'],
+    ['Signed in', 'Sign-in', 'sev-muted'],
+    ['Set up your authenticator', 'Account', 'sev-warn'],
+  ];
+  for (const theme of ['dark', 'light']) {
+    await test.step(`${theme} theme`, async () => {
+      await verifyMyActivity(page, info, theme, rows);
+    });
+  }
+
+  await test.step('a page past the end offers the way back to the latest page, in-app', async () => {
+    await page.goto('/Activity?page=999');
+    await expect(page.locator('.panel > p.muted')).toHaveText('Nothing further back to show.');
+    await expect(page.locator('.activity-feed, .pager, .empty-state')).toHaveCount(0);
+    await expect(page.locator('style, [style]')).toHaveCount(0);
+    const documents: string[] = [];
+    page.on('request', (request) => {
+      if (request.isNavigationRequest() && request.resourceType() === 'document') documents.push(request.url());
+    });
+    const latest = page.getByRole('link', { name: 'Back to latest', exact: true });
+    await expect(latest).toHaveAttribute('href', '/Activity');
+    await latest.click();
+    await expect(page).toHaveURL(/\/Activity$/);
+    await expect(page.locator('.activity-feed > li')).toHaveCount(rows.length);
+    expect(documents).toEqual([]);
+  });
 });
 
 test('the administrator and Standard sidebars match Legacy in both themes and navigate across UIs', async ({ page, browserHealth }, info) => {
@@ -474,6 +510,191 @@ test('an access failure shows a retry and the next request restores the live gri
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
   await expect(page.locator('.access-matrix tbody tr')).toHaveCount(4);
   await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test('My activity\'s empty state and pager match Legacy, and paging is in-app with back and forward refetching', async ({ page }) => {
+  await page.context().addCookies(administratorCookies);
+  await page.goto('/Access');
+  await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
+  const documents: string[] = [];
+  page.on('request', (request) => {
+    if (request.isNavigationRequest() && request.resourceType() === 'document') documents.push(new URL(request.url()).pathname);
+  });
+
+  await test.step('an account with no activity sees the empty state', async () => {
+    const empty: Activity = { page: 1, pageSize: 25, hasMore: false, hasPrevious: false, notableCount: 0, items: [] };
+    const requested = await fulfilActivity(page, { '': empty });
+    await page.getByText('Security', { exact: true }).click();
+    await page.getByRole('link', { name: 'My activity', exact: true }).click();
+    await expect(page.locator('.empty-state h3')).toHaveText('No activity yet');
+    await expect(page.locator('.empty-state p')).toHaveText(
+      'As you sign in, view and reveal secrets, and update your account, each action is recorded here so you can review it later.');
+    expect(await page.locator('.empty-state .empty-icon svg').evaluate((icon) => [...icon.children].map((shape) => shape.getAttribute('d'))))
+      .toEqual(['M9 4h6a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h2V5a1 1 0 0 1 1-1Z', 'M9 14l2 2 4-4']);
+    await expect(page.locator('.activity-feed, .pager, .page-header > .badge')).toHaveCount(0);
+    await expect(page.locator('.panel > p.muted')).toHaveCount(0);
+    await expect(page.locator('style, [style]')).toHaveCount(0);
+    expect(requested).toEqual(['']);
+    await page.unrouteAll({ behavior: 'wait' });
+  });
+
+  const minute = 60_000;
+  const now = Date.now();
+  const ago = (milliseconds: number) => new Date(now - milliseconds).toISOString();
+  const longName = 'Payments_Production_Database_Primary_Connection_String_Rotated_Quarterly';
+  const first: Activity = { page: 1, pageSize: 25, hasMore: true, hasPrevious: false, notableCount: 2, items: [
+    { timestampUtc: ago(20_000), category: 'Secrets', title: 'Revealed a secret value', severity: 'Notable', resourceName: longName, sourceIp: '203.0.113.7' },
+    { timestampUtc: ago(5 * minute + 20_000), category: 'Security', title: 'A session was force-revoked', severity: 'Critical', resourceName: null, sourceIp: '203.0.113.8' },
+    { timestampUtc: ago(3 * 60 * minute + minute), category: 'Authentication', title: 'Signed in', severity: 'Routine', resourceName: '   ', sourceIp: '203.0.113.7' },
+    { timestampUtc: ago(2 * 24 * 60 * minute + 60 * minute), category: 'Sharing', title: 'Shared a secret', severity: 'Notable', resourceName: 'Shared_Key', sourceIp: '2001:db8::5' },
+  ] };
+  const second: Activity = { page: 2, pageSize: 25, hasMore: false, hasPrevious: true, notableCount: 0, items: [
+    { timestampUtc: '2026-01-02T03:04:05.678Z', category: 'Administration', title: 'Created a user', severity: 'Routine', resourceName: null, sourceIp: '198.51.100.20' },
+    { timestampUtc: '2025-12-31T23:59:59Z', category: 'Account', title: 'Changed your password', severity: 'Routine', resourceName: null, sourceIp: '198.51.100.20' },
+    { timestampUtc: '2025-12-30T08:00:00Z', category: 'Automation', title: 'Issued an API key', severity: 'Routine', resourceName: null, sourceIp: 'internal' },
+    { timestampUtc: '2025-12-29T08:00:00Z', category: 'Other', title: 'Some new action', severity: 'Routine', resourceName: null, sourceIp: 'internal' },
+  ] };
+  const requested = await fulfilActivity(page, { '': first, '1': first, '2': second });
+  const pager = page.locator('nav.pager[aria-label="Activity pages"]');
+  const pagerLinks = async () => pager.locator('a').evaluateAll((links) => links.map((link) => [link.textContent?.trim(), link.getAttribute('href')]));
+
+  await test.step('the first page shows each row, its accent, icon and badges, and only the older link', async () => {
+    await page.getByText('Access', { exact: true }).click();
+    await page.getByRole('link', { name: 'My access', exact: true }).click();
+    await page.getByText('Security', { exact: true }).click();
+    await page.getByRole('link', { name: 'My activity', exact: true }).click();
+    await expect(page).toHaveURL(/\/Activity$/);
+    await expect(page.locator('.activity-feed > li')).toHaveCount(4);
+    expect(await feedRows(page)).toEqual([
+      { title: 'Revealed a secret value', badges: ['Secrets'], resource: { text: longName, tooltip: longName }, meta: 'from 203.0.113.7', time: 'just now', tooltip: expect.stringMatching(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC$/), severity: 'sev-warn' },
+      { title: 'A session was force-revoked', badges: ['Security'], resource: null, meta: 'from 203.0.113.8', time: '5m ago', tooltip: expect.any(String), severity: 'sev-critical' },
+      { title: 'Signed in', badges: ['Sign-in'], resource: null, meta: 'from 203.0.113.7', time: '3h ago', tooltip: expect.any(String), severity: 'sev-muted' },
+      { title: 'Shared a secret', badges: ['Sharing'], resource: { text: 'Shared_Key', tooltip: 'Shared_Key' }, meta: 'from 2001:db8::5', time: '2d ago', tooltip: expect.any(String), severity: 'sev-warn' },
+    ]);
+    expect(await page.locator('.feed-resource').first().evaluate((resource) => getComputedStyle(resource).textOverflow)).toBe('ellipsis');
+    expect(await feedIcons(page)).toEqual([
+      ['rect:x=4,y=10,width=16,height=10,rx=2', 'path:d=M8 10V7a4 4 0 0 1 8 0v3', 'circle:cx=12,cy=15,r=1.4'],
+      ['path:d=M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z', 'path:d=M9 12l2 2 4-4'],
+      ['path:d=M15 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3', 'path:d=M8 7l5 5-5 5M13 12H3'],
+      ['circle:cx=18,cy=5,r=2.6', 'circle:cx=6,cy=12,r=2.6', 'circle:cx=18,cy=19,r=2.6', 'path:d=M8.3 10.7l7.4-4.4M8.3 13.3l7.4 4.4'],
+    ]);
+    // A critical entry's chip is solid danger, in white.
+    expect(await page.locator('.sev-critical .feed-icon').evaluate((icon) => getComputedStyle(icon).color)).toBe('rgb(255, 255, 255)');
+    await expect(page.locator('.page-header > .badge')).toHaveText('2 notable');
+    await expect(pager.locator('.pager-page')).toHaveText('Page 1');
+    expect(await pagerLinks()).toEqual([['Older →', '/Activity?page=2']]);
+    await expect(page.locator('style, [style]')).toHaveCount(0);
+  });
+
+  await test.step('Older → changes ?page= in-app and shows the older page', async () => {
+    await pager.getByRole('link', { name: 'Older →', exact: true }).click();
+    await expect(page).toHaveURL(/\/Activity\?page=2$/);
+    await expect(pager.locator('.pager-page')).toHaveText('Page 2');
+    expect(await pagerLinks()).toEqual([['← Newer', '/Activity?page=1']]);
+    await expect(page.locator('.page-header > .badge')).toHaveCount(0);
+    expect(await feedRows(page)).toEqual([
+      { title: 'Created a user', badges: ['Admin'], resource: null, meta: 'from 198.51.100.20', time: '2026-01-02', tooltip: '2026-01-02 03:04:05 UTC', severity: 'sev-muted' },
+      { title: 'Changed your password', badges: ['Account'], resource: null, meta: 'from 198.51.100.20', time: '2025-12-31', tooltip: '2025-12-31 23:59:59 UTC', severity: 'sev-muted' },
+      { title: 'Issued an API key', badges: ['Automation'], resource: null, meta: 'from internal', time: '2025-12-30', tooltip: '2025-12-30 08:00:00 UTC', severity: 'sev-muted' },
+      { title: 'Some new action', badges: ['Other'], resource: null, meta: 'from internal', time: '2025-12-29', tooltip: '2025-12-29 08:00:00 UTC', severity: 'sev-muted' },
+    ]);
+    expect(await feedIcons(page)).toEqual([
+      ['circle:cx=12,cy=12,r=3', 'path:d=M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1'],
+      ['circle:cx=12,cy=8,r=3.4', 'path:d=M5 20c.7-3.7 3-5.5 7-5.5s6.3 1.8 7 5.5'],
+      ['rect:x=5,y=7,width=14,height=12,rx=2', 'path:d=M9 3v4M15 3v4M9 12h.01M15 12h.01M9 16h6'],
+      ['circle:cx=12,cy=12,r=9', 'path:d=M12 8h.01M11 12h1v4h1'],
+    ]);
+  });
+
+  await test.step('back and forward move between the visited pages and refetch each', async () => {
+    await page.goBack();
+    await expect(page).toHaveURL(/\/Activity$/);
+    await expect(pager.locator('.pager-page')).toHaveText('Page 1');
+    await expect(page.locator('.feed-title').first()).toHaveText('Revealed a secret value');
+    await page.goForward();
+    await expect(page).toHaveURL(/\/Activity\?page=2$/);
+    await expect(pager.locator('.pager-page')).toHaveText('Page 2');
+    await pager.getByRole('link', { name: '← Newer', exact: true }).click();
+    await expect(page).toHaveURL(/\/Activity\?page=1$/);
+    await expect(pager.locator('.pager-page')).toHaveText('Page 1');
+    expect(requested).toEqual(['', '2', '', '2', '1']);
+    expect(documents).toEqual([]);
+  });
+  await page.unrouteAll({ behavior: 'wait' });
+});
+
+test('the sidebar and palette open My activity in-app, and its Profile link loads the Legacy UI on the same session', async ({ page }) => {
+  await page.context().addCookies(administratorCookies);
+  await page.goto('/Access');
+  await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
+  const session = (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session');
+  const documents: string[] = [];
+  const signInRequests: string[] = [];
+  page.on('request', (request) => {
+    if (/\/Account\/(Login|Totp|EnrollTotp)/i.test(new URL(request.url()).pathname)) signInRequests.push(request.url());
+    if (request.isNavigationRequest() && request.resourceType() === 'document') documents.push(new URL(request.url()).pathname);
+  });
+
+  await test.step('the sidebar link keeps the document and marks My activity and its group active', async () => {
+    await page.getByText('Security', { exact: true }).click();
+    await page.getByRole('link', { name: 'My activity', exact: true }).click();
+    await expect(page).toHaveURL(/\/Activity$/);
+    await expect(page).toHaveTitle('My activity — EclipsVault');
+    await expect(page.getByRole('heading', { name: 'My activity', exact: true })).toBeVisible();
+    await expect(page.locator('.sidenav a.active')).toHaveText('My activity');
+    await expect(page.locator('.sidenav a.active')).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('.sidenav summary.has-active')).toHaveText('Security');
+    await expect(page.locator('.sidenav details:has(a.active)')).toHaveAttribute('open', '');
+    expect(documents).toEqual([]);
+  });
+
+  await test.step('the palette opens My activity in place', async () => {
+    await page.getByText('Access', { exact: true }).click();
+    await page.getByRole('link', { name: 'My access', exact: true }).click();
+    await expect(page).toHaveURL(/\/Access$/);
+    await openPalette(page);
+    await page.locator('.palette-input').fill('my activity');
+    await expect(page.locator('.palette-item')).toHaveText([/My activity/]);
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/\/Activity$/);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.activity-feed > li').first()).toBeVisible();
+    expect(documents).toEqual([]);
+  });
+
+  await test.step('the Profile link is a full load into the Legacy UI on the same session', async () => {
+    const legacyDocument = page.waitForResponse((response) => response.request().isNavigationRequest());
+    await page.getByRole('link', { name: 'Change your password or sign out everywhere', exact: true }).click();
+    expect((await legacyDocument).headers()['content-security-policy']).not.toContain('trusted-types');
+    await expect(page).toHaveURL(/\/Profile$/);
+    await expect(page.getByRole('heading', { name: 'Profile', exact: true })).toBeVisible();
+    expect(documents).toEqual(['/Profile']);
+    expect(signInRequests).toEqual([]);
+    expect((await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')?.value).toBe(session?.value);
+  });
+});
+
+test('an activity failure shows a retry and the next request restores the feed', async ({ page, browserHealth }) => {
+  await page.context().addCookies(administratorCookies);
+  browserHealth.expectConsoleError({ text: /status of 503/, url: /\/api\/ui\/activity$/ });
+  await page.route('**/api/ui/activity', async (route) => {
+    await route.fulfill({ status: 503, contentType: 'application/problem+json', body: JSON.stringify({ code: 'audit_unavailable' }) });
+  }, { times: 1 });
+  await page.goto('/Activity');
+  await expect(page.getByRole('alert')).toHaveText('Could not load your activity. Reload the page to try again.');
+  await expect(page.locator('.activity-feed')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Try again', exact: true }).click();
+  await expect(page.locator('.activity-feed > li').first()).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.locator('style, [style]')).toHaveCount(0);
+});
+
+test('signed out, My activity sends the browser to sign-in with its return URL', async ({ page }) => {
+  for (const [path, returnUrl] of [['/Activity', '%2FActivity'], ['/Activity/Index', '%2FActivity%2FIndex']] as const) {
+    await page.goto(path);
+    await expect(page).toHaveURL(new RegExp(`/Account/Login\\?ReturnUrl=${returnUrl}$`));
+    await expect(page.getByLabel('Username')).toBeVisible();
+  }
 });
 
 test('a session revoked from another browser signs in again and returns to My access', async ({ page, browserHealth }) => {

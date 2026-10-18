@@ -27,7 +27,7 @@ describe('sidebar mapping', () => {
           { label: 'Security checkup', icon: 'security', url: '/Security', angular: false },
           { label: 'Sign-in history', icon: 'sign-ins', url: '/SignIns', angular: false },
           { label: 'Signed-in devices', icon: 'sessions', url: '/Sessions', angular: false },
-          { label: 'My activity', icon: 'activity', url: '/Activity', angular: false },
+          { label: 'My activity', icon: 'activity', url: '/Activity', angular: true },
         ] },
         { label: 'Your data', icon: 'data', url: '/Data', angular: false },
       ] },
