@@ -154,6 +154,10 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Fix a failure with `npm run format`.
+      - name: Formatting
+        run: npm run format:check
+
       - name: Unit tests
         run: npm test -- --watch=false
 
