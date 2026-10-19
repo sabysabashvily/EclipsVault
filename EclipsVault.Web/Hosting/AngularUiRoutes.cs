@@ -30,6 +30,10 @@ public static class AngularUiRoutes
         // My activity
         "/Activity",
         "/Activity/Index",
+
+        // Sign-in history
+        "/SignIns",
+        "/SignIns/Index",
     ];
 
     /// <summary>

@@ -18,4 +18,19 @@ describe('EmptyState', () => {
     expect(state.querySelector('h3')?.textContent).toBe('No activity yet');
     expect(state.querySelector('p')?.textContent).toBe('Each action is recorded here.');
   });
+
+  it.each([
+    ['clipboard', ['path:d=M9 4h6a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h2V5a1 1 0 0 1 1-1Z', 'path:d=M9 14l2 2 4-4']],
+    ['lock', ['rect:x=4,y=10,width=16,height=10,rx=2', 'path:d=M8 10V7a4 4 0 0 1 8 0v3', 'circle:cx=12,cy=15,r=1.4']],
+  ] as const)('draws the Legacy %s icon', async (icon, shapes) => {
+    const fixture = TestBed.createComponent(EmptyState);
+    fixture.componentRef.setInput('icon', icon);
+    fixture.componentRef.setInput('heading', 'Heading');
+    fixture.componentRef.setInput('message', 'Message');
+    await fixture.whenStable();
+    const svg = (fixture.nativeElement as HTMLElement).querySelector('.empty-icon > svg')!;
+
+    expect([...svg.children].map((shape) =>
+      `${shape.tagName}:${[...shape.attributes].map((a) => `${a.name}=${a.value}`).join(',')}`)).toEqual(shapes);
+  });
 });

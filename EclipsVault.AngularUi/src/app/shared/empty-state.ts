@@ -10,6 +10,7 @@ import { Component, input } from '@angular/core';
              stroke-linecap="round" stroke-linejoin="round">
           @switch (icon()) {
           @case ('clipboard') { <path d="M9 4h6a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h2V5a1 1 0 0 1 1-1Z"/><path d="M9 14l2 2 4-4"/> }
+          @case ('lock') { <rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15" r="1.4"/> }
           }
         </svg>
       </div>
@@ -19,7 +20,7 @@ import { Component, input } from '@angular/core';
   `,
 })
 export class EmptyState {
-  readonly icon = input.required<'clipboard'>();
+  readonly icon = input.required<'clipboard' | 'lock'>();
   readonly heading = input.required<string>();
   readonly message = input.required<string>();
 }

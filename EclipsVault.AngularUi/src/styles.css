@@ -515,6 +515,35 @@ button { font-family: inherit; }
     .two-col { grid-template-columns: 1fr; }
 }
 
+/* ---- Stat cards -------------------------------------------------- */
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.4rem;
+}
+
+.stat-card {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.15rem 1.3rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    color: var(--text);
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--dur) var(--ease), border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+.stat-card { transition: transform var(--dur) var(--ease), border-color var(--dur) var(--ease), background var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+.stat-card.attention { border-color: rgba(255, 214, 10, 0.35); }
+.stat-card.alert { border-color: rgba(255, 69, 58, 0.4); background: linear-gradient(180deg, var(--danger-soft), var(--bg-raised) 65%); }
+
+.stat-value { font-size: 1.9rem; font-weight: 680; letter-spacing: -0.03em; }
+.stat-label { font-size: 0.84rem; color: var(--text-secondary); font-weight: 600; }
+.stat-detail { font-size: 0.76rem; color: var(--text-faint); }
+
 /* ---- Buttons ----------------------------------------------------- */
 .button {
     display: inline-flex;

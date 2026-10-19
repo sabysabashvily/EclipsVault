@@ -18,10 +18,13 @@ function legacyPath(path: string): UrlMatcher {
 
 const access = () => import('./access/access-page').then((m) => m.AccessPage);
 const activity = () => import('./activity/activity-page').then((m) => m.ActivityPage);
+const signIns = () => import('./sign-ins/sign-ins-page').then((m) => m.SignInsPage);
 
 export const routes: Routes = [
   { matcher: legacyPath('Access'), loadComponent: access, title: 'My access — EclipsVault' },
   { matcher: legacyPath('Access/Index'), loadComponent: access, title: 'My access — EclipsVault' },
   { matcher: legacyPath('Activity'), loadComponent: activity, title: 'My activity — EclipsVault' },
   { matcher: legacyPath('Activity/Index'), loadComponent: activity, title: 'My activity — EclipsVault' },
+  { matcher: legacyPath('SignIns'), loadComponent: signIns, title: 'Sign-in history — EclipsVault' },
+  { matcher: legacyPath('SignIns/Index'), loadComponent: signIns, title: 'Sign-in history — EclipsVault' },
 ];

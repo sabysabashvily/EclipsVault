@@ -1,0 +1,140 @@
+<div class="page-header">
+  <div>
+    <h1>Sign-in history</h1>
+    <p class="page-sub">
+      Every recent attempt to sign in to your account — successful and rejected — newest first.
+      Only your own sign-ins appear here. An attempt from a location you've never signed in from
+      is flagged so you can spot anything you didn't do.
+    </p>
+  </div>
+  @if (header(); as summary) {
+    <span class="badge tone-critical" title="Failed attempts from a location you've never signed in from">
+      {{ summary.suspiciousCount }} to review
+    </span>
+  }
+</div>
+
+@if (view(); as model) {
+  @let summary = model.summary;
+  @if (model.events.length === 0) {
+    <app-empty-state
+      icon="lock"
+      heading="No sign-in history yet"
+      message="As you sign in — with your password, a passkey, or a recovery code — each attempt is recorded here so you can review it later and spot anything unfamiliar."
+    />
+  } @else {
+    <section class="panel">
+      <div class="stat-grid">
+        <div class="stat-card">
+          <span class="stat-value">{{ summary.successCount }}</span>
+          <span class="stat-label">Successful sign-ins</span>
+          @if (summary.lastSuccess; as last) {
+            <span class="stat-detail" [title]="last.utc">last {{ last.ago }}</span>
+          }
+        </div>
+        <div class="stat-card" [class.attention]="summary.failedCount > 0">
+          <span class="stat-value">{{ summary.failedCount }}</span>
+          <span class="stat-label">Rejected attempts</span>
+          @if (summary.lastFailed; as last) {
+            <span class="stat-detail" [title]="last.utc">last {{ last.ago }}</span>
+          }
+        </div>
+        <div class="stat-card" [class.alert]="summary.suspiciousCount > 0">
+          <span class="stat-value">{{ summary.suspiciousCount }}</span>
+          <span class="stat-label">From unfamiliar places</span>
+          <span class="stat-detail">failed, never signed in from there</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value">{{ summary.distinctLocations }}</span>
+          <span class="stat-label">Distinct locations</span>
+          <span class="stat-detail">by source address</span>
+        </div>
+      </div>
+    </section>
+
+    @if (summary.needsAttention) {
+      <section class="panel callout-warn">
+        <div class="panel-header"><h2>Don't recognise these attempts?</h2></div>
+        <p class="muted">
+          Someone tried to sign in from a place you've never signed in from. Your account wasn't
+          opened from there — every attempt failed — but it's worth locking things down: change
+          your password and sign out of every device.
+        </p>
+        <div class="button-row">
+          <a class="button primary" href="/Sessions">Review signed-in devices</a>
+          <a class="button" href="/Profile">Change password</a>
+        </div>
+      </section>
+    }
+
+    <section class="panel">
+      <ul class="activity-feed">
+        @for (event of model.events; track $index) {
+          <li class="feed-item {{ event.accent }}">
+            <span class="feed-icon">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                @switch (event.method) {
+                  @case ('Passkey') {
+                    <rect x="3" y="11" width="18" height="10" rx="2" />
+                    <path d="M7 11V8a5 5 0 0 1 9-3" />
+                    <circle cx="12" cy="16" r="1.4" />
+                  }
+                  @case ('RecoveryCode') {
+                    <rect x="3" y="5" width="18" height="14" rx="2" />
+                    <path d="M7 9h4M7 13h6M15 9h2" />
+                  }
+                  @case ('StepUp') {
+                    <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z" />
+                    <path d="M12 8v4M12 15h.01" />
+                  }
+                  @case ('TwoFactor') {
+                    <rect x="6" y="10" width="12" height="9" rx="1.6" />
+                    <path d="M9 10V7.5a3 3 0 0 1 6 0V10" />
+                  }
+                  @case ('System') {
+                    <circle cx="12" cy="12" r="3" />
+                    <path
+                      d="M12 4v2M12 18v2M4 12h2M18 12h2M6.3 6.3l1.4 1.4M16.3 16.3l1.4 1.4M17.7 6.3l-1.4 1.4M7.7 16.3l-1.4 1.4"
+                    />
+                  }
+                  @default {
+                    <path d="M15 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3" />
+                    <path d="M8 7l5 5-5 5M13 12H3" />
+                  }
+                }
+              </svg>
+            </span>
+            <div class="feed-body">
+              <div class="feed-title-row">
+                <span class="feed-title">{{ event.title }}</span>
+                <span class="badge tone-{{ event.outcomeTone }}">{{ event.outcomeLabel }}</span>
+                <span class="badge tone-muted">{{ event.methodLabel }}</span>
+                @if (event.location; as location) {
+                  <span class="badge tone-{{ location.tone }}">{{ location.text }}</span>
+                }
+              </div>
+              <div class="feed-meta">
+                <span class="mono">from {{ event.sourceIp }}</span>
+              </div>
+            </div>
+            <time class="feed-time" [title]="event.utc">{{ event.ago }}</time>
+          </li>
+        }
+      </ul>
+    </section>
+  }
+} @else if (history.error()) {
+  <section class="panel">
+    <p role="alert">Could not load your sign-in history. Reload the page to try again.</p>
+    <button type="button" class="button" (click)="history.reload()">Try again</button>
+  </section>
+} @else {
+  <p role="status">Loading your sign-in history…</p>
+}

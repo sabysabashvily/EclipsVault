@@ -25,7 +25,7 @@ describe('sidebar mapping', () => {
         ] },
         { label: 'Security', icon: 'security-group', children: [
           { label: 'Security checkup', icon: 'security', url: '/Security', angular: false },
-          { label: 'Sign-in history', icon: 'sign-ins', url: '/SignIns', angular: false },
+          { label: 'Sign-in history', icon: 'sign-ins', url: '/SignIns', angular: true },
           { label: 'Signed-in devices', icon: 'sessions', url: '/Sessions', angular: false },
           { label: 'My activity', icon: 'activity', url: '/Activity', angular: true },
         ] },

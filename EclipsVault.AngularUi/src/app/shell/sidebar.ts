@@ -49,7 +49,7 @@ const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)
     ] },
     { label: 'Security', icon: 'security-group', children: [
       link('security', 'Security checkup', '/Security'),
-      link('sign-ins', 'Sign-in history', '/SignIns'),
+      link('sign-ins', 'Sign-in history', '/SignIns', 'sign-ins', true),
       link('sessions', 'Signed-in devices', '/Sessions'),
       link('activity', 'My activity', '/Activity', 'activity', true),
     ] },
