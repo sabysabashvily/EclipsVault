@@ -5,6 +5,7 @@ import { type Activity, type ExpectedRow, feedIcons, feedRows, fulfilActivity, s
 import { createSecret, markDecoy, openPalette, paletteEntries, searchSecrets, sidebarPages } from './palette';
 import { type SignIns, passwordIcon, signInRows, statCards, verifySignInHistory } from './sign-ins';
 import { verifySidebar } from './sidebar';
+import { allClear, atRisk, backupIcon, checkRows, devicesIcon, passkeyIcon, twoStepIcon, verifySecurityCheckup } from './security';
 import { freshTotp } from './totp';
 
 // The tests share one vault: the first enrolls the administrator's authenticator, the next signs in with it.
@@ -239,6 +240,17 @@ test('Sign-in history shows the administrator\'s real sign-ins in both themes', 
   for (const theme of ['dark', 'light']) {
     await test.step(`${theme} theme`, async () => {
       await verifySignInHistory(page, info, theme);
+    });
+  }
+});
+
+test('Security checkup shows the administrator\'s real posture without a passkey in both themes', async ({ page }, info) => {
+  await page.context().addCookies(administratorCookies);
+  await page.goto('/Access');
+  await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
+  for (const theme of ['dark', 'light']) {
+    await test.step(`${theme} theme`, async () => {
+      await verifySecurityCheckup(page, info, theme);
     });
   }
 });
@@ -919,6 +931,151 @@ test('a sign-in history failure shows a retry and the next request restores the 
 
 test('signed out, Sign-in history sends the browser to sign-in with its return URL', async ({ page }) => {
   for (const [path, returnUrl] of [['/SignIns', '%2FSignIns'], ['/SignIns/Index', '%2FSignIns%2FIndex']] as const) {
+    await page.goto(path);
+    await expect(page).toHaveURL(new RegExp(`/Account/Login\\?ReturnUrl=${returnUrl}$`));
+    await expect(page.getByLabel('Username')).toBeVisible();
+  }
+});
+
+test('Security checkup shows all-clear and at-risk postures with only actionable fixes', async ({ page }) => {
+  await page.context().addCookies(administratorCookies);
+  await page.route('**/api/ui/security', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(allClear) });
+  }, { times: 1 });
+  await page.goto('/sEcUrItY/INDEX');
+  await expect(page).toHaveTitle('Security checkup — EclipsVault');
+  await expect(page.getByRole('img', { name: 'Security score 100 out of 100 — Strong', exact: true })).toContainClass('score-ring grade-strong');
+  await expect(page.locator('.grade-label')).toHaveText('Strong');
+  await expect(page.locator('.grade-label')).toContainClass('grade-label grade-strong');
+  await expect(page.locator('.ring-value')).toHaveAttribute('stroke-dasharray', '326.7 0.0');
+  await expect(page.locator('.checkup-lead')).toHaveText('Everything checks out. Your account is well protected — nice work.');
+  await expect(page.locator('.checkup-counts .badge')).toHaveText(['4 secured']);
+  await expect(page.locator('.feed-action a, .check-rec')).toHaveCount(0);
+  expect(await checkRows(page)).toEqual([
+    { title: 'Two-step sign-in', status: 'Secured', tone: 'tone-ok', accent: 'check-pass', detail: 'An authenticator app is protecting your sign-in.', recommendation: null, fix: null },
+    { title: 'Backup codes', status: 'Secured', tone: 'tone-ok', accent: 'check-pass', detail: 'You have 10 one-time backup codes.', recommendation: null, fix: null },
+    { title: 'Passkey', status: 'Secured', tone: 'tone-ok', accent: 'check-pass', detail: 'You have 1 passkey for phishing-resistant sign-in.', recommendation: null, fix: null },
+    { title: 'Signed-in devices', status: 'Secured', tone: 'tone-ok', accent: 'check-pass', detail: 'Only this device is signed in.', recommendation: null, fix: null },
+  ]);
+  expect(await feedIcons(page)).toEqual([twoStepIcon, backupIcon, passkeyIcon, devicesIcon]);
+  await expect(page.locator('style, [style]')).toHaveCount(0);
+
+  await page.route('**/api/ui/security', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(atRisk) });
+  }, { times: 1 });
+  await page.goto('/Security/Index');
+  await expect(page.getByRole('img', { name: 'Security score 30 out of 100 — At risk', exact: true })).toContainClass('score-ring grade-atrisk');
+  await expect(page.locator('.grade-label')).toHaveText('At risk');
+  await expect(page.locator('.grade-label')).toContainClass('grade-label grade-atrisk');
+  await expect(page.locator('.ring-value')).toHaveAttribute('stroke-dasharray', '98.0 228.7');
+  await expect(page.locator('.checkup-lead')).toHaveText("Next step: Turn on an authenticator app so a stolen password isn't enough to get in.");
+  await expect(page.locator('.checkup-counts .badge')).toHaveText(['1 action needed', '3 recommended', '0 secured']);
+  expect(await checkRows(page)).toEqual([
+    { title: 'Two-step sign-in', status: 'Action needed', tone: 'tone-danger', accent: 'check-fail', detail: 'Your account relies on a password alone.', recommendation: "Turn on an authenticator app so a stolen password isn't enough to get in.", fix: ['Set up two-step', '/Profile'] },
+    { title: 'Backup codes', status: 'Recommended', tone: 'tone-warn', accent: 'check-warn', detail: 'Backup codes become available once two-step sign-in is on.', recommendation: 'Turn on two-step sign-in, then generate a set of one-time backup codes.', fix: ['Generate codes', '/Profile'] },
+    { title: 'Passkey', status: 'Recommended', tone: 'tone-warn', accent: 'check-warn', detail: "You haven't added a passkey yet.", recommendation: "Add a passkey for sign-in that can't be phished, even if your password leaks.", fix: ['Add a passkey', '/Profile'] },
+    { title: 'Signed-in devices', status: 'Recommended', tone: 'tone-warn', accent: 'check-warn', detail: '4 devices are signed in to your account.', recommendation: "Review the list and sign out anything you don't recognise.", fix: ['Review devices', '/Sessions'] },
+  ]);
+  expect(await feedIcons(page)).toEqual([twoStepIcon, backupIcon, passkeyIcon, devicesIcon]);
+  await expect(page.locator('style, [style]')).toHaveCount(0);
+
+  // None suppresses the link even for a non-secured check; the server remains the source of prose.
+  const noFix: typeof atRisk = {
+    ...atRisk, checks: atRisk.checks.map((check) => ({ ...check, fix: 'None' })),
+  };
+  await page.route('**/api/ui/security', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(noFix) });
+  }, { times: 1 });
+  await page.goto('/Security');
+  await expect(page.locator('.check-rec')).toHaveCount(4);
+  await expect(page.locator('.feed-action a')).toHaveCount(0);
+});
+
+test('the sidebar and palette open Security checkup in-app, and fixes load Legacy on the same session', async ({ page }) => {
+  await page.context().addCookies(administratorCookies);
+  await page.goto('/Access');
+  await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
+  const session = (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session');
+  const documents: string[] = [];
+  const signInRequests: string[] = [];
+  page.on('request', (request) => {
+    if (/\/Account\/(Login|Totp|EnrollTotp)/i.test(new URL(request.url()).pathname)) signInRequests.push(request.url());
+    if (request.isNavigationRequest() && request.resourceType() === 'document') documents.push(new URL(request.url()).pathname);
+  });
+  await page.getByText('Security', { exact: true }).click();
+  await page.getByRole('link', { name: 'Security checkup', exact: true }).click();
+  await expect(page).toHaveURL(/\/Security$/);
+  await expect(page).toHaveTitle('Security checkup — EclipsVault');
+  await expect(page.locator('.activity-feed > li')).toHaveCount(4);
+  await expect(page.locator('.sidenav a.active')).toHaveText('Security checkup');
+  await expect(page.locator('.sidenav a.active')).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('.sidenav summary.has-active')).toHaveText('Security');
+  await expect(page.locator('.sidenav details:has(a.active)')).toHaveAttribute('open', '');
+  expect(documents).toEqual([]);
+
+  await page.getByText('Access', { exact: true }).click();
+  await page.getByRole('link', { name: 'My access', exact: true }).click();
+  await expect(page).toHaveURL(/\/Access$/);
+  await openPalette(page);
+  await page.locator('.palette-input').fill('security checkup');
+  await expect(page.locator('.palette-item')).toHaveText([/Security checkup/]);
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/Security$/);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('.activity-feed > li')).toHaveCount(4);
+  expect(documents).toEqual([]);
+
+  for (const [name, path, heading] of [['Set up two-step', '/Profile', 'Profile'], ['Generate codes', '/Profile', 'Profile'],
+    ['Add a passkey', '/Profile', 'Profile'], ['Review devices', '/Sessions', 'Signed-in devices']] as const) {
+    await test.step(`${name} is a full load into Legacy on the same session`, async () => {
+      await page.route('**/api/ui/security', async (route) => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(atRisk) });
+      }, { times: 1 });
+      await page.goto('/Security');
+      await expect(page.locator('.feed-action a')).toHaveCount(4);
+      documents.length = 0;
+      const legacyDocument = page.waitForResponse((response) => response.request().isNavigationRequest());
+      await page.locator('.feed-action').getByRole('link', { name, exact: true }).click();
+      expect((await legacyDocument).headers()['content-security-policy']).not.toContain('trusted-types');
+      await expect(page).toHaveURL(new RegExp(`${path}$`));
+      await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
+      expect(documents).toEqual([path]);
+      expect(signInRequests).toEqual([]);
+      expect((await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')?.value).toBe(session?.value);
+    });
+  }
+});
+
+test('Security checkup loads, reports a fetch failure, and retries in place', async ({ page, browserHealth }) => {
+  await page.context().addCookies(administratorCookies);
+  browserHealth.expectConsoleError({ text: /status of 503/, url: /\/api\/ui\/security$/ });
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  await page.route('**/api/ui/security', async (route) => {
+    await pending;
+    await route.fulfill({ status: 503, contentType: 'application/problem+json', body: JSON.stringify({ code: 'audit_unavailable' }) });
+  }, { times: 1 });
+  const requested = page.waitForRequest('**/api/ui/security');
+  await page.goto('/Security');
+  await requested;
+  await expect(page.getByRole('status')).toHaveText('Loading your security checkup…');
+  await expect(page.locator('.checkup-hero, .activity-feed')).toHaveCount(0);
+  release();
+  await expect(page.getByRole('alert')).toHaveText('Could not load your security checkup. Reload the page to try again.');
+  const documents: string[] = [];
+  page.on('request', (request) => {
+    if (request.isNavigationRequest() && request.resourceType() === 'document') documents.push(request.url());
+  });
+  await page.getByRole('button', { name: 'Try again', exact: true }).click();
+  await expect(page.locator('.activity-feed > li')).toHaveCount(4);
+  await expect(page.locator('.checkup-hero')).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.locator('style, [style]')).toHaveCount(0);
+  expect(documents).toEqual([]);
+});
+
+test('signed out, Security checkup sends the browser to sign-in with its return URL', async ({ page }) => {
+  for (const [path, returnUrl] of [['/Security', '%2FSecurity'], ['/Security/Index', '%2FSecurity%2FIndex']] as const) {
     await page.goto(path);
     await expect(page).toHaveURL(new RegExp(`/Account/Login\\?ReturnUrl=${returnUrl}$`));
     await expect(page.getByLabel('Username')).toBeVisible();

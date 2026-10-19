@@ -1,0 +1,98 @@
+<div class="page-header">
+  <div>
+    <h1>Security checkup</h1>
+    <p class="page-sub">
+      A quick read on how well your account is protected. Everything here is about
+      <em>your</em> account only — work through anything flagged to make it stronger.
+    </p>
+  </div>
+</div>
+
+@if (view(); as model) {
+  <section class="panel checkup-hero">
+    <div class="score-ring {{ model.grade.class }}" role="img"
+      [attr.aria-label]="'Security score ' + model.score + ' out of 100 — ' + model.grade.label">
+      <svg viewBox="0 0 120 120" width="132" height="132">
+        <circle class="ring-track" cx="60" cy="60" r="52" fill="none" stroke-width="10" />
+        <circle class="ring-value" cx="60" cy="60" r="52" fill="none" stroke-width="10"
+          stroke-linecap="round" [attr.stroke-dasharray]="model.dasharray" transform="rotate(-90 60 60)" />
+      </svg>
+      <div class="score-center">
+        <span class="score-number">{{ model.score }}</span>
+        <span class="score-outof">/ 100</span>
+      </div>
+    </div>
+    <div class="checkup-summary">
+      <span class="grade-label {{ model.grade.class }}">{{ model.grade.label }}</span>
+      @if (model.nextStep === null) {
+        <p class="checkup-lead">Everything checks out. Your account is well protected — nice work.</p>
+      } @else {
+        <p class="checkup-lead">Next step: <strong>{{ model.nextStep }}</strong></p>
+      }
+      <div class="checkup-counts">
+        @if (model.actionNeededCount > 0) {
+          <span class="badge tone-danger">{{ model.actionNeededCount }} action needed</span>
+        }
+        @if (model.recommendedCount > 0) {
+          <span class="badge tone-warn">{{ model.recommendedCount }} recommended</span>
+        }
+        <span class="badge tone-ok">{{ model.passCount }} secured</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <ul class="activity-feed">
+      @for (check of model.checks; track check.kind) {
+        <li class="feed-item {{ check.standing.class }}">
+          <span class="feed-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+              stroke-linecap="round" stroke-linejoin="round">
+              @switch (check.kind) {
+                @case ('TwoStepSignIn') {
+                  <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z" />
+                  <path d="M9 12l2 2 4-4" />
+                }
+                @case ('BackupCodes') {
+                  <rect x="4" y="4" width="16" height="16" rx="2" />
+                  <path d="M8 9h8M8 13h5M8 17h3" />
+                }
+                @case ('Passkey') {
+                  <circle cx="8" cy="15" r="4" />
+                  <path d="M10.85 12.15 19 4M18 5l2 2M15 8l2 2" />
+                }
+                @case ('SignedInDevices') {
+                  <rect x="2" y="4" width="14" height="10" rx="1.6" />
+                  <path d="M6 18h6M9 14v4" />
+                  <rect x="17" y="9" width="5" height="11" rx="1.4" />
+                }
+              }
+            </svg>
+          </span>
+          <div class="feed-body">
+            <div class="feed-title-row">
+              <span class="feed-title">{{ check.title }}</span>
+              <span class="badge tone-{{ check.standing.tone }}">{{ check.standing.label }}</span>
+            </div>
+            <div class="feed-meta">{{ check.detail }}</div>
+            @if (check.status !== 'Pass') {
+              <div class="check-rec">{{ check.recommendation }}</div>
+            }
+          </div>
+          <div class="feed-action">
+            @if (check.status !== 'Pass' && check.url) {
+              <a class="button small" [href]="check.url">{{ check.fixLabel }}</a>
+            }
+          </div>
+        </li>
+      }
+    </ul>
+  </section>
+} @else if (security.error()) {
+  <section class="panel">
+    <p role="alert">Could not load your security checkup. Reload the page to try again.</p>
+    <button type="button" class="button" (click)="security.reload()">Try again</button>
+  </section>
+} @else {
+  <p role="status">Loading your security checkup…</p>
+}

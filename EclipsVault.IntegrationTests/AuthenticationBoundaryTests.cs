@@ -63,6 +63,8 @@ public sealed class AuthenticationBoundaryTests(VaultFixture vault)
     [InlineData("/Activity/Index", "?ReturnUrl=%2FActivity%2FIndex")]
     [InlineData("/SignIns", "?ReturnUrl=%2FSignIns")]
     [InlineData("/SignIns/Index", "?ReturnUrl=%2FSignIns%2FIndex")]
+    [InlineData("/Security", "?ReturnUrl=%2FSecurity")]
+    [InlineData("/Security/Index", "?ReturnUrl=%2FSecurity%2FIndex")]
     public async Task An_anonymous_request_for_an_angular_owned_path_is_sent_to_sign_in(string path, string query)
     {
         var anonymous = vault.CreateClient();

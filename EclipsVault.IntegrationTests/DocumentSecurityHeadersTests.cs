@@ -26,6 +26,10 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
     [InlineData("/SignIns")]
     [InlineData("/SignIns/Index")]
     [InlineData("/signins")]
+    [InlineData("/Security")]
+    [InlineData("/Security/Index")]
+    [InlineData("/security")]
+    [InlineData("/SECURITY/index")]
     public async Task Angular_documents_add_only_the_two_Trusted_Types_directives(string path)
     {
         var client = await vault.AdminClientAsync();

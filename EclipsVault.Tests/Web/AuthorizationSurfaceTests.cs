@@ -228,7 +228,7 @@ public class AuthorizationSurfaceTests
             ["shared-by-me"] = typeof(SecretsController),
             ["access"] = typeof(EclipsVault.Web.Controllers.Ui.AccessController),
             ["access-requests"] = typeof(AccessRequestsController),
-            ["security"] = typeof(SecurityController),
+            ["security"] = typeof(EclipsVault.Web.Controllers.Ui.SecurityController),
             ["sign-ins"] = typeof(EclipsVault.Web.Controllers.Ui.SignInsController),
             ["sessions"] = typeof(SessionsController),
             ["activity"] = typeof(EclipsVault.Web.Controllers.Ui.ActivityController),

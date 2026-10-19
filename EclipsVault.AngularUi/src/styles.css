@@ -905,3 +905,36 @@ app-nav-icon, app-sidebar-nav, app-account-menu, app-command-palette { display: 
 .pager-side { display: flex; gap: 0.6rem; min-width: 90px; }
 .pager-side:last-child { justify-content: flex-end; }
 .pager-page { color: var(--text-muted); font-size: 0.82rem; }
+
+/* Right-aligned action on a feed row (signed-in devices). */
+.feed-action { flex-shrink: 0; align-self: center; }
+
+/* ---- Security checkup -------------------------------------------------- */
+.checkup-hero { display: flex; align-items: center; gap: 1.6rem; flex-wrap: wrap; }
+
+.score-ring { position: relative; width: 132px; height: 132px; flex-shrink: 0; }
+.score-ring svg { display: block; }
+.ring-track { stroke: var(--border); }
+/* The value arc inherits the grade colour via currentColor; its length is set server-side
+   as a stroke-dasharray presentation attribute, so no inline style is needed (CSP-clean). */
+.ring-value { stroke: currentColor; transition: stroke-dasharray var(--dur) var(--ease); }
+.score-center { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; }
+.score-number { font-size: 2rem; font-weight: 680; color: var(--text); line-height: 1; }
+.score-outof { font-size: 0.72rem; color: var(--text-faint); }
+
+.checkup-summary { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 0.5rem; }
+.grade-label { display: inline-block; font-size: 0.82rem; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; }
+.checkup-lead { margin: 0; color: var(--text-secondary); font-size: 0.95rem; }
+.checkup-counts { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.2rem; }
+
+/* Grade colour, shared by the ring (currentColor) and the headline label. */
+.grade-strong { color: var(--ok); }
+.grade-good { color: var(--ok); }
+.grade-fair { color: var(--warn); }
+.grade-atrisk { color: var(--danger); }
+
+/* Per-control icon chip, coloured by standing (mirrors the activity feed's severity chips). */
+.feed-item.check-pass .feed-icon { color: var(--ok); border-color: transparent; background: var(--ok-soft); }
+.feed-item.check-warn .feed-icon { color: var(--warn); border-color: transparent; background: var(--warn-soft); }
+.feed-item.check-fail .feed-icon { color: #fff; border-color: transparent; background: var(--danger); }
+.check-rec { margin-top: 0.3rem; font-size: 0.82rem; color: var(--text-secondary); }

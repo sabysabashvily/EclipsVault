@@ -34,6 +34,10 @@ public static class AngularUiRoutes
         // Sign-in history
         "/SignIns",
         "/SignIns/Index",
+
+        // Security checkup
+        "/Security",
+        "/Security/Index",
     ];
 
     /// <summary>
