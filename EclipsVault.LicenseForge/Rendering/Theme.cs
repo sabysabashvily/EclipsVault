@@ -12,17 +12,17 @@ public static class Theme
     public readonly record struct Rgb(byte R, byte G, byte B);
 
     /// <summary>Primary accent — amber corona.</summary>
-    public static readonly Rgb Accent     = new(0xF5, 0x9E, 0x0B);
+    public static readonly Rgb Accent = new(0xF5, 0x9E, 0x0B);
 
     /// <summary>Recessed border amber — borders that should not compete with content.</summary>
     public static readonly Rgb AccentDeep = new(0x9A, 0x5B, 0x06);
 
-    public static readonly Rgb Positive   = new(0x4A, 0xDE, 0x80);
-    public static readonly Rgb Negative   = new(0xF8, 0x71, 0x71);
-    public static readonly Rgb Warning    = new(0xFB, 0xBF, 0x24);
-    public static readonly Rgb Text       = new(0xEC, 0xEF, 0xF1);
-    public static readonly Rgb Muted      = new(0x8A, 0x8F, 0x98);
-    public static readonly Rgb Subtle     = new(0x5A, 0x5F, 0x68);
+    public static readonly Rgb Positive = new(0x4A, 0xDE, 0x80);
+    public static readonly Rgb Negative = new(0xF8, 0x71, 0x71);
+    public static readonly Rgb Warning = new(0xFB, 0xBF, 0x24);
+    public static readonly Rgb Text = new(0xEC, 0xEF, 0xF1);
+    public static readonly Rgb Muted = new(0x8A, 0x8F, 0x98);
+    public static readonly Rgb Subtle = new(0x5A, 0x5F, 0x68);
 
     /// <summary>Corona gradient (gold → amber → ember) for the wordmark and rules.</summary>
     public static readonly Rgb[] Corona =
@@ -38,8 +38,8 @@ public static class Theme
     public static string Fg(Rgb c) => Enabled ? $"\x1b[38;2;{c.R};{c.G};{c.B}m" : "";
     public static string Bg(Rgb c) => Enabled ? $"\x1b[48;2;{c.R};{c.G};{c.B}m" : "";
     public static string Reset => Enabled ? "\x1b[0m" : "";
-    public static string Bold  => Enabled ? "\x1b[1m" : "";
-    public static string Dim   => Enabled ? "\x1b[2m" : "";
+    public static string Bold => Enabled ? "\x1b[1m" : "";
+    public static string Dim => Enabled ? "\x1b[2m" : "";
 
     /// <summary>Sample the corona gradient at <paramref name="t"/> ∈ [0, 1].</summary>
     public static Rgb Sample(double t)

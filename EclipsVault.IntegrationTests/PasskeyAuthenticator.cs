@@ -77,7 +77,10 @@ internal sealed class PasskeyAuthenticator : IDisposable
 
     private static byte[] ClientData(JsonElement options, string type) => JsonSerializer.SerializeToUtf8Bytes(new
     {
-        type, challenge = options.GetProperty("challenge").GetString(), origin = "https://localhost:7443", crossOrigin = false
+        type,
+        challenge = options.GetProperty("challenge").GetString(),
+        origin = "https://localhost:7443",
+        crossOrigin = false
     });
 
     public void Dispose() => _key.Dispose();

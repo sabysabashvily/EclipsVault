@@ -78,7 +78,7 @@ public static class LegacyBlobUpgrader
 
         logger.LogWarning(
             "Re-sealed {SecretCount} secret(s) and {VersionCount} archived version(s) so each is bound to its own " +
-            "row. Turn Crypto:AllowUnauthenticatedLegacyBlobs back off — leaving it on keeps the binding "  +
+            "row. Turn Crypto:AllowUnauthenticatedLegacyBlobs back off — leaving it on keeps the binding " +
             "bypassable by anyone who can write the database.",
             secrets.Count, versions.Count);
     }
