@@ -72,11 +72,9 @@ export async function fulfilActivity(page: Page, bodies: Record<string, Activity
  */
 export async function verifyMyActivity(page: Page, info: TestInfo, theme: string, rows: ExpectedRow[]) {
   await page.context().addCookies([{ name: 'EclipsVault.Theme', value: theme, url: new URL('/', page.url()).href, secure: true }]);
-  const response = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/ui/activity');
   const served = await page.goto('/Activity');
   // The Angular UI serves the page, not the Legacy Razor view at the same URL.
   expect(served?.headers()['content-security-policy']).toContain("require-trusted-types-for 'script'");
-  const activity: Activity = await (await response).json();
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
   await expect(page).toHaveTitle('My activity — EclipsVault');
   await expect(page.getByRole('heading', { name: 'My activity', exact: true })).toBeVisible();
@@ -90,6 +88,12 @@ export async function verifyMyActivity(page: Page, info: TestInfo, theme: string
   const access = await page.request.get('/api/ui/access');
   const sourceIp: string = (await access.json()).sourceIp;
   await expect(page.locator('.activity-feed > li')).toHaveCount(rows.length);
+  // Read the rows' timestamps from the API itself: the body of the page's own fetch is not always
+  // still held by the browser once the page has consumed it.
+  const response = await page.request.get('/api/ui/activity');
+  expect(response.status()).toBe(200);
+  const activity: Activity = await response.json();
+  expect(activity.items).toHaveLength(rows.length);
   const shown = await feedRows(page);
   expect(shown.map(({ title, badges, accent }) => ({ title, category: badges[0], accent }))).toEqual(rows);
   for (const [i, row] of shown.entries()) {
