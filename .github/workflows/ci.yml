@@ -326,6 +326,35 @@ jobs:
       - name: Git guardrail hook blocks destructive commands and allows everyday ones
         run: python3 -I -m unittest discover -s .claude/hooks -p 'test_*.py' -v
 
+  # `git log --oneline` is how history gets read, so a commit subject is 72 characters or fewer
+  # (CODING_STANDARDS.md). Only the pull request's own commits are checked; merge commits are
+  # skipped because git writes their subjects. Its own job because it alone needs full history.
+  commit-subjects:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Commit subjects are 72 characters or fewer
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # So ${#subject} counts characters, not bytes.
+          LC_ALL: C.UTF-8
+        run: |
+          # Read the log first, so a git failure fails the step instead of checking nothing.
+          subjects="$(git log --no-merges --format=%s "$BASE_SHA..$HEAD_SHA")"
+          too_long=0
+          while IFS= read -r subject; do
+            if (( ${#subject} > 72 )); then
+              echo "::error::${#subject} characters, over the limit of 72: $subject"
+              too_long=1
+            fi
+          done <<< "$subjects"
+          exit "$too_long"
+
   # The release workflow builds this Dockerfile, but it only ever runs on a v* tag — so before this
   # job existed, the first execution of the production image build was also its first test, on the
   # tag that was supposed to be the release. A Dockerfile break would surface as a failed release
