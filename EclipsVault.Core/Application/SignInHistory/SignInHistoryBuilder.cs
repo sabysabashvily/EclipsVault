@@ -67,8 +67,11 @@ public static class SignInHistoryBuilder
                 _ => SignInLocationFlag.None
             };
 
+            // An administrator's unlock is account state, not a sign-in from their address.
+            // Retain the notification without disclosing that address outside the audit viewer.
+            var sourceIp = row.Action == AuditAction.AccountUnlocked ? "internal" : row.SourceIp;
             eventsOldestFirst.Add(new SignInEvent(
-                row.TimestampUtc, descriptor.Outcome, descriptor.Method, descriptor.Title, row.SourceIp, flag));
+                row.TimestampUtc, descriptor.Outcome, descriptor.Method, descriptor.Title, sourceIp, flag));
         }
 
         var summary = Summarize(eventsOldestFirst);
@@ -94,7 +97,10 @@ public static class SignInHistoryBuilder
 
         foreach (var e in events)
         {
-            distinctIps.Add(e.SourceIp);
+            if (e.Outcome != SignInOutcome.Info)
+            {
+                distinctIps.Add(e.SourceIp);
+            }
 
             switch (e.Outcome)
             {

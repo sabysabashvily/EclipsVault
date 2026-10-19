@@ -24,10 +24,10 @@ describe('sidebar mapping', () => {
           { label: 'Access requests', icon: 'access-requests', url: '/AccessRequests', angular: false },
         ] },
         { label: 'Security', icon: 'security-group', children: [
-          { label: 'Security checkup', icon: 'security', url: '/Security', angular: false },
-          { label: 'Sign-in history', icon: 'sign-ins', url: '/SignIns', angular: false },
+          { label: 'Security checkup', icon: 'security', url: '/Security', angular: true },
+          { label: 'Sign-in history', icon: 'sign-ins', url: '/SignIns', angular: true },
           { label: 'Signed-in devices', icon: 'sessions', url: '/Sessions', angular: false },
-          { label: 'My activity', icon: 'activity', url: '/Activity', angular: false },
+          { label: 'My activity', icon: 'activity', url: '/Activity', angular: true },
         ] },
         { label: 'Your data', icon: 'data', url: '/Data', angular: false },
       ] },

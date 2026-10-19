@@ -73,6 +73,12 @@ public sealed partial class VaultFixture : IAsyncLifetime
         SetEnvironment("Seed__AdminPassword", _adminPassword);
         // The single-node install with no deploy pipeline, which lets the vault apply its own migrations.
         SetEnvironment("Database__MigrateOnStartup", "true");
+        // Register the production OIDC correlation cookie for HTTP callback scoping tests.
+        // Those start after the IdP assertion, so this authority is never contacted.
+        SetEnvironment("Sso__Enabled", "true");
+        SetEnvironment("Sso__Authority", "https://idp.example.test/realms/integration");
+        SetEnvironment("Sso__ClientId", "integration-vault");
+        SetEnvironment("Sso__ClientSecret", Convert.ToHexString(RandomNumberGenerator.GetBytes(32)));
 
         _factory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(host => host
@@ -167,9 +173,10 @@ public sealed partial class VaultFixture : IAsyncLifetime
     /// and the vault allows each address only a few sign-in steps per window.
     /// </summary>
     public async Task<VaultSession> SignInNewAccountAsync(
-        string username, IPAddress? source = null, ClearanceLevel clearance = ClearanceLevel.Standard, string project = "GLOBAL")
+        string username, IPAddress? source = null, ClearanceLevel clearance = ClearanceLevel.Standard, string project = "GLOBAL",
+        string? password = null)
     {
-        var password = "It-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+        password ??= "It-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
         var created = await PostFormAsync(await AdminClientAsync(), "/Admin/CreateUser", new()
         {
             ["Username"] = username,

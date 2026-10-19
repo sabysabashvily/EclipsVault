@@ -1,0 +1,130 @@
+<div class="page-header">
+  <div>
+    <h1>My activity</h1>
+    <p class="page-sub">
+      Everything you have done in EclipsVault, newest first — sign-ins, secret reveals, and
+      account changes. Only your own actions appear here. Spot something you don't recognise?
+      <a href="/Profile">Change your password or sign out everywhere</a>.
+    </p>
+  </div>
+  @if (notableCount() > 0) {
+    <span class="badge tone-warn" title="Notable or higher-severity entries on this page">
+      {{ notableCount() }} notable
+    </span>
+  }
+</div>
+
+@if (activity.hasValue()) {
+  @let feed = activity.value();
+  @if (feed.items.length === 0) {
+    @if (feed.hasPrevious) {
+      <section class="panel">
+        <p class="muted">Nothing further back to show.</p>
+        <a class="button" routerLink="/Activity">Back to latest</a>
+      </section>
+    } @else {
+      <app-empty-state
+        icon="clipboard"
+        heading="No activity yet"
+        message="As you sign in, view and reveal secrets, and update your account, each action is recorded here so you can review it later."
+      />
+    }
+  } @else {
+    <section class="panel">
+      <ul class="activity-feed">
+        @for (item of items(); track $index) {
+          <li class="feed-item sev-{{ item.tone }}">
+            <span class="feed-icon">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                @switch (item.category) {
+                  @case ('Authentication') {
+                    <path d="M15 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3" />
+                    <path d="M8 7l5 5-5 5M13 12H3" />
+                  }
+                  @case ('Secrets') {
+                    <rect x="4" y="10" width="16" height="10" rx="2" />
+                    <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+                    <circle cx="12" cy="15" r="1.4" />
+                  }
+                  @case ('Sharing') {
+                    <circle cx="18" cy="5" r="2.6" />
+                    <circle cx="6" cy="12" r="2.6" />
+                    <circle cx="18" cy="19" r="2.6" />
+                    <path d="M8.3 10.7l7.4-4.4M8.3 13.3l7.4 4.4" />
+                  }
+                  @case ('Account') {
+                    <circle cx="12" cy="8" r="3.4" />
+                    <path d="M5 20c.7-3.7 3-5.5 7-5.5s6.3 1.8 7 5.5" />
+                  }
+                  @case ('Security') {
+                    <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z" />
+                    <path d="M9 12l2 2 4-4" />
+                  }
+                  @case ('Administration') {
+                    <circle cx="12" cy="12" r="3" />
+                    <path
+                      d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"
+                    />
+                  }
+                  @case ('Automation') {
+                    <rect x="5" y="7" width="14" height="12" rx="2" />
+                    <path d="M9 3v4M15 3v4M9 12h.01M15 12h.01M9 16h6" />
+                  }
+                  @default {
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M12 8h.01M11 12h1v4h1" />
+                  }
+                }
+              </svg>
+            </span>
+            <div class="feed-body">
+              <div class="feed-title-row">
+                <span class="feed-title">{{ item.title }}</span>
+                <span class="badge tone-muted">{{ item.label }}</span>
+                @if (item.resourceName?.trim()) {
+                  <span class="mono muted feed-resource" [title]="item.resourceName">{{
+                    item.resourceName
+                  }}</span>
+                }
+              </div>
+              <div class="feed-meta">
+                <span class="mono">from {{ item.sourceIp }}</span>
+              </div>
+            </div>
+            <time class="feed-time" [title]="item.utc">{{ item.ago }}</time>
+          </li>
+        }
+      </ul>
+    </section>
+
+    @if (feed.hasPrevious || feed.hasMore) {
+      <nav class="pager" aria-label="Activity pages">
+        <div class="pager-side">
+          @if (feed.hasPrevious) {
+            <a class="button" routerLink="/Activity" [queryParams]="{ page: pageNumber() - 1 }">← Newer</a>
+          }
+        </div>
+        <span class="pager-page">Page {{ feed.page }}</span>
+        <div class="pager-side">
+          @if (feed.hasMore) {
+            <a class="button" routerLink="/Activity" [queryParams]="{ page: pageNumber() + 1 }">Older →</a>
+          }
+        </div>
+      </nav>
+    }
+  }
+} @else if (activity.error()) {
+  <section class="panel">
+    <p role="alert">Could not load your activity. Reload the page to try again.</p>
+    <button type="button" class="button" (click)="activity.reload()">Try again</button>
+  </section>
+} @else {
+  <p role="status">Loading your activity…</p>
+}

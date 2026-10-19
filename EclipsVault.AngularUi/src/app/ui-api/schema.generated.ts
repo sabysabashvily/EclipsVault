@@ -39,6 +39,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ui/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    page?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ActivityResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ui/me": {
         parameters: {
             query?: never;
@@ -62,6 +99,76 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["MeResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/security": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SecurityResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/sign-ins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SignInsResponse"];
                     };
                 };
             };
@@ -106,6 +213,28 @@ export interface components {
             sensitivityRank: number | string;
             cells: components["schemas"]["AccessCellResponse"][];
         };
+        ActivityItemResponse: {
+            /** Format: date-time */
+            timestampUtc: string;
+            /** @enum {string} */
+            category: "Authentication" | "Secrets" | "Sharing" | "Account" | "Security" | "Administration" | "Automation" | "Other";
+            title: string;
+            /** @enum {string} */
+            severity: "Routine" | "Notable" | "Critical";
+            resourceName: null | string;
+            sourceIp: string;
+        };
+        ActivityResponse: {
+            /** Format: int32 */
+            page: number | string;
+            /** Format: int32 */
+            pageSize: number | string;
+            hasMore: boolean;
+            hasPrevious: boolean;
+            /** Format: int32 */
+            notableCount: number | string;
+            items: components["schemas"]["ActivityItemResponse"][];
+        };
         LicenseNotice: {
             title: string;
             text: string;
@@ -118,6 +247,62 @@ export interface components {
             areas: string[];
             avatarUrl: string;
             licenseNotice: null | components["schemas"]["LicenseNotice"];
+        };
+        SecurityCheckResponse: {
+            /** @enum {string} */
+            kind: "TwoStepSignIn" | "BackupCodes" | "Passkey" | "SignedInDevices";
+            /** @enum {string} */
+            status: "Pass" | "Recommended" | "ActionNeeded";
+            title: string;
+            detail: string;
+            recommendation: string;
+            /** @enum {string} */
+            fix: "None" | "Profile" | "BackupCodes" | "SignedInDevices";
+        };
+        SecurityResponse: {
+            /** Format: int32 */
+            score: number | string;
+            /** @enum {string} */
+            grade: "AtRisk" | "Fair" | "Good" | "Strong";
+            /** Format: int32 */
+            actionNeededCount: number | string;
+            /** Format: int32 */
+            recommendedCount: number | string;
+            /** Format: int32 */
+            passCount: number | string;
+            nextStep: null | string;
+            checks: components["schemas"]["SecurityCheckResponse"][];
+        };
+        SignInEventResponse: {
+            /** Format: date-time */
+            timestampUtc: string;
+            /** @enum {string} */
+            outcome: "Success" | "Failed" | "Blocked" | "Info";
+            /** @enum {string} */
+            method: "Password" | "TwoFactor" | "Passkey" | "RecoveryCode" | "StepUp" | "System";
+            title: string;
+            sourceIp: string;
+            /** @enum {string} */
+            locationFlag: "None" | "FirstSeen" | "Unfamiliar";
+        };
+        SignInsResponse: {
+            summary: components["schemas"]["SignInSummaryResponse"];
+            events: components["schemas"]["SignInEventResponse"][];
+        };
+        SignInSummaryResponse: {
+            /** Format: int32 */
+            successCount: number | string;
+            /** Format: int32 */
+            failedCount: number | string;
+            /** Format: int32 */
+            suspiciousCount: number | string;
+            /** Format: int32 */
+            distinctLocations: number | string;
+            /** Format: date-time */
+            lastSuccessUtc: null | string;
+            /** Format: date-time */
+            lastFailedUtc: null | string;
+            needsAttention: boolean;
         };
     };
     responses: never;

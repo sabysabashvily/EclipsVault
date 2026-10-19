@@ -48,10 +48,10 @@ const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)
       link('access-requests', 'Access requests', '/AccessRequests'),
     ] },
     { label: 'Security', icon: 'security-group', children: [
-      link('security', 'Security checkup', '/Security'),
-      link('sign-ins', 'Sign-in history', '/SignIns'),
+      link('security', 'Security checkup', '/Security', 'security', true),
+      link('sign-ins', 'Sign-in history', '/SignIns', 'sign-ins', true),
       link('sessions', 'Signed-in devices', '/Sessions'),
-      link('activity', 'My activity', '/Activity'),
+      link('activity', 'My activity', '/Activity', 'activity', true),
     ] },
     link('data', 'Your data', '/Data'),
   ] },

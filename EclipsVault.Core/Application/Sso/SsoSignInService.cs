@@ -97,8 +97,9 @@ public sealed class SsoSignInService : ISsoSignInService
             Details = $"Refused ({outcome}): {reason}. Asserted by {Describe(identity)}.",
             IsCritical = isCritical,
             ActorUserId = actorUserId,
-            // No vault principal exists yet, so name the subject the IdP asserted rather than
-            // recording this against "system" — the trail should say who was turned away.
+            InheritActorUserId = false,
+            // Name the subject the IdP asserted. An unknown subject must not inherit the id of
+            // another account whose session the callback request might already carry.
             ActorUsername = actorUsername ?? identity.Email ?? "sso:anonymous"
         }, ct);
 

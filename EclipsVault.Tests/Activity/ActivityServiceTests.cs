@@ -82,6 +82,20 @@ public class ActivityServiceTests
         Assert.Equal(11, reader.LastTake);   // pageSize + 1 look-ahead
     }
 
+    [Theory]
+    [InlineData(int.MaxValue)]   // (page - 1) * 25 wraps to 2,147,483,598 in 32 bits
+    [InlineData(100_000_000)]    // (page - 1) * 25 wraps to a negative offset in 32 bits
+    public async Task A_huge_page_number_skips_past_every_row_instead_of_wrapping(int page)
+    {
+        var reader = new FakeReader([]);
+        var feed = await new ActivityService(reader).GetForUserAsync(User, page, ActivityService.DefaultPageSize, CancellationToken.None);
+
+        Assert.Equal(int.MaxValue, reader.LastSkip);
+        Assert.Equal(page, feed.Page);
+        Assert.Empty(feed.Items);
+        Assert.True(feed.HasPrevious);
+    }
+
     [Fact]
     public async Task A_full_look_ahead_row_sets_HasMore_and_is_trimmed_off()
     {

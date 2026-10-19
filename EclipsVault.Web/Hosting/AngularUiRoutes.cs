@@ -26,6 +26,18 @@ public static class AngularUiRoutes
         // My access
         "/Access",
         "/Access/Index",
+
+        // My activity
+        "/Activity",
+        "/Activity/Index",
+
+        // Sign-in history
+        "/SignIns",
+        "/SignIns/Index",
+
+        // Security checkup
+        "/Security",
+        "/Security/Index",
     ];
 
     /// <summary>

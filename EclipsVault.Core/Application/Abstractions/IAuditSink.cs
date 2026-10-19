@@ -4,9 +4,9 @@ namespace EclipsVault.Core.Application.Abstractions;
 
 /// <summary>
 /// One entry to append to the immutable audit trail. The actor (who did it) and the
-/// source IP are supplied by the sink from the ambient request context; only when
-/// there is no authenticated principal yet — an in-flight login — does a caller
-/// override the actor with the subject being authenticated.
+/// source IP are supplied by the sink from the ambient request context. Authentication
+/// overrides the actor with the account being authenticated, even if the request already
+/// carries another session, and explicitly records no account for an unknown username.
 /// </summary>
 public sealed record AuditEntry
 {
@@ -24,6 +24,12 @@ public sealed record AuditEntry
 
     /// <summary>Overrides the recorded actor id (used for auth events with no authenticated principal).</summary>
     public Guid? ActorUserId { get; init; }
+
+    /// <summary>
+    /// Falls back to the ambient actor id when no override is supplied. Authentication sets this
+    /// to false so an explicitly unknown account cannot inherit an existing session's account id.
+    /// </summary>
+    public bool InheritActorUserId { get; init; } = true;
 
     /// <summary>Overrides the recorded actor name (used for auth events with no authenticated principal).</summary>
     public string? ActorUsername { get; init; }
