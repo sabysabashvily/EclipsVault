@@ -10,6 +10,8 @@
     "test": "ng test",
     "test:build-checks": "node --test build-checks.test.mjs",
     "lint": "ng lint && eslint e2e playwright.config.ts && tsc --project e2e/tsconfig.json && node --test lint-checks.test.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "generate:api-types": "dotnet build ../EclipsVault.UiApiDocument -c Release -p:RestoreLockedMode=true && openapi-typescript ../EclipsVault.UiApiDocument/obj/ui-api.openapi.json -o src/app/ui-api/schema.generated.ts",
     "check:api-types": "npm run generate:api-types -- --check",
     "e2e": "node e2e/run.mjs",
