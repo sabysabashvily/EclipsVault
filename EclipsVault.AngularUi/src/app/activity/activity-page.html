@@ -2,8 +2,8 @@
   <div>
     <h1>My activity</h1>
     <p class="page-sub">
-      Everything you have done in EclipsVault, newest first — sign-ins, secret reveals, and
-      account changes. Only your own actions appear here. Spot something you don't recognise?
+      Everything you have done in EclipsVault, newest first — sign-ins, secret reveals, and account
+      changes. Only your own actions appear here. Spot something you don't recognise?
       <a href="/Profile">Change your password or sign out everywhere</a>.
     </p>
   </div>
@@ -108,13 +108,17 @@
       <nav class="pager" aria-label="Activity pages">
         <div class="pager-side">
           @if (feed.hasPrevious) {
-            <a class="button" routerLink="/Activity" [queryParams]="{ page: pageNumber() - 1 }">← Newer</a>
+            <a class="button" routerLink="/Activity" [queryParams]="{ page: pageNumber() - 1 }"
+              >← Newer</a
+            >
           }
         </div>
         <span class="pager-page">Page {{ feed.page }}</span>
         <div class="pager-side">
           @if (feed.hasMore) {
-            <a class="button" routerLink="/Activity" [queryParams]="{ page: pageNumber() + 1 }">Older →</a>
+            <a class="button" routerLink="/Activity" [queryParams]="{ page: pageNumber() + 1 }"
+              >Older →</a
+            >
           }
         </div>
       </nav>

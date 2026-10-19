@@ -7,12 +7,25 @@
           <summary class="nav-item nav-group-summary" [class.has-active]="groupActive(item)">
             <app-nav-icon [icon]="item.icon" />
             <span>{{ item.label }}</span>
-            <svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
-                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+            <svg
+              class="nav-chevron"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.9"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M9 6l6 6-6 6" />
+            </svg>
           </summary>
           <div class="nav-group-items">
             @for (child of item.children; track child.label) {
-              <ng-container [ngTemplateOutlet]="link" [ngTemplateOutletContext]="{ $implicit: child }" />
+              <ng-container
+                [ngTemplateOutlet]="link"
+                [ngTemplateOutletContext]="{ $implicit: child }"
+              />
             }
           </div>
         </details>
@@ -25,8 +38,13 @@
 
 <ng-template #link let-entry>
   @if (entry.angular) {
-    <a class="nav-item" data-command-angular [routerLink]="entry.url" [class.active]="active(entry)"
-       [attr.aria-current]="active(entry) ? 'page' : null">
+    <a
+      class="nav-item"
+      data-command-angular
+      [routerLink]="entry.url"
+      [class.active]="active(entry)"
+      [attr.aria-current]="active(entry) ? 'page' : null"
+    >
       <app-nav-icon [icon]="entry.icon" />
       {{ entry.label }}
     </a>

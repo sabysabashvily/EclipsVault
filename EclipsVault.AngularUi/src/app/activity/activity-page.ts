@@ -33,9 +33,12 @@ const tones: Record<Severity, string> = { Routine: 'muted', Notable: 'warn', Cri
 })
 export class ActivityPage {
   // The page number stays in the URL, as on the Legacy page, so back and forward refetch.
-  private readonly page = toSignal(inject(ActivatedRoute).queryParamMap.pipe(map((query) => query.get('page'))), {
-    requireSync: true,
-  });
+  private readonly page = toSignal(
+    inject(ActivatedRoute).queryParamMap.pipe(map((query) => query.get('page'))),
+    {
+      requireSync: true,
+    },
+  );
 
   protected readonly activity = httpResource<Activity>(() => {
     const page = this.page();
@@ -55,6 +58,10 @@ export class ActivityPage {
     }));
   });
 
-  protected readonly pageNumber = computed(() => (this.activity.hasValue() ? Number(this.activity.value().page) : 1));
-  protected readonly notableCount = computed(() => (this.activity.hasValue() ? Number(this.activity.value().notableCount) : 0));
+  protected readonly pageNumber = computed(() =>
+    this.activity.hasValue() ? Number(this.activity.value().page) : 1,
+  );
+  protected readonly notableCount = computed(() =>
+    this.activity.hasValue() ? Number(this.activity.value().notableCount) : 0,
+  );
 }

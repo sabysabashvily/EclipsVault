@@ -7,7 +7,11 @@ import { currentTheme, otherTheme, switchTheme, Theme } from './theme';
  * Ends the session through the existing sign-out endpoint, which revokes it on the server, then
  * leaves for sign-in. Angular's XSRF support adds the antiforgery header (ADR-0004).
  */
-export function signOut(http: HttpClient, location: Pick<Location, 'assign'>, failed: () => void): void {
+export function signOut(
+  http: HttpClient,
+  location: Pick<Location, 'assign'>,
+  failed: () => void,
+): void {
   http.post('/Account/Logout', null, { responseType: 'text' }).subscribe({
     next: () => location.assign('/Account/Login'),
     error: () => failed(),
@@ -46,7 +50,8 @@ export class AccountMenu {
 
   // As the Legacy UI's menus do: a click elsewhere closes it, and Escape returns focus to its summary.
   protected closeUnlessInside(event: Event): void {
-    if (!this.host.nativeElement.contains(event.target as Node)) this.menu()?.removeAttribute('open');
+    if (!this.host.nativeElement.contains(event.target as Node))
+      this.menu()?.removeAttribute('open');
   }
 
   protected closeAndRefocus(): void {

@@ -35,7 +35,7 @@ export const fixLabels: Record<Check['kind'], string> = {
 /** The Legacy ring's arc and gap, bound only as an SVG presentation attribute. */
 export function ringDasharray(score: number): string {
   const circumference = 2 * Math.PI * 52;
-  const arc = circumference * Math.min(100, Math.max(0, score)) / 100;
+  const arc = (circumference * Math.min(100, Math.max(0, score))) / 100;
   return `${arc.toFixed(1)} ${(circumference - arc).toFixed(1)}`;
 }
 

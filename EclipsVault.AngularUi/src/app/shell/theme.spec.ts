@@ -11,9 +11,12 @@ describe('theme', () => {
     ['light', 'light'],
     ['dark', 'dark'],
     [undefined, 'dark'],
-  ])('reads %s on the document as %s, defaulting to dark as the Legacy UI does', (applied, theme) => {
-    expect(currentTheme(page(applied))).toBe(theme);
-  });
+  ])(
+    'reads %s on the document as %s, defaulting to dark as the Legacy UI does',
+    (applied, theme) => {
+      expect(currentTheme(page(applied))).toBe(theme);
+    },
+  );
 
   it.each([
     ['dark', 'light'],
@@ -24,6 +27,8 @@ describe('theme', () => {
     expect(switchTheme(target)).toBe(to);
 
     expect(target.documentElement.dataset['theme']).toBe(to);
-    expect(target.cookie).toBe(`EclipsVault.Theme=${to}; path=/; max-age=31536000; SameSite=Strict; Secure`);
+    expect(target.cookie).toBe(
+      `EclipsVault.Theme=${to}; path=/; max-age=31536000; SameSite=Strict; Secure`,
+    );
   });
 });

@@ -2,13 +2,16 @@
   <div>
     <h1>Sign-in history</h1>
     <p class="page-sub">
-      Every recent attempt to sign in to your account — successful and rejected — newest first.
-      Only your own sign-ins appear here. An attempt from a location you've never signed in from
-      is flagged so you can spot anything you didn't do.
+      Every recent attempt to sign in to your account — successful and rejected — newest first. Only
+      your own sign-ins appear here. An attempt from a location you've never signed in from is
+      flagged so you can spot anything you didn't do.
     </p>
   </div>
   @if (toReview() !== null) {
-    <span class="badge tone-critical" title="Failed attempts from a location you've never signed in from">
+    <span
+      class="badge tone-critical"
+      title="Failed attempts from a location you've never signed in from"
+    >
       {{ toReview() }} to review
     </span>
   }
@@ -57,8 +60,8 @@
         <div class="panel-header"><h2>Don't recognise these attempts?</h2></div>
         <p class="muted">
           Someone tried to sign in from a place you've never signed in from. Your account wasn't
-          opened from there — every attempt failed — but it's worth locking things down: change
-          your password and sign out of every device.
+          opened from there — every attempt failed — but it's worth locking things down: change your
+          password and sign out of every device.
         </p>
         <div class="button-row">
           <a class="button primary" href="/Sessions">Review signed-in devices</a>

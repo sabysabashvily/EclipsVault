@@ -29,7 +29,9 @@ function toUiApiError(response: HttpErrorResponse): UiApiError {
   return new UiApiError(
     response.status,
     typeof problem?.code === 'string' ? problem.code : 'unknown',
-    typeof problem?.title === 'string' ? problem.title : 'The vault could not complete the request.',
+    typeof problem?.title === 'string'
+      ? problem.title
+      : 'The vault could not complete the request.',
   );
 }
 
@@ -41,17 +43,24 @@ class StaleSessionSignOut {
   private ending: Observable<never> | undefined;
 
   end(): Observable<never> {
-    return this.ending ??= this.http.post('/Account/Logout', null, { responseType: 'text' }).pipe(
+    return (this.ending ??= this.http.post('/Account/Logout', null, { responseType: 'text' }).pipe(
       switchMap(() => {
         this.document.location.assign('/Account/Login');
         return NEVER;
       }),
       catchError(() => {
         this.ending = undefined;
-        return throwError(() => new UiApiError(0, 'sign_out_failed', 'Could not sign out. Reload the page to try again.'));
+        return throwError(
+          () =>
+            new UiApiError(
+              0,
+              'sign_out_failed',
+              'Could not sign out. Reload the page to try again.',
+            ),
+        );
       }),
       shareReplay({ bufferSize: 1, refCount: false }),
-    );
+    ));
   }
 }
 

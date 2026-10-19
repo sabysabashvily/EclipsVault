@@ -4,12 +4,15 @@ import { test, expect } from '../fixtures';
 // specifically in the shared browser-health fixture, rather than accepting any nonzero exit.
 test('CSP violation', async ({ page }) => {
   await page.goto('/Account/Login');
-  await page.evaluate(() => new Promise<void>((resolve) => {
-    document.addEventListener('securitypolicyviolation', () => resolve(), { once: true });
-    const script = document.createElement('script');
-    script.textContent = 'window.inlineScriptRan = true';
-    document.body.append(script);
-  }));
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        document.addEventListener('securitypolicyviolation', () => resolve(), { once: true });
+        const script = document.createElement('script');
+        script.textContent = 'window.inlineScriptRan = true';
+        document.body.append(script);
+      }),
+  );
   await expect.poll(() => page.evaluate(() => 'inlineScriptRan' in window)).toBe(false);
 });
 
@@ -24,12 +27,15 @@ test('an expected CSP violation excuses nothing else', async ({ browserHealth, p
   });
   // The first violation satisfies the expectation; the identical second one must still fail.
   for (let i = 0; i < 2; i++) {
-    await page.evaluate(() => new Promise<void>((resolve) => {
-      document.addEventListener('securitypolicyviolation', () => resolve(), { once: true });
-      const script = document.createElement('script');
-      script.textContent = 'window.inlineScriptRan = true';
-      document.body.append(script);
-    }));
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          document.addEventListener('securitypolicyviolation', () => resolve(), { once: true });
+          const script = document.createElement('script');
+          script.textContent = 'window.inlineScriptRan = true';
+          document.body.append(script);
+        }),
+    );
   }
 });
 
@@ -56,7 +62,9 @@ test('uncaught browser exception', async ({ page }) => {
   await page.goto('/Account/Login');
   const error = page.waitForEvent('pageerror');
   await page.evaluate(() => {
-    setTimeout(() => { throw new Error('e2e exception sentinel'); }, 0);
+    setTimeout(() => {
+      throw new Error('e2e exception sentinel');
+    }, 0);
   });
   await error;
 });

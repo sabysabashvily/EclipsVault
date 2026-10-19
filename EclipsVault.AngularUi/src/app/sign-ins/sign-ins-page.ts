@@ -45,7 +45,9 @@ export class SignInsPage {
     const { summary, events } = this.history.value();
     const now = new Date();
     const when = (timestampUtc: string | null) =>
-      timestampUtc === null ? null : { ago: relativeTime(timestampUtc, now), utc: utcTimestamp(timestampUtc) };
+      timestampUtc === null
+        ? null
+        : { ago: relativeTime(timestampUtc, now), utc: utcTimestamp(timestampUtc) };
     return {
       summary: {
         ...summary,

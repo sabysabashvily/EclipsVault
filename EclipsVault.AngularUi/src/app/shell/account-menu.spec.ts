@@ -17,7 +17,9 @@ const me: Me = {
 
 describe('AccountMenu', () => {
   async function render(account: Me) {
-    TestBed.configureTestingModule({ providers: [...appConfig.providers, provideHttpClientTesting()] });
+    TestBed.configureTestingModule({
+      providers: [...appConfig.providers, provideHttpClientTesting()],
+    });
     const fixture = TestBed.createComponent(AccountMenu);
     fixture.componentRef.setInput('me', account);
     await fixture.whenStable();
@@ -46,7 +48,9 @@ describe('AccountMenu', () => {
   it('switches the theme and names the one it would switch to next', async () => {
     document.documentElement.dataset['theme'] = 'dark';
     const { menu, fixture } = await render(me);
-    const toggle = [...menu.querySelectorAll('button')].find((button) => button.textContent?.includes('Switch to'))!;
+    const toggle = [...menu.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('Switch to'),
+    )!;
     expect(toggle.textContent?.trim()).toBe('Switch to light');
 
     toggle.click();
@@ -67,7 +71,9 @@ describe('signOut', () => {
     assign.mockReset();
     failed.mockReset();
     // The real application providers, so this is the XSRF wiring the browser gets.
-    TestBed.configureTestingModule({ providers: [...appConfig.providers, provideHttpClientTesting()] });
+    TestBed.configureTestingModule({
+      providers: [...appConfig.providers, provideHttpClientTesting()],
+    });
     backend = TestBed.inject(HttpTestingController);
     http = TestBed.inject(HttpClient);
     document.cookie = 'XSRF-TOKEN=request-token-from-me; path=/';

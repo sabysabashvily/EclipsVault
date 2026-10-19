@@ -16,7 +16,10 @@ export class SidebarNav {
   protected readonly sections = computed(() => sidebarFor(this.areas()));
   private readonly router = inject(Router);
   private readonly url = toSignal(
-    this.router.events.pipe(filter((event) => event instanceof NavigationEnd), map((event) => event.urlAfterRedirects)),
+    this.router.events.pipe(
+      filter((event) => event instanceof NavigationEnd),
+      map((event) => event.urlAfterRedirects),
+    ),
     { initialValue: this.router.url },
   );
 

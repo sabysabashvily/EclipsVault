@@ -1,7 +1,17 @@
 import { HttpClient, HttpResponse } from '@angular/common/http';
 import {
-  afterNextRender, Component, computed, DOCUMENT, ElementRef, inject, InjectionToken, Injector, input,
-  linkedSignal, signal, viewChild,
+  afterNextRender,
+  Component,
+  computed,
+  DOCUMENT,
+  ElementRef,
+  inject,
+  InjectionToken,
+  Injector,
+  input,
+  linkedSignal,
+  signal,
+  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
@@ -32,9 +42,13 @@ const DEBOUNCE_MS = 160;
  * does. The sidebar has already applied the server-authorized Areas (ADR-0012).
  */
 export function paletteCommands(sidebar: ParentNode): PaletteCommand[] {
-  const links = sidebar.querySelectorAll<HTMLAnchorElement>('.sidenav a[href], .account-menu-panel a[href]');
+  const links = sidebar.querySelectorAll<HTMLAnchorElement>(
+    '.sidenav a[href], .account-menu-panel a[href]',
+  );
   const pages: PaletteCommand[] = Array.from(links, (link) => ({
-    kind: 'Go to', label: link.textContent?.trim() ?? '', url: link.getAttribute('href')!,
+    kind: 'Go to',
+    label: link.textContent?.trim() ?? '',
+    url: link.getAttribute('href')!,
     angular: link.hasAttribute('data-command-angular'),
   }));
   return pages;
@@ -56,11 +70,19 @@ interface SecretHit {
 
 function isSecretHit(value: unknown, origin: string): value is SecretHit {
   const hit = value as Partial<SecretHit> | null;
-  return typeof hit === 'object' && hit !== null &&
-    typeof hit.name === 'string' && typeof hit.project === 'string' && typeof hit.environment === 'string' &&
-    typeof hit.sensitivityName === 'string' && Number.isInteger(hit.sensitivity) &&
-    hit.sensitivity! >= 1 && hit.sensitivity! <= 4 &&
-    typeof hit.url === 'string' && isLocalPath(hit.url, origin);
+  return (
+    typeof hit === 'object' &&
+    hit !== null &&
+    typeof hit.name === 'string' &&
+    typeof hit.project === 'string' &&
+    typeof hit.environment === 'string' &&
+    typeof hit.sensitivityName === 'string' &&
+    Number.isInteger(hit.sensitivity) &&
+    hit.sensitivity! >= 1 &&
+    hit.sensitivity! <= 4 &&
+    typeof hit.url === 'string' &&
+    isLocalPath(hit.url, origin)
+  );
 }
 
 /**
@@ -77,7 +99,10 @@ function isLocalPath(url: string, origin: string): boolean {
  * but a JSON array of results is a failure, never data.
  */
 export function secretsFrom(response: HttpResponse<string>, origin: string): PaletteCommand[] {
-  if (response.redirected || !response.headers.get('Content-Type')?.startsWith('application/json')) {
+  if (
+    response.redirected ||
+    !response.headers.get('Content-Type')?.startsWith('application/json')
+  ) {
     throw new Error('Secret search was redirected or did not answer with JSON');
   }
   const body: unknown = JSON.parse(response.body ?? '');
@@ -136,29 +161,41 @@ export class CommandPalette {
   protected readonly failed = computed(() => this.answer()?.failed ?? false);
   protected readonly results = computed(() => {
     const needle = this.query().trim().toLowerCase();
-    const pages = needle ? this.pages().filter((page) => page.label.toLowerCase().includes(needle)) : this.pages();
+    const pages = needle
+      ? this.pages().filter((page) => page.label.toLowerCase().includes(needle))
+      : this.pages();
     return [...(this.answer()?.secrets ?? []), ...pages];
   });
   protected readonly active = linkedSignal({ source: this.results, computation: () => 0 });
 
   constructor() {
-    this.queries.pipe(
-      // A query too short to search cancels any search in flight at once; a longer one waits for typing to pause.
-      debounce((query) => (query.length < MIN_QUERY ? of(0) : timer(DEBOUNCE_MS))),
-      // switchMap unsubscribes from the older request, which aborts it.
-      switchMap((query) => query.length < MIN_QUERY
-        ? of<Search>({ query, failed: false, secrets: [] })
-        : this.http.get('/Secrets/Search', {
-          params: { q: query },
-          headers: { Accept: 'application/json' },
-          observe: 'response',
-          responseType: 'text',
-        }).pipe(
-          map((response): Search => ({ query, failed: false, secrets: secretsFrom(response, this.document.location.origin) })),
-          catchError(() => of<Search>({ query, failed: true, secrets: [] })),
-        )),
-      takeUntilDestroyed(),
-    ).subscribe((search) => this.search.set(search));
+    this.queries
+      .pipe(
+        // A query too short to search cancels any search in flight at once; a longer one waits for typing to pause.
+        debounce((query) => (query.length < MIN_QUERY ? of(0) : timer(DEBOUNCE_MS))),
+        // switchMap unsubscribes from the older request, which aborts it.
+        switchMap((query) =>
+          query.length < MIN_QUERY
+            ? of<Search>({ query, failed: false, secrets: [] })
+            : this.http
+                .get('/Secrets/Search', {
+                  params: { q: query },
+                  headers: { Accept: 'application/json' },
+                  observe: 'response',
+                  responseType: 'text',
+                })
+                .pipe(
+                  map((response): Search => ({
+                    query,
+                    failed: false,
+                    secrets: secretsFrom(response, this.document.location.origin),
+                  })),
+                  catchError(() => of<Search>({ query, failed: true, secrets: [] })),
+                ),
+        ),
+        takeUntilDestroyed(),
+      )
+      .subscribe((search) => this.search.set(search));
   }
 
   open(): void {
@@ -176,7 +213,8 @@ export class CommandPalette {
     this.query.set('');
     this.queries.next('');
     // Hand focus back where it came from, rather than dumping a keyboard user at the top of the page.
-    if (this.opener instanceof HTMLElement && this.document.contains(this.opener)) this.opener.focus();
+    if (this.opener instanceof HTMLElement && this.document.contains(this.opener))
+      this.opener.focus();
     this.opener = null;
   }
 
@@ -197,13 +235,23 @@ export class CommandPalette {
   protected keydown(event: KeyboardEvent): void {
     const last = this.results().length - 1;
     switch (event.key) {
-      case 'Escape': this.close(); break;
-      case 'ArrowDown': this.highlight(Math.min(this.active() + 1, last)); break;
-      case 'ArrowUp': this.highlight(Math.max(this.active() - 1, 0)); break;
-      case 'Enter': this.activate(this.active()); break;
+      case 'Escape':
+        this.close();
+        break;
+      case 'ArrowDown':
+        this.highlight(Math.min(this.active() + 1, last));
+        break;
+      case 'ArrowUp':
+        this.highlight(Math.max(this.active() - 1, 0));
+        break;
+      case 'Enter':
+        this.activate(this.active());
+        break;
       // The field is the dialog's only focusable element, so holding it is the whole trap.
-      case 'Tab': break;
-      default: return;
+      case 'Tab':
+        break;
+      default:
+        return;
     }
     event.preventDefault();
   }

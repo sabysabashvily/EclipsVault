@@ -1,27 +1,75 @@
 <details class="account-menu">
-  <summary class="user-card" aria-haspopup="menu" [title]="'Your account — ' + me().clearance + ' clearance'">
+  <summary
+    class="user-card"
+    aria-haspopup="menu"
+    [title]="'Your account — ' + me().clearance + ' clearance'"
+  >
     <img class="avatar-img" [src]="me().avatarUrl" alt="" width="34" height="34" />
     <span class="user-meta">
       <span class="user-name">{{ me().displayName }}</span>
       <span class="user-clearance">{{ me().clearance }}</span>
     </span>
-    <svg class="user-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 15l4-4 4 4"/></svg>
+    <svg
+      class="user-chevron"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.9"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 15l4-4 4 4" />
+    </svg>
   </summary>
 
   <div class="account-menu-panel" role="menu">
     @if (me().areas.includes('profile')) {
       <a class="menu-item" role="menuitem" href="/Profile">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 20c.6-3.7 3-6 6.5-6s5.9 2.3 6.5 6"/></svg>
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="8" r="3.5" />
+          <path d="M5.5 20c.6-3.7 3-6 6.5-6s5.9 2.3 6.5 6" />
+        </svg>
         Profile
       </a>
     }
     <button type="button" class="menu-item" role="menuitem" (click)="switchTheme()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4v16a8 8 0 0 0 0-16Z" fill="currentColor" stroke="none"/></svg>
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="8" />
+        <path d="M12 4v16a8 8 0 0 0 0-16Z" fill="currentColor" stroke="none" />
+      </svg>
       <span>Switch to {{ nextTheme() }}</span>
     </button>
     <div class="menu-sep" role="separator"></div>
     <button type="button" class="menu-item danger" role="menuitem" (click)="signOut()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M9 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3" />
+        <path d="M16 17l5-5-5-5M21 12H9" />
+      </svg>
       Sign out
     </button>
     @if (signOutFailed()) {
