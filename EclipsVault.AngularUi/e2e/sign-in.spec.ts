@@ -1,7 +1,7 @@
 import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { test, expect } from './fixtures';
-import { type Activity, feedIcons, feedRows, fulfilActivity, verifyMyActivity } from './activity';
+import { type Activity, type ExpectedRow, feedIcons, feedRows, fulfilActivity, verifyMyActivity } from './activity';
 import { createSecret, markDecoy, openPalette, paletteEntries, searchSecrets, sidebarPages } from './palette';
 import { verifySidebar } from './sidebar';
 import { freshTotp } from './totp';
@@ -202,10 +202,10 @@ test('My activity shows the administrator\'s own rows in both themes, and nothin
   await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
   // The first test's own actions, newest first: the ordinary two-factor sign-in, then the sign-in
   // that confirming enrolment completes, then the enrolment itself.
-  const rows: [string, string, string][] = [
-    ['Signed in', 'Sign-in', 'sev-muted'],
-    ['Signed in', 'Sign-in', 'sev-muted'],
-    ['Set up your authenticator', 'Account', 'sev-warn'],
+  const rows: ExpectedRow[] = [
+    { title: 'Signed in', category: 'Sign-in', accent: 'sev-muted' },
+    { title: 'Signed in', category: 'Sign-in', accent: 'sev-muted' },
+    { title: 'Set up your authenticator', category: 'Account', accent: 'sev-warn' },
   ];
   for (const theme of ['dark', 'light']) {
     await test.step(`${theme} theme`, async () => {
@@ -526,6 +526,9 @@ test('My activity\'s empty state and pager match Legacy, and paging is in-app wi
     const requested = await fulfilActivity(page, { '': empty });
     await page.getByText('Security', { exact: true }).click();
     await page.getByRole('link', { name: 'My activity', exact: true }).click();
+    // The Legacy partial's own element, not a host element carrying its class.
+    await expect(page.locator('div.empty-state')).toHaveCount(1);
+    await expect(page.locator('.empty-state')).toHaveCount(1);
     await expect(page.locator('.empty-state h3')).toHaveText('No activity yet');
     await expect(page.locator('.empty-state p')).toHaveText(
       'As you sign in, view and reveal secrets, and update your account, each action is recorded here so you can review it later.');
@@ -566,10 +569,10 @@ test('My activity\'s empty state and pager match Legacy, and paging is in-app wi
     await expect(page).toHaveURL(/\/Activity$/);
     await expect(page.locator('.activity-feed > li')).toHaveCount(4);
     expect(await feedRows(page)).toEqual([
-      { title: 'Revealed a secret value', badges: ['Secrets'], resource: { text: longName, tooltip: longName }, meta: 'from 203.0.113.7', time: 'just now', tooltip: expect.stringMatching(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC$/), severity: 'sev-warn' },
-      { title: 'A session was force-revoked', badges: ['Security'], resource: null, meta: 'from 203.0.113.8', time: '5m ago', tooltip: expect.any(String), severity: 'sev-critical' },
-      { title: 'Signed in', badges: ['Sign-in'], resource: null, meta: 'from 203.0.113.7', time: '3h ago', tooltip: expect.any(String), severity: 'sev-muted' },
-      { title: 'Shared a secret', badges: ['Sharing'], resource: { text: 'Shared_Key', tooltip: 'Shared_Key' }, meta: 'from 2001:db8::5', time: '2d ago', tooltip: expect.any(String), severity: 'sev-warn' },
+      { title: 'Revealed a secret value', badges: ['Secrets'], resource: { text: longName, tooltip: longName }, meta: 'from 203.0.113.7', time: 'just now', tooltip: expect.stringMatching(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC$/), accent: 'sev-warn' },
+      { title: 'A session was force-revoked', badges: ['Security'], resource: null, meta: 'from 203.0.113.8', time: '5m ago', tooltip: expect.any(String), accent: 'sev-critical' },
+      { title: 'Signed in', badges: ['Sign-in'], resource: null, meta: 'from 203.0.113.7', time: '3h ago', tooltip: expect.any(String), accent: 'sev-muted' },
+      { title: 'Shared a secret', badges: ['Sharing'], resource: { text: 'Shared_Key', tooltip: 'Shared_Key' }, meta: 'from 2001:db8::5', time: '2d ago', tooltip: expect.any(String), accent: 'sev-warn' },
     ]);
     expect(await page.locator('.feed-resource').first().evaluate((resource) => getComputedStyle(resource).textOverflow)).toBe('ellipsis');
     expect(await feedIcons(page)).toEqual([
@@ -593,10 +596,10 @@ test('My activity\'s empty state and pager match Legacy, and paging is in-app wi
     expect(await pagerLinks()).toEqual([['← Newer', '/Activity?page=1']]);
     await expect(page.locator('.page-header > .badge')).toHaveCount(0);
     expect(await feedRows(page)).toEqual([
-      { title: 'Created a user', badges: ['Admin'], resource: null, meta: 'from 198.51.100.20', time: '2026-01-02', tooltip: '2026-01-02 03:04:05 UTC', severity: 'sev-muted' },
-      { title: 'Changed your password', badges: ['Account'], resource: null, meta: 'from 198.51.100.20', time: '2025-12-31', tooltip: '2025-12-31 23:59:59 UTC', severity: 'sev-muted' },
-      { title: 'Issued an API key', badges: ['Automation'], resource: null, meta: 'from internal', time: '2025-12-30', tooltip: '2025-12-30 08:00:00 UTC', severity: 'sev-muted' },
-      { title: 'Some new action', badges: ['Other'], resource: null, meta: 'from internal', time: '2025-12-29', tooltip: '2025-12-29 08:00:00 UTC', severity: 'sev-muted' },
+      { title: 'Created a user', badges: ['Admin'], resource: null, meta: 'from 198.51.100.20', time: '2026-01-02', tooltip: '2026-01-02 03:04:05 UTC', accent: 'sev-muted' },
+      { title: 'Changed your password', badges: ['Account'], resource: null, meta: 'from 198.51.100.20', time: '2025-12-31', tooltip: '2025-12-31 23:59:59 UTC', accent: 'sev-muted' },
+      { title: 'Issued an API key', badges: ['Automation'], resource: null, meta: 'from internal', time: '2025-12-30', tooltip: '2025-12-30 08:00:00 UTC', accent: 'sev-muted' },
+      { title: 'Some new action', badges: ['Other'], resource: null, meta: 'from internal', time: '2025-12-29', tooltip: '2025-12-29 08:00:00 UTC', accent: 'sev-muted' },
     ]);
     expect(await feedIcons(page)).toEqual([
       ['circle:cx=12,cy=12,r=3', 'path:d=M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1'],

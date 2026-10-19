@@ -5,7 +5,7 @@ import { expect } from './fixtures';
 export type Activity = paths['/api/ui/activity']['get']['responses'][200]['content']['application/json'];
 export type ActivityItem = Activity['items'][number];
 
-/** One feed row as a person reads it, with the accent and icon chip it carries. */
+/** One feed row as a person reads it, with the accent class it carries. */
 export interface FeedRow {
   title: string;
   badges: string[];
@@ -13,7 +13,14 @@ export interface FeedRow {
   meta: string;
   time: string;
   tooltip: string | null;
-  severity: string;
+  accent: string;
+}
+
+/** A real row expected in the administrator's feed: its title, category badge and accent class. */
+export interface ExpectedRow {
+  title: string;
+  category: string;
+  accent: string;
 }
 
 export async function feedRows(page: Page): Promise<FeedRow[]> {
@@ -27,7 +34,7 @@ export async function feedRows(page: Page): Promise<FeedRow[]> {
       meta: item.querySelector('.feed-meta')!.textContent!.trim(),
       time: time.textContent!.trim(),
       tooltip: time.getAttribute('title'),
-      severity: [...item.classList].filter((name) => name !== 'feed-item').join(' '),
+      accent: [...item.classList].filter((name) => name !== 'feed-item').join(' '),
     };
   }));
 }
@@ -61,9 +68,9 @@ export async function fulfilActivity(page: Page, bodies: Record<string, Activity
 
 /**
  * The administrator's real rows in one theme, against literal expectations, with a screenshot.
- * `rows` lists each expected row's title and category badge, newest first.
+ * `rows` lists the expected rows, newest first.
  */
-export async function verifyMyActivity(page: Page, info: TestInfo, theme: string, rows: [string, string, string][]) {
+export async function verifyMyActivity(page: Page, info: TestInfo, theme: string, rows: ExpectedRow[]) {
   await page.context().addCookies([{ name: 'EclipsVault.Theme', value: theme, url: new URL('/', page.url()).href, secure: true }]);
   const response = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/ui/activity');
   const served = await page.goto('/Activity');
@@ -84,8 +91,7 @@ export async function verifyMyActivity(page: Page, info: TestInfo, theme: string
   const sourceIp: string = (await access.json()).sourceIp;
   await expect(page.locator('.activity-feed > li')).toHaveCount(rows.length);
   const shown = await feedRows(page);
-  expect(shown.map(({ title, badges, severity }) => [title, badges[0], severity]))
-    .toEqual(rows.map(([title, category, severity]) => [title, category, severity]));
+  expect(shown.map(({ title, badges, accent }) => ({ title, category: badges[0], accent }))).toEqual(rows);
   for (const [i, row] of shown.entries()) {
     expect(row.badges).toHaveLength(1);
     expect(row.resource).toBeNull();
@@ -93,7 +99,7 @@ export async function verifyMyActivity(page: Page, info: TestInfo, theme: string
     expect(row.time).toMatch(/^(just now|\d{1,2}m ago)$/);
     expect(row.tooltip).toBe(utc(activity.items[i]!.timestampUtc));
   }
-  const notable = rows.filter(([, , severity]) => severity !== 'sev-muted').length;
+  const notable = rows.filter(({ accent }) => accent !== 'sev-muted').length;
   const badge = page.locator('.page-header > .badge');
   if (notable) {
     await expect(badge).toHaveText(`${notable} notable`);
@@ -109,7 +115,7 @@ export async function verifyMyActivity(page: Page, info: TestInfo, theme: string
     [...feed.querySelectorAll('.feed-icon')].map((icon) => [getComputedStyle(icon).color, getComputedStyle(icon).backgroundColor]));
   const routine = theme === 'dark' ? ['rgb(182, 188, 202)', 'rgb(13, 14, 19)'] : ['rgb(74, 78, 88)', 'rgb(236, 238, 242)'];
   const warn = theme === 'dark' ? ['rgb(255, 214, 10)', 'rgba(255, 214, 10, 0.12)'] : ['rgb(138, 106, 0)', 'rgba(180, 140, 0, 0.15)'];
-  expect(accents).toEqual(rows.map(([, , severity]) => (severity === 'sev-warn' ? warn : routine)));
+  expect(accents).toEqual(rows.map(({ accent }) => (accent === 'sev-warn' ? warn : routine)));
 
   await page.evaluate(() => document.fonts.ready);
   const path = info.outputPath(`administrator-${theme}-activity.png`);
