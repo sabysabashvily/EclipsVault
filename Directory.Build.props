@@ -15,6 +15,10 @@
     <AnalysisLevel>10.0</AnalysisLevel>
     <CodeAnalysisTreatWarningsAsErrors>true</CodeAnalysisTreatWarningsAsErrors>
 
+    <!-- Code style rules (IDExxxx) run in the build too, at the severities the root .editorconfig
+         gives them, so a formatting slip fails here and not only under `dotnet format`. -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
     <!-- Reproducible restores: versions are pinned centrally in Directory.Packages.props. -->
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>

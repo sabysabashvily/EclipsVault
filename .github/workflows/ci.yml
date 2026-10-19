@@ -64,6 +64,12 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
+      # The build already fails on misformatted C# (IDE0055). This also catches what the build
+      # cannot: using order, a missing final newline, a byte-order mark. It runs after the tests so
+      # a formatting slip never hides their result. Fix a failure with `dotnet format`.
+      - name: C# formatting
+        run: dotnet format EclipsVault.slnx --verify-no-changes --no-restore
+
   # The HTTP integration tests (ADR-0010): the unmodified app in Production against a real SQL Server
   # that Testcontainers starts on the runner's Docker, signed in through the real sign-in. Kept out of
   # build-test so the unit suite stays Docker-free and fast. The hang timeout is longer than the unit
