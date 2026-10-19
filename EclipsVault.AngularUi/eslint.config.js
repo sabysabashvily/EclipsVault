@@ -2,6 +2,7 @@
 const { defineConfig } = require('eslint/config');
 const tseslint = require('typescript-eslint');
 const angular = require('angular-eslint');
+const playwright = require('eslint-plugin-playwright');
 
 module.exports = defineConfig([
   {
@@ -64,5 +65,14 @@ module.exports = defineConfig([
         },
       ],
     },
+  },
+  {
+    files: ['e2e/**/*.ts'],
+    plugins: { playwright },
+    // Find elements by role, label or text, the way a person does (CODING_STANDARDS.md). The raw
+    // locators written before this rule are counted per file in eslint-suppressions.json. One more
+    // in a file fails lint, which then lists every raw locator in that file, old ones included.
+    // After removing some, lower the count with `npx eslint e2e --prune-suppressions`.
+    rules: { 'playwright/no-raw-locators': 'error' },
   },
 ]);
