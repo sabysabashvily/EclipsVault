@@ -1,4 +1,4 @@
-import type { Page, Route, TestInfo } from '@playwright/test';
+import type { Locator, Page, Route, TestInfo } from '@playwright/test';
 import type { paths } from '../src/app/ui-api/schema.generated';
 import { expect } from './fixtures';
 
@@ -39,10 +39,15 @@ export async function feedRows(page: Page): Promise<FeedRow[]> {
   }));
 }
 
+/** The geometry inside each matched SVG, one `tag:name=value,…` string per shape, for literal comparison. */
+export async function svgShapes(icons: Locator): Promise<string[][]> {
+  return icons.evaluateAll((svgs) => svgs.map((icon) =>
+    [...icon.children].map((shape) => `${shape.tagName}:${[...shape.attributes].map((a) => `${a.name}=${a.value}`).join(',')}`)));
+}
+
 /** The geometry inside each row's icon chip, so a category's icon can be compared literally. */
 export async function feedIcons(page: Page): Promise<string[][]> {
-  return page.locator('.activity-feed .feed-icon svg').evaluateAll((icons) => icons.map((icon) =>
-    [...icon.children].map((shape) => `${shape.tagName}:${[...shape.attributes].map((a) => `${a.name}=${a.value}`).join(',')}`)));
+  return svgShapes(page.locator('.activity-feed .feed-icon svg'));
 }
 
 /** The UTC tooltip the Legacy page wrote for a timestamp, restated literally. */

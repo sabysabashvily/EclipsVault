@@ -67,9 +67,9 @@ export class SignInsPage {
     };
   });
 
-  /** The summary behind the header's "N to review" badge, only when an attempt needs a second look. */
-  protected readonly header = computed(() => {
+  /** The header's "N to review" count, or null when no attempt needs a second look. */
+  protected readonly toReview = computed(() => {
     const summary = this.view()?.summary;
-    return summary?.needsAttention ? summary : null;
+    return summary?.needsAttention ? summary.suspiciousCount : null;
   });
 }

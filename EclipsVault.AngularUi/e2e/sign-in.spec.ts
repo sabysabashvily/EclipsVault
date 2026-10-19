@@ -1,7 +1,7 @@
 import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { test, expect } from './fixtures';
-import { type Activity, type ExpectedRow, feedIcons, feedRows, fulfilActivity, verifyMyActivity } from './activity';
+import { type Activity, type ExpectedRow, feedIcons, feedRows, fulfilActivity, svgShapes, verifyMyActivity } from './activity';
 import { createSecret, markDecoy, openPalette, paletteEntries, searchSecrets, sidebarPages } from './palette';
 import { type SignIns, passwordIcon, signInRows, statCards, verifySignInHistory } from './sign-ins';
 import { verifySidebar } from './sidebar';
@@ -738,9 +738,8 @@ test('Sign-in history\'s empty state and an unfamiliar-location attempt match Le
     await expect(page.locator('.empty-state p')).toHaveText(
       'As you sign in — with your password, a passkey, or a recovery code — each attempt is recorded here ' +
       'so you can review it later and spot anything unfamiliar.');
-    expect(await page.locator('.empty-state .empty-icon svg').evaluate((icon) =>
-      [...icon.children].map((shape) => `${shape.tagName}:${[...shape.attributes].map((a) => `${a.name}=${a.value}`).join(',')}`)))
-      .toEqual(['rect:x=4,y=10,width=16,height=10,rx=2', 'path:d=M8 10V7a4 4 0 0 1 8 0v3', 'circle:cx=12,cy=15,r=1.4']);
+    expect(await svgShapes(page.locator('.empty-state .empty-icon svg')))
+      .toEqual([['rect:x=4,y=10,width=16,height=10,rx=2', 'path:d=M8 10V7a4 4 0 0 1 8 0v3', 'circle:cx=12,cy=15,r=1.4']]);
     await expect(page.locator('.stat-grid, .callout-warn, .activity-feed, .page-header > .badge')).toHaveCount(0);
     await expect(page.locator('style, [style]')).toHaveCount(0);
   });

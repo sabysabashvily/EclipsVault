@@ -1,6 +1,6 @@
 import type { Page, TestInfo } from '@playwright/test';
 import type { paths } from '../src/app/ui-api/schema.generated';
-import { feedIcons, utc } from './activity';
+import { feedIcons, feedRows, utc } from './activity';
 import { expect } from './fixtures';
 
 export type SignIns = paths['/api/ui/sign-ins']['get']['responses'][200]['content']['application/json'];
@@ -27,19 +27,15 @@ export interface StatCard {
 /** The method icon the Legacy page drew for a password sign-in, as `feedIcons` reports it. */
 export const passwordIcon = ['path:d=M15 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3', 'path:d=M8 7l5 5-5 5M13 12H3'];
 
+/** The feed rows, each badge paired with its tone. A sign-in names no resource. */
 export async function signInRows(page: Page): Promise<SignInRow[]> {
-  return page.locator('.activity-feed > li').evaluateAll((items) => items.map((item) => {
-    const time = item.querySelector('time.feed-time')!;
-    return {
-      title: item.querySelector('.feed-title')!.textContent!.trim(),
-      badges: [...item.querySelectorAll('.feed-title-row > .badge')].map((badge) =>
-        [badge.textContent!.trim(), [...badge.classList].filter((name) => name !== 'badge').join(' ')] as [string, string]),
-      meta: item.querySelector('.feed-meta')!.textContent!.trim(),
-      time: time.textContent!.trim(),
-      tooltip: time.getAttribute('title'),
-      accent: [...item.classList].filter((name) => name !== 'feed-item').join(' '),
-    };
-  }));
+  const rows = await feedRows(page);
+  const tones = await page.locator('.activity-feed > li').evaluateAll((items) => items.map((item) =>
+    [...item.querySelectorAll('.feed-title-row > .badge')].map((badge) => [...badge.classList].filter((name) => name !== 'badge').join(' '))));
+  return rows.map(({ badges, resource, ...row }, i) => {
+    expect(resource).toBeNull();
+    return { ...row, badges: badges.map((text, j): [string, string] => [text, tones[i]![j]!]) };
+  });
 }
 
 export async function statCards(page: Page): Promise<StatCard[]> {

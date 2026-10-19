@@ -7,9 +7,9 @@
       is flagged so you can spot anything you didn't do.
     </p>
   </div>
-  @if (header(); as summary) {
+  @if (toReview() !== null) {
     <span class="badge tone-critical" title="Failed attempts from a location you've never signed in from">
-      {{ summary.suspiciousCount }} to review
+      {{ toReview() }} to review
     </span>
   }
 </div>

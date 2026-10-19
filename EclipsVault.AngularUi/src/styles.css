@@ -536,6 +536,15 @@ button { font-family: inherit; }
     transition: transform var(--dur) var(--ease), border-color var(--dur) var(--ease), background var(--dur) var(--ease);
 }
 
+/* Only the linked cards lift — the lift is the affordance that says this one goes somewhere,
+   so lifting a plain stat would be a promise the card cannot keep. */
+a.stat-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--accent-line);
+    color: var(--text);
+    text-decoration: none;
+    box-shadow: var(--shadow), 0 0 0 1px var(--accent-soft);
+}
 .stat-card { transition: transform var(--dur) var(--ease), border-color var(--dur) var(--ease), background var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
 .stat-card.attention { border-color: rgba(255, 214, 10, 0.35); }
 .stat-card.alert { border-color: rgba(255, 69, 58, 0.4); background: linear-gradient(180deg, var(--danger-soft), var(--bg-raised) 65%); }
