@@ -69,10 +69,9 @@ module.exports = defineConfig([
   {
     files: ['e2e/**/*.ts'],
     plugins: { playwright },
-    // Find elements by role, label or text, the way a person does (CODING_STANDARDS.md). The raw
-    // locators written before this rule are counted per file in eslint-suppressions.json. One more
-    // in a file fails lint, which then lists every raw locator in that file, old ones included.
-    // After removing some, lower the count with `npx eslint e2e --prune-suppressions`.
+    // Preserve the parity tests until their redesign. eslint-suppressions.json caps raw locators
+    // per file; exceeding a cap reports every raw locator in that file. After removals, lower the
+    // count with `npx eslint e2e --prune-suppressions`.
     rules: { 'playwright/no-raw-locators': 'error' },
   },
 ]);

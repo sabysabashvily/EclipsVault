@@ -211,8 +211,3 @@ end_of_line = crlf
 [*.md]
  # Double trailing spaces can be used for BR tags, and other instances are enforced by Markdownlint
 trim_trailing_whitespace = false
-
-# EclipsVault addition: formatting fails the build, not only `dotnet format`. Every other style
-# rule keeps the severity set above.
-[*.cs]
-dotnet_diagnostic.IDE0055.severity = warning
