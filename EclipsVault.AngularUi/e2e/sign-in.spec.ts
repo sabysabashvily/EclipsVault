@@ -1202,6 +1202,9 @@ test('a real passkey follows the server redirect for local and external return t
       ['//outside.example/', '/Secrets'],
       ['/\\outside.example/', '/Secrets'],
     ]) {
+      // The previous pass's page may still be loading. Leave it first: a request it sends after the
+      // cookies are cleared gets a 401, which the browser logs, and its redirect to sign-in races ours.
+      await page.goto('about:blank');
       await context.clearCookies();
       await page.goto(`/Account/Login?ReturnUrl=${encodeURIComponent(returnUrl!)}`);
       await page.getByRole('button', { name: 'Sign in with a passkey', exact: true }).click();
