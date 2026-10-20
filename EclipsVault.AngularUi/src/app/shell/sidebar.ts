@@ -71,7 +71,7 @@ const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)
         children: [
           link('security', 'Security checkup', '/Security', 'security', true),
           link('sign-ins', 'Sign-in history', '/SignIns', 'sign-ins', true),
-          link('sessions', 'Signed-in devices', '/Sessions'),
+          link('sessions', 'Signed-in devices', '/Sessions', 'sessions', true),
           link('activity', 'My activity', '/Activity', 'activity', true),
         ],
       },

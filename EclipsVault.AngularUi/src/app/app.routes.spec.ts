@@ -4,6 +4,7 @@ import { ActivityPage } from './activity/activity-page';
 import { routes } from './app.routes';
 import { SignInsPage } from './sign-ins/sign-ins-page';
 import { SecurityPage } from './security/security-page';
+import { SessionsPage } from './sessions/sessions-page';
 
 /** The route the router picks for `url`: the first whose matcher accepts its segments. */
 function routeFor(url: string): Route | undefined {
@@ -16,6 +17,14 @@ function routeFor(url: string): Route | undefined {
 }
 
 describe('routes', () => {
+  it.each(['/Sessions', '/Sessions/Index', '/sessions', '/SESSIONS/index'])(
+    'opens Signed-in devices at %s',
+    async (url) => {
+      const route = routeFor(url);
+      expect(route?.title).toBe('Signed-in devices — EclipsVault');
+      expect(await route?.loadComponent?.()).toBe(SessionsPage);
+    },
+  );
   it.each(['/Access', '/Access/Index', '/access', '/ACCESS/index'])(
     'opens My access at %s',
     async (url) => {
@@ -70,6 +79,8 @@ describe('routes', () => {
     '/SignIns/Index/extra',
     '/SecurityLog',
     '/Security/Index/extra',
+    '/SessionsLog',
+    '/Sessions/Index/extra',
     '/Secrets',
   ])('leaves %s unmatched', (url) => {
     expect(routeFor(url)).toBeUndefined();

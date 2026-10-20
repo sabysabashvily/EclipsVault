@@ -31,6 +31,7 @@ import {
   verifySecurityCheckup,
 } from './security';
 import { freshTotp } from './totp';
+import { SignedInDevices } from './sessions';
 
 // The tests share one vault: the first enrolls the administrator's authenticator, the next signs in with it.
 test.describe.configure({ mode: 'serial' });
@@ -73,9 +74,8 @@ async function freshThrottleWindow(page: Page): Promise<void> {
 /** The ids of the sessions Signed-in devices offers to sign out: every session but the current one. */
 async function otherSessionIds(page: Page): Promise<string[]> {
   await page.goto('/Sessions');
-  return page
-    .locator('form input[name="id"]')
-    .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value));
+  const sessions = await new SignedInDevices(page).liveSessions();
+  return sessions.filter((session) => !session.isCurrent).map((session) => session.sessionId);
 }
 
 test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and return', async ({
@@ -243,6 +243,8 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
     (await context.cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')?.value,
   ).toBe(session?.value);
   administratorCookies = await context.cookies();
+  // The dependent Signed-in devices suite provisions its own account using this disposable session.
+  await context.storageState({ path: 'test-results/sessions-administrator.json' });
 });
 
 test("My activity shows the administrator's own rows in both themes, and nothing past the end", async ({
@@ -603,7 +605,14 @@ test('the palette is driven from the keyboard, traps focus, and hands it back on
     await expect(options).toHaveText([/Signed-in devices/]);
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/\/Sessions$/);
-    expect(documents).toEqual(['/Sessions']);
+    expect(documents).toEqual([]);
+
+    await openPalette(page);
+    await page.locator('.palette-input').fill('your data');
+    await expect(options).toHaveText([/Your data/]);
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/\/Data$/);
+    expect(documents).toEqual(['/Data']);
   });
 });
 
@@ -1461,10 +1470,7 @@ test('the sidebar and palette open Sign-in history in-app, and its callout links
       },
     ],
   };
-  for (const [name, path, heading] of [
-    ['Review signed-in devices', '/Sessions', 'Signed-in devices'],
-    ['Change password', '/Profile', 'Profile'],
-  ] as const) {
+  for (const [name, path, heading] of [['Change password', '/Profile', 'Profile']] as const) {
     await test.step(`${name} is a full load into the Legacy UI on the same session`, async () => {
       await page.route(
         '**/api/ui/sign-ins',
@@ -1743,7 +1749,6 @@ test('the sidebar and palette open Security checkup in-app, and fixes load Legac
     ['Set up two-step', '/Profile', 'Profile'],
     ['Generate codes', '/Profile', 'Profile'],
     ['Add a passkey', '/Profile', 'Profile'],
-    ['Review devices', '/Sessions', 'Signed-in devices'],
   ] as const) {
     await test.step(`${name} is a full load into Legacy on the same session`, async () => {
       await page.route(
@@ -1861,12 +1866,11 @@ test('a session revoked from another browser signs in again and returns to My ac
     await signIn(second);
     const first = (await otherSessionIds(second)).filter((id) => !othersOfFirst.includes(id));
     expect(first).toHaveLength(1);
-    await second
-      .locator(`form:has(input[name="id"][value="${first[0]}"])`)
-      .getByRole('button', { name: 'Sign out' })
-      .click();
+    await new SignedInDevices(second).signOutSession(first[0]!);
     await second.getByRole('alertdialog').getByRole('button', { name: 'Continue' }).click();
-    await expect(second.getByText('That session was signed out')).toBeVisible();
+    await expect(second.getByRole('status')).toHaveText(
+      'That session was signed out — it loses access on its next request.',
+    );
   });
 
   await test.step("the first browser's next UI API action sends it to sign-in, returning to My access", async () => {

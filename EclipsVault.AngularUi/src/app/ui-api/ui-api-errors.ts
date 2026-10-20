@@ -8,6 +8,7 @@ export class UiApiError extends Error {
     readonly status: number,
     readonly code: string,
     readonly title: string,
+    readonly signedOut: number | null = null,
   ) {
     super(title);
     this.name = 'UiApiError';
@@ -25,13 +26,18 @@ export function signInUrl(location: Pick<Location, 'pathname' | 'search'>): stri
 }
 
 function toUiApiError(response: HttpErrorResponse): UiApiError {
-  const problem = response.error as { code?: unknown; title?: unknown } | null;
+  const problem = response.error as { code?: unknown; title?: unknown; signedOut?: unknown } | null;
   return new UiApiError(
     response.status,
     typeof problem?.code === 'string' ? problem.code : 'unknown',
     typeof problem?.title === 'string'
       ? problem.title
       : 'The vault could not complete the request.',
+    typeof problem?.signedOut === 'number' &&
+      Number.isSafeInteger(problem.signedOut) &&
+      problem.signedOut >= 0
+      ? problem.signedOut
+      : null,
   );
 }
 

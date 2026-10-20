@@ -38,6 +38,10 @@ public static class AngularUiRoutes
         // Security checkup
         "/Security",
         "/Security/Index",
+
+        // Signed-in devices
+        "/Sessions",
+        "/Sessions/Index",
     ];
 
     /// <summary>
