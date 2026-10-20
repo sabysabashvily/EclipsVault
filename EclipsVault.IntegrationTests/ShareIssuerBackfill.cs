@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -94,7 +95,7 @@ public abstract class ShareIssuerBackfill : IAsyncLifetime
             INSERT INTO "Users" ("Id", "Username", "DisplayName", "Email", "PasswordHash", "PasswordSalt",
                 "TotpEnabled", "Clearance", "ProjectKey", "IsDisabled", "FailedAccessCount", "CreatedAtUtc")
             VALUES ({id}, {username}, {username}, {username + "@example.test"}, {new byte[32]}, {new byte[16]},
-                {false}, 0, 'GLOBAL', {false}, 0, {createdAt})
+                {false}, {(int)ClearanceLevel.Standard}, 'GLOBAL', {false}, 0, {createdAt})
             """);
 
     /// <summary>A share on a secret of its own, since a recipient holds one share per secret.</summary>
@@ -104,7 +105,8 @@ public abstract class ShareIssuerBackfill : IAsyncLifetime
         await db.Database.ExecuteSqlAsync($"""
             INSERT INTO "Secrets" ("Id", "Name", "ProjectKey", "Environment", "Sensitivity", "Ciphertext", "WrappedDek",
                 "KekId", "Algorithm", "CreatedAtUtc", "CreatedByUserId", "IsHoneyToken", "IsShredded")
-            VALUES ({secretId}, {"secret-" + shareId}, 'GLOBAL', 0, 0, {new byte[] { 1 }}, {new byte[] { 1 }},
+            VALUES ({secretId}, {"secret-" + shareId}, 'GLOBAL', {(int)SecretEnvironment.Development},
+                {(int)SensitivityLevel.Internal}, {new byte[] { 1 }}, {new byte[] { 1 }},
                 'test-kek', 'AES-256-GCM', {SharedAt}, {Guid.Empty}, {false}, {false})
             """);
         await db.Database.ExecuteSqlAsync($"""
