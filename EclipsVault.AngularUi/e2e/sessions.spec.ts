@@ -283,7 +283,9 @@ test('the sidebar and palette open Signed-in devices inside Angular and preserve
   await link.click();
   await expect(page).toHaveURL(/\/Sessions$/);
   await expect(link).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByText('Security', { exact: true })).toHaveClass(/has-active/);
+  const securityGroup = page.getByRole('group').filter({ has: link });
+  await expect(securityGroup).toHaveJSProperty('open', true);
+  await expect(link).toBeVisible();
   await page.getByRole('link', { name: 'My activity', exact: true }).click();
   await openPalette(page);
   await page.getByRole('combobox').fill('signed-in devices');
