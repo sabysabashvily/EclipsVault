@@ -13,7 +13,7 @@ using Xunit;
 
 namespace EclipsVault.Tests.Sessions;
 
-public sealed class SessionApiAuditFailureTests
+public sealed class SessionApiRevocationTests
 {
     [Fact]
     public async Task A_failed_audit_write_reports_the_revocation_and_leaves_the_device_signed_out()
@@ -71,6 +71,56 @@ public sealed class SessionApiAuditFailureTests
         Assert.Contains(audit.Attempts, entry => entry.ResourceId == second);
     }
 
+    [Fact]
+    public async Task A_disconnected_request_still_records_an_already_revoked_device()
+    {
+        var sessions = new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance, TimeProvider.System);
+        var userId = Guid.NewGuid();
+        var device = Guid.NewGuid();
+        await RecordAsync(sessions, userId, device);
+        var audit = new DelayedAudit();
+        var controller = Controller(sessions, audit, userId, Guid.NewGuid());
+        using var request = new CancellationTokenSource();
+
+        var response = controller.Revoke(device, request.Token);
+        await audit.Started.Task;
+        Assert.True(await sessions.IsRevokedAsync(userId, device));
+        request.Cancel();
+        audit.Commit.SetResult();
+
+        Assert.IsType<NoContentResult>(await response);
+        Assert.Equal(device, Assert.Single(audit.Recorded).ResourceId);
+    }
+
+    [Fact]
+    public async Task Disconnecting_during_the_first_bulk_audit_still_records_every_revoked_device()
+    {
+        var sessions = new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance, TimeProvider.System);
+        var userId = Guid.NewGuid();
+        var current = Guid.NewGuid();
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        await RecordAsync(sessions, userId, current);
+        await RecordAsync(sessions, userId, first);
+        await RecordAsync(sessions, userId, second);
+        var audit = new DelayedAudit();
+        var controller = Controller(sessions, audit, userId, current);
+        using var request = new CancellationTokenSource();
+
+        var response = controller.RevokeOthers(request.Token);
+        await audit.Started.Task;
+        Assert.True(await sessions.IsRevokedAsync(userId, first));
+        Assert.True(await sessions.IsRevokedAsync(userId, second));
+        request.Cancel();
+        audit.Commit.SetResult();
+
+        Assert.Equal(2, Assert.IsType<SignOutOthersResponse>((await response).Value).SignedOut);
+        Assert.Equal(2, audit.Recorded.Count);
+        Assert.Contains(audit.Recorded, entry => entry.ResourceId == first);
+        Assert.Contains(audit.Recorded, entry => entry.ResourceId == second);
+        Assert.Equal(current, Assert.Single(await sessions.ListAsync(userId)).SessionId);
+    }
+
     private static SessionsController Controller(ISessionRegistry sessions, IAuditSink audit, Guid userId, Guid current)
         => new(sessions, audit, null!)
         {
@@ -101,6 +151,25 @@ public sealed class SessionApiAuditFailureTests
             Attempts.Add(entry);
             await BeforeFailure();
             throw new AuditWriteFailedException("The audit store is unavailable.");
+        }
+    }
+
+    private sealed class DelayedAudit : IAuditSink
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Commit { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public List<AuditEntry> Recorded { get; } = [];
+
+        public async Task WriteAsync(AuditEntry entry, CancellationToken ct)
+        {
+            if (Recorded.Count == 0)
+            {
+                var committed = Commit.Task.WaitAsync(ct);
+                Started.SetResult();
+                await committed;
+            }
+
+            Recorded.Add(entry);
         }
     }
 }

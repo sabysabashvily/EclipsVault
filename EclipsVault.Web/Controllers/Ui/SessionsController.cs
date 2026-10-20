@@ -67,7 +67,7 @@ public sealed class SessionsController(ISessionRegistry sessions, IAuditSink aud
 
         try
         {
-            await AuditRevokeAsync(sessionId, ct);
+            await AuditRevokeAsync(sessionId);
         }
         catch (AuditWriteFailedException)
         {
@@ -106,7 +106,7 @@ public sealed class SessionsController(ISessionRegistry sessions, IAuditSink aud
         {
             try
             {
-                await AuditRevokeAsync(sessionId, ct);
+                await AuditRevokeAsync(sessionId);
             }
             catch (AuditWriteFailedException)
             {
@@ -125,14 +125,15 @@ public sealed class SessionsController(ISessionRegistry sessions, IAuditSink aud
         return UiApiProblem.StaleSession();
     }
 
-    private Task AuditRevokeAsync(Guid sessionId, CancellationToken ct)
+    // A disconnected request cannot undo a revocation, so its audit must still finish.
+    private Task AuditRevokeAsync(Guid sessionId)
         => audit.WriteAsync(new AuditEntry
         {
             Action = AuditAction.SessionRevokedByUser,
             ResourceType = "Session",
             ResourceId = sessionId,
             Details = $"Revoked session {sessionId:N}"
-        }, ct);
+        }, CancellationToken.None);
 
     private static JsonResult SessionProblem(int status, string code, string title, int? signedOut = null)
         => new(new SessionProblemResponse { Status = status, Code = code, Title = title, SignedOut = signedOut })
