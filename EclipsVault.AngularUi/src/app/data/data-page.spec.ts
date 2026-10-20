@@ -82,12 +82,13 @@ describe('DataPage', () => {
     );
   }
 
-  it('shows loading until the server answers', () => {
+  it('shows loading, and offers no download, until the server answers', () => {
     const { page } = render();
     expect(page.querySelector('[role="status"]:not(:empty)')?.textContent).toContain(
       'Loading your data…',
     );
     expect(page.querySelector('dl')).toBeNull();
+    expect(page.querySelectorAll('button')).toHaveLength(0);
     backend.expectOne('/api/ui/data').flush(yours);
   });
 
@@ -96,6 +97,9 @@ describe('DataPage', () => {
     backend.expectOne('/api/ui/data').flush({}, { status: 503, statusText: 'Unavailable' });
     await fixture.whenStable();
     expect(page.textContent).toContain('Could not load your data. Try again.');
+    expect([...page.querySelectorAll('button')].map((shown) => shown.textContent?.trim())).toEqual([
+      'Try again',
+    ]);
     button(page, 'Try again').click();
     fixture.detectChanges();
     backend.expectOne('/api/ui/data').flush(yours);

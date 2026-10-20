@@ -6,9 +6,11 @@
       your records — or just to see what's stored. Only <em>your</em> data is included.
     </p>
   </div>
-  <button type="button" class="button primary" [disabled]="downloading()" (click)="download()">
-    Download (JSON)
-  </button>
+  @if (data.hasValue()) {
+    <button type="button" class="button primary" [disabled]="downloading()" (click)="download()">
+      Download (JSON)
+    </button>
+  }
 </div>
 
 <app-status-line [message]="failure()" [error]="true" />
