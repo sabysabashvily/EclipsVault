@@ -223,12 +223,19 @@ public sealed class SessionApiTests(VaultFixture vault)
             Assert.Equal("it-sessions-others", row.Username);
             Assert.Equal("198.51.100.185", row.SourceIp);
         });
-        before = await LegacySharing.AuditHeadAsync(vault);
+    }
 
-        var empty = await SessionApi.WriteAsync(account.Browser, HttpMethod.Post, "/api/ui/sessions/sign-out-others");
+    [Fact]
+    public async Task Signing_out_others_with_no_other_devices_reports_zero_and_writes_no_audit_row()
+    {
+        var session = await vault.SignInNewAccountAsync("it-sessions-no-others", IPAddress.Parse("198.51.100.196"));
+        var before = await LegacySharing.AuditHeadAsync(vault);
 
-        Assert.Equal(HttpStatusCode.OK, empty.StatusCode);
-        Assert.Equal("{\"signedOut\":0}", await empty.Content.ReadAsStringAsync());
+        var response = await SessionApi.WriteAsync(session, HttpMethod.Post, "/api/ui/sessions/sign-out-others");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(response.Headers.CacheControl?.NoStore);
+        Assert.Equal("{\"signedOut\":0}", await response.Content.ReadAsStringAsync());
         Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
     }
 

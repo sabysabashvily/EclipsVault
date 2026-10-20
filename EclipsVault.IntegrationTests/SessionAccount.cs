@@ -27,10 +27,10 @@ internal sealed partial class SessionAccount(VaultFixture vault, string username
         return new SessionAccount(vault, username, password, browser, codes);
     }
 
-    public async Task<VaultSession> OpenDeviceAsync(int recoveryCode, string address, string device = "curl/8.0")
+    public async Task<VaultSession> OpenDeviceAsync(int recoveryCodeIndex, string address)
     {
         var session = vault.CreateSession(source: IPAddress.Parse(address));
-        session.Client.DefaultRequestHeaders.UserAgent.ParseAdd(device);
+        session.Client.DefaultRequestHeaders.UserAgent.ParseAdd("curl/8.0");
         var login = await session.Client.GetStringAsync("/Account/Login");
         var passwordStep = await session.Client.PostAsync("/Account/Login", new FormUrlEncodedContent(new Dictionary<string, string>
         {
@@ -43,7 +43,7 @@ internal sealed partial class SessionAccount(VaultFixture vault, string username
         var secondFactor = await session.Client.PostAsync("/Account/RecoveryCode", new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(recovery, "/Account/RecoveryCode"),
-            ["Code"] = recoveryCodes[recoveryCode]
+            ["Code"] = recoveryCodes[recoveryCodeIndex]
         }));
         Assert.Equal(HttpStatusCode.Redirect, secondFactor.StatusCode);
         Assert.NotNull(session.SessionCookie);
