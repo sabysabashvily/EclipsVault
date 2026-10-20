@@ -19,11 +19,14 @@ import {
       role="alertdialog"
       [attr.aria-labelledby]="messageId"
       (cancel)="cancel($event)"
+      (keydown)="trapFocus($event)"
     >
       <p [id]="messageId">{{ message() }}</p>
       <div class="button-row">
         <button #cancelButton type="button" class="button" (click)="finish(false)">Cancel</button>
-        <button type="button" class="button danger" (click)="finish(true)">Continue</button>
+        <button #continueButton type="button" class="button danger" (click)="finish(true)">
+          Continue
+        </button>
       </div>
     </dialog>
   `,
@@ -38,6 +41,8 @@ export class ConfirmationDialog {
   private readonly injector = inject(Injector);
   private readonly dialog = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
   private readonly cancelButton = viewChild.required<ElementRef<HTMLButtonElement>>('cancelButton');
+  private readonly continueButton =
+    viewChild.required<ElementRef<HTMLButtonElement>>('continueButton');
   private opener: Element | null = null;
 
   open(message: string): void {
@@ -57,6 +62,16 @@ export class ConfirmationDialog {
   protected cancel(event: Event): void {
     event.preventDefault();
     this.finish(false);
+  }
+
+  protected trapFocus(event: KeyboardEvent): void {
+    if (event.key !== 'Tab') return;
+    // A native dialog can tab into browser chrome; keep its two actions in the same focus cycle.
+    event.preventDefault();
+    const cancel = this.cancelButton().nativeElement;
+    const next =
+      this.document.activeElement === cancel ? this.continueButton().nativeElement : cancel;
+    next.focus();
   }
 
   protected finish(confirmed: boolean): void {

@@ -43,6 +43,24 @@ describe('ConfirmationDialog', () => {
     expect(decision).toHaveBeenCalledExactlyOnceWith(false);
   });
 
+  it('Tab and Shift+Tab cycle between Cancel and Continue', async () => {
+    const { dialog } = await render();
+    const backwards = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    dialog.dispatchEvent(backwards);
+
+    expect(backwards.defaultPrevented).toBe(true);
+    expect(document.activeElement?.textContent?.trim()).toBe('Continue');
+    dialog.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }),
+    );
+    expect(document.activeElement?.textContent?.trim()).toBe('Cancel');
+  });
+
   it('a native Escape cancellation returns focus and declines the action', async () => {
     const { dialog, opener, decision, fixture } = await render();
     const event = new Event('cancel', { cancelable: true });
