@@ -7,9 +7,11 @@
     </p>
   </div>
   @if (data.hasValue()) {
-    <button type="button" class="button primary" [disabled]="downloading()" (click)="download()">
-      Download (JSON)
-    </button>
+    <div>
+      <button type="button" class="button primary" [disabled]="downloading()" (click)="download()">
+        Download (JSON)
+      </button>
+    </div>
   }
 </div>
 

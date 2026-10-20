@@ -65,7 +65,7 @@ export class YourData {
       };
       return blocks.map((block) => ({
         className: block.className,
-        text: block.textContent?.replace(/\s+/g, ' ').trim(),
+        text: (block as HTMLElement).innerText.replace(/\s+/g, ' ').trim(),
         block: look(block),
         parts: [
           ...block.querySelectorAll(
