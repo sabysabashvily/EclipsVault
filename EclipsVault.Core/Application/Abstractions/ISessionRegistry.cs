@@ -22,9 +22,10 @@ public interface ISessionRegistry
     /// <summary>
     /// Revokes a single session: it is rejected on its next request (a tombstone the cookie
     /// validator checks) and drops off the list. Scoped to the owning user, so a caller can only
-    /// ever revoke their own sessions.
+    /// ever revoke their own sessions. Returns true only when a live session of that account was
+    /// removed; an expired, unknown, already revoked or other account's session returns false.
     /// </summary>
-    Task RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default);
+    Task<bool> RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default);
 
     /// <summary>Whether this specific session has been individually revoked.</summary>
     Task<bool> IsRevokedAsync(Guid userId, Guid sessionId, CancellationToken ct = default);

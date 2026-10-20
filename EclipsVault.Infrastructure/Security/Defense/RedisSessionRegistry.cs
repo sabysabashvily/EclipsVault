@@ -36,6 +36,21 @@ end
 redis.call('EXPIRE', KEYS[1], ARGV[7])
 return 1";
 
+    // One script prevents a competing revoke or touch from separating the live check and removal.
+    // Store the tombstone before deletion so a failed write cannot leave a session able to return.
+    private const string RevokeScript = """
+        local session = redis.call('HGET', KEYS[1], ARGV[1])
+        if not session then return 0 end
+        local stored = cjson.decode(session)
+        local now = tonumber(redis.call('TIME')[1])
+        if tonumber(stored.ExpiresUnix) <= now then
+            redis.call('HDEL', KEYS[1], ARGV[1])
+            return 0
+        end
+        redis.call('SET', KEYS[2], '1', 'EX', ARGV[2])
+        return redis.call('HDEL', KEYS[1], ARGV[1])
+        """;
+
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
 
     private sealed record StoredSession(
@@ -106,13 +121,19 @@ return 1";
         return result.OrderByDescending(s => s.LastSeenAtUtc).ToList();
     }
 
-    public async Task RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
+    public async Task<bool> RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
     {
         var db = _redis.GetDatabase();
-        // Tombstone first (so a racing touch cannot re-create it), then drop it from the list.
-        await db.StringSetAsync(RevokedKey(userId, sessionId), "1", TimeSpan.FromSeconds(_tombstoneSeconds));
-        await db.HashDeleteAsync(SessionsKey(userId), sessionId.ToString("N"));
-        _logger.LogInformation("Session {SessionId} for user {UserId} was revoked", sessionId, userId);
+        var removed = (long)await db.ScriptEvaluateAsync(
+            RevokeScript,
+            new RedisKey[] { SessionsKey(userId), RevokedKey(userId, sessionId) },
+            new RedisValue[] { sessionId.ToString("N"), _tombstoneSeconds }) == 1;
+        if (removed)
+        {
+            _logger.LogInformation("Session {SessionId} for user {UserId} was revoked", sessionId, userId);
+        }
+
+        return removed;
     }
 
     public async Task<bool> IsRevokedAsync(Guid userId, Guid sessionId, CancellationToken ct = default)

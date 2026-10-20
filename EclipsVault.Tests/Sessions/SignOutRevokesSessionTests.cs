@@ -17,9 +17,8 @@ using Xunit;
 namespace EclipsVault.Tests.Sessions;
 
 /// <summary>
-/// Sign out must end the session on the server, not only forget the cookie in this browser. Before
-/// this, a copy of the cookie taken before sign-out (a shared machine, a proxy log, malware) kept
-/// working until it expired, and the session stayed on the Signed-in devices list. Revoking the
+/// Sign out must end the session on the server, not only forget the cookie in this browser. A copy
+/// of the cookie taken before sign-out must lose access on its next request. Revoking the
 /// session id is the same tombstone "Sign out all other sessions" uses, so the cookie validator
 /// rejects the copy on its next request.
 /// </summary>
@@ -46,7 +45,7 @@ public class SignOutRevokesSessionTests
     {
         public Task RecordSeenAsync(SessionObservation observation, CancellationToken ct = default) => Task.CompletedTask;
         public Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<ActiveSession>>([]);
-        public Task RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new InvalidOperationException("OOM command not allowed");
+        public Task<bool> RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new InvalidOperationException("OOM command not allowed");
         public Task<bool> IsRevokedAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => Task.FromResult(false);
     }
 
@@ -97,6 +96,20 @@ public class SignOutRevokesSessionTests
         var sessions = new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance);
         var (controller, auth) = SignedInController(sessions,
             new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()));
+
+        var result = await controller.Logout(CancellationToken.None);
+
+        Assert.True(auth.SignedOut);
+        Assert.IsType<RedirectToActionResult>(result);
+    }
+
+    [Fact]
+    public async Task An_unrecorded_session_is_still_signed_out()
+    {
+        var sessions = new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance);
+        var (controller, auth) = SignedInController(sessions,
+            new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()),
+            new Claim(VaultClaimTypes.SessionId, Guid.NewGuid().ToString()));
 
         var result = await controller.Logout(CancellationToken.None);
 

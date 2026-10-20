@@ -16,9 +16,10 @@ file, tests and commit messages included, and the code-review Standards axis che
 - Integration tests: `dotnet test EclipsVault.IntegrationTests -c Release --no-build --blame-hang-timeout 10m --blame-hang-dump-type mini`.
   First build the Angular UI (`npm ci --ignore-scripts` then `npm run build` in `EclipsVault.AngularUi`,
   on its `.nvmrc` Node version): header tests serve its real document through the route table.
-  They need Docker running: each run starts SQL Server with Testcontainers and boots the unmodified
-  `Program` against it in Production, signing in through the real sign-in. The image is pinned by
-  digest in `VaultFixture`, and a machine without it downloads about 2.5 GB on the first run.
+  They need Docker running: session-registry tests start real Redis, and migration tests also start
+  PostgreSQL. Images are digest-pinned in their fixtures. HTTP tests start SQL Server with
+  Testcontainers and boot the unmodified `Program` in Production, signing in through the real
+  sign-in. SQL Server is pinned in `VaultFixture`; its first download is about 2.5 GB.
   `dotnet test EclipsVault.slnx` runs both suites, so it needs Docker too.
   The endpoints that throw each domain exception, to pin the UI API's error mapping, live in
   `EclipsVault.IntegrationTests/TestOnlyEndpoints.cs`. Only `VaultFixture` adds them to the host

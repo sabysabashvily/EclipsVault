@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 
 namespace EclipsVault.Infrastructure.Security;
@@ -20,75 +19,108 @@ public sealed class InMemorySessionRegistry : ISessionRegistry
         Guid SessionId, string Device, string IpAddress,
         DateTimeOffset CreatedAtUtc, DateTimeOffset LastSeenAtUtc, DateTimeOffset ExpiresAtUtc);
 
-    private readonly ConcurrentDictionary<Guid, ConcurrentDictionary<Guid, Entry>> _sessions = new();
-    private readonly ConcurrentDictionary<(Guid User, Guid Session), DateTimeOffset> _revokedAt = new();
+    private readonly Lock _gate = new();
+    private readonly Dictionary<Guid, Dictionary<Guid, Entry>> _sessions = new();
+    private readonly Dictionary<(Guid UserId, Guid SessionId), DateTimeOffset> _revokedAt = new();
     private readonly ILogger<InMemorySessionRegistry> _logger;
 
     public InMemorySessionRegistry(ILogger<InMemorySessionRegistry> logger) => _logger = logger;
 
-    public Task RecordSeenAsync(SessionObservation o, CancellationToken ct = default)
+    public Task RecordSeenAsync(SessionObservation observation, CancellationToken ct = default)
     {
-        // A revoked session must never come back to life just because a request carried its cookie.
-        if (_revokedAt.ContainsKey((o.UserId, o.SessionId)))
+        lock (_gate)
         {
-            return Task.CompletedTask;
+            // Recording and revoking share a lock so a racing request cannot resurrect a session.
+            if (_revokedAt.ContainsKey((observation.UserId, observation.SessionId)))
+            {
+                return Task.CompletedTask;
+            }
+
+            if (!_sessions.TryGetValue(observation.UserId, out var sessions))
+            {
+                sessions = new Dictionary<Guid, Entry>();
+                _sessions.Add(observation.UserId, sessions);
+            }
+
+            if (!sessions.TryGetValue(observation.SessionId, out var existing))
+            {
+                sessions.Add(observation.SessionId, new Entry(
+                    observation.SessionId, observation.Device, observation.IpAddress,
+                    observation.SeenAtUtc, observation.SeenAtUtc, observation.ExpiresAtUtc));
+            }
+            else if (observation.SeenAtUtc - existing.LastSeenAtUtc >= TouchThrottle)
+            {
+                sessions[observation.SessionId] = existing with
+                {
+                    LastSeenAtUtc = observation.SeenAtUtc,
+                    ExpiresAtUtc = observation.ExpiresAtUtc,
+                    IpAddress = observation.IpAddress
+                };
+            }
         }
 
-        var forUser = _sessions.GetOrAdd(o.UserId, _ => new ConcurrentDictionary<Guid, Entry>());
-        forUser.AddOrUpdate(
-            o.SessionId,
-            _ => new Entry(o.SessionId, o.Device, o.IpAddress, o.SeenAtUtc, o.SeenAtUtc, o.ExpiresAtUtc),
-            (_, existing) => o.SeenAtUtc - existing.LastSeenAtUtc >= TouchThrottle
-                ? existing with { LastSeenAtUtc = o.SeenAtUtc, ExpiresAtUtc = o.ExpiresAtUtc, IpAddress = o.IpAddress }
-                : existing);
         return Task.CompletedTask;
     }
 
     public Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, CancellationToken ct = default)
     {
-        var now = DateTimeOffset.UtcNow;
-        IReadOnlyList<ActiveSession> list = [];
-
-        if (_sessions.TryGetValue(userId, out var forUser))
+        lock (_gate)
         {
-            // Drop expired entries as we pass so the map does not grow without bound.
-            foreach (var e in forUser.Values.Where(e => e.ExpiresAtUtc <= now))
+            if (!_sessions.TryGetValue(userId, out var sessions))
             {
-                forUser.TryRemove(e.SessionId, out _);
+                return Task.FromResult<IReadOnlyList<ActiveSession>>([]);
             }
 
-            list = forUser.Values
-                .Where(e => e.ExpiresAtUtc > now && !_revokedAt.ContainsKey((userId, e.SessionId)))
-                .OrderByDescending(e => e.LastSeenAtUtc)
-                .Select(e => new ActiveSession(e.SessionId, e.Device, e.IpAddress, e.CreatedAtUtc, e.LastSeenAtUtc))
-                .ToList();
-        }
+            var now = DateTimeOffset.UtcNow;
+            // Materialize before removing so enumeration never observes a changing dictionary.
+            foreach (var expired in sessions.Values.Where(entry => entry.ExpiresAtUtc <= now).ToList())
+            {
+                sessions.Remove(expired.SessionId);
+            }
 
-        return Task.FromResult(list);
+            IReadOnlyList<ActiveSession> list = sessions.Values
+                .OrderByDescending(entry => entry.LastSeenAtUtc)
+                .Select(entry => new ActiveSession(
+                    entry.SessionId, entry.Device, entry.IpAddress, entry.CreatedAtUtc, entry.LastSeenAtUtc))
+                .ToList();
+            return Task.FromResult(list);
+        }
     }
 
-    public Task RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
+    public Task<bool> RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
     {
-        var now = DateTimeOffset.UtcNow;
-        _revokedAt[(userId, sessionId)] = now;
-        if (_sessions.TryGetValue(userId, out var forUser))
+        lock (_gate)
         {
-            forUser.TryRemove(sessionId, out _);
-        }
-
-        // Revocations are rare, so sweep stale tombstones here to bound memory.
-        foreach (var kvp in _revokedAt)
-        {
-            if (now - kvp.Value > TombstoneRetention)
+            var now = DateTimeOffset.UtcNow;
+            SweepStaleTombstones(now);
+            if (!_sessions.TryGetValue(userId, out var sessions) ||
+                !sessions.Remove(sessionId, out var removed) || removed.ExpiresAtUtc <= now)
             {
-                _revokedAt.TryRemove(kvp.Key, out _);
+                return Task.FromResult(false);
             }
+
+            _revokedAt[(userId, sessionId)] = now;
         }
 
         _logger.LogInformation("Session {SessionId} for user {UserId} was revoked", sessionId, userId);
-        return Task.CompletedTask;
+        return Task.FromResult(true);
+    }
+
+    private void SweepStaleTombstones(DateTimeOffset now)
+    {
+        // Revocations are rare, so sweep here instead of adding a timer to the registry.
+        var stale = _revokedAt.Where(entry => now - entry.Value > TombstoneRetention).ToList();
+        foreach (var entry in stale)
+        {
+            _revokedAt.Remove(entry.Key);
+        }
     }
 
     public Task<bool> IsRevokedAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
-        => Task.FromResult(_revokedAt.ContainsKey((userId, sessionId)));
+    {
+        lock (_gate)
+        {
+            return Task.FromResult(_revokedAt.ContainsKey((userId, sessionId)));
+        }
+    }
 }
