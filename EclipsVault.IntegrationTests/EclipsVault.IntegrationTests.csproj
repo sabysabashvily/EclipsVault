@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- Hosts the real vault over HTTP against a real SQL Server that Testcontainers starts per run
-       (ADR-0010), so it needs Docker. The unit suite in EclipsVault.Tests stays Docker-free. -->
+       (ADR-0010), and runs data migrations on real SQL Server and PostgreSQL databases, so it needs
+       Docker. The unit suite in EclipsVault.Tests stays Docker-free. -->
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
@@ -14,6 +15,7 @@
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Testcontainers.MsSql" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>

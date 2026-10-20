@@ -35,7 +35,7 @@ public sealed partial class VaultFixture : IAsyncLifetime
     /// SQL Server 2025, pinned by digest so a run is repeatable. Local development (<c>docker-compose.yml</c>)
     /// runs 2022; the vault supports both.
     /// </summary>
-    private const string SqlServerImage =
+    internal const string SqlServerImage =
         "mcr.microsoft.com/mssql/server:2025-latest@sha256:ca62ad2d75975074cbc9ac39a1329cd88af9cd3ea2ffb59d6302579a97cf32f4";
 
     public const string AdminUsername = "vault-admin";
