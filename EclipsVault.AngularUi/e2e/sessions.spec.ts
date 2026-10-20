@@ -194,6 +194,7 @@ test('the confirmation announces its text, defaults to Cancel, traps focus and r
   await expect(devices.confirmation).not.toBeVisible();
   await expect(signOut).toBeFocused();
   await signOut.click();
+  await expect(devices.cancel).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(devices.continue).toBeFocused();
   await page.keyboard.press('Tab');
