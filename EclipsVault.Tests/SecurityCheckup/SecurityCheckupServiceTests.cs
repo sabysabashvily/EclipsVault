@@ -16,9 +16,9 @@ namespace EclipsVault.Tests.SecurityCheckupTests;
 /// </summary>
 public class SecurityCheckupServiceTests
 {
+    // Fakes answer only for User, so a read keyed to anyone else shows up as missing data.
     private static readonly Guid User = Guid.NewGuid();
 
-    // Fakes answer only for User, so a read keyed to anyone else shows up as missing data.
     private sealed class FakeProfile : IProfileService
     {
         private readonly ProfileDto? _dto;

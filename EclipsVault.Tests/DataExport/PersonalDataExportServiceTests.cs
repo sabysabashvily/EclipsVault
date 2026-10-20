@@ -20,9 +20,9 @@ namespace EclipsVault.Tests.DataExport;
 /// </summary>
 public class PersonalDataExportServiceTests
 {
+    // Fakes answer only for User, so a read keyed to anyone else shows up as missing data.
     private static readonly Guid User = Guid.NewGuid();
 
-    // Fakes answer only for User, so a read keyed to anyone else shows up as missing data.
     private sealed class FakeProfile(ProfileDto? dto) : IProfileService
     {
         public Task<ProfileDto?> GetAsync(Guid userId, CancellationToken ct)
@@ -131,7 +131,7 @@ public class PersonalDataExportServiceTests
     }
 
     [Fact]
-    public async Task It_maps_every_source_into_the_export()
+    public async Task Every_source_is_read_for_the_caller_and_mapped_into_the_export()
     {
         var export = await NewService(passkeys: 2, codes: 7, devices: 3, requests: 4, activity: 5)
             .BuildForUserAsync(User, CancellationToken.None);
@@ -156,20 +156,6 @@ public class PersonalDataExportServiceTests
 
         var entry = Assert.Single(export!.RecentActivity);
         Assert.Equal("Signed in", entry.Action);
-    }
-
-    [Fact]
-    public async Task Every_source_is_read_for_the_caller_only()
-    {
-        var export = await NewService().BuildForUserAsync(User, CancellationToken.None);
-
-        Assert.NotNull(export);
-        Assert.Equal("alice", export.Account.Username);
-        Assert.Single(export.Security.Passkeys);
-        Assert.Equal(5, export.Security.BackupCodesRemaining);
-        Assert.Equal(2, export.SignedInDevices.Count);
-        Assert.Single(export.AccessRequests);
-        Assert.Equal(3, export.RecentActivity.Count);
     }
 
     [Fact]
