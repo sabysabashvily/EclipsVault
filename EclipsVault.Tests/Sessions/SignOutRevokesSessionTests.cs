@@ -74,7 +74,7 @@ public class SignOutRevokesSessionTests
     [Fact]
     public async Task Signing_out_revokes_the_session_so_a_copied_cookie_is_refused()
     {
-        var sessions = new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance);
+        var sessions = new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance, TimeProvider.System);
         var userId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
         await sessions.RecordSeenAsync(new SessionObservation(
@@ -93,7 +93,7 @@ public class SignOutRevokesSessionTests
     [Fact]
     public async Task A_principal_without_a_session_id_is_still_signed_out()
     {
-        var sessions = new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance);
+        var sessions = new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance, TimeProvider.System);
         var (controller, auth) = SignedInController(sessions,
             new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()));
 
@@ -106,7 +106,7 @@ public class SignOutRevokesSessionTests
     [Fact]
     public async Task Signing_out_an_unrecorded_session_also_revokes_copied_cookies()
     {
-        var sessions = new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance);
+        var sessions = new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance, TimeProvider.System);
         var userId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
         var (controller, auth) = SignedInController(sessions,

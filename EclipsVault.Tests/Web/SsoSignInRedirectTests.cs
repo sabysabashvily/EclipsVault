@@ -66,7 +66,7 @@ public class SsoSignInRedirectTests
                 .BuildServiceProvider()
         };
         var controller = new AccountController(null!, null!, null!,
-            new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance), null!,
+            new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance, TimeProvider.System), null!,
             new BothFactorsAtTheIdp(), null!, NullLogger<AccountController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = http }

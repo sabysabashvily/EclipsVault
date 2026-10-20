@@ -14,6 +14,7 @@ public sealed class InMemorySessionRegistry : ISessionRegistry
     private static readonly TimeSpan TouchThrottle = TimeSpan.FromSeconds(60);
     // A tombstone older than any session's lifetime is moot (the cookie has expired anyway).
     private static readonly TimeSpan TombstoneRetention = TimeSpan.FromHours(12);
+    private static readonly TimeSpan TombstoneSweepInterval = TimeSpan.FromMinutes(1);
 
     private sealed record Entry(
         Guid SessionId, string Device, string IpAddress,
@@ -23,8 +24,14 @@ public sealed class InMemorySessionRegistry : ISessionRegistry
     private readonly Dictionary<Guid, Dictionary<Guid, Entry>> _sessions = new();
     private readonly Dictionary<(Guid UserId, Guid SessionId), DateTimeOffset> _revokedAt = new();
     private readonly ILogger<InMemorySessionRegistry> _logger;
+    private readonly TimeProvider _clock;
+    private DateTimeOffset _nextTombstoneSweepAt = DateTimeOffset.MinValue;
 
-    public InMemorySessionRegistry(ILogger<InMemorySessionRegistry> logger) => _logger = logger;
+    public InMemorySessionRegistry(ILogger<InMemorySessionRegistry> logger, TimeProvider clock)
+    {
+        _logger = logger;
+        _clock = clock;
+    }
 
     public Task RecordSeenAsync(SessionObservation observation, CancellationToken ct = default)
     {
@@ -71,7 +78,7 @@ public sealed class InMemorySessionRegistry : ISessionRegistry
                 return Task.FromResult<IReadOnlyList<ActiveSession>>([]);
             }
 
-            var now = DateTimeOffset.UtcNow;
+            var now = _clock.GetUtcNow();
             // Materialize before removing so enumeration never observes a changing dictionary.
             foreach (var expired in sessions.Values.Where(entry => entry.ExpiresAtUtc <= now).ToList())
             {
@@ -91,7 +98,7 @@ public sealed class InMemorySessionRegistry : ISessionRegistry
     {
         lock (_gate)
         {
-            var now = DateTimeOffset.UtcNow;
+            var now = _clock.GetUtcNow();
             SweepStaleTombstones(now);
             // Metadata can be missing while a cookie is valid; sign-out must still reject its copies.
             _revokedAt[(userId, sessionId)] = now;
@@ -108,7 +115,13 @@ public sealed class InMemorySessionRegistry : ISessionRegistry
 
     private void SweepStaleTombstones(DateTimeOffset now)
     {
-        // Revocations are rare, so sweep here instead of adding a timer to the registry.
+        // Unknown ids also create tombstones; repeated revokes must not repeatedly scan under the shared lock.
+        if (now < _nextTombstoneSweepAt)
+        {
+            return;
+        }
+
+        _nextTombstoneSweepAt = now + TombstoneSweepInterval;
         var stale = _revokedAt.Where(entry => now - entry.Value > TombstoneRetention).ToList();
         foreach (var entry in stale)
         {

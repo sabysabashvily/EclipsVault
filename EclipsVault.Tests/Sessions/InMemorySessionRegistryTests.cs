@@ -13,7 +13,7 @@ namespace EclipsVault.Tests.Sessions;
 public class InMemorySessionRegistryTests
 {
     private static InMemorySessionRegistry CreateRegistry()
-        => new(NullLogger<InMemorySessionRegistry>.Instance);
+        => new(NullLogger<InMemorySessionRegistry>.Instance, TimeProvider.System);
 
     private static SessionObservation Observation(
         Guid userId, Guid sessionId, string device = "Chrome on macOS", string ip = "203.0.113.5",
@@ -261,4 +261,36 @@ public class InMemorySessionRegistryTests
     [Fact]
     public async Task An_unknown_session_is_not_revoked()
         => Assert.False(await CreateRegistry().IsRevokedAsync(Guid.NewGuid(), Guid.NewGuid()));
+
+    [Fact]
+    public async Task Repeated_revocations_sweep_old_tombstones_at_most_once_a_minute()
+    {
+        var start = new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero);
+        var clock = new MutableClock(start);
+        var registry = new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance, clock);
+        var userId = Guid.NewGuid();
+        var oldSession = Guid.NewGuid();
+        await registry.RevokeAsync(userId, oldSession);
+
+        clock.Now = start.AddHours(12);
+        await registry.RevokeAsync(userId, Guid.NewGuid());
+        Assert.True(await registry.IsRevokedAsync(userId, oldSession));
+
+        clock.Now = start.AddHours(12).AddSeconds(59);
+        var newlyRevoked = Guid.NewGuid();
+        await registry.RevokeAsync(userId, newlyRevoked);
+        Assert.True(await registry.IsRevokedAsync(userId, oldSession));
+        Assert.True(await registry.IsRevokedAsync(userId, newlyRevoked));
+
+        clock.Now = start.AddHours(12).AddMinutes(1);
+        await registry.RevokeAsync(userId, Guid.NewGuid());
+        Assert.False(await registry.IsRevokedAsync(userId, oldSession));
+        Assert.True(await registry.IsRevokedAsync(userId, newlyRevoked));
+    }
+
+    private sealed class MutableClock(DateTimeOffset now) : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; } = now;
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
 }
