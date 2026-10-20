@@ -20,7 +20,8 @@ public class UiApiResponseTypeTests
 
     /// <summary>
     /// Actions that answer with a file, declared as a <see cref="Stream"/>, instead of a response type.
-    /// The personal data export keeps its own versioned format, and its HTTP test pins every field.
+    /// The personal data export keeps its own versioned format instead. Its fields are pinned by
+    /// <c>PersonalDataExportServiceTests</c>, every nested item included, and the served file by <c>DataApiTests</c>.
     /// </summary>
     private static readonly HashSet<string> FileDownloads = ["DataController.Export"];
 

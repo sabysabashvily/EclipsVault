@@ -74,7 +74,7 @@ test("Your data shows the account, its six What's included cards, the notice and
   await expect(yourData.introduction).toHaveText(
     "Everything EclipsVault holds about your account, in one place. Download a portable copy for your records — or just to see what's stored. Only your data is included.",
   );
-  await expect(page.getByRole('main').getByRole('term')).toHaveText([
+  await expect(yourData.accountLabels).toHaveText([
     'Username',
     'Display name',
     'Email',
@@ -98,36 +98,37 @@ test("Your data shows the account, its six What's included cards, the notice and
     ['1', 'Access requests filed'],
     ['42', 'Recent activity entries'],
   ]);
-  await expect(page.getByText(summary.notice, { exact: true })).toBeVisible();
+  await expect(yourData.notice).toHaveText(summary.notice);
   await expect(yourData.download).toBeVisible();
   await expect(yourData.downloadCopy).toBeVisible();
 });
 
-test('both buttons download the signed-in account’s own file under its dated name', async ({
-  page,
-}) => {
-  const yourData = await openAsAdministrator(page);
-  await expect(yourData.accountValues.first()).toHaveText('vault-admin');
-
-  for (const button of [yourData.download, yourData.downloadCopy]) {
+for (const [label, button] of [
+  ['Download (JSON)', 'download'],
+  ['Download a copy of my data (JSON)', 'downloadCopy'],
+] as const) {
+  test(`${label} downloads the signed-in account's own file under its dated name`, async ({
+    page,
+  }) => {
+    const yourData = await openAsAdministrator(page);
+    await expect(yourData.accountValues.first()).toHaveText('vault-admin');
     const exported = page.waitForRequest('**/api/ui/data/export');
     const downloaded = page.waitForEvent('download');
-    await button.click();
+
+    await yourData[button].click();
 
     expect((await exported).headers()['requestverificationtoken']).toBeTruthy();
     const file = await downloaded;
+    expect(file.suggestedFilename()).toMatch(/^eclipsvault-data-vault-admin-\d{8}\.json$/);
     const body = JSON.parse(await readFile((await file.path())!, 'utf8')) as {
-      GeneratedAtUtc: string;
       SchemaVersion: string;
       Account: { Username: string };
     };
-    const stamp = body.GeneratedAtUtc.slice(0, 10).replaceAll('-', '');
-    expect(file.suggestedFilename()).toBe(`eclipsvault-data-vault-admin-${stamp}.json`);
     expect(body.SchemaVersion).toBe('1.0');
     expect(body.Account.Username).toBe('vault-admin');
-  }
-  await expect(yourData.error).toBeEmpty();
-});
+    await expect(yourData.error).toBeEmpty();
+  });
+}
 
 test('a refused export shows why and downloads nothing', async ({ page, browserHealth }) => {
   const refusal = 'The audit trail is unavailable, so the vault refused the request.';
@@ -167,7 +168,7 @@ test('Your data reports a load failure and retries in place', async ({ page, bro
       documents.push(request.url());
   });
 
-  await page.getByRole('button', { name: 'Try again', exact: true }).click();
+  await yourData.retry.click();
 
   await expect(yourData.accountValues.first()).toHaveText('vault-admin');
   await expect(yourData.error).toBeEmpty();

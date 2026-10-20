@@ -27,11 +27,13 @@ const disposition =
 describe('DataPage', () => {
   let backend: HttpTestingController;
   let saved: { href: string; download: string }[];
+  let objectUrlEvents: string[];
   const createObjectURL = vi.fn(() => 'blob:https://vault.local/export');
-  const revokeObjectURL = vi.fn();
+  const revokeObjectURL = vi.fn((url: string) => objectUrlEvents.push(`revoked ${url}`));
 
   beforeEach(() => {
     saved = [];
+    objectUrlEvents = [];
     createObjectURL.mockClear();
     revokeObjectURL.mockClear();
     // jsdom implements neither, and a real object URL would outlive the test.
@@ -41,7 +43,7 @@ describe('DataPage', () => {
       this: HTMLAnchorElement,
     ) {
       saved.push({ href: this.href, download: this.download });
-      expect(revokeObjectURL).not.toHaveBeenCalled();
+      objectUrlEvents.push(`clicked ${this.href}`);
     });
   });
 
@@ -74,6 +76,7 @@ describe('DataPage', () => {
   }
 
   function cards(page: HTMLElement): string[][] {
+    // A card is a styled pair of spans with no role of its own, so only its class finds it.
     return [...page.querySelectorAll('.stat-card')].map((card) =>
       [...card.children].map((part) => part.textContent!.trim()),
     );
@@ -99,7 +102,7 @@ describe('DataPage', () => {
     await fixture.whenStable();
 
     expect(page.textContent).not.toContain('Could not load');
-    expect(page.querySelector('dd.mono')?.textContent).toBe('saba');
+    expect(accountRows(page)[0]).toEqual(['Username', 'saba']);
   });
 
   it("shows the account, the six What's included cards, the notice and both downloads", async () => {
@@ -128,9 +131,7 @@ describe('DataPage', () => {
       ['1', 'Access requests filed'],
       ['42', 'Recent activity entries'],
     ]);
-    expect(page.querySelector('p.muted')?.textContent).toBe(
-      'This file never includes secret values.',
-    );
+    expect(page.textContent).toContain('This file never includes secret values.');
     expect(button(page, 'Download (JSON)')).toBeDefined();
     expect(button(page, 'Download a copy of my data (JSON)')).toBeDefined();
   });
@@ -173,7 +174,10 @@ describe('DataPage', () => {
           download: 'eclipsvault-data-saba-20261021.json',
         },
       ]);
-      expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith('blob:https://vault.local/export');
+      expect(objectUrlEvents).toEqual([
+        'clicked blob:https://vault.local/export',
+        'revoked blob:https://vault.local/export',
+      ]);
       expect(button(page, 'Download (JSON)').disabled).toBe(false);
       document.cookie = 'XSRF-TOKEN=; path=/; max-age=0';
     },

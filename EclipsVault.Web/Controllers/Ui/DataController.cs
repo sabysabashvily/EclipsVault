@@ -54,7 +54,7 @@ public sealed class DataController(IPersonalDataExportService export, IAuditSink
             data.Notice);
     }
 
-    /// <summary>The Legacy export file, byte for byte: its body, name and cache headers are unchanged.</summary>
+    /// <summary>The portable copy: export schema 1.0 as indented JSON, under a dated attachment name, never cached.</summary>
     [HttpPost("export")]
     [ProducesResponseType<Stream>(StatusCodes.Status200OK, "application/json")]
     public async Task<IActionResult> Export(CancellationToken ct)
@@ -103,12 +103,12 @@ public sealed class DataController(IPersonalDataExportService export, IAuditSink
     /// <summary>Reduces a username to filename-safe characters (defence against header/path oddities).</summary>
     private static string SafeSlug(string value)
     {
-        var sb = new StringBuilder(value.Length);
-        foreach (var c in value)
+        var safe = new StringBuilder(value.Length);
+        foreach (var character in value)
         {
-            sb.Append(char.IsLetterOrDigit(c) || c is '-' or '_' or '.' ? c : '-');
+            safe.Append(char.IsLetterOrDigit(character) || character is '-' or '_' or '.' ? character : '-');
         }
-        var slug = sb.ToString().Trim('-');
+        var slug = safe.ToString().Trim('-');
         return slug.Length == 0 ? "account" : slug;
     }
 }

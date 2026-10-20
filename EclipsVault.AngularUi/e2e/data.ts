@@ -6,23 +6,31 @@ export type YourDataSummary = components['schemas']['DataResponse'];
 export class YourData {
   readonly heading;
   readonly introduction;
+  readonly accountLabels;
   readonly accountValues;
+  readonly notice;
   readonly download;
   readonly downloadCopy;
   readonly error;
+  readonly retry;
 
   constructor(readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Your data', exact: true });
     this.introduction = page.getByText('Everything EclipsVault holds about your account', {
       exact: false,
     });
+    this.accountLabels = page.getByRole('main').getByRole('term');
     this.accountValues = page.getByRole('main').getByRole('definition');
+    this.notice = page.getByText('This file contains the account and security metadata', {
+      exact: false,
+    });
     this.download = page.getByRole('button', { name: 'Download (JSON)', exact: true });
     this.downloadCopy = page.getByRole('button', {
       name: 'Download a copy of my data (JSON)',
       exact: true,
     });
     this.error = page.getByRole('main').getByRole('alert');
+    this.retry = page.getByRole('button', { name: 'Try again', exact: true });
   }
 
   /** Each card's value and label, which have no accessible structure of their own. */

@@ -65,14 +65,12 @@ public sealed class DataApiTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task The_export_sends_the_legacy_file_and_records_exactly_one_audit_row()
+    public async Task The_export_sends_the_legacy_file_with_its_name_cache_headers_and_pinned_shape()
     {
         // Leading and trailing hyphens are valid in a username but are trimmed from the file name.
         var account = await SessionAccount.CreateAsync(vault, "-it-data-file-", "198.51.100.202");
         await account.OpenDeviceAsync(0, "198.51.100.203");
-        var userId = SessionApi.PrincipalOf(vault, account.Browser).GetUserId();
         using var summary = JsonDocument.Parse(await account.Browser.Client.GetStringAsync("/api/ui/data"));
-        var before = await LegacySharing.AuditHeadAsync(vault);
 
         var response = await SessionApi.WriteAsync(account.Browser, HttpMethod.Post, "/api/ui/data/export");
 
@@ -108,19 +106,34 @@ public sealed class DataApiTests(VaultFixture vault)
         Assert.All(devices, device => Assert.Equal(["Device", "IpAddress", "LastActiveAtUtc", "SignedInAtUtc"], NamesOf(device)));
         Assert.Empty(export.GetProperty("AccessRequests").EnumerateArray());
         var activity = export.GetProperty("RecentActivity").EnumerateArray().ToArray();
+        // How many rows the account's sign-ins wrote is the vault's detail; the page must show the file's count.
         Assert.Equal(summary.RootElement.GetProperty("activityCount").GetInt32(), activity.Length);
         Assert.All(activity, entry => Assert.Equal(["Action", "Resource", "SourceIp", "TimestampUtc"], NamesOf(entry)));
+    }
+
+    [Fact]
+    public async Task The_export_records_exactly_one_PersonalDataExported_row_naming_its_activity_count()
+    {
+        var session = await vault.SignInNewAccountAsync("it-data-audited", IPAddress.Parse("198.51.100.210"));
+        var userId = SessionApi.PrincipalOf(vault, session).GetUserId();
+        var before = await LegacySharing.AuditHeadAsync(vault);
+
+        var response = await SessionApi.WriteAsync(session, HttpMethod.Post, "/api/ui/data/export");
+
+        using var file = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var activityCount = file.RootElement.GetProperty("RecentActivity").GetArrayLength();
         var row = Assert.Single(await LegacySharing.AuditRowsAfterAsync(vault, before));
         Assert.Equal(AuditAction.PersonalDataExported, row.Action);
         Assert.Equal("Account", row.ResourceType);
         Assert.Equal(userId, row.ResourceId);
         Assert.Equal(userId, row.UserId);
-        Assert.Equal("198.51.100.202", row.SourceIp);
-        Assert.Equal($"Exported personal data ({activity.Length} activity entries)", row.Details);
+        Assert.Equal("198.51.100.210", row.SourceIp);
+        // The count depends on how many sign-in steps wrote activity rows, so it is read from the file the row describes.
+        Assert.Equal($"Exported personal data ({activityCount} activity entries)", row.Details);
     }
 
     [Fact]
-    public async Task Two_accounts_see_and_export_only_their_own_data_even_with_injected_exportedAccountparameters()
+    public async Task Two_accounts_see_and_export_only_their_own_data_even_with_injected_account_parameters()
     {
         var a = await vault.SignInNewAccountAsync("it-data-scope-a", IPAddress.Parse("198.51.100.204"));
         var b = await vault.SignInNewAccountAsync("it-data-scope-b", IPAddress.Parse("198.51.100.205"));
@@ -186,7 +199,7 @@ public sealed class DataApiTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task A_session_without_its_exportedAccountid_is_refused_before_reading_or_exporting_its_data()
+    public async Task A_session_without_its_account_id_is_refused_before_reading_or_exporting_its_data()
     {
         var source = IPAddress.Parse("198.51.100.208");
         var original = await vault.SignInNewAccountAsync("it-data-no-account-id", source);
