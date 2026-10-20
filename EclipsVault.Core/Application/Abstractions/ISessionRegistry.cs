@@ -28,6 +28,5 @@ public interface ISessionRegistry
     /// </summary>
     Task<bool> RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default);
 
-    /// <summary>Whether this specific session has been individually revoked.</summary>
     Task<bool> IsRevokedAsync(Guid userId, Guid sessionId, CancellationToken ct = default);
 }

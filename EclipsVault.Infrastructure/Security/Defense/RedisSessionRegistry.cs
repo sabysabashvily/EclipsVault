@@ -76,20 +76,20 @@ return 1";
         _logger = logger;
     }
 
-    public async Task RecordSeenAsync(SessionObservation o, CancellationToken ct = default)
+    public async Task RecordSeenAsync(SessionObservation observation, CancellationToken ct = default)
     {
-        var ttlSeconds = Math.Max(60, (int)(o.ExpiresAtUtc - o.SeenAtUtc).TotalSeconds);
-        var db = _redis.GetDatabase();
-        await db.ScriptEvaluateAsync(
+        var ttlSeconds = Math.Max(60, (int)(observation.ExpiresAtUtc - observation.SeenAtUtc).TotalSeconds);
+        var database = _redis.GetDatabase();
+        await database.ScriptEvaluateAsync(
             UpsertScript,
-            new RedisKey[] { SessionsKey(o.UserId), RevokedKey(o.UserId, o.SessionId) },
+            new RedisKey[] { SessionsKey(observation.UserId), RevokedKey(observation.UserId, observation.SessionId) },
             new RedisValue[]
             {
-                o.SessionId.ToString("N"),
-                o.SeenAtUtc.ToUnixTimeSeconds(),
-                o.Device,
-                o.IpAddress,
-                o.ExpiresAtUtc.ToUnixTimeSeconds(),
+                observation.SessionId.ToString("N"),
+                observation.SeenAtUtc.ToUnixTimeSeconds(),
+                observation.Device,
+                observation.IpAddress,
+                observation.ExpiresAtUtc.ToUnixTimeSeconds(),
                 TouchThrottleSeconds,
                 ttlSeconds
             });
@@ -97,21 +97,21 @@ return 1";
 
     public async Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, CancellationToken ct = default)
     {
-        var db = _redis.GetDatabase();
-        var entries = await db.HashGetAllAsync(SessionsKey(userId));
+        var database = _redis.GetDatabase();
+        var entries = await database.HashGetAllAsync(SessionsKey(userId));
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         var result = new List<ActiveSession>(entries.Length);
         foreach (var entry in entries)
         {
             var stored = JsonSerializer.Deserialize<StoredSession>((string)entry.Value!, Json);
-            if (stored is null || stored.ExpiresUnix <= now || !Guid.TryParse(stored.SessionId, out var sid))
+            if (stored is null || stored.ExpiresUnix <= now || !Guid.TryParse(stored.SessionId, out var sessionId))
             {
                 continue;
             }
 
             result.Add(new ActiveSession(
-                sid,
+                sessionId,
                 stored.Device,
                 stored.IpAddress,
                 DateTimeOffset.FromUnixTimeSeconds(stored.CreatedUnix),
@@ -123,8 +123,8 @@ return 1";
 
     public async Task<bool> RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
     {
-        var db = _redis.GetDatabase();
-        var removed = (long)await db.ScriptEvaluateAsync(
+        var database = _redis.GetDatabase();
+        var removed = (long)await database.ScriptEvaluateAsync(
             RevokeScript,
             new RedisKey[] { SessionsKey(userId), RevokedKey(userId, sessionId) },
             new RedisValue[] { sessionId.ToString("N"), _tombstoneSeconds }) == 1;
