@@ -48,6 +48,9 @@
     "node": "24.22.0"
   },
   "overrides": {
+    "@angular/build": {
+      "vite": "8.3.4"
+    },
     "openapi-typescript": {
       "typescript": "$typescript"
     }
