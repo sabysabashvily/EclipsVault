@@ -48,7 +48,7 @@ public interface ISecretGrantService
     Task<IReadOnlyList<OutgoingShareDto>> ListIssuedByAsync(Guid issuerUserId, CancellationToken ct);
 
     /// <summary>Grants a user (by username or email) access to a secret. Throws SharingException on invalid input.</summary>
-    Task GrantAsync(Guid secretId, string secretName, string granteeUsernameOrEmail, int? ttlDays, CancellationToken ct);
+    Task GrantAsync(Guid secretId, string granteeUsernameOrEmail, int? ttlDays, CancellationToken ct);
 
     /// <summary>
     /// Revokes a grant that belongs to <paramref name="secretId"/>. The secret is a required

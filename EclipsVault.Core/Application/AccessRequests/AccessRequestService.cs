@@ -101,7 +101,7 @@ public sealed class AccessRequestService : IAccessRequestService
         // here (SharingException) propagates so the reviewer sees it and the request stays pending.
         if (!await _grants.HasActiveGrantAsync(request.RequesterUserId, request.SecretId, ct))
         {
-            await _grants.GrantAsync(request.SecretId, request.SecretName, request.RequesterUsername, ttlDays, ct);
+            await _grants.GrantAsync(request.SecretId, request.RequesterUsername, ttlDays, ct);
         }
 
         Decide(request, AccessRequestStatus.Approved, reviewerUsername, note);

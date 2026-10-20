@@ -386,7 +386,7 @@ public sealed class SecretsController : VaultController
 
         try
         {
-            await _grants.GrantAsync(model.SecretId, details.Name, model.GranteeUsernameOrEmail, model.TtlDays, ct);
+            await _grants.GrantAsync(model.SecretId, model.GranteeUsernameOrEmail, model.TtlDays, ct);
             this.FlashSuccess($"Access to '{details.Name}' was shared with {model.GranteeUsernameOrEmail}.");
         }
         catch (SharingException ex)

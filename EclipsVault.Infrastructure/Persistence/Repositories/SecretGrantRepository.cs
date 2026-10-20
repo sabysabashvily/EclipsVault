@@ -1,5 +1,6 @@
 using EclipsVault.Core.Application.Secrets;
 using EclipsVault.Core.Domain.Entities;
+using EclipsVault.Core.Domain.Exceptions;
 using Microsoft.EntityFrameworkCore;
 
 namespace EclipsVault.Infrastructure.Persistence.Repositories;
@@ -13,7 +14,7 @@ public sealed class SecretGrantRepository : ISecretGrantRepository
     public async Task AddAsync(SecretGrant grant, CancellationToken ct)
     {
         _context.SecretGrants.Add(grant);
-        await _context.SaveChangesAsync(ct);
+        await SaveShareChangeAsync(ct);
     }
 
     public Task<SecretGrant?> FindAsync(Guid grantId, CancellationToken ct)
@@ -28,8 +29,22 @@ public sealed class SecretGrantRepository : ISecretGrantRepository
         }
 
         _context.SecretGrants.Remove(grant);
-        await _context.SaveChangesAsync(ct);
+        await SaveShareChangeAsync(ct);
         return true;
+    }
+
+    private async Task SaveShareChangeAsync(CancellationToken ct)
+    {
+        try
+        {
+            await _context.SaveChangesAsync(ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The interceptor includes the audit row in this transaction. A failed save must use
+            // the same fail-closed response as a standalone audit write, after rollback completes.
+            throw new AuditWriteFailedException("The share and its audit row could not be persisted.", ex);
+        }
     }
 
     public Task<bool> HasActiveGrantAsync(Guid userId, Guid secretId, DateTimeOffset asOfUtc, CancellationToken ct)
