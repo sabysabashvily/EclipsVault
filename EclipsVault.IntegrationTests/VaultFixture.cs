@@ -352,7 +352,7 @@ public sealed record VaultSession(HttpClient Client, CookieContainer Cookies)
     public Cookie? SessionCookie => Cookies.GetCookies(Client.BaseAddress!)[VaultFixture.SessionCookie];
 }
 
-/// <summary>Every integration test shares the one vault: starting SQL Server per test would take minutes.</summary>
+/// <summary>Ordinary HTTP tests share one vault: starting SQL Server per test would take minutes.</summary>
 [CollectionDefinition(Name)]
 public sealed class VaultCollection : ICollectionFixture<VaultFixture>
 {

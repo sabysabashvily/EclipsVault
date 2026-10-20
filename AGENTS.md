@@ -23,6 +23,12 @@ file, tests and commit messages included, and the code-review Standards axis che
   The endpoints that throw each domain exception, to pin the UI API's error mapping, live in
   `EclipsVault.IntegrationTests/TestOnlyEndpoints.cs`. Only `VaultFixture` adds them to the host
   under test; never put such an endpoint in `EclipsVault.Web`.
+  `AuditFailureFixture` owns a second Production vault and SQL Server, in a collection that runs
+  alone because startup uses process-wide environment variables. It starts and signs in normally,
+  then `RejectAuditWritesAsync` installs a database constraint that rejects every audit insert,
+  including interceptor rows and standalone group commits. Tests restore writes in `finally`.
+  This proves real transaction rollback without replacing services or modifying `Program`.
+  The separate host protects ordinary HTTP tests from the failure mode and makes the suite slower.
 - A model change needs a migration in both sets: SQL Server (`EclipsVault.Infrastructure`) and PostgreSQL
   (`EclipsVault.Migrations.Postgres`). CI checks both; the exact `dotnet ef` commands are in
   `.github/workflows/ci.yml`. For Postgres the startup project is `EclipsVault.Web`.
