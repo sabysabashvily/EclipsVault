@@ -21,6 +21,7 @@ const activity = () => import('./activity/activity-page').then((m) => m.Activity
 const signIns = () => import('./sign-ins/sign-ins-page').then((m) => m.SignInsPage);
 const security = () => import('./security/security-page').then((m) => m.SecurityPage);
 const sessions = () => import('./sessions/sessions-page').then((m) => m.SessionsPage);
+const data = () => import('./data/data-page').then((m) => m.DataPage);
 
 export const routes: Routes = [
   {
@@ -33,6 +34,8 @@ export const routes: Routes = [
     loadComponent: sessions,
     title: 'Signed-in devices — EclipsVault',
   },
+  { matcher: legacyPath('Data'), loadComponent: data, title: 'Your data — EclipsVault' },
+  { matcher: legacyPath('Data/Index'), loadComponent: data, title: 'Your data — EclipsVault' },
   { matcher: legacyPath('Access'), loadComponent: access, title: 'My access — EclipsVault' },
   { matcher: legacyPath('Access/Index'), loadComponent: access, title: 'My access — EclipsVault' },
   { matcher: legacyPath('Activity'), loadComponent: activity, title: 'My activity — EclipsVault' },

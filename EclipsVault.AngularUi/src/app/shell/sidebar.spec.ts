@@ -77,7 +77,7 @@ describe('sidebar mapping', () => {
               { label: 'My activity', icon: 'activity', url: '/Activity', angular: true },
             ],
           },
-          { label: 'Your data', icon: 'data', url: '/Data', angular: false },
+          { label: 'Your data', icon: 'data', url: '/Data', angular: true },
         ],
       },
     ]);

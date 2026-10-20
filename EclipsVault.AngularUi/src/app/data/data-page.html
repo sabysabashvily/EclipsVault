@@ -1,0 +1,79 @@
+<div class="page-header">
+  <div>
+    <h1>Your data</h1>
+    <p class="page-sub">
+      Everything EclipsVault holds about your account, in one place. Download a portable copy for
+      your records — or just to see what's stored. Only <em>your</em> data is included.
+    </p>
+  </div>
+  <button type="button" class="button primary" [disabled]="downloading()" (click)="download()">
+    Download (JSON)
+  </button>
+</div>
+
+<app-status-line [message]="failure()" [error]="true" />
+
+@if (data.hasValue()) {
+  @let yours = data.value();
+  <section class="panel">
+    <div class="panel-header"><h2>Account</h2></div>
+    <dl class="detail-grid">
+      <dt>Username</dt>
+      <dd class="mono">{{ yours.account.username }}</dd>
+      <dt>Display name</dt>
+      <dd>{{ yours.account.displayName }}</dd>
+      <dt>Email</dt>
+      <dd>{{ yours.account.email }}</dd>
+      <dt>Clearance</dt>
+      <dd>{{ yours.account.clearance }}</dd>
+      <dt>Project</dt>
+      <dd>{{ yours.account.projectKey }}</dd>
+      <dt>Profile picture</dt>
+      <dd>{{ yours.account.hasCustomAvatar ? 'Custom image' : 'Generated identicon' }}</dd>
+    </dl>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header"><h2>What's included</h2></div>
+    <div class="stat-grid">
+      <div class="stat-card">
+        <span class="stat-value">{{ yours.twoStepEnabled ? 'On' : 'Off' }}</span>
+        <span class="stat-label">Two-step sign-in</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value">{{ yours.passkeyCount }}</span>
+        <span class="stat-label">Passkeys</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value">{{ yours.backupCodesRemaining }}</span>
+        <span class="stat-label">Backup codes left</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value">{{ yours.deviceCount }}</span>
+        <span class="stat-label">Signed-in devices</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value">{{ yours.accessRequestCount }}</span>
+        <span class="stat-label">Access requests filed</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value">{{ yours.activityCount }}</span>
+        <span class="stat-label">Recent activity entries</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <p class="muted">{{ yours.notice }}</p>
+    <button type="button" class="button primary" [disabled]="downloading()" (click)="download()">
+      Download a copy of my data (JSON)
+    </button>
+  </section>
+} @else if (data.error()) {
+  <section class="panel">
+    <p role="alert">Could not load your data. Try again.</p>
+    <button type="button" class="button" (click)="data.reload()">Try again</button>
+  </section>
+} @else {
+  <p role="status">Loading your data…</p>
+}

@@ -75,7 +75,7 @@ const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)
           link('activity', 'My activity', '/Activity', 'activity', true),
         ],
       },
-      link('data', 'Your data', '/Data'),
+      link('data', 'Your data', '/Data', 'data', true),
     ],
   },
   {

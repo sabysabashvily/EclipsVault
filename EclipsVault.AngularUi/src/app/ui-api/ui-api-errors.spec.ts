@@ -109,6 +109,43 @@ describe('uiApiErrors', () => {
     expect(assign).not.toHaveBeenCalled();
   });
 
+  it('reads the Problem Details of a failed file download, whose body arrives as a Blob', async () => {
+    const surfaced = new Promise((resolve) =>
+      http
+        .post('/api/ui/data/export', null, { responseType: 'blob' })
+        .subscribe({ error: resolve }),
+    );
+    const problem = { status: 503, code: 'audit_unavailable', title: 'Refused.' };
+
+    backend
+      .expectOne('/api/ui/data/export')
+      .flush(new Blob([JSON.stringify(problem)], { type: 'application/problem+json' }), {
+        status: 503,
+        statusText: 'Unavailable',
+      });
+
+    expect(await surfaced).toMatchObject({
+      status: 503,
+      code: 'audit_unavailable',
+      title: 'Refused.',
+    });
+  });
+
+  it('ends a stale session reported by a failed file download', async () => {
+    http.post('/api/ui/data/export', null, { responseType: 'blob' }).subscribe();
+
+    backend
+      .expectOne('/api/ui/data/export')
+      .flush(new Blob([JSON.stringify({ status: 401, code: 'stale_session', title: 'Stale.' })]), {
+        status: 401,
+        statusText: 'Unauthorized',
+      });
+
+    const logout = await vi.waitFor(() => backend.expectOne('/Account/Logout'));
+    logout.flush('');
+    expect(assign).toHaveBeenCalledExactlyOnceWith('/Account/Login');
+  });
+
   it('surfaces a failure without Problem Details as an unknown code', () => {
     let surfaced: unknown;
     http.get('/api/ui/me').subscribe({ error: (e: unknown) => (surfaced = e) });

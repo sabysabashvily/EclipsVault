@@ -243,7 +243,8 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
     (await context.cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')?.value,
   ).toBe(session?.value);
   administratorCookies = await context.cookies();
-  // The dependent Signed-in devices suite provisions its own account using this disposable session.
+  // The dependent suites reuse this disposable session: Signed-in devices provisions its own
+  // account with it, and Your data downloads the administrator's own file.
   await context.storageState({ path: 'test-results/sessions-administrator.json' });
 });
 

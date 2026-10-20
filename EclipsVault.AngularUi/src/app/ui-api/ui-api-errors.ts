@@ -1,6 +1,16 @@
 import { HttpClient, HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { DOCUMENT, Injectable, inject } from '@angular/core';
-import { NEVER, Observable, catchError, shareReplay, switchMap, throwError } from 'rxjs';
+import {
+  NEVER,
+  Observable,
+  catchError,
+  from,
+  map,
+  of,
+  shareReplay,
+  switchMap,
+  throwError,
+} from 'rxjs';
 
 /** A failed UI API call, carrying the Problem Details `code` the server chose (ADR-0006). */
 export class UiApiError extends Error {
@@ -38,6 +48,31 @@ function toUiApiError(response: HttpErrorResponse): UiApiError {
       problem.signedOut >= 0
       ? problem.signedOut
       : null,
+  );
+}
+
+function parsedOrNull(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+/** A file download's failure arrives as a Blob; its Problem Details are read like any other's. */
+function withReadableBody(response: HttpErrorResponse): Observable<HttpErrorResponse> {
+  if (!(response.error instanceof Blob)) return of(response);
+  return from(response.error.text()).pipe(
+    map(
+      (text) =>
+        new HttpErrorResponse({
+          error: parsedOrNull(text),
+          headers: response.headers,
+          status: response.status,
+          statusText: response.statusText,
+          url: response.url ?? undefined,
+        }),
+    ),
   );
 }
 
@@ -86,13 +121,17 @@ export const uiApiErrors: HttpInterceptorFn = (request, next) => {
       if (!(error instanceof HttpErrorResponse)) {
         return throwError(() => error);
       }
-      if (error.status === 401) {
-        if (toUiApiError(error).code === 'stale_session') return staleSession.end();
-        document.location.assign(signInUrl(document.location));
-        // The page is being left: nothing more for it to show.
-        return NEVER;
-      }
-      return throwError(() => toUiApiError(error));
+      return withReadableBody(error).pipe(
+        switchMap((response) => {
+          if (response.status === 401) {
+            if (toUiApiError(response).code === 'stale_session') return staleSession.end();
+            document.location.assign(signInUrl(document.location));
+            // The page is being left: nothing more for it to show.
+            return NEVER;
+          }
+          return throwError(() => toUiApiError(response));
+        }),
+      );
     }),
   );
 };

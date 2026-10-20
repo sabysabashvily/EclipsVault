@@ -42,6 +42,10 @@ public static class AngularUiRoutes
         // Signed-in devices
         "/Sessions",
         "/Sessions/Index",
+
+        // Your data
+        "/Data",
+        "/Data/Index",
     ];
 
     /// <summary>

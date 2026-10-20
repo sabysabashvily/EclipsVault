@@ -29,12 +29,18 @@ export default defineConfig({
     : [
         {
           name: 'chromium',
-          testIgnore: '**/sessions.spec.ts',
+          testIgnore: ['**/sessions.spec.ts', '**/data.spec.ts'],
           use: { ...devices['Desktop Chrome'] },
         },
         {
           name: 'sessions',
           testMatch: '**/sessions.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          name: 'data',
+          testMatch: '**/data.spec.ts',
           dependencies: ['chromium'],
           use: { ...devices['Desktop Chrome'] },
         },
