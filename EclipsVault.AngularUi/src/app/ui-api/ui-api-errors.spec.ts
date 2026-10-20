@@ -1,4 +1,9 @@
-import { HttpClient, HttpErrorResponse, provideHttpClient, withInterceptors } from '@angular/common/http';
+import {
+  HttpClient,
+  HttpErrorResponse,
+  provideHttpClient,
+  withInterceptors,
+} from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { DOCUMENT } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
@@ -15,7 +20,10 @@ describe('uiApiErrors', () => {
       providers: [
         provideHttpClient(withInterceptors([uiApiErrors])),
         provideHttpClientTesting(),
-        { provide: DOCUMENT, useValue: { location: { pathname: '/Access', search: '?tab=grid', assign } } },
+        {
+          provide: DOCUMENT,
+          useValue: { location: { pathname: '/Access', search: '?tab=grid', assign } },
+        },
       ],
     });
     http = TestBed.inject(HttpClient);
@@ -29,12 +37,16 @@ describe('uiApiErrors', () => {
     const error = vi.fn();
     http.get('/api/ui/me').subscribe({ next, error });
 
-    backend.expectOne('/api/ui/me').flush(
-      { status: 401, code: 'unauthenticated', title: 'Sign in to continue.' },
-      { status: 401, statusText: 'Unauthorized' },
-    );
+    backend
+      .expectOne('/api/ui/me')
+      .flush(
+        { status: 401, code: 'unauthenticated', title: 'Sign in to continue.' },
+        { status: 401, statusText: 'Unauthorized' },
+      );
 
-    expect(assign).toHaveBeenCalledExactlyOnceWith('/Account/Login?ReturnUrl=%2FAccess%3Ftab%3Dgrid');
+    expect(assign).toHaveBeenCalledExactlyOnceWith(
+      '/Account/Login?ReturnUrl=%2FAccess%3Ftab%3Dgrid',
+    );
     expect(next).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
   });
@@ -45,10 +57,12 @@ describe('uiApiErrors', () => {
     http.get('/api/ui/me').subscribe({ next, error });
     http.get('/api/ui/access').subscribe({ next, error });
     for (const path of ['/api/ui/me', '/api/ui/access']) {
-      backend.expectOne(path).flush(
-        { status: 401, code: 'stale_session', title: 'Sign out and sign in again.' },
-        { status: 401, statusText: 'Unauthorized' },
-      );
+      backend
+        .expectOne(path)
+        .flush(
+          { status: 401, code: 'stale_session', title: 'Sign out and sign in again.' },
+          { status: 401, statusText: 'Unauthorized' },
+        );
     }
 
     expect(assign).not.toHaveBeenCalled();
@@ -63,13 +77,17 @@ describe('uiApiErrors', () => {
   it('surfaces a failed stale-session sign-out without pretending the session ended, and permits retry', () => {
     const error = vi.fn();
     http.get('/api/ui/access').subscribe({ error });
-    backend.expectOne('/api/ui/access').flush({ code: 'stale_session' }, { status: 401, statusText: 'Unauthorized' });
+    backend
+      .expectOne('/api/ui/access')
+      .flush({ code: 'stale_session' }, { status: 401, statusText: 'Unauthorized' });
     backend.expectOne('/Account/Logout').flush('', { status: 503, statusText: 'Unavailable' });
     expect(assign).not.toHaveBeenCalled();
     expect(error).toHaveBeenCalledWith(expect.objectContaining({ code: 'sign_out_failed' }));
 
     http.get('/api/ui/access').subscribe();
-    backend.expectOne('/api/ui/access').flush({ code: 'stale_session' }, { status: 401, statusText: 'Unauthorized' });
+    backend
+      .expectOne('/api/ui/access')
+      .flush({ code: 'stale_session' }, { status: 401, statusText: 'Unauthorized' });
     backend.expectOne('/Account/Logout').flush('');
     expect(assign).toHaveBeenCalledExactlyOnceWith('/Account/Login');
   });
@@ -82,7 +100,9 @@ describe('uiApiErrors', () => {
     let surfaced: unknown;
     http.get('/api/ui/me').subscribe({ error: (e: unknown) => (surfaced = e) });
 
-    backend.expectOne('/api/ui/me').flush({ status, code, title: 'Refused.' }, { status, statusText: 'Refused' });
+    backend
+      .expectOne('/api/ui/me')
+      .flush({ status, code, title: 'Refused.' }, { status, statusText: 'Refused' });
 
     expect(surfaced).toBeInstanceOf(UiApiError);
     expect(surfaced).toMatchObject({ status, code, title: 'Refused.' });
@@ -93,7 +113,9 @@ describe('uiApiErrors', () => {
     let surfaced: unknown;
     http.get('/api/ui/me').subscribe({ error: (e: unknown) => (surfaced = e) });
 
-    backend.expectOne('/api/ui/me').flush('Bad gateway', { status: 502, statusText: 'Bad Gateway' });
+    backend
+      .expectOne('/api/ui/me')
+      .flush('Bad gateway', { status: 502, statusText: 'Bad Gateway' });
 
     expect(surfaced).toMatchObject({ status: 502, code: 'unknown' });
   });

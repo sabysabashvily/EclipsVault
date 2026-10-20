@@ -19,7 +19,9 @@ describe('App shell', () => {
   let backend: HttpTestingController;
 
   async function render(answer: (request: ReturnType<HttpTestingController['expectOne']>) => void) {
-    TestBed.configureTestingModule({ providers: [...appConfig.providers, provideHttpClientTesting()] });
+    TestBed.configureTestingModule({
+      providers: [...appConfig.providers, provideHttpClientTesting()],
+    });
     backend = TestBed.inject(HttpTestingController);
     const fixture = TestBed.createComponent(App);
     // Not whenStable(): it would wait for the very request this test answers.
@@ -36,7 +38,8 @@ describe('App shell', () => {
       request.flush(
         { status: 503, code: 'audit_unavailable', title: 'The audit trail is unavailable.' },
         { status: 503, statusText: 'Service Unavailable' },
-      ));
+      ),
+    );
 
     const alert = shell.querySelector('.sidebar [role="alert"]');
     expect(alert?.textContent).toContain('audit_unavailable');
@@ -62,29 +65,39 @@ describe('App shell', () => {
     const dialog = shell.querySelector('[role="dialog"]');
     expect(dialog?.closest('.sidebar')).toBeNull();
     expect(document.activeElement).toBe(dialog?.querySelector('.palette-input'));
-    expect([...shell.querySelectorAll('.palette-label')].map((label) => label.textContent))
-      .toEqual(['My access', 'Account details']);
+    expect([...shell.querySelectorAll('.palette-label')].map((label) => label.textContent)).toEqual(
+      ['My access', 'Account details'],
+    );
 
     profile.remove();
     dialog!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     trigger!.click();
     await TestBed.inject(ApplicationRef).whenStable();
-    expect([...shell.querySelectorAll('.palette-label')].map((label) => label.textContent)).toEqual(['My access']);
+    expect([...shell.querySelectorAll('.palette-label')].map((label) => label.textContent)).toEqual(
+      ['My access'],
+    );
   });
 
   it('renders the account menu and no licence notice when the server sends none', async () => {
     const shell = await render((request) => request.flush(me));
 
-    expect(shell.querySelector('.sidebar-footer .account-menu .user-name')?.textContent?.trim()).toBe('Vault Administrator');
+    expect(
+      shell.querySelector('.sidebar-footer .account-menu .user-name')?.textContent?.trim(),
+    ).toBe('Vault Administrator');
     expect(shell.querySelector('.notice')).toBeNull();
     expect(shell.textContent).not.toContain('unlicensed');
   });
 
   it('renders the licence notice the server sends, linking to the licence page', async () => {
-    const shell = await render((request) => request.flush({
-      ...me,
-      licenseNotice: { title: 'Running unlicensed.', text: 'No license key is installed. This changes nothing.' },
-    }));
+    const shell = await render((request) =>
+      request.flush({
+        ...me,
+        licenseNotice: {
+          title: 'Running unlicensed.',
+          text: 'No license key is installed. This changes nothing.',
+        },
+      }),
+    );
 
     const notice = shell.querySelector('.content .notice.notice-warn');
     expect(notice?.querySelector('strong')?.textContent).toBe('Running unlicensed.');

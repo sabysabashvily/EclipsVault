@@ -5,7 +5,9 @@ import { verifyMyAccess } from './access';
 /** Observable navigation, including the exact SVG geometry and styles a person sees. */
 async function navigation(page: Page) {
   return page.locator('.sidenav').evaluate((nav) => ({
-    sections: [...nav.querySelectorAll('.nav-section')].map((section) => section.textContent?.trim()),
+    sections: [...nav.querySelectorAll('.nav-section')].map((section) =>
+      section.textContent?.trim(),
+    ),
     items: [...nav.querySelectorAll('a, summary')].map((item) => {
       const style = getComputedStyle(item);
       return {
@@ -17,8 +19,16 @@ async function navigation(page: Page) {
           tag: shape.tagName,
           attributes: [...shape.attributes].map((attribute) => [attribute.name, attribute.value]),
         })),
-        style: [style.color, style.backgroundColor, style.fontFamily, style.fontSize, style.fontWeight,
-          style.padding, style.gap, style.borderRadius],
+        style: [
+          style.color,
+          style.backgroundColor,
+          style.fontFamily,
+          style.fontSize,
+          style.fontWeight,
+          style.padding,
+          style.gap,
+          style.borderRadius,
+        ],
       };
     }),
     groups: [...nav.querySelectorAll('details')].map((group) => group.open),
@@ -35,12 +45,22 @@ async function accountMenu(page: Page) {
   const menu = await footer.evaluate((root) => {
     const look = (element: Element) => {
       const style = getComputedStyle(element);
-      return [style.color, style.fontFamily, style.fontSize, style.fontWeight, style.padding, style.gap];
+      return [
+        style.color,
+        style.fontFamily,
+        style.fontSize,
+        style.fontWeight,
+        style.padding,
+        style.gap,
+      ];
     };
     return {
       title: root.querySelector('summary')?.getAttribute('title'),
       avatar: root.querySelector('img.avatar-img')?.getAttribute('src'),
-      who: [...root.querySelectorAll('.user-name, .user-clearance')].map((part) => [part.textContent?.trim(), look(part)]),
+      who: [...root.querySelectorAll('.user-name, .user-clearance')].map((part) => [
+        part.textContent?.trim(),
+        look(part),
+      ]),
       items: [...root.querySelectorAll('[role="menuitem"]')].map((item) => ({
         label: item.textContent?.trim(),
         href: item.getAttribute('href'),
@@ -54,7 +74,9 @@ async function accountMenu(page: Page) {
 
 /** The licensing notices above the page, as text. */
 async function notices(page: Page) {
-  return (await page.locator('.content > .notice').allInnerTexts()).map((text) => text.replace(/\s+/g, ' ').trim());
+  return (await page.locator('.content > .notice').allInnerTexts()).map((text) =>
+    text.replace(/\s+/g, ' ').trim(),
+  );
 }
 
 /** Crop to navigation content; the account menu is compared structurally, and the palette is compared in palette.ts. */
@@ -71,21 +93,36 @@ async function screenshot(page: Page, info: TestInfo, name: string) {
 }
 
 /** Compare the two real UIs on the same session, in each theme, and then use their links to cross over. */
-export async function verifySidebar(page: Page, info: TestInfo, account: 'administrator' | 'standard') {
+export async function verifySidebar(
+  page: Page,
+  info: TestInfo,
+  account: 'administrator' | 'standard',
+) {
   await page.setViewportSize({ width: 1440, height: 1200 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  const session = (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session');
+  const session = (await page.context().cookies()).find(
+    (cookie) => cookie.name === 'EclipsVault.Session',
+  );
   expect(session).toBeDefined();
 
   for (const theme of ['dark', 'light']) {
-    await page.context().addCookies([{ name: 'EclipsVault.Theme', value: theme, url: new URL('/', page.url()).href, secure: true }]);
+    await page.context().addCookies([
+      {
+        name: 'EclipsVault.Theme',
+        value: theme,
+        url: new URL('/', page.url()).href,
+        secure: true,
+      },
+    ]);
     const legacy = await page.goto('/Secrets');
     expect(legacy?.headers()['content-security-policy']).not.toContain('trusted-types');
     await expect(page.locator('.sidenav a.active')).toHaveText('Secrets');
     // Compare the Legacy styles in the same selected state as My access. The real active states
     // of both documents are asserted separately; the deleted Razor page is no longer a reference.
     await page.locator('.sidenav').evaluate((nav) => {
-      nav.querySelectorAll('.active, .has-active').forEach((item) => item.classList.remove('active', 'has-active'));
+      nav
+        .querySelectorAll('.active, .has-active')
+        .forEach((item) => item.classList.remove('active', 'has-active'));
       nav.querySelectorAll('details').forEach((group) => group.removeAttribute('open'));
       const access = nav.querySelector('a[href="/Access"]')!;
       access.classList.add('active');
@@ -99,7 +136,9 @@ export async function verifySidebar(page: Page, info: TestInfo, account: 'admini
     await screenshot(page, info, `${account}-${theme}-legacy`);
 
     const angular = await page.goto('/aCcEsS/INDEX');
-    expect(angular?.headers()['content-security-policy']).toContain("require-trusted-types-for 'script'");
+    expect(angular?.headers()['content-security-policy']).toContain(
+      "require-trusted-types-for 'script'",
+    );
     await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
     // The boot script applied the theme from the cookie the Legacy UI reads.
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
@@ -113,10 +152,20 @@ export async function verifySidebar(page: Page, info: TestInfo, account: 'admini
       expect(await page.content()).not.toMatch(/unlicensed|notice-warn/i);
       await expect(page.locator('.sidenav')).not.toContainText('Administration');
       await expect(page.locator('.sidenav a')).toHaveCount(13);
-      await expect(page.locator('a[href^="/Admin"], a[href="/ServiceAccounts"], a[href="/Audit"], a[href="/Notifications"], a[href="/Encryption"], a[href="/License"]')).toHaveCount(0);
+      await expect(
+        page.locator(
+          'a[href^="/Admin"], a[href="/ServiceAccounts"], a[href="/Audit"], a[href="/Notifications"], a[href="/Encryption"], a[href="/License"]',
+        ),
+      ).toHaveCount(0);
     } else {
-      expect(referenceNotices).toEqual([expect.stringMatching(/^Running unlicensed\. .+ View license$/)]);
-      await expect(page.locator('.sidenav .nav-section')).toHaveText(['Vault', 'Account', 'Administration']);
+      expect(referenceNotices).toEqual([
+        expect.stringMatching(/^Running unlicensed\. .+ View license$/),
+      ]);
+      await expect(page.locator('.sidenav .nav-section')).toHaveText([
+        'Vault',
+        'Account',
+        'Administration',
+      ]);
       await expect(page.locator('.sidenav a')).toHaveCount(20);
     }
     await expect(page.locator('style, [style]')).toHaveCount(0);
@@ -127,8 +176,10 @@ export async function verifySidebar(page: Page, info: TestInfo, account: 'admini
   const signInRequests: string[] = [];
   const documents: string[] = [];
   page.on('request', (request) => {
-    if (/\/Account\/(Login|Totp|EnrollTotp)/i.test(new URL(request.url()).pathname)) signInRequests.push(request.url());
-    if (request.isNavigationRequest() && request.resourceType() === 'document') documents.push(request.url());
+    if (/\/Account\/(Login|Totp|EnrollTotp)/i.test(new URL(request.url()).pathname))
+      signInRequests.push(request.url());
+    if (request.isNavigationRequest() && request.resourceType() === 'document')
+      documents.push(request.url());
   });
 
   // Angular-owned links keep the document; aliases still mark My access and its parent active.
@@ -138,18 +189,28 @@ export async function verifySidebar(page: Page, info: TestInfo, account: 'admini
   expect(documents).toEqual([]);
 
   // Legacy links replace the document. The return link reuses the same authenticated session.
-  const legacyDocument = page.waitForResponse((response) => response.request().isNavigationRequest());
+  const legacyDocument = page.waitForResponse((response) =>
+    response.request().isNavigationRequest(),
+  );
   await page.getByRole('link', { name: 'Secrets', exact: true }).click();
-  expect((await legacyDocument).headers()['content-security-policy']).not.toContain('trusted-types');
+  expect((await legacyDocument).headers()['content-security-policy']).not.toContain(
+    'trusted-types',
+  );
   await expect(page).toHaveURL(/\/Secrets$/);
   await expect(page.getByRole('heading', { name: 'Secrets', exact: true })).toBeVisible();
   await page.getByText('Access', { exact: true }).click();
-  const angularDocument = page.waitForResponse((response) => response.request().isNavigationRequest());
+  const angularDocument = page.waitForResponse((response) =>
+    response.request().isNavigationRequest(),
+  );
   await page.getByRole('link', { name: 'My access', exact: true }).click();
-  expect((await angularDocument).headers()['content-security-policy']).toContain("require-trusted-types-for 'script'");
+  expect((await angularDocument).headers()['content-security-policy']).toContain(
+    "require-trusted-types-for 'script'",
+  );
   await expect(page).toHaveURL(/\/Access$/);
   await expect(page.locator('.sidenav a.active')).toHaveText('My access');
   expect(documents.map((url) => new URL(url).pathname)).toEqual(['/Secrets', '/Access']);
   expect(signInRequests).toEqual([]);
-  expect((await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')?.value).toBe(session?.value);
+  expect(
+    (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')?.value,
+  ).toBe(session?.value);
 }

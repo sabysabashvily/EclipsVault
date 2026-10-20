@@ -1,0 +1,4 @@
+is_global = true
+
+# Formatting must fail the build; all other style severities stay in .editorconfig.
+dotnet_diagnostic.IDE0055.severity = warning

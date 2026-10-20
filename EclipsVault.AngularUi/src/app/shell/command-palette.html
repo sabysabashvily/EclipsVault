@@ -2,38 +2,77 @@
   <!-- Outside the sidebar in the page: the sidebar's backdrop-filter would confine a fixed overlay to it. -->
   <!-- Decoration that a click dismisses; Escape is the keyboard's way out. -->
   <div class="modal-backdrop palette-backdrop" role="presentation" (click)="closeOutside($event)">
-    <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette"
-         (keydown)="keydown($event)" (mousedown)="keepFocus($event)">
+    <div
+      class="palette"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Command palette"
+      (keydown)="keydown($event)"
+      (mousedown)="keepFocus($event)"
+    >
       <div class="palette-field">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input #field type="text" class="palette-input" role="combobox" aria-expanded="true"
-               aria-controls="palette-list" aria-autocomplete="list" aria-label="Search secrets, or jump to a page"
-               [attr.aria-activedescendant]="results().length ? 'palette-option-' + active() : null"
-               placeholder="Search secrets, or jump to a page…" autocomplete="off" spellcheck="false"
-               [value]="query()" (input)="typed($event)" />
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-3.5-3.5" />
+        </svg>
+        <input
+          #field
+          type="text"
+          class="palette-input"
+          role="combobox"
+          aria-expanded="true"
+          aria-controls="palette-list"
+          aria-autocomplete="list"
+          aria-label="Search secrets, or jump to a page"
+          [attr.aria-activedescendant]="results().length ? 'palette-option-' + active() : null"
+          placeholder="Search secrets, or jump to a page…"
+          autocomplete="off"
+          spellcheck="false"
+          [value]="query()"
+          (input)="typed($event)"
+        />
       </div>
       <ul class="palette-list" id="palette-list" role="listbox" aria-label="Results">
         @for (command of results(); track $index) {
           <!-- The combobox field drives the options from the keyboard (aria-activedescendant), so they take no focus. -->
           <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
-          <li class="palette-item" role="option" [id]="'palette-option-' + $index"
-              [class.is-active]="$index === active()" [attr.aria-selected]="$index === active()"
-              (click)="activate($index)" (mousemove)="highlight($index)">
+          <li
+            class="palette-item"
+            role="option"
+            [id]="'palette-option-' + $index"
+            [class.is-active]="$index === active()"
+            [attr.aria-selected]="$index === active()"
+            (click)="activate($index)"
+            (mousemove)="highlight($index)"
+          >
             <span class="palette-kind">{{ command.kind }}</span>
             <span class="palette-label">{{ command.label }}</span>
             @if (command.meta) {
               <span class="palette-meta">{{ command.meta }}</span>
             }
             @if (command.sensitivity) {
-              <span class="badge" [class]="'sens-' + command.sensitivity">{{ command.sensitivityName }}</span>
+              <span class="badge" [class]="'sens-' + command.sensitivity">{{
+                command.sensitivityName
+              }}</span>
             }
           </li>
         } @empty {
-          <li class="palette-empty">{{ query().trim() ? 'Nothing matches that.' : 'Type to search.' }}</li>
+          <li class="palette-empty">
+            {{ query().trim() ? 'Nothing matches that.' : 'Type to search.' }}
+          </li>
         }
       </ul>
       @if (failed()) {
-        <p class="palette-error" role="alert">Secret search failed. If your session has ended, reload the page to sign in again.</p>
+        <p class="palette-error" role="alert">
+          Secret search failed. If your session has ended, reload the page to sign in again.
+        </p>
       }
       <p class="palette-hint">
         <span><kbd>↑</kbd><kbd>↓</kbd> to move</span>

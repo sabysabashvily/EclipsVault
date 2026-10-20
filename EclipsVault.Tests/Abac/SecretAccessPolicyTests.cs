@@ -80,25 +80,25 @@ public class SecretAccessPolicyTests
         // the lookup would hand back a secret a grant was supposed to keep hidden. So: for every
         // combination where the ungranted decision allows, the granted decision must allow too.
         foreach (var clearance in Enum.GetValues<ClearanceLevel>())
-        foreach (var sensitivity in Enum.GetValues<SensitivityLevel>())
-        foreach (var env in Enum.GetValues<SecretEnvironment>())
-        foreach (var window in new[] { true, false })
-        foreach (var trusted in new[] { true, false })
-        foreach (var sameProject in new[] { true, false })
-        {
-            var subject = new SubjectAttributes(clearance, "PHOENIX");
-            var resource = Resource(env: env, sensitivity: sensitivity, project: sameProject ? "PHOENIX" : "ORION");
+            foreach (var sensitivity in Enum.GetValues<SensitivityLevel>())
+                foreach (var env in Enum.GetValues<SecretEnvironment>())
+                    foreach (var window in new[] { true, false })
+                        foreach (var trusted in new[] { true, false })
+                            foreach (var sameProject in new[] { true, false })
+                            {
+                                var subject = new SubjectAttributes(clearance, "PHOENIX");
+                                var resource = Resource(env: env, sensitivity: sensitivity, project: sameProject ? "PHOENIX" : "ORION");
 
-            if (!SecretAccessPolicy.Evaluate(subject, resource, Context(window, trusted, granted: false)).IsAllowed)
-            {
-                continue;
-            }
+                                if (!SecretAccessPolicy.Evaluate(subject, resource, Context(window, trusted, granted: false)).IsAllowed)
+                                {
+                                    continue;
+                                }
 
-            var granted = SecretAccessPolicy.Evaluate(subject, resource, Context(window, trusted, granted: true));
-            Assert.True(granted.IsAllowed,
-                $"a grant flipped an allow to a deny at clearance={clearance}, sensitivity={sensitivity}, " +
-                $"env={env}, window={window}, trusted={trusted}, sameProject={sameProject}");
-        }
+                                var granted = SecretAccessPolicy.Evaluate(subject, resource, Context(window, trusted, granted: true));
+                                Assert.True(granted.IsAllowed,
+                                    $"a grant flipped an allow to a deny at clearance={clearance}, sensitivity={sensitivity}, " +
+                                    $"env={env}, window={window}, trusted={trusted}, sameProject={sameProject}");
+                            }
     }
 
     [Fact]

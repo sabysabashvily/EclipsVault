@@ -1,0 +1,7 @@
+# Mechanical reformats that change no behaviour. GitHub's blame view skips these automatically;
+# locally, run once: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# Reformat all C# with dotnet format
+3ffa62d1c7385b75b66a820711b71b0035271bb2
+# Reformat the Angular UI with Prettier
+c28a547c258c7495dab4fcc80506ca66ce77160d

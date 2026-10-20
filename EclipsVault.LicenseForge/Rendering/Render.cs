@@ -11,9 +11,9 @@ namespace EclipsVault.LicenseForge.Rendering;
 public static class Render
 {
     public static void Success(string m) => Chip(Theme.Positive, "✓", m);
-    public static void Warn(string m)    => Chip(Theme.Warning, "!", m);
-    public static void Error(string m)   => Chip(Theme.Negative, "✗", m);
-    public static void Info(string m)    => Console.WriteLine($"  {Theme.Fg(Theme.Muted)}{m}{Theme.Reset}");
+    public static void Warn(string m) => Chip(Theme.Warning, "!", m);
+    public static void Error(string m) => Chip(Theme.Negative, "✗", m);
+    public static void Info(string m) => Console.WriteLine($"  {Theme.Fg(Theme.Muted)}{m}{Theme.Reset}");
 
     private static void Chip(Theme.Rgb c, string glyph, string m)
         => Console.WriteLine(

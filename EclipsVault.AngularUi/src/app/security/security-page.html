@@ -10,12 +10,24 @@
 
 @if (view(); as model) {
   <section class="panel checkup-hero">
-    <div class="score-ring {{ model.grade.class }}" role="img"
-      [attr.aria-label]="'Security score ' + model.score + ' out of 100 — ' + model.grade.label">
+    <div
+      class="score-ring {{ model.grade.class }}"
+      role="img"
+      [attr.aria-label]="'Security score ' + model.score + ' out of 100 — ' + model.grade.label"
+    >
       <svg viewBox="0 0 120 120" width="132" height="132">
         <circle class="ring-track" cx="60" cy="60" r="52" fill="none" stroke-width="10" />
-        <circle class="ring-value" cx="60" cy="60" r="52" fill="none" stroke-width="10"
-          stroke-linecap="round" [attr.stroke-dasharray]="model.dasharray" transform="rotate(-90 60 60)" />
+        <circle
+          class="ring-value"
+          cx="60"
+          cy="60"
+          r="52"
+          fill="none"
+          stroke-width="10"
+          stroke-linecap="round"
+          [attr.stroke-dasharray]="model.dasharray"
+          transform="rotate(-90 60 60)"
+        />
       </svg>
       <div class="score-center">
         <span class="score-number">{{ model.score }}</span>
@@ -25,9 +37,13 @@
     <div class="checkup-summary">
       <span class="grade-label {{ model.grade.class }}">{{ model.grade.label }}</span>
       @if (model.nextStep === null) {
-        <p class="checkup-lead">Everything checks out. Your account is well protected — nice work.</p>
+        <p class="checkup-lead">
+          Everything checks out. Your account is well protected — nice work.
+        </p>
       } @else {
-        <p class="checkup-lead">Next step: <strong>{{ model.nextStep }}</strong></p>
+        <p class="checkup-lead">
+          Next step: <strong>{{ model.nextStep }}</strong>
+        </p>
       }
       <div class="checkup-counts">
         @if (model.actionNeededCount > 0) {
@@ -46,8 +62,14 @@
       @for (check of model.checks; track check.kind) {
         <li class="feed-item {{ check.standing.class }}">
           <span class="feed-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-              stroke-linecap="round" stroke-linejoin="round">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
               @switch (check.kind) {
                 @case ('TwoStepSignIn') {
                   <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z" />

@@ -1,0 +1,9 @@
+# Generated. check:api-types compares it byte for byte with the generator's output.
+src/app/ui-api/schema.generated.ts
+# Written by npm and ESLint.
+package-lock.json
+eslint-suppressions.json
+# Browser test output. The root .gitignore ignores it, but Prettier reads only this folder's.
+test-results/
+playwright-report/
+guard-results/

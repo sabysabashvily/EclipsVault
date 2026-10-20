@@ -26,44 +26,70 @@ interface AreaGroup {
   readonly children: readonly AreaLink[];
 }
 
-const link = (area: string, label: string, url: string, icon = area, angular = false): AreaLink =>
-  ({ area, label, url, icon, angular });
+const link = (
+  area: string,
+  label: string,
+  url: string,
+  icon = area,
+  angular = false,
+): AreaLink => ({ area, label, url, icon, angular });
 
 // Presentation only: the server has already authorized each Area. Clearance is never an input.
 // Profile is offered in the account menu. The command palette reads the rendered sidebar links.
 const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)[] }[] = [
-  { label: 'Vault', items: [
-    link('overview', 'Overview', '/'),
-    link('secrets', 'Secrets', '/Secrets'),
-    link('secrets', 'New secret', '/Secrets/Create', 'new-secret'),
-    link('dynamic-secrets', 'Dynamic secrets', '/DynamicSecrets'),
-    { label: 'Sharing', icon: 'shared-with-me', children: [
-      link('shared-with-me', 'Shared with me', '/Secrets/SharedWithMe'),
-      link('shared-by-me', 'Shared by me', '/Secrets/SharedByMe'),
-    ] },
-  ] },
-  { label: 'Account', items: [
-    { label: 'Access', icon: 'access-group', children: [
-      link('access', 'My access', '/Access', 'access', true),
-      link('access-requests', 'Access requests', '/AccessRequests'),
-    ] },
-    { label: 'Security', icon: 'security-group', children: [
-      link('security', 'Security checkup', '/Security', 'security', true),
-      link('sign-ins', 'Sign-in history', '/SignIns', 'sign-ins', true),
-      link('sessions', 'Signed-in devices', '/Sessions'),
-      link('activity', 'My activity', '/Activity', 'activity', true),
-    ] },
-    link('data', 'Your data', '/Data'),
-  ] },
-  { label: 'Administration', items: [
-    link('users', 'Users', '/Admin/Users'),
-    link('networks', 'Networks', '/Admin/Networks'),
-    link('service-accounts', 'Service accounts', '/ServiceAccounts'),
-    link('audit', 'Audit log', '/Audit'),
-    link('notifications', 'Notifications', '/Notifications'),
-    link('encryption', 'Encryption keys', '/Encryption'),
-    link('license', 'License', '/License'),
-  ] },
+  {
+    label: 'Vault',
+    items: [
+      link('overview', 'Overview', '/'),
+      link('secrets', 'Secrets', '/Secrets'),
+      link('secrets', 'New secret', '/Secrets/Create', 'new-secret'),
+      link('dynamic-secrets', 'Dynamic secrets', '/DynamicSecrets'),
+      {
+        label: 'Sharing',
+        icon: 'shared-with-me',
+        children: [
+          link('shared-with-me', 'Shared with me', '/Secrets/SharedWithMe'),
+          link('shared-by-me', 'Shared by me', '/Secrets/SharedByMe'),
+        ],
+      },
+    ],
+  },
+  {
+    label: 'Account',
+    items: [
+      {
+        label: 'Access',
+        icon: 'access-group',
+        children: [
+          link('access', 'My access', '/Access', 'access', true),
+          link('access-requests', 'Access requests', '/AccessRequests'),
+        ],
+      },
+      {
+        label: 'Security',
+        icon: 'security-group',
+        children: [
+          link('security', 'Security checkup', '/Security', 'security', true),
+          link('sign-ins', 'Sign-in history', '/SignIns', 'sign-ins', true),
+          link('sessions', 'Signed-in devices', '/Sessions'),
+          link('activity', 'My activity', '/Activity', 'activity', true),
+        ],
+      },
+      link('data', 'Your data', '/Data'),
+    ],
+  },
+  {
+    label: 'Administration',
+    items: [
+      link('users', 'Users', '/Admin/Users'),
+      link('networks', 'Networks', '/Admin/Networks'),
+      link('service-accounts', 'Service accounts', '/ServiceAccounts'),
+      link('audit', 'Audit log', '/Audit'),
+      link('notifications', 'Notifications', '/Notifications'),
+      link('encryption', 'Encryption keys', '/Encryption'),
+      link('license', 'License', '/License'),
+    ],
+  },
 ];
 
 /** Maps only recognized, server-authorized Areas, preserving Legacy order and omitting empty groups. */

@@ -3,6 +3,9 @@
 Self-hosted secrets manager. ASP.NET Core MVC on .NET 10, Clean Architecture: Web → Infrastructure → Core.
 Core references only the BCL: no NuGet packages, so no `ILogger` and no `IMemoryCache` there.
 
+**Read `CODING_STANDARDS.md` before writing or reviewing code.** It sets the readability bar for every
+file, tests and commit messages included, and the code-review Standards axis checks changes against it.
+
 ## Build and test
 
 - The solution file is `EclipsVault.slnx`. There is no `.sln`.
@@ -156,5 +159,6 @@ session cookies; use only throwaway test credentials. CI uploads them on failure
   never fill in or change business values: prices, dates, legal-entity status, email addresses,
   response times. List what is missing and ask.
 - `docs/internal/` is private and gitignored. Never copy its contents into a tracked file.
-- Commit messages are one sentence describing the change in behaviour, for example
-  "Refuse a mistyped mint flag instead of minting a perpetual licence".
+- Commit messages follow `CODING_STANDARDS.md`: a subject of one sentence, 72 characters or fewer,
+  describing the change in behaviour, for example "Refuse a mistyped mint flag instead of minting a
+  perpetual licence".

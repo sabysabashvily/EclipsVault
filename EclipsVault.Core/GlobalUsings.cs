@@ -1,7 +1,7 @@
 // Application layer is organised into feature folders; these global usings let types
 // resolve across features without repeating the same usings in every file.
-global using EclipsVault.Core.Application.Abstractions;
 global using EclipsVault.Core.Application.Abac;
+global using EclipsVault.Core.Application.Abstractions;
 global using EclipsVault.Core.Application.AccessRequests;
 global using EclipsVault.Core.Application.Activity;
 global using EclipsVault.Core.Application.Auditing;

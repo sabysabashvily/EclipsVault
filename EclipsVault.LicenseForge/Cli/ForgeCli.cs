@@ -26,8 +26,8 @@ public static class ForgeCli
         return args[0] switch
         {
             "keygen" => new KeygenCommand(pretty).Execute(args),
-            "mint"   => new MintCommand(pretty).Execute(args),
-            _        => Unknown(args[0], pretty),
+            "mint" => new MintCommand(pretty).Execute(args),
+            _ => Unknown(args[0], pretty),
         };
     }
 

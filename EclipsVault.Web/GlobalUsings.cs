@@ -1,7 +1,7 @@
 // Core.Application is organised into feature folders; import them all here so
 // consuming files need no per-file usings for application services and DTOs.
-global using EclipsVault.Core.Application.Abstractions;
 global using EclipsVault.Core.Application.Abac;
+global using EclipsVault.Core.Application.Abstractions;
 global using EclipsVault.Core.Application.AccessRequests;
 global using EclipsVault.Core.Application.Activity;
 global using EclipsVault.Core.Application.Auditing;

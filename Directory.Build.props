@@ -15,6 +15,9 @@
     <AnalysisLevel>10.0</AnalysisLevel>
     <CodeAnalysisTreatWarningsAsErrors>true</CodeAnalysisTreatWarningsAsErrors>
 
+    <!-- Run code style analyzers during builds so .globalconfig's formatting warning fails them. -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
     <!-- Reproducible restores: versions are pinned centrally in Directory.Packages.props. -->
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>

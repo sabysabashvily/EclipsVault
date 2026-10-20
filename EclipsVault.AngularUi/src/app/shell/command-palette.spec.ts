@@ -1,9 +1,19 @@
 import { HttpHeaders, HttpResponse } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting, TestRequest } from '@angular/common/http/testing';
+import {
+  HttpTestingController,
+  provideHttpClientTesting,
+  TestRequest,
+} from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { appConfig } from '../app.config';
-import { CommandPalette, commandChord, PAGE_LOCATION, paletteCommands, secretsFrom } from './command-palette';
+import {
+  CommandPalette,
+  commandChord,
+  PAGE_LOCATION,
+  paletteCommands,
+  secretsFrom,
+} from './command-palette';
 
 const hit = {
   id: '6d1b2c55-0000-4000-8000-000000000001',
@@ -18,14 +28,28 @@ const json = { headers: { 'Content-Type': 'application/json; charset=utf-8' } };
 
 /** The sidebar's links in its order, as sidebar.spec.ts pins them, then the account menu's Profile. */
 const standardPages = [
-  ['Overview', '/'], ['Secrets', '/Secrets'], ['New secret', '/Secrets/Create'], ['Dynamic secrets', '/DynamicSecrets'],
-  ['Shared with me', '/Secrets/SharedWithMe'], ['Shared by me', '/Secrets/SharedByMe'], ['My access', '/Access'],
-  ['Access requests', '/AccessRequests'], ['Security checkup', '/Security'], ['Sign-in history', '/SignIns'],
-  ['Signed-in devices', '/Sessions'], ['My activity', '/Activity'], ['Your data', '/Data'],
+  ['Overview', '/'],
+  ['Secrets', '/Secrets'],
+  ['New secret', '/Secrets/Create'],
+  ['Dynamic secrets', '/DynamicSecrets'],
+  ['Shared with me', '/Secrets/SharedWithMe'],
+  ['Shared by me', '/Secrets/SharedByMe'],
+  ['My access', '/Access'],
+  ['Access requests', '/AccessRequests'],
+  ['Security checkup', '/Security'],
+  ['Sign-in history', '/SignIns'],
+  ['Signed-in devices', '/Sessions'],
+  ['My activity', '/Activity'],
+  ['Your data', '/Data'],
 ];
 const adminPages = [
-  ['Users', '/Admin/Users'], ['Networks', '/Admin/Networks'], ['Service accounts', '/ServiceAccounts'], ['Audit log', '/Audit'],
-  ['Notifications', '/Notifications'], ['Encryption keys', '/Encryption'], ['License', '/License'],
+  ['Users', '/Admin/Users'],
+  ['Networks', '/Admin/Networks'],
+  ['Service accounts', '/ServiceAccounts'],
+  ['Audit log', '/Audit'],
+  ['Notifications', '/Notifications'],
+  ['Encryption keys', '/Encryption'],
+  ['License', '/License'],
 ];
 
 function sidebarElement(pages = [...standardPages, ['Profile', '/Profile']]): HTMLElement {
@@ -47,7 +71,10 @@ describe('paletteCommands', () => {
   it('offers exactly the sidebar links, in order, then Profile from the account menu', () => {
     for (const expected of [standardPages, [...standardPages, ...adminPages]]) {
       const pages = paletteCommands(sidebarElement([...expected, ['Profile', '/Profile']]));
-      expect(pages.map(({ label, url }) => [label, url])).toEqual([...expected, ['Profile', '/Profile']]);
+      expect(pages.map(({ label, url }) => [label, url])).toEqual([
+        ...expected,
+        ['Profile', '/Profile'],
+      ]);
       expect(pages.every((page) => page.kind === 'Go to')).toBe(true);
       expect(pages.filter((page) => page.angular).map((page) => page.url)).toEqual(['/Access']);
     }
@@ -55,11 +82,21 @@ describe('paletteCommands', () => {
 
   it('never offers a page the server did not authorize', () => {
     const labels = paletteCommands(sidebarElement()).map((page) => page.label);
-    for (const admin of ['Users', 'Networks', 'Service accounts', 'Audit log', 'Notifications', 'Encryption keys', 'License']) {
+    for (const admin of [
+      'Users',
+      'Networks',
+      'Service accounts',
+      'Audit log',
+      'Notifications',
+      'Encryption keys',
+      'License',
+    ]) {
       expect(labels).not.toContain(admin);
     }
     expect(paletteCommands(sidebarElement([]))).toEqual([]);
-    expect(paletteCommands(sidebarElement([['My access', '/Access']])).map((page) => page.label)).toEqual(['My access']);
+    expect(
+      paletteCommands(sidebarElement([['My access', '/Access']])).map((page) => page.label),
+    ).toEqual(['My access']);
   });
 });
 
@@ -75,7 +112,9 @@ describe('commandChord', () => {
 describe('secretsFrom', () => {
   it('rejects a redirected response even when its destination answers valid JSON', () => {
     const response = new HttpResponse({
-      body: JSON.stringify([hit]), headers: new HttpHeaders(json.headers), redirected: true,
+      body: JSON.stringify([hit]),
+      headers: new HttpHeaders(json.headers),
+      redirected: true,
     });
     expect(() => secretsFrom(response, 'https://vault.example')).toThrow(/redirected/);
   });
@@ -88,7 +127,11 @@ describe('CommandPalette', () => {
 
   async function render() {
     TestBed.configureTestingModule({
-      providers: [...appConfig.providers, provideHttpClientTesting(), { provide: PAGE_LOCATION, useValue: { assign } }],
+      providers: [
+        ...appConfig.providers,
+        provideHttpClientTesting(),
+        { provide: PAGE_LOCATION, useValue: { assign } },
+      ],
     });
     backend = TestBed.inject(HttpTestingController);
     const fixture = TestBed.createComponent(CommandPalette);
@@ -108,11 +151,13 @@ describe('CommandPalette', () => {
       input()!.dispatchEvent(new Event('input'));
       await stable();
     };
-    const items = () => [...host.querySelectorAll('.palette-item')].map((item) => ({
-      kind: item.querySelector('.palette-kind')?.textContent?.trim(),
-      label: item.querySelector('.palette-label')?.textContent?.trim(),
-      active: item.classList.contains('is-active') && item.getAttribute('aria-selected') === 'true',
-    }));
+    const items = () =>
+      [...host.querySelectorAll('.palette-item')].map((item) => ({
+        kind: item.querySelector('.palette-kind')?.textContent?.trim(),
+        label: item.querySelector('.palette-label')?.textContent?.trim(),
+        active:
+          item.classList.contains('is-active') && item.getAttribute('aria-selected') === 'true',
+      }));
     const open = async () => {
       opener.focus();
       await press('k', { metaKey: true });
@@ -140,7 +185,9 @@ describe('CommandPalette', () => {
   async function searched(stable: () => Promise<void>, q: string): Promise<TestRequest> {
     await pause(200);
     await stable();
-    return backend.expectOne((request) => request.url === '/Secrets/Search' && request.params.get('q') === q);
+    return backend.expectOne(
+      (request) => request.url === '/Secrets/Search' && request.params.get('q') === q,
+    );
   }
 
   it('opens on ⌘K or Ctrl K as a modal dialog listing the sidebar pages, focused on its field', async () => {
@@ -152,7 +199,10 @@ describe('CommandPalette', () => {
     const dialog = host.querySelector('[role="dialog"]');
     expect(dialog?.getAttribute('aria-modal')).toBe('true');
     expect(document.activeElement).toBe(input());
-    expect(items().map((item) => item.label)).toEqual([...standardPages.map(([label]) => label), 'Profile']);
+    expect(items().map((item) => item.label)).toEqual([
+      ...standardPages.map(([label]) => label),
+      'Profile',
+    ]);
     expect(items()[0].active).toBe(true);
 
     await press('K', { metaKey: true });
@@ -181,19 +231,38 @@ describe('CommandPalette', () => {
     const request = await searched(stable, 'sec');
     expect(request.request.headers.get('Accept')).toBe('application/json');
 
-    const hostile = { ...hit, name: '<img src=x data-probe="name">', project: '<b>P</b>', environment: 'Development' };
-    request.flush(JSON.stringify([hostile, { ...hit, sensitivity: 4, sensitivityName: 'Top Secret' }]), json);
+    const hostile = {
+      ...hit,
+      name: '<img src=x data-probe="name">',
+      project: '<b>P</b>',
+      environment: 'Development',
+    };
+    request.flush(
+      JSON.stringify([hostile, { ...hit, sensitivity: 4, sensitivityName: 'Top Secret' }]),
+      json,
+    );
     await stable();
 
     expect(items().slice(0, 2)).toEqual([
       { kind: 'Secret', label: '<img src=x data-probe="name">', active: true },
       { kind: 'Secret', label: 'Phoenix_Db_Password', active: false },
     ]);
-    expect(items().slice(2).map((item) => item.label)).toEqual(['Secrets', 'New secret', 'Dynamic secrets', 'Security checkup']);
+    expect(
+      items()
+        .slice(2)
+        .map((item) => item.label),
+    ).toEqual(['Secrets', 'New secret', 'Dynamic secrets', 'Security checkup']);
     expect(host.querySelector('[data-probe], .palette-list b')).toBeNull();
     expect(host.querySelector('.palette-meta')?.textContent).toBe('<b>P</b> · Development');
-    expect([...host.querySelectorAll('.palette-item .badge')].map((badge) => [badge.className, badge.textContent?.trim()]))
-      .toEqual([['badge sens-1', 'Internal'], ['badge sens-4', 'Top Secret']]);
+    expect(
+      [...host.querySelectorAll('.palette-item .badge')].map((badge) => [
+        badge.className,
+        badge.textContent?.trim(),
+      ]),
+    ).toEqual([
+      ['badge sens-1', 'Internal'],
+      ['badge sens-4', 'Top Secret'],
+    ]);
   });
 
   it('cancels a stale search, so an older answer never replaces a newer one', async () => {
@@ -231,30 +300,52 @@ describe('CommandPalette', () => {
     await open();
     const answers: ((request: TestRequest) => void)[] = [
       // Fetch follows the Legacy UI's sign-in redirect for an expired session to an HTML page.
-      (request) => request.flush('<!doctype html><title>Sign in</title>', { headers: { 'Content-Type': 'text/html; charset=utf-8' } }),
+      (request) =>
+        request.flush('<!doctype html><title>Sign in</title>', {
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        }),
       (request) => request.flush('not json', json),
       (request) => request.flush(JSON.stringify({ secrets: [hit] }), json),
-      (request) => request.flush(JSON.stringify([{ ...hit, url: '//elsewhere.example/steal' }]), json),
+      (request) =>
+        request.flush(JSON.stringify([{ ...hit, url: '//elsewhere.example/steal' }]), json),
       // The URL parser drops the tab, leaving //elsewhere.example: another origin.
-      (request) => request.flush(JSON.stringify([{ ...hit, url: '/\t/elsewhere.example/steal' }]), json),
+      (request) =>
+        request.flush(JSON.stringify([{ ...hit, url: '/\t/elsewhere.example/steal' }]), json),
       // No placeholder host may stand in for the vault's actual origin.
       (request) => request.flush(JSON.stringify([{ ...hit, url: '//vault.invalid/steal' }]), json),
       (request) => request.flush(JSON.stringify([{ ...hit, url: '/\\vault.invalid/steal' }]), json),
-      (request) => request.flush(JSON.stringify([{ ...hit, url: '/\n/vault.invalid/steal' }]), json),
+      (request) =>
+        request.flush(JSON.stringify([{ ...hit, url: '/\n/vault.invalid/steal' }]), json),
       (request) => request.flush(JSON.stringify([{ ...hit, sensitivity: '1" onclick="x' }]), json),
       (request) => request.flush('', { status: 500, statusText: 'Internal Server Error' }),
     ];
 
     // A distinct query each time, so a failure shown earlier cannot stand in for this one.
-    const queries = ['Secrets', 'secrets', 'SECRETS', 'sEcrets', 'seCrets', 'secRets', 'SeCrets', 'SecRets', 'SEcrets', 'secrEts'];
+    const queries = [
+      'Secrets',
+      'secrets',
+      'SECRETS',
+      'sEcrets',
+      'seCrets',
+      'secRets',
+      'SeCrets',
+      'SecRets',
+      'SEcrets',
+      'secrEts',
+    ];
     for (const [i, answer] of answers.entries()) {
       await type(queries[i]);
       expect(host.querySelector('.palette-error')).toBeNull();
       answer(await searched(stable, queries[i]));
       await stable();
 
-      expect(host.querySelector('.palette-error[role="alert"]')?.textContent).toContain('Secret search failed');
-      expect(items().map((item) => [item.kind, item.label])).toEqual([['Go to', 'Secrets'], ['Go to', 'Dynamic secrets']]);
+      expect(host.querySelector('.palette-error[role="alert"]')?.textContent).toContain(
+        'Secret search failed',
+      );
+      expect(items().map((item) => [item.kind, item.label])).toEqual([
+        ['Go to', 'Secrets'],
+        ['Go to', 'Dynamic secrets'],
+      ]);
     }
 
     await type('secreTs');

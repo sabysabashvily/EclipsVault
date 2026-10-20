@@ -21,7 +21,8 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         var login = await client.GetStringAsync("/Account/Login");
         var afterPassword = await PostFormAsync(client, "/Account/Login", login, new()
         {
-            ["Username"] = username, ["Password"] = password
+            ["Username"] = username,
+            ["Password"] = password
         });
         Assert.Equal("/Account/EnrollTotp", afterPassword.Headers.Location?.OriginalString);
         var enrollment = await client.GetStringAsync("/Account/EnrollTotp");
@@ -29,7 +30,8 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         Assert.NotEmpty(secret);
         var response = await PostFormAsync(client, "/Account/EnrollTotp", enrollment, new()
         {
-            ["Code"] = Totp.Code(secret, Totp.CurrentStep()), ["ReturnUrl"] = "/Access"
+            ["Code"] = Totp.Code(secret, Totp.CurrentStep()),
+            ["ReturnUrl"] = "/Access"
         });
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal("/Access", response.Headers.Location?.OriginalString);
@@ -48,7 +50,9 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
 
         var afterPassword = await PostFormAsync(client, "/Account/Login", login, new()
         {
-            ["Username"] = username, ["Password"] = password, ["ReturnUrl"] = HiddenReturnUrl(login)
+            ["Username"] = username,
+            ["Password"] = password,
+            ["ReturnUrl"] = HiddenReturnUrl(login)
         });
         Assert.Equal(WithReturnUrl("/Account/EnrollTotp", returnUrl), afterPassword.Headers.Location?.OriginalString);
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/ui/me")).StatusCode);
@@ -61,7 +65,8 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         {
             var invalid = await PostFormAsync(client, "/Account/EnrollTotp", enrollment, new()
             {
-                ["Code"] = invalidCode, ["ReturnUrl"] = HiddenReturnUrl(enrollment)
+                ["Code"] = invalidCode,
+                ["ReturnUrl"] = HiddenReturnUrl(enrollment)
             });
             Assert.Equal(HttpStatusCode.OK, invalid.StatusCode);
             enrollment = await invalid.Content.ReadAsStringAsync();
@@ -70,7 +75,8 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         }
         var response = await PostFormAsync(client, "/Account/EnrollTotp", enrollment, new()
         {
-            ["Code"] = Totp.Code(secret, Totp.CurrentStep()), ["ReturnUrl"] = HiddenReturnUrl(enrollment)
+            ["Code"] = Totp.Code(secret, Totp.CurrentStep()),
+            ["ReturnUrl"] = HiddenReturnUrl(enrollment)
         });
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal(expected, response.Headers.Location?.OriginalString);
@@ -90,7 +96,9 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         {
             var invalid = await PostFormAsync(client, "/Account/Login", login, new()
             {
-                ["Username"] = username, ["Password"] = invalidPassword, ["ReturnUrl"] = HiddenReturnUrl(login)
+                ["Username"] = username,
+                ["Password"] = invalidPassword,
+                ["ReturnUrl"] = HiddenReturnUrl(login)
             });
             Assert.Equal(HttpStatusCode.OK, invalid.StatusCode);
             login = await invalid.Content.ReadAsStringAsync();
@@ -99,7 +107,9 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
 
         var passwordResponse = await PostFormAsync(client, "/Account/Login", login, new()
         {
-            ["Username"] = username, ["Password"] = password, ["ReturnUrl"] = HiddenReturnUrl(login)
+            ["Username"] = username,
+            ["Password"] = password,
+            ["ReturnUrl"] = HiddenReturnUrl(login)
         });
         Assert.Equal(WithReturnUrl("/Account/Totp", returnUrl), passwordResponse.Headers.Location?.OriginalString);
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/ui/me")).StatusCode);
@@ -108,7 +118,8 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         {
             var invalid = await PostFormAsync(client, "/Account/Totp", totp, new()
             {
-                ["Code"] = invalidCode, ["ReturnUrl"] = HiddenReturnUrl(totp)
+                ["Code"] = invalidCode,
+                ["ReturnUrl"] = HiddenReturnUrl(totp)
             });
             Assert.Equal(HttpStatusCode.OK, invalid.StatusCode);
             totp = await invalid.Content.ReadAsStringAsync();
@@ -124,7 +135,8 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         totp = await client.GetStringAsync(totpPath);
         var signedIn = await PostFormAsync(client, "/Account/Totp", totp, new()
         {
-            ["Code"] = Totp.Code(secret, Totp.CurrentStep()), ["ReturnUrl"] = HiddenReturnUrl(totp)
+            ["Code"] = Totp.Code(secret, Totp.CurrentStep()),
+            ["ReturnUrl"] = HiddenReturnUrl(totp)
         });
         Assert.Equal(HttpStatusCode.Redirect, signedIn.StatusCode);
         Assert.Equal(expected, signedIn.Headers.Location?.OriginalString);
@@ -148,14 +160,17 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
             using var client = NewClient();
             var afterPassword = await PostFormAsync(client, "/Account/Login", await client.GetStringAsync("/Account/Login"), new()
             {
-                ["Username"] = username, ["Password"] = password, ["ReturnUrl"] = returnUrl
+                ["Username"] = username,
+                ["Password"] = password,
+                ["ReturnUrl"] = returnUrl
             });
             var recovery = await client.GetStringAsync(LinkTo(await client.GetStringAsync(afterPassword.Headers.Location), "RecoveryCode"));
             foreach (var invalidCode in new[] { "bad", "ZZZZZ-ZZZZZ" })
             {
                 var invalid = await PostFormAsync(client, "/Account/RecoveryCode", recovery, new()
                 {
-                    ["Code"] = invalidCode, ["ReturnUrl"] = HiddenReturnUrl(recovery)
+                    ["Code"] = invalidCode,
+                    ["ReturnUrl"] = HiddenReturnUrl(recovery)
                 });
                 Assert.Equal(HttpStatusCode.OK, invalid.StatusCode);
                 recovery = await invalid.Content.ReadAsStringAsync();
@@ -164,7 +179,8 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
             }
             var signedIn = await PostFormAsync(client, "/Account/RecoveryCode", recovery, new()
             {
-                ["Code"] = code, ["ReturnUrl"] = HiddenReturnUrl(recovery)
+                ["Code"] = code,
+                ["ReturnUrl"] = HiddenReturnUrl(recovery)
             });
             Assert.Equal(HttpStatusCode.Redirect, signedIn.StatusCode);
             Assert.Equal(expected, signedIn.Headers.Location?.OriginalString);
@@ -187,12 +203,15 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
 
         var afterPassword = await PostFormAsync(client, "/Account/Login", login, new()
         {
-            ["Username"] = username, ["Password"] = password, ["ReturnUrl"] = HiddenReturnUrl(login)
+            ["Username"] = username,
+            ["Password"] = password,
+            ["ReturnUrl"] = HiddenReturnUrl(login)
         });
         var totp = await client.GetStringAsync(afterPassword.Headers.Location);
         var response = await PostFormAsync(client, "/Account/Totp", totp, new()
         {
-            ["Code"] = Totp.Code(secret, Totp.CurrentStep()), ["ReturnUrl"] = HiddenReturnUrl(totp)
+            ["Code"] = Totp.Code(secret, Totp.CurrentStep()),
+            ["ReturnUrl"] = HiddenReturnUrl(totp)
         });
         for (var hops = 0; response.StatusCode == HttpStatusCode.Redirect; hops++)
         {
@@ -253,13 +272,16 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         using var client = NewClient();
         var afterPassword = await PostFormAsync(client, "/Account/Login", await client.GetStringAsync("/Account/Login"), new()
         {
-            ["Username"] = username, ["Password"] = password, ["ReturnUrl"] = "/Secrets?q=é"
+            ["Username"] = username,
+            ["Password"] = password,
+            ["ReturnUrl"] = "/Secrets?q=é"
         });
         var totp = await client.GetStringAsync(afterPassword.Headers.Location);
         Assert.Equal("/Secrets?q=é", HiddenReturnUrl(totp));
         var signedIn = await PostFormAsync(client, "/Account/Totp", totp, new()
         {
-            ["Code"] = Totp.Code(secret, Totp.CurrentStep()), ["ReturnUrl"] = HiddenReturnUrl(totp)
+            ["Code"] = Totp.Code(secret, Totp.CurrentStep()),
+            ["ReturnUrl"] = HiddenReturnUrl(totp)
         });
         Assert.Equal(HttpStatusCode.Redirect, signedIn.StatusCode);
         Assert.Equal("/Secrets", signedIn.Headers.Location?.OriginalString);
@@ -277,7 +299,8 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
             var options = await PostJsonAsync(enrolled, "/Profile/PasskeyRegisterBegin", profile, new { });
             var registration = await PostJsonAsync(enrolled, "/Profile/PasskeyRegisterComplete", profile, new
             {
-                credential = authenticator.Register(options), nickname = "Return URL test"
+                credential = authenticator.Register(options),
+                nickname = "Return URL test"
             });
             Assert.True(registration.GetProperty("success").GetBoolean());
         }
@@ -342,7 +365,8 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         var client = NewClient();
         var afterPassword = await PostFormAsync(client, "/Account/Login", await client.GetStringAsync("/Account/Login"), new()
         {
-            ["Username"] = username, ["Password"] = password
+            ["Username"] = username,
+            ["Password"] = password
         });
         Assert.Equal("/Account/EnrollTotp", afterPassword.Headers.Location?.OriginalString);
         var enrollment = await client.GetStringAsync("/Account/EnrollTotp");
@@ -389,8 +413,12 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         var admin = await vault.AdminClientAsync();
         var created = await PostFormAsync(admin, "/Admin/CreateUser", await admin.GetStringAsync("/Admin/CreateUser"), new()
         {
-            ["Username"] = username, ["FirstName"] = "Return", ["LastName"] = "Test",
-            ["Password"] = password, ["Clearance"] = "1", ["ProjectKey"] = "GLOBAL"
+            ["Username"] = username,
+            ["FirstName"] = "Return",
+            ["LastName"] = "Test",
+            ["Password"] = password,
+            ["Clearance"] = "1",
+            ["ProjectKey"] = "GLOBAL"
         });
         Assert.Equal(HttpStatusCode.Redirect, created.StatusCode);
         return (username, password);

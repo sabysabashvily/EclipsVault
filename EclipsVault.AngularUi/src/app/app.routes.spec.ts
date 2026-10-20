@@ -60,12 +60,18 @@ describe('routes', () => {
   );
 
   it.each([
-    '/', '/Index', '/Accessories', '/Access/Index/extra', '/Activityfeed', '/Activity/Index/extra',
-    '/SignInsLog', '/SignIns/Index/extra', '/SecurityLog', '/Security/Index/extra', '/Secrets',
-  ])(
-    'leaves %s unmatched',
-    (url) => {
-      expect(routeFor(url)).toBeUndefined();
-    },
-  );
+    '/',
+    '/Index',
+    '/Accessories',
+    '/Access/Index/extra',
+    '/Activityfeed',
+    '/Activity/Index/extra',
+    '/SignInsLog',
+    '/SignIns/Index/extra',
+    '/SecurityLog',
+    '/Security/Index/extra',
+    '/Secrets',
+  ])('leaves %s unmatched', (url) => {
+    expect(routeFor(url)).toBeUndefined();
+  });
 });

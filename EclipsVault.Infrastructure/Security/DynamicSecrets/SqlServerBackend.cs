@@ -2,8 +2,8 @@ using EclipsVault.Core.Application.DynamicSecrets;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace EclipsVault.Infrastructure.Security;
 

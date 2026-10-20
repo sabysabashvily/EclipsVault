@@ -7,7 +7,11 @@ services:
       ACCEPT_EULA: 'Y'
       MSSQL_SA_PASSWORD: ${E2E_SQL_PASSWORD:?Set by run.mjs}
     healthcheck:
-      test: ['CMD-SHELL', '/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -Q "SELECT 1" > /dev/null']
+      test:
+        [
+          'CMD-SHELL',
+          '/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -Q "SELECT 1" > /dev/null',
+        ]
       interval: 2s
       timeout: 5s
       retries: 90
