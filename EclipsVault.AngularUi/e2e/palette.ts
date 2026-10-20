@@ -4,6 +4,9 @@ import { expect } from './fixtures';
 
 /** Opens the palette with the platform's chord, as a person would, and waits for its field. */
 export async function openPalette(page: Page): Promise<void> {
+  await expect(
+    page.getByRole('button', { name: 'Search secrets or jump to a page', exact: true }),
+  ).toBeVisible();
   await page.keyboard.press('ControlOrMeta+k');
   await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
   await expect(page.locator('.palette-input')).toBeFocused();
