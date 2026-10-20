@@ -349,12 +349,11 @@ test('confirming a real device sign-out ends the second browser context on its n
   browserHealth,
 }) => {
   test.setTimeout(100_000);
-  const otherContext = await browserHealth.newContext();
-  await otherContext.setExtraHTTPHeaders({ 'User-Agent': 'python/3.12' });
-  const other = await otherContext.newPage();
+  const other = await (await browserHealth.newContext()).newPage();
   await signInDevice(other);
   const devices = await openOwner(page);
-  await devices.device('python').getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(devices.rows).toHaveCount(2);
+  await devices.rows.getByRole('button', { name: 'Sign out', exact: true }).click();
   await devices.continue.click();
 
   await expect(devices.status).toHaveText(
