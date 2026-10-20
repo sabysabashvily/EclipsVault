@@ -1470,39 +1470,40 @@ test('the sidebar and palette open Sign-in history in-app, and its callout links
       },
     ],
   };
-  for (const [name, path, heading] of [['Change password', '/Profile', 'Profile']] as const) {
-    await test.step(`${name} is a full load into the Legacy UI on the same session`, async () => {
-      await page.route(
-        '**/api/ui/sign-ins',
-        async (route) => {
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify(unfamiliar),
-          });
-        },
-        { times: 1 },
-      );
-      await page.goto('/SignIns');
-      await expect(page.locator('.callout-warn')).toBeVisible();
-      documents.length = 0;
-      const legacyDocument = page.waitForResponse((response) =>
-        response.request().isNavigationRequest(),
-      );
-      await page.locator('.callout-warn').getByRole('link', { name, exact: true }).click();
-      expect((await legacyDocument).headers()['content-security-policy']).not.toContain(
-        'trusted-types',
-      );
-      await expect(page).toHaveURL(new RegExp(`${path}$`));
-      await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
-      expect(documents).toEqual([path]);
-      expect(signInRequests).toEqual([]);
-      expect(
-        (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')
-          ?.value,
-      ).toBe(session?.value);
-    });
-  }
+  await test.step('Change password is a full load into the Legacy UI on the same session', async () => {
+    await page.route(
+      '**/api/ui/sign-ins',
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(unfamiliar),
+        });
+      },
+      { times: 1 },
+    );
+    await page.goto('/SignIns');
+    await expect(page.locator('.callout-warn')).toBeVisible();
+    documents.length = 0;
+    const legacyDocument = page.waitForResponse((response) =>
+      response.request().isNavigationRequest(),
+    );
+    await page
+      .locator('.callout-warn')
+      .getByRole('link', { name: 'Change password', exact: true })
+      .click();
+    expect((await legacyDocument).headers()['content-security-policy']).not.toContain(
+      'trusted-types',
+    );
+    await expect(page).toHaveURL(/\/Profile$/);
+    await expect(page.getByRole('heading', { name: 'Profile', exact: true })).toBeVisible();
+    expect(documents).toEqual(['/Profile']);
+    expect(signInRequests).toEqual([]);
+    expect(
+      (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')
+        ?.value,
+    ).toBe(session?.value);
+  });
 });
 
 test('a sign-in history failure shows a retry and the next request restores the timeline', async ({

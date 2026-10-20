@@ -103,13 +103,13 @@ export class SessionsPage {
     }
 
     const unrecorded = error instanceof UiApiError && error.code === 'revoked_unrecorded';
-    const count =
+    const signedOutPrefix =
       unrecorded && action === 'others' && error.signedOut !== null
         ? `${signedOutMessage(error.signedOut)} `
         : '';
     this.status.set({
       message:
-        count +
+        signedOutPrefix +
         (error instanceof UiApiError ? error.title : 'Could not sign out the device. Try again.'),
       error: true,
     });
