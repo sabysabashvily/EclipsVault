@@ -131,7 +131,7 @@ public class PersonalDataExportServiceTests
     }
 
     [Fact]
-    public async Task Every_source_is_read_for_the_caller_and_mapped_into_the_export()
+    public async Task Every_source_is_read_for_the_caller_only()
     {
         var export = await NewService(passkeys: 2, codes: 7, devices: 3, requests: 4, activity: 5)
             .BuildForUserAsync(User, CancellationToken.None);
