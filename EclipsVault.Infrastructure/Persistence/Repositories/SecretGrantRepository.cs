@@ -61,11 +61,11 @@ public sealed class SecretGrantRepository : ISecretGrantRepository
             select new SharedSecretDto(s.Id, s.Name, s.ProjectKey, s.Environment, s.Sensitivity, g.GrantedBy, g.ExpiresAtUtc))
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<OutgoingShareDto>> ListIssuedByAsync(string grantorUsername, DateTimeOffset asOfUtc, CancellationToken ct)
+    public async Task<IReadOnlyList<OutgoingShareDto>> ListIssuedByAsync(Guid issuerUserId, DateTimeOffset asOfUtc, CancellationToken ct)
         => await (
             from g in _context.SecretGrants.AsNoTracking()
             join s in _context.Secrets.AsNoTracking() on g.SecretId equals s.Id
-            where g.GrantedBy == grantorUsername
+            where g.IssuerUserId == issuerUserId
                   && (g.ExpiresAtUtc == null || g.ExpiresAtUtc > asOfUtc)
                   && !s.IsShredded
             orderby g.CreatedAtUtc descending

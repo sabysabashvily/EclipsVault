@@ -49,8 +49,8 @@ public sealed class SecretGrantService : ISecretGrantService
     public Task<IReadOnlyList<SharedSecretDto>> ListSharedWithUserAsync(Guid userId, CancellationToken ct)
         => _grants.ListSharedWithUserAsync(userId, _clock.GetUtcNow(), ct);
 
-    public Task<IReadOnlyList<OutgoingShareDto>> ListIssuedByAsync(string grantorUsername, CancellationToken ct)
-        => _grants.ListIssuedByAsync(grantorUsername, _clock.GetUtcNow(), ct);
+    public Task<IReadOnlyList<OutgoingShareDto>> ListIssuedByAsync(Guid issuerUserId, CancellationToken ct)
+        => _grants.ListIssuedByAsync(issuerUserId, _clock.GetUtcNow(), ct);
 
     public async Task GrantAsync(Guid secretId, string secretName, string granteeUsernameOrEmail, int? ttlDays, CancellationToken ct)
     {
@@ -74,6 +74,7 @@ public sealed class SecretGrantService : ISecretGrantService
             SecretId = secretId,
             GranteeUserId = grantee.Id,
             GranteeUsername = grantee.Username,
+            IssuerUserId = _actor.UserId,
             GrantedBy = _actor.Username ?? "system",
             CreatedAtUtc = now,
             ExpiresAtUtc = ttlDays is > 0 ? now.AddDays(ttlDays.Value) : null
@@ -108,13 +109,14 @@ public sealed class SecretGrantService : ISecretGrantService
         return true;
     }
 
-    public async Task<bool> RevokeIssuedAsync(Guid grantId, string grantorUsername, CancellationToken ct)
+    public async Task<bool> RevokeIssuedAsync(Guid grantId, Guid issuerUserId, CancellationToken ct)
     {
         var grant = await _grants.FindAsync(grantId, ct);
 
-        // Not found, or issued by someone else → refuse without distinguishing the two cases, so a
-        // caller can neither revoke a grant that isn't theirs nor probe which grant ids exist.
-        if (grant is null || !string.Equals(grant.GrantedBy, grantorUsername, StringComparison.OrdinalIgnoreCase))
+        // Not found, or issued by another account → refuse without distinguishing the two cases, so a
+        // caller can neither revoke a share that isn't theirs nor probe which share ids exist. A share
+        // with no known issuer belongs to nobody here.
+        if (grant is null || grant.IssuerUserId != issuerUserId)
         {
             return false;
         }

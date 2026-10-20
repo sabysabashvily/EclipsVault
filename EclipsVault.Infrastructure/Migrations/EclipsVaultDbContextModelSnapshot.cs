@@ -604,12 +604,17 @@ namespace EclipsVault.Infrastructure.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
+                    b.Property<Guid?>("IssuerUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid>("SecretId")
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
 
                     b.HasIndex("GranteeUserId");
+
+                    b.HasIndex("IssuerUserId");
 
                     b.HasIndex("SecretId", "GranteeUserId")
                         .IsUnique();

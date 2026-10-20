@@ -338,12 +338,12 @@ public sealed class SecretsController : VaultController
 
     /// <summary>
     /// "Shared by me": an access review of every grant this user has handed out. Self-scoped by the
-    /// caller's username, so it only ever lists the caller's own outgoing shares.
+    /// caller's account id, so it only ever lists the caller's own outgoing shares.
     /// </summary>
     [HttpGet]
     public async Task<IActionResult> SharedByMe(CancellationToken ct)
     {
-        var issued = await _grants.ListIssuedByAsync(User.Identity?.Name ?? string.Empty, ct);
+        var issued = await _grants.ListIssuedByAsync(CurrentUserId(), ct);
         return View(issued);
     }
 
@@ -352,7 +352,7 @@ public sealed class SecretsController : VaultController
     {
         // Issuer-scoped: RevokeIssuedAsync only removes the grant if the caller is the one who issued
         // it, so a forged grant id belonging to someone else's share can never be revoked here.
-        if (await _grants.RevokeIssuedAsync(grantId, User.Identity?.Name ?? string.Empty, ct))
+        if (await _grants.RevokeIssuedAsync(grantId, CurrentUserId(), ct))
         {
             this.FlashSuccess("Access revoked.");
         }
