@@ -613,7 +613,14 @@ test('the palette is driven from the keyboard, traps focus, and hands it back on
     await expect(options).toHaveText([/Your data/]);
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/\/Data$/);
-    expect(documents).toEqual(['/Data']);
+    expect(documents).toEqual([]);
+
+    await openPalette(page);
+    await page.getByRole('combobox').fill('access requests');
+    await expect(options).toHaveText([/Access requests/]);
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/\/AccessRequests$/);
+    expect(documents).toEqual(['/AccessRequests']);
   });
 });
 
