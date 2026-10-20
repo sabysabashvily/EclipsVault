@@ -104,16 +104,19 @@ public class SignOutRevokesSessionTests
     }
 
     [Fact]
-    public async Task An_unrecorded_session_is_still_signed_out()
+    public async Task Signing_out_an_unrecorded_session_also_revokes_copied_cookies()
     {
         var sessions = new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance);
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
         var (controller, auth) = SignedInController(sessions,
-            new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()),
-            new Claim(VaultClaimTypes.SessionId, Guid.NewGuid().ToString()));
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
+            new Claim(VaultClaimTypes.SessionId, sessionId.ToString()));
 
         var result = await controller.Logout(CancellationToken.None);
 
         Assert.True(auth.SignedOut);
+        Assert.True(await sessions.IsRevokedAsync(userId, sessionId));
         Assert.IsType<RedirectToActionResult>(result);
     }
 
@@ -121,8 +124,7 @@ public class SignOutRevokesSessionTests
     public async Task When_the_revocation_cannot_be_stored_this_browser_is_still_signed_out()
     {
         // Failing closed here would leave a live session in the browser, on a shared machine the
-        // likelier threat; the copied cookie surviving is exactly the old behaviour, so the cookie
-        // is cleared regardless and the failure is logged.
+        // likelier threat, so the cookie is cleared regardless and the failure is logged.
         var (controller, auth) = SignedInController(new WriteFailingRegistry(),
             new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()),
             new Claim(VaultClaimTypes.SessionId, Guid.NewGuid().ToString()));

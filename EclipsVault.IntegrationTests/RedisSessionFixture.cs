@@ -32,6 +32,13 @@ public sealed class RedisSessionFixture : IAsyncLifetime
         => new(connection, Options.Create(new RedisOptions { InstanceName = "session-tests" }),
             NullLogger<RedisSessionRegistry>.Instance);
 
+    public async Task InterruptRevocationAfterTombstoneAsync(Guid userId, Guid sessionId)
+    {
+        // A node may stop between writing the marker and removing metadata.
+        await _connection!.GetDatabase().StringSetAsync(
+            $"session-tests:session-revoked:{userId:N}:{sessionId:N}", "1", TimeSpan.FromHours(24));
+    }
+
     public async Task DisposeAsync()
     {
         if (_peerConnection is not null)

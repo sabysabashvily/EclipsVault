@@ -24,6 +24,7 @@ public interface ISessionRegistry
     /// validator checks) and drops off the list. Scoped to the owning user, so a caller can only
     /// ever revoke their own sessions. Returns true only when a live session of that account was
     /// removed; an expired, unknown, already revoked or other account's session returns false.
+    /// A tombstone is retained even without metadata, so signing out still rejects copied cookies.
     /// </summary>
     Task<bool> RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default);
 

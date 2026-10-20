@@ -93,13 +93,13 @@ public sealed class InMemorySessionRegistry : ISessionRegistry
         {
             var now = DateTimeOffset.UtcNow;
             SweepStaleTombstones(now);
+            // Metadata can be missing while a cookie is valid; sign-out must still reject its copies.
+            _revokedAt[(userId, sessionId)] = now;
             if (!_sessions.TryGetValue(userId, out var sessions) ||
                 !sessions.Remove(sessionId, out var removed) || removed.ExpiresAtUtc <= now)
             {
                 return Task.FromResult(false);
             }
-
-            _revokedAt[(userId, sessionId)] = now;
         }
 
         _logger.LogInformation("Session {SessionId} for user {UserId} was revoked", sessionId, userId);

@@ -72,11 +72,10 @@ public class InMemorySessionRegistryTests
 
         Assert.Equal(sessionId, Assert.Single(await registry.ListAsync(owner)).SessionId);
         Assert.False(await registry.IsRevokedAsync(owner, sessionId));
-        Assert.False(await registry.IsRevokedAsync(caller, sessionId));
     }
 
     [Fact]
-    public async Task Revoking_an_unknown_session_returns_false_without_a_tombstone()
+    public async Task Revoking_an_unknown_session_returns_false_and_leaves_live_sessions_untouched()
     {
         var registry = CreateRegistry();
         var userId = Guid.NewGuid();
@@ -85,8 +84,21 @@ public class InMemorySessionRegistryTests
         await registry.RecordSeenAsync(Observation(userId, liveSessionId));
 
         Assert.False(await registry.RevokeAsync(userId, sessionId));
-        Assert.False(await registry.IsRevokedAsync(userId, sessionId));
         Assert.Equal(liveSessionId, Assert.Single(await registry.ListAsync(userId)).SessionId);
+    }
+
+    [Fact]
+    public async Task Revoking_an_unrecorded_session_prevents_its_cookie_from_creating_a_session()
+    {
+        var registry = CreateRegistry();
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+
+        Assert.False(await registry.RevokeAsync(userId, sessionId));
+        await registry.RecordSeenAsync(Observation(userId, sessionId));
+
+        Assert.True(await registry.IsRevokedAsync(userId, sessionId));
+        Assert.Empty(await registry.ListAsync(userId));
     }
 
     [Fact]
@@ -103,7 +115,7 @@ public class InMemorySessionRegistryTests
     }
 
     [Fact]
-    public async Task Revoking_an_expired_session_returns_false_without_a_tombstone()
+    public async Task Revoking_expired_metadata_returns_false_and_keeps_the_cookie_revoked()
     {
         var registry = CreateRegistry();
         var userId = Guid.NewGuid();
@@ -111,7 +123,9 @@ public class InMemorySessionRegistryTests
         await registry.RecordSeenAsync(Observation(userId, sessionId, expires: DateTimeOffset.UtcNow.AddMinutes(-1)));
 
         Assert.False(await registry.RevokeAsync(userId, sessionId));
-        Assert.False(await registry.IsRevokedAsync(userId, sessionId));
+        await registry.RecordSeenAsync(Observation(userId, sessionId));
+
+        Assert.True(await registry.IsRevokedAsync(userId, sessionId));
         Assert.Empty(await registry.ListAsync(userId));
     }
 

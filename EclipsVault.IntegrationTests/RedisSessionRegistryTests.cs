@@ -35,11 +35,10 @@ public sealed class RedisSessionRegistryTests(RedisSessionFixture fixture) : ICl
 
         Assert.Equal(sessionId, Assert.Single(await fixture.Registry.ListAsync(owner)).SessionId);
         Assert.False(await fixture.Registry.IsRevokedAsync(owner, sessionId));
-        Assert.False(await fixture.Registry.IsRevokedAsync(caller, sessionId));
     }
 
     [Fact]
-    public async Task Revoking_an_unknown_session_returns_false_without_a_tombstone()
+    public async Task Revoking_an_unknown_session_returns_false_and_leaves_live_sessions_untouched()
     {
         var userId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
@@ -47,8 +46,20 @@ public sealed class RedisSessionRegistryTests(RedisSessionFixture fixture) : ICl
         await fixture.Registry.RecordSeenAsync(Observation(userId, liveSessionId));
 
         Assert.False(await fixture.Registry.RevokeAsync(userId, sessionId));
-        Assert.False(await fixture.PeerRegistry.IsRevokedAsync(userId, sessionId));
         Assert.Equal(liveSessionId, Assert.Single(await fixture.Registry.ListAsync(userId)).SessionId);
+    }
+
+    [Fact]
+    public async Task Revoking_an_unrecorded_session_prevents_its_cookie_from_creating_a_session()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+
+        Assert.False(await fixture.Registry.RevokeAsync(userId, sessionId));
+        await fixture.PeerRegistry.RecordSeenAsync(Observation(userId, sessionId));
+
+        Assert.True(await fixture.PeerRegistry.IsRevokedAsync(userId, sessionId));
+        Assert.Empty(await fixture.PeerRegistry.ListAsync(userId));
     }
 
     [Fact]
@@ -64,14 +75,31 @@ public sealed class RedisSessionRegistryTests(RedisSessionFixture fixture) : ICl
     }
 
     [Fact]
-    public async Task Revoking_an_expired_session_returns_false_without_a_tombstone()
+    public async Task An_interrupted_revocation_is_not_reported_as_a_new_revocation()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        await fixture.Registry.RecordSeenAsync(Observation(userId, sessionId));
+        await fixture.InterruptRevocationAfterTombstoneAsync(userId, sessionId);
+        Assert.True(await fixture.PeerRegistry.IsRevokedAsync(userId, sessionId));
+
+        Assert.False(await fixture.PeerRegistry.RevokeAsync(userId, sessionId));
+
+        Assert.True(await fixture.Registry.IsRevokedAsync(userId, sessionId));
+        Assert.Empty(await fixture.Registry.ListAsync(userId));
+    }
+
+    [Fact]
+    public async Task Revoking_expired_metadata_returns_false_and_keeps_the_cookie_revoked()
     {
         var userId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
         await fixture.Registry.RecordSeenAsync(Observation(userId, sessionId, DateTimeOffset.UtcNow.AddMinutes(-1)));
 
         Assert.False(await fixture.PeerRegistry.RevokeAsync(userId, sessionId));
-        Assert.False(await fixture.Registry.IsRevokedAsync(userId, sessionId));
+        await fixture.Registry.RecordSeenAsync(Observation(userId, sessionId));
+
+        Assert.True(await fixture.Registry.IsRevokedAsync(userId, sessionId));
         Assert.Empty(await fixture.Registry.ListAsync(userId));
     }
 

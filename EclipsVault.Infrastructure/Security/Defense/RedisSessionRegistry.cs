@@ -38,17 +38,17 @@ return 1";
 
     // One script prevents a competing revoke or touch from separating the live check and removal.
     // Store the tombstone before deletion so a failed write cannot leave a session able to return.
+    // Missing metadata does not prove that the cookie has expired, so even a miss gets a tombstone.
     private const string RevokeScript = """
+        local alreadyRevoked = redis.call('EXISTS', KEYS[2])
         local session = redis.call('HGET', KEYS[1], ARGV[1])
-        if not session then return 0 end
+        redis.call('SET', KEYS[2], '1', 'EX', ARGV[2])
+        local removed = redis.call('HDEL', KEYS[1], ARGV[1])
+        if alreadyRevoked == 1 or not session then return 0 end
         local stored = cjson.decode(session)
         local now = tonumber(redis.call('TIME')[1])
-        if tonumber(stored.ExpiresUnix) <= now then
-            redis.call('HDEL', KEYS[1], ARGV[1])
-            return 0
-        end
-        redis.call('SET', KEYS[2], '1', 'EX', ARGV[2])
-        return redis.call('HDEL', KEYS[1], ARGV[1])
+        if tonumber(stored.ExpiresUnix) <= now then return 0 end
+        return removed
         """;
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
