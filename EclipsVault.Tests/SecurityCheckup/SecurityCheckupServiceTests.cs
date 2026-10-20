@@ -18,6 +18,7 @@ public class SecurityCheckupServiceTests
 {
     private static readonly Guid User = Guid.NewGuid();
 
+    // Fakes answer only for User, so a read keyed to anyone else shows up as missing data.
     private sealed class FakeProfile : IProfileService
     {
         private readonly ProfileDto? _dto;
@@ -97,7 +98,7 @@ public class SecurityCheckupServiceTests
     }
 
     [Fact]
-    public async Task It_maps_each_input_into_the_posture()
+    public async Task Two_step_a_passkey_and_eight_codes_grade_the_account_strong_and_all_clear()
     {
         var service = new SecurityCheckupService(
             new FakeProfile(Profile(totp: true)), new FakePasskeys(1), new FakeRecovery(8), new FakeSessions(1));
@@ -121,7 +122,7 @@ public class SecurityCheckupServiceTests
     }
 
     [Fact]
-    public async Task The_checkup_shows_the_callers_security_posture()
+    public async Task Every_posture_input_is_read_for_the_caller_only()
     {
         var service = new SecurityCheckupService(
             new FakeProfile(Profile(totp: true)), new FakePasskeys(2), new FakeRecovery(7), new FakeSessions(4));

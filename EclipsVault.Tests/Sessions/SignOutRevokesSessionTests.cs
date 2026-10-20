@@ -75,19 +75,19 @@ public class SignOutRevokesSessionTests
     public async Task Signing_out_revokes_the_session_so_a_copied_cookie_is_refused()
     {
         var sessions = new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance);
-        var user = Guid.NewGuid();
-        var sid = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
         await sessions.RecordSeenAsync(new SessionObservation(
-            user, sid, "Chrome on macOS", "203.0.113.5", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1)));
+            userId, sessionId, "Chrome on macOS", "203.0.113.5", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1)));
         var (controller, auth) = SignedInController(sessions,
-            new Claim(ClaimTypes.NameIdentifier, user.ToString()),
-            new Claim(VaultClaimTypes.SessionId, sid.ToString()));
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
+            new Claim(VaultClaimTypes.SessionId, sessionId.ToString()));
 
         await controller.Logout(CancellationToken.None);
 
         Assert.True(auth.SignedOut);
-        Assert.True(await sessions.IsRevokedAsync(user, sid));
-        Assert.Empty(await sessions.ListAsync(user));
+        Assert.True(await sessions.IsRevokedAsync(userId, sessionId));
+        Assert.Empty(await sessions.ListAsync(userId));
     }
 
     [Fact]

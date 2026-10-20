@@ -22,6 +22,7 @@ public class PersonalDataExportServiceTests
 {
     private static readonly Guid User = Guid.NewGuid();
 
+    // Fakes answer only for User, so a read keyed to anyone else shows up as missing data.
     private sealed class FakeProfile(ProfileDto? dto) : IProfileService
     {
         public Task<ProfileDto?> GetAsync(Guid userId, CancellationToken ct)
@@ -158,7 +159,7 @@ public class PersonalDataExportServiceTests
     }
 
     [Fact]
-    public async Task The_export_contains_the_callers_account_data()
+    public async Task Every_source_is_read_for_the_caller_only()
     {
         var export = await NewService().BuildForUserAsync(User, CancellationToken.None);
 

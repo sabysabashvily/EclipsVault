@@ -17,33 +17,39 @@ namespace EclipsVault.Infrastructure.Security;
 /// </summary>
 public sealed class RedisSessionRegistry : ISessionRegistry
 {
-    private const string UpsertScript = @"
-if redis.call('EXISTS', KEYS[2]) == 1 then return 0 end
-local existing = redis.call('HGET', KEYS[1], ARGV[1])
-if existing then
-    local ok, obj = pcall(cjson.decode, existing)
-    if ok and (tonumber(ARGV[2]) - tonumber(obj.LastSeenUnix) >= tonumber(ARGV[6])) then
-        obj.LastSeenUnix = tonumber(ARGV[2])
-        obj.ExpiresUnix = tonumber(ARGV[5])
-        obj.IpAddress = ARGV[4]
-        redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(obj))
-    end
-else
-    local obj = { SessionId = ARGV[1], Device = ARGV[3], IpAddress = ARGV[4],
-                  CreatedUnix = tonumber(ARGV[2]), LastSeenUnix = tonumber(ARGV[2]), ExpiresUnix = tonumber(ARGV[5]) }
-    redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(obj))
-end
-redis.call('EXPIRE', KEYS[1], ARGV[7])
-return 1";
+    private const string UpsertScript = """
+        local sessionsKey, tombstoneKey = KEYS[1], KEYS[2]
+        local sessionField, seenUnix, device, ipAddress = ARGV[1], tonumber(ARGV[2]), ARGV[3], ARGV[4]
+        local expiresUnix, throttleSeconds, ttlSeconds = tonumber(ARGV[5]), tonumber(ARGV[6]), ARGV[7]
+        if redis.call('EXISTS', tombstoneKey) == 1 then return 0 end
+        local existing = redis.call('HGET', sessionsKey, sessionField)
+        if existing then
+            local ok, stored = pcall(cjson.decode, existing)
+            if ok and (seenUnix - tonumber(stored.LastSeenUnix) >= throttleSeconds) then
+                stored.LastSeenUnix = seenUnix
+                stored.ExpiresUnix = expiresUnix
+                stored.IpAddress = ipAddress
+                redis.call('HSET', sessionsKey, sessionField, cjson.encode(stored))
+            end
+        else
+            local stored = { SessionId = sessionField, Device = device, IpAddress = ipAddress,
+                             CreatedUnix = seenUnix, LastSeenUnix = seenUnix, ExpiresUnix = expiresUnix }
+            redis.call('HSET', sessionsKey, sessionField, cjson.encode(stored))
+        end
+        redis.call('EXPIRE', sessionsKey, ttlSeconds)
+        return 1
+        """;
 
     // One script prevents a competing revoke or touch from separating the live check and removal.
     // Store the tombstone before deletion so a failed write cannot leave a session able to return.
     // Missing metadata does not prove that the cookie has expired, so even a miss gets a tombstone.
     private const string RevokeScript = """
-        local alreadyRevoked = redis.call('EXISTS', KEYS[2])
-        local session = redis.call('HGET', KEYS[1], ARGV[1])
-        redis.call('SET', KEYS[2], '1', 'EX', ARGV[2])
-        local removed = redis.call('HDEL', KEYS[1], ARGV[1])
+        local sessionsKey, tombstoneKey = KEYS[1], KEYS[2]
+        local sessionField, tombstoneSeconds = ARGV[1], ARGV[2]
+        local alreadyRevoked = redis.call('EXISTS', tombstoneKey)
+        local session = redis.call('HGET', sessionsKey, sessionField)
+        redis.call('SET', tombstoneKey, '1', 'EX', tombstoneSeconds)
+        local removed = redis.call('HDEL', sessionsKey, sessionField)
         if alreadyRevoked == 1 or not session then return 0 end
         local stored = cjson.decode(session)
         local now = tonumber(redis.call('TIME')[1])
@@ -124,10 +130,11 @@ return 1";
     public async Task<bool> RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
     {
         var database = _redis.GetDatabase();
-        var removed = (long)await database.ScriptEvaluateAsync(
+        var result = await database.ScriptEvaluateAsync(
             RevokeScript,
             new RedisKey[] { SessionsKey(userId), RevokedKey(userId, sessionId) },
-            new RedisValue[] { sessionId.ToString("N"), _tombstoneSeconds }) == 1;
+            new RedisValue[] { sessionId.ToString("N"), _tombstoneSeconds });
+        var removed = (long)result == 1;
         if (removed)
         {
             _logger.LogInformation("Session {SessionId} for user {UserId} was revoked", sessionId, userId);

@@ -10,8 +10,13 @@ namespace EclipsVault.IntegrationTests;
 
 public sealed class RedisSessionFixture : IAsyncLifetime
 {
-    private readonly RedisContainer _container = new RedisBuilder(
-        "redis:8.2-alpine@sha256:b51665e66f00759be7c3152ad5ac3c66fb2f619c13ef62dea7cc1f9914524635").Build();
+    /// <summary>Redis 7.4, the version <c>docker-compose.yml</c> runs, pinned by digest.</summary>
+    private const string RedisImage =
+        "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499";
+
+    private const string InstanceName = "session-tests";
+
+    private readonly RedisContainer _container = new RedisBuilder(RedisImage).Build();
 
     private ConnectionMultiplexer? _connection;
     private ConnectionMultiplexer? _peerConnection;
@@ -29,14 +34,14 @@ public sealed class RedisSessionFixture : IAsyncLifetime
     }
 
     private static RedisSessionRegistry CreateRegistry(IConnectionMultiplexer connection)
-        => new(connection, Options.Create(new RedisOptions { InstanceName = "session-tests" }),
+        => new(connection, Options.Create(new RedisOptions { InstanceName = InstanceName }),
             NullLogger<RedisSessionRegistry>.Instance);
 
     public async Task InterruptRevocationAfterTombstoneAsync(Guid userId, Guid sessionId)
     {
         // A node may stop between writing the marker and removing metadata.
         await _connection!.GetDatabase().StringSetAsync(
-            $"session-tests:session-revoked:{userId:N}:{sessionId:N}", "1", TimeSpan.FromHours(24));
+            $"{InstanceName}:session-revoked:{userId:N}:{sessionId:N}", "1", TimeSpan.FromHours(24));
     }
 
     public async Task DisposeAsync()
