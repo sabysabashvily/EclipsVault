@@ -50,16 +50,6 @@ internal static class LegacySharing
         }));
     }
 
-    public static async Task<HttpResponseMessage> RevokeIssuedAsync(HttpClient issuer, Guid shareId)
-    {
-        var page = await issuer.GetStringAsync("/Secrets/SharedByMe");
-        return await issuer.PostAsync("/Secrets/RevokeSharedByMe", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(page, "/Secrets/SharedByMe"),
-            ["grantId"] = shareId.ToString(),
-        }));
-    }
-
     public static async Task<SecretGrant> ShareOfAsync(VaultFixture vault, string details)
     {
         using var scope = vault.Services.CreateScope();

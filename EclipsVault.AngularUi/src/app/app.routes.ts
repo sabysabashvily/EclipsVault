@@ -22,8 +22,14 @@ const signIns = () => import('./sign-ins/sign-ins-page').then((m) => m.SignInsPa
 const security = () => import('./security/security-page').then((m) => m.SecurityPage);
 const sessions = () => import('./sessions/sessions-page').then((m) => m.SessionsPage);
 const data = () => import('./data/data-page').then((m) => m.DataPage);
+const sharedByMe = () => import('./shared-by-me/shared-by-me-page').then((m) => m.SharedByMePage);
 
 export const routes: Routes = [
+  {
+    matcher: legacyPath('Secrets/SharedByMe'),
+    loadComponent: sharedByMe,
+    title: 'Shared by me — EclipsVault',
+  },
   {
     matcher: legacyPath('Sessions'),
     loadComponent: sessions,

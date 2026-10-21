@@ -45,7 +45,7 @@ describe('sidebar mapping', () => {
                 label: 'Shared by me',
                 icon: 'shared-by-me',
                 url: '/Secrets/SharedByMe',
-                angular: false,
+                angular: true,
               },
             ],
           },

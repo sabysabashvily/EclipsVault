@@ -90,10 +90,10 @@ public sealed class ShareAuditTests(VaultFixture vault)
         var share = await LegacySharing.ShareOfAsync(vault, details);
         var before = await LegacySharing.AuditHeadAsync(vault);
 
-        var response = await LegacySharing.RevokeIssuedAsync(issuer.Client, share.Id);
+        var response = await SessionApi.WriteAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.Id}");
 
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/Secrets/SharedByMe", response.Headers.Location?.OriginalString);
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.True(response.Headers.CacheControl?.NoStore);
         var row = Assert.Single(await LegacySharing.ShareAuditRowsAfterAsync(vault, before));
         Assert.Equal(AuditAction.SecretShareRevoked, row.Action);
         Assert.Equal("Secret", row.ResourceType);

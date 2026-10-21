@@ -1,0 +1,73 @@
+<div class="page-header">
+  <div>
+    <h1>Shared by me</h1>
+    <p class="page-sub">
+      Everyone you've granted access to one of your secrets. Review it now and then — if someone no
+      longer needs a secret, revoke it. Revoking takes effect on their next request.
+    </p>
+  </div>
+</div>
+
+<app-status-line [message]="status().message" [error]="status().error" />
+<app-confirmation-dialog (decision)="decide($event)" />
+
+@if (shares.hasValue()) {
+  <section class="panel">
+    @if (shares.value().shares.length === 0) {
+      <app-empty-state
+        icon="share"
+        heading="You haven't shared anything"
+        message="When you grant a colleague access to one of your secrets, it shows up here so you can keep track of who can see what — and revoke access when it's no longer needed."
+      >
+        <a class="button primary" href="/Secrets">Go to your secrets</a>
+      </app-empty-state>
+    } @else {
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Secret</th>
+              <th>Shared with</th>
+              <th>Shared on</th>
+              <th>Access until</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (share of shares.value().shares; track share.shareId) {
+              <tr>
+                <td class="mono cell-strong">{{ share.secretName }}</td>
+                <td>{{ share.recipient }}</td>
+                <td class="muted">{{ share.createdAtUtc | date: 'yyyy-MM-dd HH:mm' : 'UTC' }}</td>
+                <td class="muted">
+                  <span>{{
+                    share.expiresAtUtc
+                      ? (share.expiresAtUtc | date: 'yyyy-MM-dd HH:mm' : 'UTC')
+                      : 'no expiry'
+                  }}</span>
+                </td>
+                <td class="cell-actions">
+                  <button
+                    type="button"
+                    class="button small danger"
+                    [disabled]="busy()"
+                    (click)="ask(share)"
+                  >
+                    Revoke
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+} @else if (shares.error()) {
+  <section class="panel">
+    <p role="alert">Could not load your shares. Try again.</p>
+    <button type="button" class="button" (click)="shares.reload()">Try again</button>
+  </section>
+} @else {
+  <p role="status">Loading your shares…</p>
+}

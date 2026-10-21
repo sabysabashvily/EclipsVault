@@ -25,10 +25,9 @@ public sealed class ShareAuditFailureTests(AuditFailureFixture failure)
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await LegacySharing.RevokeIssuedAsync(issuer.Client, share.Id);
+            var response = await SessionApi.WriteAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.Id}");
 
-            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-            Assert.Equal("/Home/Error?code=503", response.Headers.Location?.OriginalString);
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
             Assert.Equal(share.Id, (await LegacySharing.ShareOfAsync(vault, details)).Id);
             Assert.Contains("it-failure-scoped-secret", await recipient.Client.GetStringAsync("/Secrets/SharedWithMe"));
             Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));

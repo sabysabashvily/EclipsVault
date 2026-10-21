@@ -29,7 +29,7 @@ export default defineConfig({
     : [
         {
           name: 'chromium',
-          testIgnore: ['**/sessions.spec.ts', '**/data.spec.ts'],
+          testIgnore: ['**/sessions.spec.ts', '**/data.spec.ts', '**/shared-by-me.spec.ts'],
           use: { ...devices['Desktop Chrome'] },
         },
         {
@@ -42,6 +42,12 @@ export default defineConfig({
           name: 'data',
           testMatch: '**/data.spec.ts',
           dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          name: 'shared-by-me',
+          testMatch: '**/shared-by-me.spec.ts',
+          dependencies: ['sessions', 'data'],
           use: { ...devices['Desktop Chrome'] },
         },
       ],

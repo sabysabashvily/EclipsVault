@@ -46,6 +46,9 @@ public static class AngularUiRoutes
         // Your data
         "/Data",
         "/Data/Index",
+
+        // Shared by me
+        "/Secrets/SharedByMe",
     ];
 
     /// <summary>

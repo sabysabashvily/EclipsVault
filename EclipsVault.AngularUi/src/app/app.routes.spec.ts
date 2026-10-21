@@ -6,6 +6,7 @@ import { SignInsPage } from './sign-ins/sign-ins-page';
 import { SecurityPage } from './security/security-page';
 import { SessionsPage } from './sessions/sessions-page';
 import { DataPage } from './data/data-page';
+import { SharedByMePage } from './shared-by-me/shared-by-me-page';
 
 /** The route the router picks for `url`: the first whose matcher accepts its segments. */
 function routeFor(url: string): Route | undefined {
@@ -18,6 +19,14 @@ function routeFor(url: string): Route | undefined {
 }
 
 describe('routes', () => {
+  it.each(['/Secrets/SharedByMe', '/secrets/sharedbyme', '/sEcReTs/sHaReDbYmE'])(
+    'opens Shared by me at %s',
+    async (url) => {
+      const route = routeFor(url);
+      expect(route?.title).toBe('Shared by me — EclipsVault');
+      expect(await route?.loadComponent?.()).toBe(SharedByMePage);
+    },
+  );
   it.each(['/Sessions', '/Sessions/Index', '/sessions', '/SESSIONS/index'])(
     'opens Signed-in devices at %s',
     async (url) => {
@@ -94,6 +103,8 @@ describe('routes', () => {
     '/Data/Index/extra',
     '/Data/Download',
     '/Secrets',
+    '/Secrets/SharedWithMe',
+    '/Secrets/SharedByMe/extra',
   ])('leaves %s unmatched', (url) => {
     expect(routeFor(url)).toBeUndefined();
   });
