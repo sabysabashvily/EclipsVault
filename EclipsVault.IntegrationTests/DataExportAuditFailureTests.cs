@@ -11,19 +11,19 @@ public sealed class DataExportAuditFailureTests(AuditFailureFixture failure)
     {
         var vault = failure.Vault;
         var session = await vault.SignInNewAccountAsync("it-data-fail-export", IPAddress.Parse("198.51.100.209"));
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await SessionApi.WriteAsync(session, HttpMethod.Post, "/api/ui/data/export");
+            var response = await UiApiRequest.WriteWithAntiforgeryAsync(session, HttpMethod.Post, "/api/ui/data/export");
 
             await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
             Assert.Null(response.Content.Headers.ContentDisposition);
             var body = await response.Content.ReadAsStringAsync();
             Assert.DoesNotContain("it-data-fail-export", body);
             Assert.DoesNotContain("SchemaVersion", body);
-            Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+            Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         }
         finally
         {

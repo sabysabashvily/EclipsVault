@@ -14,12 +14,12 @@ public sealed class SessionAuditFailureTests(AuditFailureFixture failure)
         var account = await SessionAccount.CreateAsync(vault, "it-sessions-fail-one", "198.51.100.190");
         var other = await account.OpenDeviceAsync(0, "198.51.100.191");
         var id = (await SessionApi.CurrentAsync(other)).SessionId;
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await SessionApi.WriteAsync(account.Browser, HttpMethod.Delete, $"/api/ui/sessions/{id}");
+            var response = await UiApiRequest.WriteWithAntiforgeryAsync(account.Browser, HttpMethod.Delete, $"/api/ui/sessions/{id}");
 
             await UiApiFailureContractTests.AssertProblemAsync(response, 503, "revoked_unrecorded");
             using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
@@ -27,7 +27,7 @@ public sealed class SessionAuditFailureTests(AuditFailureFixture failure)
             Assert.False(problem.RootElement.TryGetProperty("signedOut", out _));
             await UiApiFailureContractTests.AssertProblemAsync(await other.Client.GetAsync("/api/ui/me"), 401, "unauthenticated");
             Assert.Equal(HttpStatusCode.OK, (await account.Browser.Client.GetAsync("/api/ui/sessions")).StatusCode);
-            Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+            Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         }
         finally
         {
@@ -42,12 +42,12 @@ public sealed class SessionAuditFailureTests(AuditFailureFixture failure)
         var account = await SessionAccount.CreateAsync(vault, "it-sessions-fail-others", "198.51.100.192");
         var first = await account.OpenDeviceAsync(0, "198.51.100.193");
         var second = await account.OpenDeviceAsync(1, "198.51.100.194");
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await SessionApi.WriteAsync(account.Browser, HttpMethod.Post, "/api/ui/sessions/sign-out-others");
+            var response = await UiApiRequest.WriteWithAntiforgeryAsync(account.Browser, HttpMethod.Post, "/api/ui/sessions/sign-out-others");
 
             Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
             Assert.True(response.Headers.CacheControl?.NoStore);
@@ -61,7 +61,7 @@ public sealed class SessionAuditFailureTests(AuditFailureFixture failure)
             await UiApiFailureContractTests.AssertProblemAsync(await first.Client.GetAsync("/api/ui/me"), 401, "unauthenticated");
             await UiApiFailureContractTests.AssertProblemAsync(await second.Client.GetAsync("/api/ui/me"), 401, "unauthenticated");
             Assert.Equal(HttpStatusCode.OK, (await account.Browser.Client.GetAsync("/api/ui/me")).StatusCode);
-            Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+            Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         }
         finally
         {

@@ -81,19 +81,19 @@ public sealed class SessionApiTests(VaultFixture vault)
         Assert.DoesNotContain("198.51.100.175", listedDevices);
         Assert.Contains("198.51.100.175", otherListedDevices);
         Assert.DoesNotContain("198.51.100.174", otherListedDevices);
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
-        await UiApiFailureContractTests.AssertProblemAsync(await SessionApi.WriteAsync(account.Browser, HttpMethod.Delete, $"/api/ui/sessions/{otherSessionId}" + claimingOtherAccount), 404, "session_not_found");
-        await UiApiFailureContractTests.AssertProblemAsync(await SessionApi.WriteAsync(otherAccount.Browser, HttpMethod.Delete, $"/api/ui/sessions/{sessionId}" + claimingAccount), 404, "session_not_found");
-        Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+        await UiApiFailureContractTests.AssertProblemAsync(await UiApiRequest.WriteWithAntiforgeryAsync(account.Browser, HttpMethod.Delete, $"/api/ui/sessions/{otherSessionId}" + claimingOtherAccount), 404, "session_not_found");
+        await UiApiFailureContractTests.AssertProblemAsync(await UiApiRequest.WriteWithAntiforgeryAsync(otherAccount.Browser, HttpMethod.Delete, $"/api/ui/sessions/{sessionId}" + claimingAccount), 404, "session_not_found");
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         Assert.Equal(HttpStatusCode.OK, (await device.Client.GetAsync("/api/ui/me")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await otherDevice.Client.GetAsync("/api/ui/me")).StatusCode);
 
-        Assert.Equal(HttpStatusCode.NoContent, (await SessionApi.WriteAsync(account.Browser, HttpMethod.Delete, $"/api/ui/sessions/{sessionId}" + claimingOtherAccount)).StatusCode);
-        Assert.Equal(HttpStatusCode.NoContent, (await SessionApi.WriteAsync(otherAccount.Browser, HttpMethod.Delete, $"/api/ui/sessions/{otherSessionId}" + claimingAccount)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await UiApiRequest.WriteWithAntiforgeryAsync(account.Browser, HttpMethod.Delete, $"/api/ui/sessions/{sessionId}" + claimingOtherAccount)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await UiApiRequest.WriteWithAntiforgeryAsync(otherAccount.Browser, HttpMethod.Delete, $"/api/ui/sessions/{otherSessionId}" + claimingAccount)).StatusCode);
         await UiApiFailureContractTests.AssertProblemAsync(await device.Client.GetAsync("/api/ui/me"), 401, "unauthenticated");
         await UiApiFailureContractTests.AssertProblemAsync(await otherDevice.Client.GetAsync("/api/ui/me"), 401, "unauthenticated");
-        var rows = await LegacySharing.AuditRowsAfterAsync(vault, before);
+        var rows = await AuditTrail.RowsAfterAsync(vault, before);
         Assert.Equal(2, rows.Length);
         Assert.Equal([accountId, otherAccountId], rows.Select(row => row.UserId));
         Assert.Equal([sessionId, otherSessionId], rows.Select(row => row.ResourceId));
@@ -109,11 +109,11 @@ public sealed class SessionApiTests(VaultFixture vault)
         var adminList = await administrator.Browser.Client.GetStringAsync("/api/ui/sessions");
         Assert.DoesNotContain("198.51.100.176", adminList);
         Assert.Contains("198.51.100.177", adminList);
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
-        await UiApiFailureContractTests.AssertProblemAsync(await SessionApi.WriteAsync(administrator.Browser, HttpMethod.Delete, $"/api/ui/sessions/{target}"), 404, "session_not_found");
+        await UiApiFailureContractTests.AssertProblemAsync(await UiApiRequest.WriteWithAntiforgeryAsync(administrator.Browser, HttpMethod.Delete, $"/api/ui/sessions/{target}"), 404, "session_not_found");
 
-        Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         Assert.Equal(HttpStatusCode.OK, (await owner.Browser.Client.GetAsync("/api/ui/me")).StatusCode);
     }
 
@@ -122,15 +122,15 @@ public sealed class SessionApiTests(VaultFixture vault)
     {
         var session = await vault.SignInNewAccountAsync("it-sessions-current", IPAddress.Parse("198.51.100.178"));
         var current = (await SessionApi.CurrentAsync(session)).SessionId;
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await SessionApi.WriteAsync(session, HttpMethod.Delete, $"/api/ui/sessions/{current}");
+        var response = await UiApiRequest.WriteWithAntiforgeryAsync(session, HttpMethod.Delete, $"/api/ui/sessions/{current}");
 
         await UiApiFailureContractTests.AssertProblemAsync(response, 409, "current_session");
         using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal("That's the device you're using now — use Sign out for this one.", problem.RootElement.GetProperty("title").GetString());
         Assert.Equal(["code", "status", "title"], NamesOf(problem.RootElement));
-        Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         Assert.Equal(HttpStatusCode.OK, (await session.Client.GetAsync("/api/ui/me")).StatusCode);
     }
 
@@ -140,19 +140,19 @@ public sealed class SessionApiTests(VaultFixture vault)
         var account = await SessionAccount.CreateAsync(vault, "it-sessions-missing", "198.51.100.179");
         var other = await account.OpenDeviceAsync(0, "198.51.100.180");
         var id = (await SessionApi.CurrentAsync(other)).SessionId;
-        var signedOut = await SessionApi.WriteAsync(account.Browser, HttpMethod.Delete, $"/api/ui/sessions/{id}");
+        var signedOut = await UiApiRequest.WriteWithAntiforgeryAsync(account.Browser, HttpMethod.Delete, $"/api/ui/sessions/{id}");
         Assert.Equal(HttpStatusCode.NoContent, signedOut.StatusCode);
         Assert.True(signedOut.Headers.CacheControl?.NoStore);
         Assert.Empty(await signedOut.Content.ReadAsStringAsync());
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
-        var unknown = await SessionApi.WriteAsync(account.Browser, HttpMethod.Delete, $"/api/ui/sessions/{Guid.NewGuid()}");
-        var repeated = await SessionApi.WriteAsync(account.Browser, HttpMethod.Delete, $"/api/ui/sessions/{id}");
+        var unknown = await UiApiRequest.WriteWithAntiforgeryAsync(account.Browser, HttpMethod.Delete, $"/api/ui/sessions/{Guid.NewGuid()}");
+        var repeated = await UiApiRequest.WriteWithAntiforgeryAsync(account.Browser, HttpMethod.Delete, $"/api/ui/sessions/{id}");
 
         await UiApiFailureContractTests.AssertProblemAsync(unknown, 404, "session_not_found");
         await UiApiFailureContractTests.AssertProblemAsync(repeated, 404, "session_not_found");
         Assert.Equal(await unknown.Content.ReadAsStringAsync(), await repeated.Content.ReadAsStringAsync());
-        Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
     [Fact]
@@ -165,11 +165,11 @@ public sealed class SessionApiTests(VaultFixture vault)
         var registry = vault.Services.GetRequiredService<ISessionRegistry>();
         await registry.RecordSeenAsync(new SessionObservation(userId, device.SessionId, device.Device, device.IpAddress,
             new DateTimeOffset(device.LastSeenAtUtc).AddMinutes(1), DateTimeOffset.UtcNow.AddSeconds(-1)));
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
-        await UiApiFailureContractTests.AssertProblemAsync(await SessionApi.WriteAsync(account.Browser, HttpMethod.Delete, $"/api/ui/sessions/{device.SessionId}"), 404, "session_not_found");
+        await UiApiFailureContractTests.AssertProblemAsync(await UiApiRequest.WriteWithAntiforgeryAsync(account.Browser, HttpMethod.Delete, $"/api/ui/sessions/{device.SessionId}"), 404, "session_not_found");
 
-        Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         var refreshed = await account.Browser.Client.GetFromJsonAsync<SessionsResponse>("/api/ui/sessions");
         Assert.Single(Assert.IsType<SessionsResponse>(refreshed).Sessions);
         await UiApiFailureContractTests.AssertProblemAsync(await other.Client.GetAsync("/api/ui/me"), 401, "unauthenticated");
@@ -181,12 +181,12 @@ public sealed class SessionApiTests(VaultFixture vault)
     public async Task Session_writes_require_the_antiforgery_header(string method, string path, string address)
     {
         var session = await vault.SignInNewAccountAsync($"it-sessions-csrf-{method}", IPAddress.Parse(address));
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
         var response = await session.Client.SendAsync(new HttpRequestMessage(new HttpMethod(method), path));
 
         await UiApiFailureContractTests.AssertProblemAsync(response, 400, "antiforgery_rejected");
-        Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
     [Fact]
@@ -198,9 +198,9 @@ public sealed class SessionApiTests(VaultFixture vault)
         var outsider = await vault.SignInNewAccountAsync("it-sessions-outsider", IPAddress.Parse("198.51.100.188"));
         var firstId = (await SessionApi.CurrentAsync(first)).SessionId;
         var secondId = (await SessionApi.CurrentAsync(second)).SessionId;
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await SessionApi.WriteAsync(account.Browser, HttpMethod.Post, "/api/ui/sessions/sign-out-others?username=it-sessions-outsider&userId=" + SessionApi.PrincipalOf(vault, outsider).GetUserId());
+        var response = await UiApiRequest.WriteWithAntiforgeryAsync(account.Browser, HttpMethod.Post, "/api/ui/sessions/sign-out-others?username=it-sessions-outsider&userId=" + SessionApi.PrincipalOf(vault, outsider).GetUserId());
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.True(response.Headers.CacheControl?.NoStore);
@@ -209,7 +209,7 @@ public sealed class SessionApiTests(VaultFixture vault)
         await UiApiFailureContractTests.AssertProblemAsync(await second.Client.GetAsync("/api/ui/me"), 401, "unauthenticated");
         Assert.Equal(HttpStatusCode.OK, (await account.Browser.Client.GetAsync("/api/ui/me")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await outsider.Client.GetAsync("/api/ui/me")).StatusCode);
-        var rows = await LegacySharing.AuditRowsAfterAsync(vault, before);
+        var rows = await AuditTrail.RowsAfterAsync(vault, before);
         Assert.Equal(2, rows.Length);
         Assert.Contains(rows, row => row.ResourceId == firstId);
         Assert.Contains(rows, row => row.ResourceId == secondId);
@@ -227,14 +227,14 @@ public sealed class SessionApiTests(VaultFixture vault)
     public async Task Signing_out_others_with_no_other_devices_reports_zero_and_writes_no_audit_row()
     {
         var session = await vault.SignInNewAccountAsync("it-sessions-no-others", IPAddress.Parse("198.51.100.196"));
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await SessionApi.WriteAsync(session, HttpMethod.Post, "/api/ui/sessions/sign-out-others");
+        var response = await UiApiRequest.WriteWithAntiforgeryAsync(session, HttpMethod.Post, "/api/ui/sessions/sign-out-others");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.True(response.Headers.CacheControl?.NoStore);
         Assert.Equal("{\"signedOut\":0}", await response.Content.ReadAsStringAsync());
-        Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
     [Fact]
@@ -256,7 +256,7 @@ public sealed class SessionApiTests(VaultFixture vault)
         var source = IPAddress.Parse("198.51.100.195");
         var original = await vault.SignInNewAccountAsync("it-sessions-no-account-id", source);
         var cookie = SessionApi.WithoutAccountId(vault, original);
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
         var reader = vault.CreateSession(cookie, source);
         await UiApiFailureContractTests.AssertProblemAsync(await reader.Client.GetAsync("/api/ui/sessions"), 401, "unauthenticated");
@@ -264,7 +264,7 @@ public sealed class SessionApiTests(VaultFixture vault)
         await UiApiFailureContractTests.AssertProblemAsync(await single.Client.DeleteAsync($"/api/ui/sessions/{Guid.NewGuid()}"), 401, "unauthenticated");
         var bulk = vault.CreateSession(cookie, source);
         await UiApiFailureContractTests.AssertProblemAsync(await bulk.Client.PostAsync("/api/ui/sessions/sign-out-others", null), 401, "unauthenticated");
-        Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
     private static string[] NamesOf(JsonElement element)

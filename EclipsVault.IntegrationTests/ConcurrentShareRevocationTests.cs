@@ -19,14 +19,14 @@ public sealed class ConcurrentShareRevocationTests(VaultFixture vault)
         var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-shares-race-secret");
         await LegacySharing.ShareAsync(issuer.Client, details, "it-shares-race-recipient");
         var share = await LegacySharing.ShareOfAsync(vault, details);
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
         using var scope = vault.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
         await using var transaction = await db.Database.BeginTransactionAsync();
         await new SqlServerAuditChainLocker().AcquireAsync(db, "EclipsVault:AuditChain", TimeSpan.FromSeconds(5), default);
 
-        var first = SessionApi.WriteAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.Id}");
-        var second = SessionApi.WriteAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.Id}");
+        var first = UiApiRequest.WriteWithAntiforgeryAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.Id}");
+        var second = UiApiRequest.WriteWithAntiforgeryAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.Id}");
         try
         {
             await WaitForBothRevocationsToReadTheShareAsync(db);
@@ -41,7 +41,7 @@ public sealed class ConcurrentShareRevocationTests(VaultFixture vault)
         await UiApiFailureContractTests.AssertProblemAsync(Assert.Single(responses, response => response.StatusCode == HttpStatusCode.NotFound),
             404, "share_not_found");
         Assert.False(await db.SecretGrants.AnyAsync(stored => stored.Id == share.Id));
-        var row = Assert.Single(await LegacySharing.AuditRowsAfterAsync(vault, before));
+        var row = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before));
         Assert.Equal(AuditAction.SecretShareRevoked, row.Action);
         Assert.Equal(share.SecretId, row.ResourceId);
     }

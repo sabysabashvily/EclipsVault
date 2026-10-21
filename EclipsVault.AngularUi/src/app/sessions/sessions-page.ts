@@ -40,7 +40,7 @@ export class SessionsPage {
   protected readonly sessions = httpResource<Sessions>(() => '/api/ui/sessions');
   protected readonly busy = signal(false);
   protected readonly status = signal({ message: '', error: false });
-  protected readonly view = computed(() => {
+  protected readonly devices = computed(() => {
     if (!this.sessions.hasValue()) return null;
     const now = new Date();
     return this.sessions.value().sessions.map((session) => ({
@@ -52,7 +52,7 @@ export class SessionsPage {
     }));
   });
   protected readonly hasOthers = computed(
-    () => this.view()?.some((session) => !session.isCurrent) ?? false,
+    () => this.devices()?.some((session) => !session.isCurrent) ?? false,
   );
 
   protected ask(action: SignOut): void {

@@ -14,13 +14,13 @@ public sealed class ShareAuditTests(VaultFixture vault)
         var issuer = await vault.AdminClientAsync();
         await vault.SignInNewAccountAsync("it-audit-recipient", IPAddress.Parse("198.51.100.130"));
         var details = await LegacySharing.CreateSecretAsync(issuer, "it-audit-shared-secret");
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
         var response = await LegacySharing.ShareAsync(issuer, details, "it-audit-recipient");
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal(details, response.Headers.Location?.OriginalString);
-        var row = Assert.Single(await LegacySharing.ShareAuditRowsAfterAsync(vault, before));
+        var row = Assert.Single(await AuditTrail.ShareRowsAfterAsync(vault, before));
         Assert.Equal(AuditAction.SecretShared, row.Action);
         Assert.Equal("Secret", row.ResourceType);
         Assert.Equal(LegacySharing.SecretIdOf(details), row.ResourceId);
@@ -36,12 +36,12 @@ public sealed class ShareAuditTests(VaultFixture vault)
         var issuer = await vault.AdminClientAsync();
         await vault.SignInNewAccountAsync("it-audit-expiry-recipient", IPAddress.Parse("198.51.100.131"));
         var details = await LegacySharing.CreateSecretAsync(issuer, "it-audit-expiring-secret");
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
         var response = await LegacySharing.ShareAsync(issuer, details, "it-audit-expiry-recipient", ttlDays: "7");
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        var row = Assert.Single(await LegacySharing.ShareAuditRowsAfterAsync(vault, before));
+        var row = Assert.Single(await AuditTrail.ShareRowsAfterAsync(vault, before));
         Assert.Equal(AuditAction.SecretShared, row.Action);
         Assert.Equal("Secret", row.ResourceType);
         Assert.Equal(LegacySharing.SecretIdOf(details), row.ResourceId);
@@ -65,13 +65,13 @@ public sealed class ShareAuditTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.Redirect, (await LegacySharing.ShareAsync(issuer, details, "it-audit-revoke-recipient")).StatusCode);
         var share = await LegacySharing.ShareOfAsync(vault, details);
         Assert.Equal(HttpStatusCode.OK, (await recipient.Client.GetAsync(details)).StatusCode);
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
         var response = await LegacySharing.RevokeAsync(issuer, details, share.Id);
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal(details, response.Headers.Location?.OriginalString);
-        var row = Assert.Single(await LegacySharing.ShareAuditRowsAfterAsync(vault, before));
+        var row = Assert.Single(await AuditTrail.ShareRowsAfterAsync(vault, before));
         Assert.Equal(AuditAction.SecretShareRevoked, row.Action);
         Assert.Equal("Secret", row.ResourceType);
         Assert.Equal(share.SecretId, row.ResourceId);
@@ -88,13 +88,13 @@ public sealed class ShareAuditTests(VaultFixture vault)
         var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-audit-scoped-secret");
         Assert.Equal(HttpStatusCode.Redirect, (await LegacySharing.ShareAsync(issuer.Client, details, "it-audit-scoped-recipient")).StatusCode);
         var share = await LegacySharing.ShareOfAsync(vault, details);
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await SessionApi.WriteAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.Id}");
+        var response = await UiApiRequest.WriteWithAntiforgeryAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.Id}");
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         Assert.True(response.Headers.CacheControl?.NoStore);
-        var row = Assert.Single(await LegacySharing.ShareAuditRowsAfterAsync(vault, before));
+        var row = Assert.Single(await AuditTrail.ShareRowsAfterAsync(vault, before));
         Assert.Equal(AuditAction.SecretShareRevoked, row.Action);
         Assert.Equal("Secret", row.ResourceType);
         Assert.Equal(share.SecretId, row.ResourceId);

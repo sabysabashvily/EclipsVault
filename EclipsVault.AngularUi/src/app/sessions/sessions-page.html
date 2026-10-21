@@ -17,7 +17,7 @@
 <app-status-line [message]="status().message" [error]="status().error" />
 <app-confirmation-dialog (decision)="decide($event)" />
 
-@if (view(); as devices) {
+@if (devices(); as devices) {
   @if (devices.length === 0) {
     <app-empty-state
       icon="lock"

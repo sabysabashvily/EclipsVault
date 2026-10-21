@@ -62,26 +62,46 @@ public sealed class DataApiTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task The_export_sends_the_legacy_file_with_its_name_cache_headers_and_pinned_shape()
+    public async Task The_export_cannot_be_cached()
+    {
+        var account = await vault.SignInNewAccountAsync("it-data-no-cache", IPAddress.Parse("198.51.100.212"));
+
+        var response = await UiApiRequest.WriteWithAntiforgeryAsync(account, HttpMethod.Post, "/api/ui/data/export");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("no-store, no-cache, must-revalidate", Assert.Single(response.Headers.NonValidated["Cache-Control"]));
+        Assert.Equal("no-cache", Assert.Single(response.Headers.NonValidated["Pragma"]));
+    }
+
+    [Fact]
+    public async Task The_export_download_uses_the_accounts_sanitized_filename()
     {
         // Leading and trailing hyphens are valid in a username but are trimmed from the file name.
+        var account = await vault.SignInNewAccountAsync("-it-data-filename-", IPAddress.Parse("198.51.100.213"));
+
+        var response = await UiApiRequest.WriteWithAntiforgeryAsync(account, HttpMethod.Post, "/api/ui/data/export");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        var disposition = Assert.IsType<ContentDispositionHeaderValue>(response.Content.Headers.ContentDisposition);
+        Assert.Equal("attachment", disposition.DispositionType);
+        Assert.Matches(@"^eclipsvault-data-it-data-filename-\d{8}\.json$", disposition.FileName);
+    }
+
+    [Fact]
+    public async Task The_export_contains_only_the_accounts_legacy_document()
+    {
         var account = await SessionAccount.CreateAsync(vault, "-it-data-file-", "198.51.100.202");
         await account.OpenDeviceAsync(0, "198.51.100.203");
         using var summary = JsonDocument.Parse(await account.Browser.Client.GetStringAsync("/api/ui/data"));
 
-        var response = await SessionApi.WriteAsync(account.Browser, HttpMethod.Post, "/api/ui/data/export");
+        var response = await UiApiRequest.WriteWithAntiforgeryAsync(account.Browser, HttpMethod.Post, "/api/ui/data/export");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
-        Assert.Equal("no-store, no-cache, must-revalidate", Assert.Single(response.Headers.NonValidated["Cache-Control"]));
-        Assert.Equal("no-cache", Assert.Single(response.Headers.NonValidated["Pragma"]));
         var body = await response.Content.ReadAsStringAsync();
         Assert.StartsWith("{\n  \"GeneratedAtUtc\": ", body.ReplaceLineEndings("\n"));
         using var file = JsonDocument.Parse(body);
         var export = file.RootElement;
-        var disposition = Assert.IsType<ContentDispositionHeaderValue>(response.Content.Headers.ContentDisposition);
-        Assert.Equal("attachment", disposition.DispositionType);
-        Assert.Matches(@"^eclipsvault-data-it-data-file-\d{8}\.json$", disposition.FileName);
         Assert.Equal(
             ["AccessRequests", "Account", "GeneratedAtUtc", "Notice", "RecentActivity", "SchemaVersion", "Security", "SignedInDevices"],
             NamesOf(export));
@@ -112,13 +132,13 @@ public sealed class DataApiTests(VaultFixture vault)
     {
         var session = await vault.SignInNewAccountAsync("it-data-audited", IPAddress.Parse("198.51.100.210"));
         var userId = SessionApi.PrincipalOf(vault, session).GetUserId();
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await SessionApi.WriteAsync(session, HttpMethod.Post, "/api/ui/data/export");
+        var response = await UiApiRequest.WriteWithAntiforgeryAsync(session, HttpMethod.Post, "/api/ui/data/export");
 
         using var file = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var activityCount = file.RootElement.GetProperty("RecentActivity").GetArrayLength();
-        var row = Assert.Single(await LegacySharing.AuditRowsAfterAsync(vault, before));
+        var row = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before));
         Assert.Equal(AuditAction.PersonalDataExported, row.Action);
         Assert.Equal("Account", row.ResourceType);
         Assert.Equal(userId, row.ResourceId);
@@ -146,10 +166,10 @@ public sealed class DataApiTests(VaultFixture vault)
         Assert.DoesNotContain("it-data-scope-b", summary);
         Assert.Contains("\"username\":\"it-data-scope-b\"", otherSummary);
         Assert.DoesNotContain("it-data-scope-a", otherSummary);
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
-        var exported = await (await SessionApi.WriteAsync(account, HttpMethod.Post, "/api/ui/data/export" + claimingOtherAccount)).Content.ReadAsStringAsync();
-        var otherExported = await (await SessionApi.WriteAsync(otherAccount, HttpMethod.Post, "/api/ui/data/export" + claimingAccount)).Content.ReadAsStringAsync();
+        var exported = await (await UiApiRequest.WriteWithAntiforgeryAsync(account, HttpMethod.Post, "/api/ui/data/export" + claimingOtherAccount)).Content.ReadAsStringAsync();
+        var otherExported = await (await UiApiRequest.WriteWithAntiforgeryAsync(otherAccount, HttpMethod.Post, "/api/ui/data/export" + claimingAccount)).Content.ReadAsStringAsync();
 
         Assert.Contains("\"Username\": \"it-data-scope-a\"", exported);
         Assert.Contains("198.51.100.204", exported);
@@ -159,7 +179,7 @@ public sealed class DataApiTests(VaultFixture vault)
         Assert.Contains("198.51.100.205", otherExported);
         Assert.DoesNotContain("it-data-scope-a", otherExported);
         Assert.DoesNotContain("198.51.100.204", otherExported);
-        var rows = await LegacySharing.AuditRowsAfterAsync(vault, before);
+        var rows = await AuditTrail.RowsAfterAsync(vault, before);
         Assert.Equal([accountId, otherAccountId], rows.Select(row => row.UserId));
         Assert.Equal([accountId, otherAccountId], rows.Select(row => row.ResourceId));
         Assert.All(rows, row => Assert.Equal(AuditAction.PersonalDataExported, row.Action));
@@ -169,13 +189,13 @@ public sealed class DataApiTests(VaultFixture vault)
     public async Task The_export_requires_the_antiforgery_header_and_sends_no_file_without_it()
     {
         var session = await vault.SignInNewAccountAsync("it-data-csrf", IPAddress.Parse("198.51.100.206"));
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
         var response = await session.Client.PostAsync("/api/ui/data/export", null);
 
         await UiApiFailureContractTests.AssertProblemAsync(response, 400, "antiforgery_rejected");
         Assert.Null(response.Content.Headers.ContentDisposition);
-        Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
     [Fact]
@@ -186,12 +206,12 @@ public sealed class DataApiTests(VaultFixture vault)
         var session = await vault.SignInNewAccountAsync(username, source);
         var cookie = Assert.IsType<Cookie>(session.SessionCookie);
         await vault.DeleteAccountAsync(username);
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
         await UiApiFailureContractTests.AssertProblemAsync(await session.Client.GetAsync("/api/ui/data"), 401, "unauthenticated");
         var copy = vault.CreateSession(cookie, source);
         await UiApiFailureContractTests.AssertProblemAsync(await copy.Client.PostAsync("/api/ui/data/export", null), 401, "unauthenticated");
-        Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
     [Fact]
@@ -200,13 +220,13 @@ public sealed class DataApiTests(VaultFixture vault)
         var source = IPAddress.Parse("198.51.100.208");
         var original = await vault.SignInNewAccountAsync("it-data-no-account-id", source);
         var cookie = SessionApi.WithoutAccountId(vault, original);
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
         var reader = vault.CreateSession(cookie, source);
         await UiApiFailureContractTests.AssertProblemAsync(await reader.Client.GetAsync("/api/ui/data"), 401, "unauthenticated");
         var exporter = vault.CreateSession(cookie, source);
         await UiApiFailureContractTests.AssertProblemAsync(await exporter.Client.PostAsync("/api/ui/data/export", null), 401, "unauthenticated");
-        Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
     private static string[] NamesOf(JsonElement element)

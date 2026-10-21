@@ -609,7 +609,7 @@ test('the palette is driven from the keyboard, traps focus, and hands it back on
     expect(documents).toEqual([]);
 
     await openPalette(page);
-    await page.locator('.palette-input').fill('your data');
+    await page.getByRole('combobox').fill('your data');
     await expect(options).toHaveText([/Your data/]);
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/\/Data$/);

@@ -20,17 +20,17 @@ public sealed class ShareAuditFailureTests(AuditFailureFixture failure)
         Assert.Equal(HttpStatusCode.Redirect, (await LegacySharing.ShareAsync(issuer.Client, details, "it-failure-scoped-recipient")).StatusCode);
         var share = await LegacySharing.ShareOfAsync(vault, details);
         Assert.Equal(HttpStatusCode.OK, (await recipient.Client.GetAsync(details)).StatusCode);
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await SessionApi.WriteAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.Id}");
+            var response = await UiApiRequest.WriteWithAntiforgeryAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.Id}");
 
             await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
             Assert.Equal(share.Id, (await LegacySharing.ShareOfAsync(vault, details)).Id);
             Assert.Contains("it-failure-scoped-secret", await recipient.Client.GetStringAsync("/Secrets/SharedWithMe"));
-            Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+            Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         }
         finally
         {
@@ -44,7 +44,7 @@ public sealed class ShareAuditFailureTests(AuditFailureFixture failure)
     public async Task The_failing_audit_store_also_rejects_standalone_group_commits()
     {
         var vault = failure.Vault;
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
         await failure.RejectAuditWritesAsync();
         try
@@ -60,7 +60,7 @@ public sealed class ShareAuditFailureTests(AuditFailureFixture failure)
                 Details = "A standalone audit write must fail at the same store.",
             }, CancellationToken.None));
 
-            Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+            Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         }
         finally
         {

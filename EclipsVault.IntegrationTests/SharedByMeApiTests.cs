@@ -81,26 +81,26 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         var otherIssuedShare = await LegacySharing.ShareOfAsync(vault, otherIssuedSecret);
         var claimingOtherIssuer = $"?issuerId={otherIssuerId}&issuerUserId={otherIssuerId}&userId={otherIssuerId}&accountId={otherIssuerId}&username=it-shares-scope-b&issuer=it-shares-scope-b";
         var claimingIssuer = $"?issuerId={issuerId}&issuerUserId={issuerId}&userId={issuerId}&accountId={issuerId}&username=it-shares-scope-a&issuer=it-shares-scope-a";
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
         var issuedShares = await issuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me" + claimingOtherIssuer);
         var otherIssuedShares = await otherIssuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me" + claimingIssuer);
         Assert.Equal(issuedShare.Id, Assert.Single(issuedShares!.Shares).ShareId);
         Assert.Equal(otherIssuedShare.Id, Assert.Single(otherIssuedShares!.Shares).ShareId);
-        var foreign = await SessionApi.WriteAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{otherIssuedShare.Id}" + claimingOtherIssuer,
+        var foreign = await UiApiRequest.WriteWithAntiforgeryAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{otherIssuedShare.Id}" + claimingOtherIssuer,
             JsonContent.Create(new { issuerId = otherIssuerId, issuerUserId = otherIssuerId, accountId = otherIssuerId, userId = otherIssuerId, username = "it-shares-scope-b", issuer = "it-shares-scope-b" }));
-        var missing = await SessionApi.WriteAsync(otherIssuer, HttpMethod.Delete, "/api/ui/shared-by-me/11111111-1111-1111-1111-111111111111");
+        var missing = await UiApiRequest.WriteWithAntiforgeryAsync(otherIssuer, HttpMethod.Delete, "/api/ui/shared-by-me/11111111-1111-1111-1111-111111111111");
         await UiApiFailureContractTests.AssertProblemAsync(foreign, 404, "share_not_found");
         await UiApiFailureContractTests.AssertProblemAsync(missing, 404, "share_not_found");
         Assert.Equal(await missing.Content.ReadAsStringAsync(), await foreign.Content.ReadAsStringAsync());
         using var problem = JsonDocument.Parse(await foreign.Content.ReadAsStringAsync());
         Assert.Equal("That grant no longer exists, or it wasn't yours to revoke.", problem.RootElement.GetProperty("title").GetString());
-        Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
 
-        Assert.Equal(HttpStatusCode.NoContent, (await SessionApi.WriteAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{issuedShare.Id}" + claimingOtherIssuer)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await UiApiRequest.WriteWithAntiforgeryAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{issuedShare.Id}" + claimingOtherIssuer)).StatusCode);
         Assert.Empty((await issuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me"))!.Shares);
         Assert.Equal(otherIssuedShare.Id, Assert.Single((await otherIssuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me"))!.Shares).ShareId);
-        Assert.Equal(HttpStatusCode.NoContent, (await SessionApi.WriteAsync(otherIssuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{otherIssuedShare.Id}" + claimingIssuer)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await UiApiRequest.WriteWithAntiforgeryAsync(otherIssuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{otherIssuedShare.Id}" + claimingIssuer)).StatusCode);
         Assert.Empty((await otherIssuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me"))!.Shares);
     }
 
@@ -113,14 +113,14 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-shares-audit-secret");
         await LegacySharing.ShareAsync(issuer.Client, details, "it-shares-audit-recipient");
         var share = await LegacySharing.ShareOfAsync(vault, details);
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
-        var revoked = await SessionApi.WriteAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.Id}");
+        var revoked = await UiApiRequest.WriteWithAntiforgeryAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.Id}");
 
         Assert.Equal(HttpStatusCode.NoContent, revoked.StatusCode);
         Assert.True(revoked.Headers.CacheControl?.NoStore);
         Assert.Empty(await revoked.Content.ReadAsStringAsync());
-        var row = Assert.Single(await LegacySharing.AuditRowsAfterAsync(vault, before));
+        var row = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before));
         Assert.Equal(AuditAction.SecretShareRevoked, row.Action);
         Assert.Equal(issuerId, row.UserId);
         Assert.Equal("it-shares-audit", row.Username);
@@ -143,13 +143,13 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         await LegacySharing.ShareAsync(other.Client, foreign, "it-shares-admin-recipient");
         var ownedShare = await LegacySharing.ShareOfAsync(vault, owned);
         var foreignShare = await LegacySharing.ShareOfAsync(vault, foreign);
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
         var shown = await admin.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me");
         Assert.Equal(ownedShare.Id, Assert.Single(shown!.Shares).ShareId);
-        await UiApiFailureContractTests.AssertProblemAsync(await SessionApi.WriteAsync(admin, HttpMethod.Delete, $"/api/ui/shared-by-me/{foreignShare.Id}"), 404, "share_not_found");
-        Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
-        Assert.Equal(HttpStatusCode.NoContent, (await SessionApi.WriteAsync(admin, HttpMethod.Delete, $"/api/ui/shared-by-me/{ownedShare.Id}")).StatusCode);
+        await UiApiFailureContractTests.AssertProblemAsync(await UiApiRequest.WriteWithAntiforgeryAsync(admin, HttpMethod.Delete, $"/api/ui/shared-by-me/{foreignShare.Id}"), 404, "share_not_found");
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
+        Assert.Equal(HttpStatusCode.NoContent, (await UiApiRequest.WriteWithAntiforgeryAsync(admin, HttpMethod.Delete, $"/api/ui/shared-by-me/{ownedShare.Id}")).StatusCode);
     }
 
     [Fact]
@@ -184,7 +184,7 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
 
         var list = await issuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me");
         Assert.Equal(share.Id, Assert.Single(list!.Shares).ShareId);
-        Assert.Equal(HttpStatusCode.NoContent, (await SessionApi.WriteAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.Id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await UiApiRequest.WriteWithAntiforgeryAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.Id}")).StatusCode);
         Assert.Empty((await issuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me"))!.Shares);
         Assert.StartsWith("/Account/Denied?", (await recipient.Client.GetAsync(details)).Headers.Location?.OriginalString);
     }
@@ -211,13 +211,13 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
 
         await vault.DeleteAccountAsync(issuerUsername);
         var replacement = await vault.SignInNewAccountAsync(issuerUsername, IPAddress.Parse("198.51.100.122"));
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
         var replacementsList = await replacement.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me");
         Assert.Empty(replacementsList!.Shares);
-        var revoke = await SessionApi.WriteAsync(replacement, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.ShareId}");
+        var revoke = await UiApiRequest.WriteWithAntiforgeryAsync(replacement, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.ShareId}");
         await UiApiFailureContractTests.AssertProblemAsync(revoke, 404, "share_not_found");
-        Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         Assert.Equal(HttpStatusCode.OK, (await recipient.Client.GetAsync(details)).StatusCode);
         Assert.Contains(secretName, await recipient.Client.GetStringAsync("/Secrets/SharedWithMe"));
     }
@@ -259,12 +259,12 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-shares-csrf-secret");
         await LegacySharing.ShareAsync(issuer.Client, details, "it-shares-csrf-recipient");
         var share = await LegacySharing.ShareOfAsync(vault, details);
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
         await UiApiFailureContractTests.AssertProblemAsync(await issuer.Client.DeleteAsync($"/api/ui/shared-by-me/{share.Id}"), 400, "antiforgery_rejected");
 
         Assert.Equal(share.Id, (await LegacySharing.ShareOfAsync(vault, details)).Id);
-        Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
     [Fact]
@@ -274,11 +274,11 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         var session = await vault.SignInNewAccountAsync("it-shares-deleted", source);
         var cookie = Assert.IsType<Cookie>(session.SessionCookie);
         await vault.DeleteAccountAsync("it-shares-deleted");
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
         await UiApiFailureContractTests.AssertProblemAsync(await session.Client.GetAsync("/api/ui/shared-by-me"), 401, "unauthenticated");
         await UiApiFailureContractTests.AssertProblemAsync(await vault.CreateSession(cookie, source).Client.DeleteAsync("/api/ui/shared-by-me/11111111-1111-1111-1111-111111111111"), 401, "unauthenticated");
-        Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
     [Fact]
@@ -287,11 +287,11 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         var source = IPAddress.Parse("192.0.2.95");
         var session = await vault.SignInNewAccountAsync("it-shares-no-id", source);
         var cookie = SessionApi.WithoutAccountId(vault, session);
-        var before = await LegacySharing.AuditHeadAsync(vault);
+        var before = await AuditTrail.HeadAsync(vault);
 
         await UiApiFailureContractTests.AssertProblemAsync(await vault.CreateSession(cookie, source).Client.GetAsync("/api/ui/shared-by-me"), 401, "unauthenticated");
         await UiApiFailureContractTests.AssertProblemAsync(await vault.CreateSession(cookie, source).Client.DeleteAsync("/api/ui/shared-by-me/11111111-1111-1111-1111-111111111111"), 401, "unauthenticated");
-        Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
     private static string[] NamesOf(JsonElement element)
