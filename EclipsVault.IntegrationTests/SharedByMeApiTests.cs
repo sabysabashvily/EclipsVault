@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -80,15 +81,15 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         await LegacySharing.ShareAsync(b.Client, bDetails, "it-shares-scope-recipient");
         var aShare = await LegacySharing.ShareOfAsync(vault, aDetails);
         var bShare = await LegacySharing.ShareOfAsync(vault, bDetails);
-        var asB = $"?issuerId={bId}&issuerUserId={bId}&userId={bId}&accountId={bId}&username=it-shares-scope-b&issuer=it-shares-scope-b";
-        var asA = $"?issuerId={aId}&issuerUserId={aId}&userId={aId}&accountId={aId}&username=it-shares-scope-a&issuer=it-shares-scope-a";
+        var claimingB = $"?issuerId={bId}&issuerUserId={bId}&userId={bId}&accountId={bId}&username=it-shares-scope-b&issuer=it-shares-scope-b";
+        var claimingA = $"?issuerId={aId}&issuerUserId={aId}&userId={aId}&accountId={aId}&username=it-shares-scope-a&issuer=it-shares-scope-a";
         var before = await LegacySharing.AuditHeadAsync(vault);
 
-        var aList = await a.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me" + asB);
-        var bList = await b.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me" + asA);
+        var aList = await a.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me" + claimingB);
+        var bList = await b.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me" + claimingA);
         Assert.Equal(aShare.Id, Assert.Single(aList!.Shares).ShareId);
         Assert.Equal(bShare.Id, Assert.Single(bList!.Shares).ShareId);
-        var foreign = await SessionApi.WriteAsync(a, HttpMethod.Delete, $"/api/ui/shared-by-me/{bShare.Id}" + asB,
+        var foreign = await SessionApi.WriteAsync(a, HttpMethod.Delete, $"/api/ui/shared-by-me/{bShare.Id}" + claimingB,
             JsonContent.Create(new { issuerId = bId, issuerUserId = bId, accountId = bId, userId = bId, username = "it-shares-scope-b", issuer = "it-shares-scope-b" }));
         var missing = await SessionApi.WriteAsync(b, HttpMethod.Delete, "/api/ui/shared-by-me/11111111-1111-1111-1111-111111111111");
         await UiApiFailureContractTests.AssertProblemAsync(foreign, 404, "share_not_found");
@@ -98,23 +99,38 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         Assert.Equal("That grant no longer exists, or it wasn't yours to revoke.", problem.RootElement.GetProperty("title").GetString());
         Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
 
-        var revokedA = await SessionApi.WriteAsync(a, HttpMethod.Delete, $"/api/ui/shared-by-me/{aShare.Id}" + asB);
-        Assert.Equal(HttpStatusCode.NoContent, revokedA.StatusCode);
-        Assert.True(revokedA.Headers.CacheControl?.NoStore);
-        Assert.Empty(await revokedA.Content.ReadAsStringAsync());
-        var row = Assert.Single(await LegacySharing.AuditRowsAfterAsync(vault, before));
-        Assert.Equal(AuditAction.SecretShareRevoked, row.Action);
-        Assert.Equal(aId, row.UserId);
-        Assert.Equal("it-shares-scope-a", row.Username);
-        Assert.Equal("192.0.2.82", row.SourceIp);
-        Assert.Equal("Secret", row.ResourceType);
-        Assert.Equal(aShare.SecretId, row.ResourceId);
-        Assert.Equal("it-shares-scope-secret-a", row.ResourceName);
-        Assert.Equal("Revoked access for 'it-shares-scope-recipient'", row.Details);
+        Assert.Equal(HttpStatusCode.NoContent, (await SessionApi.WriteAsync(a, HttpMethod.Delete, $"/api/ui/shared-by-me/{aShare.Id}" + claimingB)).StatusCode);
         Assert.Empty((await a.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me"))!.Shares);
         Assert.Equal(bShare.Id, Assert.Single((await b.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me"))!.Shares).ShareId);
-        Assert.Equal(HttpStatusCode.NoContent, (await SessionApi.WriteAsync(b, HttpMethod.Delete, $"/api/ui/shared-by-me/{bShare.Id}" + asA)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await SessionApi.WriteAsync(b, HttpMethod.Delete, $"/api/ui/shared-by-me/{bShare.Id}" + claimingA)).StatusCode);
         Assert.Empty((await b.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me"))!.Shares);
+    }
+
+    [Fact]
+    public async Task A_revocation_records_who_revoked_which_secret_for_whom()
+    {
+        var issuer = await vault.SignInNewAccountAsync("it-shares-audit", IPAddress.Parse("192.0.2.97"));
+        await vault.SignInNewAccountAsync("it-shares-audit-recipient", IPAddress.Parse("192.0.2.98"));
+        var issuerId = SessionApi.PrincipalOf(vault, issuer).GetUserId();
+        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-shares-audit-secret");
+        await LegacySharing.ShareAsync(issuer.Client, details, "it-shares-audit-recipient");
+        var share = await LegacySharing.ShareOfAsync(vault, details);
+        var before = await LegacySharing.AuditHeadAsync(vault);
+
+        var revoked = await SessionApi.WriteAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, revoked.StatusCode);
+        Assert.True(revoked.Headers.CacheControl?.NoStore);
+        Assert.Empty(await revoked.Content.ReadAsStringAsync());
+        var row = Assert.Single(await LegacySharing.AuditRowsAfterAsync(vault, before));
+        Assert.Equal(AuditAction.SecretShareRevoked, row.Action);
+        Assert.Equal(issuerId, row.UserId);
+        Assert.Equal("it-shares-audit", row.Username);
+        Assert.Equal("192.0.2.97", row.SourceIp);
+        Assert.Equal("Secret", row.ResourceType);
+        Assert.Equal(share.SecretId, row.ResourceId);
+        Assert.Equal("it-shares-audit-secret", row.ResourceName);
+        Assert.Equal("Revoked access for 'it-shares-audit-recipient'", row.Details);
     }
 
     [Fact]
@@ -156,11 +172,12 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
             ["Id"] = issuerId.ToString(),
             ["Username"] = "it-shares-lost-access",
             ["DisplayName"] = "Integration Test",
-            ["Clearance"] = "1",
+            ["Clearance"] = ((int)ClearanceLevel.Standard).ToString(CultureInfo.InvariantCulture),
             ["ProjectKey"] = "SHARES-REASSIGNED",
         }));
         Assert.Equal(HttpStatusCode.Redirect, changed.StatusCode);
-        var issuer = await account.OpenDeviceAsync(0, "192.0.2.96");
+        // The edit revokes the account's sessions, so sign in again to carry the new project.
+        var issuer = await account.OpenDeviceAsync(recoveryCodeIndex: 0, "192.0.2.96");
         Assert.StartsWith("/Account/Denied?", (await issuer.Client.GetAsync(details)).Headers.Location?.OriginalString);
         Assert.Equal(HttpStatusCode.OK, (await recipient.Client.GetAsync(details)).StatusCode);
 
@@ -171,6 +188,39 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         Assert.StartsWith("/Account/Denied?", (await recipient.Client.GetAsync(details)).Headers.Location?.OriginalString);
     }
 
+    /// <summary>
+    /// Deleting an account leaves the shares it issued in place, and its username can then be given to
+    /// a new account. A username must never be the key to someone else's shares.
+    /// </summary>
+    [Fact]
+    public async Task A_new_account_with_a_deleted_issuers_username_cannot_see_or_revoke_its_shares()
+    {
+        const string issuerUsername = "it-share-reused-issuer";
+        const string recipientUsername = "it-share-reused-recipient";
+        const string secretName = "it-share-reused-secret";
+        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), secretName);
+        // Outside the secret's project, so only the share lets the recipient open it.
+        var recipient = await vault.SignInNewAccountAsync(recipientUsername, IPAddress.Parse("198.51.100.120"), project: "SHARE-TEST");
+        Assert.StartsWith("/Account/Denied?", (await recipient.Client.GetAsync(details)).Headers.Location?.OriginalString);
+        var issuer = await vault.SignInNewAccountAsync(issuerUsername, IPAddress.Parse("198.51.100.121"));
+        await LegacySharing.ShareAsync(issuer.Client, details, recipientUsername);
+        var issuersList = await issuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me");
+        var share = Assert.Single(issuersList!.Shares);
+        Assert.Equal(secretName, share.SecretName);
+
+        await vault.DeleteAccountAsync(issuerUsername);
+        var replacement = await vault.SignInNewAccountAsync(issuerUsername, IPAddress.Parse("198.51.100.122"));
+        var before = await LegacySharing.AuditHeadAsync(vault);
+
+        var replacementsList = await replacement.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me");
+        Assert.Empty(replacementsList!.Shares);
+        var revoke = await SessionApi.WriteAsync(replacement, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.ShareId}");
+        await UiApiFailureContractTests.AssertProblemAsync(revoke, 404, "share_not_found");
+        Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
+        Assert.Equal(HttpStatusCode.OK, (await recipient.Client.GetAsync(details)).StatusCode);
+        Assert.Contains(secretName, await recipient.Client.GetStringAsync("/Secrets/SharedWithMe"));
+    }
+
     [Fact]
     public async Task Expired_shares_and_shares_on_shredded_secrets_are_omitted()
     {
@@ -179,8 +229,10 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         var admin = await vault.AdminClientAsync();
         var expired = await LegacySharing.CreateSecretAsync(admin, "it-shares-expired");
         var shredded = await LegacySharing.CreateSecretAsync(admin, "it-shares-shredded");
+        var live = await LegacySharing.CreateSecretAsync(admin, "it-shares-live");
         await LegacySharing.ShareAsync(issuer.Client, expired, "it-shares-filter-recipient");
         await LegacySharing.ShareAsync(issuer.Client, shredded, "it-shares-filter-recipient");
+        await LegacySharing.ShareAsync(issuer.Client, live, "it-shares-filter-recipient");
         var expiredShare = await LegacySharing.ShareOfAsync(vault, expired);
         var shreddedShare = await LegacySharing.ShareOfAsync(vault, shredded);
         using (var scope = vault.Services.CreateScope())
@@ -195,7 +247,7 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
 
         var list = await issuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me");
 
-        Assert.Empty(list!.Shares);
+        Assert.Equal("it-shares-live", Assert.Single(list!.Shares).SecretName);
     }
 
     [Fact]

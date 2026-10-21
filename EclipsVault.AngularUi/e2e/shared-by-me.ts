@@ -1,8 +1,7 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 export class SharedByMe {
   readonly heading;
-  readonly introduction;
   readonly rows;
   readonly columns;
   readonly emptyHeading;
@@ -16,7 +15,6 @@ export class SharedByMe {
 
   constructor(readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Shared by me', exact: true });
-    this.introduction = page.getByText("Everyone you've granted access", { exact: false });
     this.rows = page
       .getByRole('row')
       .filter({ has: page.getByRole('button', { name: 'Revoke', exact: true }) });
@@ -40,7 +38,18 @@ export class SharedByMe {
     });
   }
 
+  // Cells have no accessible name of their own; the header order places them.
+  secretOf(row: Locator) {
+    return row.getByRole('cell').nth(0);
+  }
+
+  accessUntilOf(row: Locator) {
+    return row.getByRole('cell').nth(3);
+  }
+
   async cells(): Promise<string[][]> {
+    // CSS inside one evaluateAll reads every row's cells in a single round trip, the empty
+    // action column included, so the result compares directly with the Legacy page's.
     return this.rows.evaluateAll((rows) =>
       rows.map((row) =>
         [...row.querySelectorAll('td')].map((cell) => cell.textContent?.trim() ?? ''),

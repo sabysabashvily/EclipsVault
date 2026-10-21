@@ -90,25 +90,10 @@ for (const theme of ['dark', 'light']) {
     await expect(legacy.rows).toHaveCount(2);
     const reference = await legacy.presentation();
     const cells = await legacy.cells();
-    const response = await page.goto('/Secrets/SharedByMe');
+    await page.goto('/Secrets/SharedByMe');
     const angular = new SharedByMe(page);
     await expect(angular.rows).toHaveCount(2);
-    await expect(page).toHaveTitle('Shared by me — EclipsVault');
-    expect(response?.headers()['content-security-policy']).toContain(
-      "require-trusted-types-for 'script'",
-    );
-    await expect(angular.columns).toHaveText([
-      'Secret',
-      'Shared with',
-      'Shared on',
-      'Access until',
-      '',
-    ]);
     expect(await angular.cells()).toEqual(cells);
-    await expect(angular.rows.first().getByRole('cell').first()).toHaveText('E2e_Shared_Expiring');
-    await expect(angular.share('E2e_Shared_No_Expiry').getByRole('cell').nth(3)).toHaveText(
-      'no expiry',
-    );
     expect(await angular.presentation()).toEqual(reference);
     const path = info.outputPath(`${theme}-shared-by-me.png`);
     await page.screenshot({ path, fullPage: true });
@@ -135,6 +120,31 @@ for (const theme of ['dark', 'light']) {
     await expect(page).toHaveURL(/\/Secrets$/);
   });
 }
+
+test('Shared by me is served as the titled Angular document', async ({ page }) => {
+  await openAsIssuer(page, '/Access');
+  const response = await page.goto('/Secrets/SharedByMe');
+  await expect(new SharedByMe(page).heading).toBeVisible();
+  await expect(page).toHaveTitle('Shared by me — EclipsVault');
+  expect(response?.headers()['content-security-policy']).toContain(
+    "require-trusted-types-for 'script'",
+  );
+});
+
+test('Shared by me lists the newest share first and "no expiry" where none was set', async ({
+  page,
+}) => {
+  const shares = await openAsIssuer(page);
+  await expect(shares.columns).toHaveText([
+    'Secret',
+    'Shared with',
+    'Shared on',
+    'Access until',
+    '',
+  ]);
+  await expect(shares.secretOf(shares.rows.first())).toHaveText('E2e_Shared_Expiring');
+  await expect(shares.accessUntilOf(shares.share('E2e_Shared_No_Expiry'))).toHaveText('no expiry');
+});
 
 test('the sidebar and palette open Shared by me in-app while Shared with me loads Legacy', async ({
   page,
