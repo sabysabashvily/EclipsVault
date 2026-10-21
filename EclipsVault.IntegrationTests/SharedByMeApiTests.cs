@@ -176,7 +176,10 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
             ["ProjectKey"] = "SHARES-REASSIGNED",
         }));
         Assert.Equal(HttpStatusCode.Redirect, changed.StatusCode);
-        // The edit revokes the account's sessions, so sign in again to carry the new project.
+        // The edit revokes the account's sessions, so sign in again to carry the new project. A
+        // session's sign-in time is whole seconds and revocation covers its own second, so wait
+        // for the next one or the new session is revoked too.
+        await Task.Delay(TimeSpan.FromMilliseconds(1_050 - DateTimeOffset.UtcNow.Millisecond));
         var issuer = await account.OpenDeviceAsync(recoveryCodeIndex: 0, "192.0.2.96");
         Assert.StartsWith("/Account/Denied?", (await issuer.Client.GetAsync(details)).Headers.Location?.OriginalString);
         Assert.Equal(HttpStatusCode.OK, (await recipient.Client.GetAsync(details)).StatusCode);
