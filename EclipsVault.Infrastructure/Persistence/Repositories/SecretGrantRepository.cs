@@ -29,7 +29,22 @@ public sealed class SecretGrantRepository : ISecretGrantRepository
         }
 
         _context.SecretGrants.Remove(grant);
-        await SaveShareChangeAsync(ct);
+        try
+        {
+            await SaveShareChangeAsync(ct);
+        }
+        catch (AuditWriteFailedException failure) when (failure.InnerException is DbUpdateConcurrencyException)
+        {
+            // The failed transaction has rolled back. A competing deletion is a missing share,
+            // not an unavailable audit store; every other save failure still fails closed.
+            if (await _context.SecretGrants.AsNoTracking().AnyAsync(share => share.Id == grantId, ct))
+            {
+                throw;
+            }
+
+            return false;
+        }
+
         return true;
     }
 
