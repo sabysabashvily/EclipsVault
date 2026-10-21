@@ -16,6 +16,56 @@ namespace EclipsVault.Tests.Sessions;
 public sealed class SessionApiRevocationTests
 {
     [Fact]
+    public async Task A_registry_failure_still_audits_confirmed_revocations_and_reports_an_incomplete_sign_out()
+    {
+        var userId = Guid.NewGuid();
+        var current = Guid.NewGuid();
+        var first = Guid.NewGuid();
+        var unavailable = Guid.NewGuid();
+        var last = Guid.NewGuid();
+        var sessions = new PartlyUnavailableRegistry(current, first, unavailable, last);
+        var audit = new RecordingAudit();
+        var controller = Controller(sessions, audit, userId, current);
+
+        var result = await controller.RevokeOthers(CancellationToken.None);
+
+        var response = Assert.IsType<JsonResult>(result.Result);
+        Assert.Equal(503, response.StatusCode);
+        var problem = Assert.IsType<SessionProblemResponse>(response.Value);
+        Assert.Equal("sign_out_incomplete", problem.Code);
+        Assert.Equal(2, problem.SignedOut);
+        Assert.StartsWith("Confirmed 2 other sessions signed out.", problem.Title);
+        Assert.True(await sessions.IsRevokedAsync(userId, first));
+        Assert.True(await sessions.IsRevokedAsync(userId, last));
+        Assert.False(await sessions.IsRevokedAsync(userId, unavailable));
+        Assert.False(await sessions.IsRevokedAsync(userId, current));
+        Assert.Equal([first, last], audit.Recorded.Select(entry => entry.ResourceId));
+    }
+
+    [Fact]
+    public async Task A_partial_sign_out_reports_an_audit_failure_for_every_confirmed_removal()
+    {
+        var userId = Guid.NewGuid();
+        var current = Guid.NewGuid();
+        var first = Guid.NewGuid();
+        var unavailable = Guid.NewGuid();
+        var last = Guid.NewGuid();
+        var sessions = new PartlyUnavailableRegistry(current, first, unavailable, last);
+        var audit = new FailingAudit();
+        var controller = Controller(sessions, audit, userId, current);
+
+        var result = await controller.RevokeOthers(CancellationToken.None);
+
+        var response = Assert.IsType<JsonResult>(result.Result);
+        Assert.Equal(503, response.StatusCode);
+        var problem = Assert.IsType<SessionProblemResponse>(response.Value);
+        Assert.Equal("sign_out_incomplete", problem.Code);
+        Assert.Equal(2, problem.SignedOut);
+        Assert.Contains("couldn't record every confirmed sign-out in the audit trail", problem.Title);
+        Assert.Equal([first, last], audit.Attempts.Select(entry => entry.ResourceId));
+    }
+
+    [Fact]
     public async Task A_failed_audit_write_reports_the_revocation_and_leaves_the_device_signed_out()
     {
         var sessions = new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance, TimeProvider.System);
@@ -122,7 +172,7 @@ public sealed class SessionApiRevocationTests
     }
 
     private static SessionsController Controller(ISessionRegistry sessions, IAuditSink audit, Guid userId, Guid current)
-        => new(sessions, audit, null!)
+        => new(sessions, audit, null!, NullLogger<SessionsController>.Instance)
         {
             ControllerContext = new ControllerContext
             {
@@ -152,6 +202,45 @@ public sealed class SessionApiRevocationTests
             await BeforeFailure();
             throw new AuditWriteFailedException("The audit store is unavailable.");
         }
+    }
+
+    private sealed class RecordingAudit : IAuditSink
+    {
+        public List<AuditEntry> Recorded { get; } = [];
+
+        public Task WriteAsync(AuditEntry entry, CancellationToken ct)
+        {
+            Recorded.Add(entry);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class PartlyUnavailableRegistry(Guid current, Guid first, Guid unavailable, Guid last) : ISessionRegistry
+    {
+        private readonly HashSet<Guid> _revoked = [];
+
+        public Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<ActiveSession>>(
+                [Device(current), Device(first), Device(unavailable), Device(last)]);
+
+        public Task<bool> RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
+        {
+            if (sessionId == unavailable)
+            {
+                throw new IOException("The session store disconnected.");
+            }
+
+            return Task.FromResult(_revoked.Add(sessionId));
+        }
+
+        public Task<bool> IsRevokedAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
+            => Task.FromResult(_revoked.Contains(sessionId));
+
+        public Task RecordSeenAsync(SessionObservation observation, CancellationToken ct = default)
+            => throw new NotSupportedException();
+
+        private static ActiveSession Device(Guid id)
+            => new(id, "Chrome", "198.51.100.1", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
     }
 
     private sealed class DelayedAudit : IAuditSink

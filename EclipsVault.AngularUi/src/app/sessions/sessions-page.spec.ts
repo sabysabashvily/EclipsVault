@@ -222,6 +222,29 @@ describe('SessionsPage', () => {
     );
   });
 
+  it('an incomplete bulk sign-out announces confirmed removals and refreshes the device list', async () => {
+    const { fixture, page } = render();
+    backend.expectOne('/api/ui/sessions').flush({ sessions: [current, other] });
+    await fixture.whenStable();
+    button(page, 'Sign out all other sessions').click();
+    await fixture.whenStable();
+    button(page, 'Continue').click();
+    const title =
+      "Confirmed 1 other session signed out. The vault couldn't confirm every sign-out. Try again.";
+    backend
+      .expectOne('/api/ui/sessions/sign-out-others')
+      .flush(
+        { code: 'sign_out_incomplete', title, signedOut: 1 },
+        { status: 503, statusText: 'Unavailable' },
+      );
+    fixture.detectChanges();
+    backend.expectOne('/api/ui/sessions').flush({ sessions: [current] });
+    await fixture.whenStable();
+
+    expect(page.querySelector('[role="alert"]')?.textContent?.trim()).toBe(title);
+    expect(page.querySelectorAll('li')).toHaveLength(1);
+  });
+
   it('a refused write announces the problem and keeps the live device visible', async () => {
     const { fixture, page } = render();
     backend.expectOne('/api/ui/sessions').flush({ sessions: [current, other] });

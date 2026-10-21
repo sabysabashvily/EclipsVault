@@ -113,6 +113,7 @@ export class SessionsPage {
         (error instanceof UiApiError ? error.title : 'Could not sign out the device. Try again.'),
       error: true,
     });
-    if (unrecorded) this.sessions.reload();
+    if (unrecorded || (error instanceof UiApiError && error.code === 'sign_out_incomplete'))
+      this.sessions.reload();
   }
 }

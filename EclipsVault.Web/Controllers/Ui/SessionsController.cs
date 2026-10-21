@@ -16,7 +16,8 @@ namespace EclipsVault.Web.Controllers.Ui;
 [Route("api/ui/sessions")]
 [Authorize(AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme, Policy = VaultPolicies.Session)]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-public sealed class SessionsController(ISessionRegistry sessions, IAuditSink audit, IAntiforgery antiforgery) : ControllerBase
+public sealed class SessionsController(ISessionRegistry sessions, IAuditSink audit, IAntiforgery antiforgery,
+    ILogger<SessionsController> logger) : ControllerBase
 {
     private const string UnrecordedTitle = "The device was signed out, but the vault couldn't record it in the audit trail. Tell your administrator.";
 
@@ -92,15 +93,26 @@ public sealed class SessionsController(ISessionRegistry sessions, IAuditSink aud
         var current = User.GetSessionId();
         var others = (await sessions.ListAsync(userId, ct)).Where(session => session.SessionId != current);
         var revoked = new List<Guid>();
+        var incomplete = false;
         foreach (var session in others)
         {
-            if (await sessions.RevokeAsync(userId, session.SessionId, ct))
+            try
             {
-                revoked.Add(session.SessionId);
+                if (await sessions.RevokeAsync(userId, session.SessionId, ct))
+                {
+                    revoked.Add(session.SessionId);
+                }
+            }
+            catch (Exception failure)
+            {
+                // A lost reply can hide a completed removal. Keep trying the other devices and
+                // audit every confirmed removal, without claiming the failed one stayed live.
+                incomplete = true;
+                logger.LogError(failure, "Could not confirm revocation of session {SessionId} for account {UserId}", session.SessionId, userId);
             }
         }
 
-        // Every device has lost access before the first audit write can fail or wait on the store.
+        // Finish all revocation attempts before the first audit write can fail or wait on the store.
         var unrecorded = false;
         foreach (var sessionId in revoked)
         {
@@ -112,6 +124,18 @@ public sealed class SessionsController(ISessionRegistry sessions, IAuditSink aud
             {
                 unrecorded = true;
             }
+        }
+
+        if (incomplete)
+        {
+            var title = $"Confirmed {revoked.Count} other session{(revoked.Count == 1 ? "" : "s")} signed out. " +
+                "The vault couldn't confirm every sign-out. Try again.";
+            if (unrecorded)
+            {
+                title += " The vault couldn't record every confirmed sign-out in the audit trail. Tell your administrator.";
+            }
+
+            return SessionProblem(StatusCodes.Status503ServiceUnavailable, "sign_out_incomplete", title, revoked.Count);
         }
 
         return unrecorded
