@@ -115,11 +115,17 @@ for (const theme of ['dark', 'light']) {
     const angular = new SharedByMe(page);
     await expect(angular.emptyHeading).toBeVisible();
     expect(await angular.presentation()).toEqual(reference);
-    await angular.goToSecrets.click();
-    await expect(page.getByRole('heading', { name: 'Secrets', exact: true })).toBeVisible();
-    await expect(page).toHaveURL(/\/Secrets$/);
   });
 }
+
+test('with nothing shared, Go to your secrets opens the Secrets page', async ({ page }) => {
+  await page.context().addCookies(recipientCookies);
+  await page.goto('/Secrets/SharedByMe');
+  const shares = new SharedByMe(page);
+  await shares.goToSecrets.click();
+  await expect(page.getByRole('heading', { name: 'Secrets', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/Secrets$/);
+});
 
 test('Shared by me is served as the titled Angular document', async ({ page }) => {
   await openAsIssuer(page, '/Access');
@@ -131,9 +137,7 @@ test('Shared by me is served as the titled Angular document', async ({ page }) =
   );
 });
 
-test('Shared by me lists the newest share first and "no expiry" where none was set', async ({
-  page,
-}) => {
+test('Shared by me lists shares newest first under the Legacy columns', async ({ page }) => {
   const shares = await openAsIssuer(page);
   await expect(shares.columns).toHaveText([
     'Secret',
@@ -143,6 +147,10 @@ test('Shared by me lists the newest share first and "no expiry" where none was s
     '',
   ]);
   await expect(shares.secretOf(shares.rows.first())).toHaveText('E2e_Shared_Expiring');
+});
+
+test('Shared by me shows "no expiry" for a share without an expiry', async ({ page }) => {
+  const shares = await openAsIssuer(page);
   await expect(shares.accessUntilOf(shares.share('E2e_Shared_No_Expiry'))).toHaveText('no expiry');
 });
 
@@ -224,6 +232,7 @@ test('Cancel and Escape keep access while confirmation names the recipient and s
   await expect(shares.confirmation).not.toBeVisible();
   await expect(revoke).toBeFocused();
   await revoke.click();
+  await expect(shares.cancel).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(shares.continue).toBeFocused();
   await page.keyboard.press('Tab');

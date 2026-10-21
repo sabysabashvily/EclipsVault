@@ -60,7 +60,7 @@ export class SharedByMePage {
               error instanceof UiApiError ? error.title : 'Could not revoke access. Try again.',
             error: true,
           });
-          // Legacy redirected back to a fresh list either way; a share that is gone must not keep its row.
+          // A share that is already gone must not keep its row and Revoke button.
           if (error instanceof UiApiError && error.code === 'share_not_found') this.shares.reload();
         },
       });
