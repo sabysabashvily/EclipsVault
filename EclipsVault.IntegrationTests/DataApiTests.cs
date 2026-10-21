@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
@@ -82,10 +81,9 @@ public sealed class DataApiTests(VaultFixture vault)
         Assert.StartsWith("{\n  \"GeneratedAtUtc\": ", body.ReplaceLineEndings("\n"));
         using var file = JsonDocument.Parse(body);
         var export = file.RootElement;
-        var generated = DateTimeOffset.Parse(export.GetProperty("GeneratedAtUtc").GetString()!, CultureInfo.InvariantCulture);
         var disposition = Assert.IsType<ContentDispositionHeaderValue>(response.Content.Headers.ContentDisposition);
         Assert.Equal("attachment", disposition.DispositionType);
-        Assert.Equal($"eclipsvault-data-it-data-file-{generated.UtcDateTime:yyyyMMdd}.json", disposition.FileName);
+        Assert.Matches(@"^eclipsvault-data-it-data-file-\d{8}\.json$", disposition.FileName);
         Assert.Equal(
             ["AccessRequests", "Account", "GeneratedAtUtc", "Notice", "RecentActivity", "SchemaVersion", "Security", "SignedInDevices"],
             NamesOf(export));

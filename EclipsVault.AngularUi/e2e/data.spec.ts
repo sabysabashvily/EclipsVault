@@ -1,6 +1,7 @@
 import type { BrowserContext, Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
+import { AppShell } from './app-shell';
 import { type YourDataSummary, YourData } from './data';
 import { openPalette } from './palette';
 
@@ -179,23 +180,22 @@ test('the sidebar and palette open Your data inside Angular and keep mixed-case 
   page,
 }) => {
   await openAsAdministrator(page, '/Access');
-  await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
+  const shell = new AppShell(page);
+  await expect(shell.myAccess).toHaveAttribute('aria-current', 'page');
   const documents: string[] = [];
   page.on('request', (request) => {
     if (request.isNavigationRequest() && request.resourceType() === 'document')
       documents.push(request.url());
   });
-  const link = page.getByRole('link', { name: 'Your data', exact: true });
-
-  await link.click();
+  await shell.yourData.click();
   await expect(new YourData(page).heading).toBeVisible();
   await expect(page).toHaveURL(/\/Data$/);
   await expect(page).toHaveTitle('Your data — EclipsVault');
-  await expect(link).toHaveAttribute('aria-current', 'page');
-  await page.getByText('Access', { exact: true }).click();
-  await page.getByRole('link', { name: 'My access', exact: true }).click();
+  await expect(shell.yourData).toHaveAttribute('aria-current', 'page');
+  await shell.accessGroup.click();
+  await shell.myAccess.click();
   await openPalette(page);
-  await page.getByRole('combobox').fill('your data');
+  await shell.paletteQuery.fill('your data');
   await page.keyboard.press('Enter');
   await expect(new YourData(page).heading).toBeVisible();
   await expect(page).toHaveURL(/\/Data$/);
