@@ -1271,6 +1271,46 @@ app-command-palette {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
+.table-scroll .data-table {
+  min-width: 640px;
+}
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.data-table th {
+  text-align: left;
+  color: var(--text-faint);
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.5rem 0.7rem;
+  border-bottom: 1px solid var(--border-strong);
+  white-space: nowrap;
+}
+.data-table td {
+  padding: 0.65rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.data-table tbody tr {
+  transition: background var(--dur) var(--ease);
+}
+.data-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.025);
+}
+.cell-strong {
+  font-weight: 600;
+}
+.cell-actions {
+  text-align: right;
+  white-space: nowrap;
+}
 
 .badge.tone-ok {
   color: var(--ok);
