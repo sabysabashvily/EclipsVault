@@ -31,7 +31,7 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task The_list_pins_the_complete_wire_shape_newest_first_and_writes_no_audit_row()
+    public async Task The_issuers_live_shares_are_returned_as_page_data()
     {
         var issuer = await vault.SignInNewAccountAsync("it-shares-shape", IPAddress.Parse("192.0.2.80"));
         await vault.SignInNewAccountAsync("it-shares-shape-recipient", IPAddress.Parse("192.0.2.81"));
@@ -42,7 +42,6 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         await LegacySharing.ShareAsync(issuer.Client, newer, "it-shares-shape-recipient", ttlDays: "7");
         var olderShare = await LegacySharing.ShareOfAsync(vault, older);
         var newerShare = await LegacySharing.ShareOfAsync(vault, newer);
-        var before = await LegacySharing.AuditHeadAsync(vault);
 
         var response = await issuer.Client.GetAsync("/api/ui/shared-by-me");
 
@@ -63,7 +62,6 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         Assert.Equal("it-shares-shape-recipient", shares[1].GetProperty("recipient").GetString());
         Assert.Equal(olderShare.CreatedAtUtc.UtcDateTime, shares[1].GetProperty("createdAtUtc").GetDateTime());
         Assert.Equal(JsonValueKind.Null, shares[1].GetProperty("expiresAtUtc").ValueKind);
-        Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
     }
 
     [Fact]

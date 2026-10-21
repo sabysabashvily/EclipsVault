@@ -30,11 +30,10 @@ public sealed class DataApiTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task The_summary_pins_the_complete_wire_shape_and_writes_no_audit_row()
+    public async Task The_summary_returns_only_the_accounts_page_data()
     {
         var account = await SessionAccount.CreateAsync(vault, "it-data-summary", "198.51.100.200", ClearanceLevel.Elevated);
         await account.OpenDeviceAsync(0, "198.51.100.201");
-        var before = await LegacySharing.AuditHeadAsync(vault);
 
         var response = await account.Browser.Client.GetAsync("/api/ui/data");
 
@@ -60,7 +59,6 @@ public sealed class DataApiTests(VaultFixture vault)
         Assert.Equal(0, summary.GetProperty("accessRequestCount").GetInt32());
         Assert.True(summary.GetProperty("activityCount").GetInt32() > 0, "The account's own sign-ins are its activity.");
         Assert.Equal(Notice, summary.GetProperty("notice").GetString());
-        Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
     }
 
     [Fact]

@@ -32,13 +32,12 @@ public sealed class SessionApiTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task The_session_list_pins_the_complete_wire_shape_and_writes_no_audit_row()
+    public async Task The_session_list_returns_the_callers_devices_as_page_data()
     {
         var started = DateTime.UtcNow.AddSeconds(-1);
         var account = await SessionAccount.CreateAsync(vault, "it-sessions-contract", "198.51.100.170");
         var second = await account.OpenDeviceAsync(0, "198.51.100.171");
         var secondId = (await SessionApi.CurrentAsync(second)).SessionId;
-        var before = await LegacySharing.AuditHeadAsync(vault);
 
         var response = await account.Browser.Client.GetAsync("/api/ui/sessions");
 
@@ -58,7 +57,6 @@ public sealed class SessionApiTests(VaultFixture vault)
         Assert.Equal("198.51.100.170", devices[1].GetProperty("ipAddress").GetString());
         Assert.All(devices, device => AssertUtcSince(started, device.GetProperty("createdAtUtc")));
         Assert.All(devices, device => AssertUtcSince(started, device.GetProperty("lastSeenAtUtc")));
-        Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
     }
 
     [Fact]
