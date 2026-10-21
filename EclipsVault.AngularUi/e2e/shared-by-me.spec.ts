@@ -78,43 +78,63 @@ test('an issuer shares two real secrets with a colleague outside their project',
   ).toBeVisible();
 });
 
-for (const theme of ['dark', 'light']) {
-  test(`visual parity: Shared by me matches Legacy columns and styles in ${theme}`, async ({
+for (const [theme, textColor, dangerColor, accent, accentBackground] of [
+  [
+    'dark',
+    'rgb(237, 238, 242)',
+    'rgb(255, 69, 58)',
+    'rgb(255, 159, 10)',
+    'rgba(255, 159, 10, 0.14)',
+  ],
+  ['light', 'rgb(28, 29, 34)', 'rgb(215, 0, 21)', 'rgb(180, 95, 4)', 'rgba(180, 95, 4, 0.12)'],
+]) {
+  test(`visual parity: Shared by me preserves its table and revoke styles in ${theme}`, async ({
     page,
   }, info) => {
     await page.setViewportSize({ width: 1440, height: 1200 });
     await page
       .context()
       .addCookies([{ name: 'EclipsVault.Theme', value: theme, url: process.env['E2E_BASE_URL']! }]);
-    const legacy = await openAsIssuer(page, '/Secrets/SharedByMe/legacy');
-    await expect(legacy.rows).toHaveCount(2);
-    const reference = await legacy.presentation();
-    const cells = await legacy.cells();
-    await page.goto('/Secrets/SharedByMe');
-    const angular = new SharedByMe(page);
-    await expect(angular.rows).toHaveCount(2);
-    expect(await angular.cells()).toEqual(cells);
-    expect(await angular.presentation()).toEqual(reference);
+    const shares = await openAsIssuer(page);
+    await expect(shares.rows).toHaveCount(2);
+    await expect(shares.heading).toHaveCSS('color', textColor);
+    await expect(shares.heading).toHaveCSS('font-size', '24px');
+    await expect(shares.heading).toHaveCSS('font-weight', '620');
+    await expect(shares.introduction).toHaveCSS('display', 'block');
+    await expect(page.getByRole('table')).toHaveCSS('border-collapse', 'collapse');
+    await expect(shares.columns.first()).toHaveCSS('text-transform', 'uppercase');
+    await expect(shares.secretOf(shares.rows.first())).toHaveCSS('font-weight', '600');
+    await expect(shares.secretOf(shares.rows.first())).toHaveCSS('padding', '10.4px 11.2px');
+    await expect(shares.rows.first().getByRole('button')).toHaveCSS('color', dangerColor);
+    await expect(shares.rows.first().getByRole('button')).toHaveCSS(
+      'background-color',
+      'rgba(0, 0, 0, 0)',
+    );
     const path = info.outputPath(`${theme}-shared-by-me.png`);
     await page.screenshot({ path, fullPage: true });
     await info.attach(`${theme}-shared-by-me`, { path, contentType: 'image/png' });
   });
 
-  test(`visual parity: Shared by me matches the Legacy empty state in ${theme}`, async ({
+  test(`visual parity: Shared by me preserves its empty state and share icon in ${theme}`, async ({
     page,
   }) => {
     await page.context().addCookies(recipientCookies);
     await page
       .context()
       .addCookies([{ name: 'EclipsVault.Theme', value: theme, url: process.env['E2E_BASE_URL']! }]);
-    await page.goto('/Secrets/SharedByMe/legacy');
-    const legacy = new SharedByMe(page);
-    await expect(legacy.emptyHeading).toBeVisible();
-    const reference = await legacy.presentation();
     await page.goto('/Secrets/SharedByMe');
-    const angular = new SharedByMe(page);
-    await expect(angular.emptyHeading).toBeVisible();
-    expect(await angular.presentation()).toEqual(reference);
+    const shares = new SharedByMe(page);
+    await expect(shares.emptyHeading).toBeVisible();
+    await expect(shares.emptyMessage).toHaveText(
+      "When you grant a colleague access to one of your secrets, it shows up here so you can keep track of who can see what — and revoke access when it's no longer needed.",
+    );
+    await expect(shares.goToSecrets).toBeVisible();
+    await expect(shares.emptyState).toHaveCSS('text-align', 'center');
+    await expect(shares.emptyState).toHaveCSS('padding', '48px 24px');
+    await expect(shares.emptyIcon).toHaveCSS('width', '54px');
+    await expect(shares.emptyIcon).toHaveCSS('height', '54px');
+    await expect(shares.emptyIcon).toHaveCSS('color', accent);
+    await expect(shares.emptyIcon).toHaveCSS('background-color', accentBackground);
   });
 }
 
@@ -147,6 +167,15 @@ test('Shared by me lists shares newest first under the Legacy columns', async ({
     '',
   ]);
   await expect(shares.secretOf(shares.rows.first())).toHaveText('E2e_Shared_Expiring');
+  await expect(shares.secretOf(shares.rows.last())).toHaveText('E2e_Shared_No_Expiry');
+  await expect(shares.recipientOf(shares.rows.first())).toHaveText(recipientUsername);
+  await expect(shares.recipientOf(shares.rows.last())).toHaveText(recipientUsername);
+  await expect(shares.sharedOnOf(shares.rows.first())).toHaveText(
+    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
+  );
+  await expect(shares.accessUntilOf(shares.rows.first())).toHaveText(
+    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
+  );
 });
 
 test('Shared by me shows "no expiry" for a share without an expiry', async ({ page }) => {

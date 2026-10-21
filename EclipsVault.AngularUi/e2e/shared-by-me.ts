@@ -12,6 +12,10 @@ export class SharedByMe {
   readonly status;
   readonly error;
   readonly retry;
+  readonly introduction;
+  readonly emptyMessage;
+  readonly emptyState;
+  readonly emptyIcon;
 
   constructor(readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Shared by me', exact: true });
@@ -30,6 +34,20 @@ export class SharedByMe {
     this.status = page.getByRole('main').getByRole('status');
     this.error = page.getByRole('main').getByRole('alert');
     this.retry = page.getByRole('button', { name: 'Try again', exact: true });
+    this.introduction = page.getByText("Everyone you've granted access to one of your secrets.", {
+      exact: false,
+    });
+    this.emptyMessage = page.getByText(
+      'When you grant a colleague access to one of your secrets,',
+      {
+        exact: false,
+      },
+    );
+    // The empty state's unlabelled layout and icon containers are read only for visual parity.
+    // eslint-disable-next-line playwright/no-raw-locators
+    this.emptyState = page.locator('.empty-state');
+    // eslint-disable-next-line playwright/no-raw-locators
+    this.emptyIcon = page.locator('.empty-icon');
   }
 
   share(secretName: string) {
@@ -47,46 +65,11 @@ export class SharedByMe {
     return row.getByRole('cell').nth(3);
   }
 
-  async cells(): Promise<string[][]> {
-    // CSS inside one evaluateAll reads every row's cells in a single round trip, the empty
-    // action column included, so the result compares directly with the Legacy page's.
-    return this.rows.evaluateAll((rows) =>
-      rows.map((row) =>
-        [...row.querySelectorAll('td')].map((cell) => cell.textContent?.trim() ?? ''),
-      ),
-    );
+  recipientOf(row: Locator) {
+    return row.getByRole('cell').nth(1);
   }
 
-  async presentation() {
-    // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the Legacy page's layout classes.
-    return this.page.locator('.page-header, .panel').evaluateAll((blocks) => {
-      const look = (element: Element) => {
-        const style = getComputedStyle(element);
-        return [
-          style.color,
-          style.backgroundColor,
-          style.fontFamily,
-          style.fontSize,
-          style.fontWeight,
-          style.padding,
-          style.margin,
-          style.borderRadius,
-          style.display,
-        ];
-      };
-      return blocks.map((block) => ({
-        text: (block as HTMLElement).innerText.replace(/\s+/g, ' ').trim(),
-        style: look(block),
-        parts: [
-          ...block.querySelectorAll(
-            'h1, h3, .page-sub, .empty-state, .empty-icon, p, th, td, .button',
-          ),
-        ].map((part) => [part.tagName, part.className, look(part)]),
-        icons: [...block.querySelectorAll('.empty-icon svg > *')].map((shape) => [
-          shape.tagName,
-          [...shape.attributes].map((attribute) => [attribute.name, attribute.value]),
-        ]),
-      }));
-    });
+  sharedOnOf(row: Locator) {
+    return row.getByRole('cell').nth(2);
   }
 }

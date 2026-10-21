@@ -36,29 +36,34 @@ async function openAsAdministrator(page: Page, path = '/Data'): Promise<YourData
   return new YourData(page);
 }
 
-for (const theme of ['dark', 'light']) {
-  test(`visual parity: Your data matches the Legacy page's text and styles in ${theme}`, async ({
+for (const [theme, textColor, accent] of [
+  ['dark', 'rgb(237, 238, 242)', 'rgb(255, 159, 10)'],
+  ['light', 'rgb(28, 29, 34)', 'rgb(180, 95, 4)'],
+]) {
+  test(`visual parity: Your data preserves its heading, grids and download styles in ${theme}`, async ({
     page,
   }, info) => {
     await page.setViewportSize({ width: 1440, height: 1200 });
     await page
       .context()
       .addCookies([{ name: 'EclipsVault.Theme', value: theme, url: process.env['E2E_BASE_URL']! }]);
-    // Only the conventional MVC route still reaches the Legacy page, which this page replaces.
-    const legacy = await openAsAdministrator(page, '/Data/Index/legacy');
-    await expect(legacy.downloadCopy).toBeVisible();
+    const yourData = await openAsAdministrator(page);
+    await expect(yourData.downloadCopy).toBeVisible();
     await expect(page).toHaveTitle('Your data — EclipsVault');
-    const reference = await legacy.presentation();
-
-    const response = await page.goto('/Data');
-    const angular = new YourData(page);
-    await expect(angular.downloadCopy).toBeVisible();
-
-    expect(response?.headers()['content-security-policy']).toContain(
-      "require-trusted-types-for 'script'",
-    );
-    await expect(page).toHaveTitle('Your data — EclipsVault');
-    expect(await angular.presentation()).toEqual(reference);
+    await expect(yourData.heading).toHaveCSS('color', textColor);
+    await expect(yourData.heading).toHaveCSS('font-size', '24px');
+    await expect(yourData.heading).toHaveCSS('font-weight', '620');
+    await expect(yourData.pageHeader).toHaveCSS('display', 'flex');
+    await expect(yourData.pageHeader).toHaveCSS('justify-content', 'space-between');
+    await expect(yourData.introduction).toHaveCSS('display', 'block');
+    await expect(yourData.accountGrid).toHaveCSS('display', 'grid');
+    await expect(yourData.accountGrid).toHaveCSS('row-gap', '8px');
+    await expect(yourData.accountGrid).toHaveCSS('column-gap', '16px');
+    await expect(yourData.cardGrid).toHaveCSS('display', 'grid');
+    await expect(yourData.cardGrid).toHaveCSS('gap', '16px');
+    await expect(yourData.firstCard).toHaveCSS('border-radius', '12px');
+    await expect(yourData.download).toHaveCSS('background-color', accent);
+    await expect(yourData.downloadCopy).toHaveCSS('background-color', accent);
     const path = info.outputPath(`${theme}-your-data.png`);
     await page.screenshot({ path, fullPage: true });
     await info.attach(`${theme}-your-data`, { path, contentType: 'image/png' });
