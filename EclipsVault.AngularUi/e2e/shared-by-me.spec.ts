@@ -100,7 +100,7 @@ for (const [theme, textColor, dangerColor, accent, accentBackground] of [
     await expect(shares.heading).toHaveCSS('color', textColor);
     await expect(shares.heading).toHaveCSS('font-size', '24px');
     await expect(shares.heading).toHaveCSS('font-weight', '620');
-    await expect(shares.introduction).toHaveCSS('display', 'block');
+    await expect(shares.introduction).toHaveCSS('display', 'flex');
     await expect(page.getByRole('table')).toHaveCSS('border-collapse', 'collapse');
     await expect(shares.columns.first()).toHaveCSS('text-transform', 'uppercase');
     await expect(shares.secretOf(shares.rows.first())).toHaveCSS('font-weight', '600');

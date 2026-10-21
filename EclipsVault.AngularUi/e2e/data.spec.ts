@@ -55,7 +55,7 @@ for (const [theme, textColor, accent] of [
     await expect(yourData.heading).toHaveCSS('font-weight', '620');
     await expect(yourData.pageHeader).toHaveCSS('display', 'flex');
     await expect(yourData.pageHeader).toHaveCSS('justify-content', 'space-between');
-    await expect(yourData.introduction).toHaveCSS('display', 'block');
+    await expect(yourData.introduction).toHaveCSS('display', 'flex');
     await expect(yourData.accountGrid).toHaveCSS('display', 'grid');
     await expect(yourData.accountGrid).toHaveCSS('row-gap', '8px');
     await expect(yourData.accountGrid).toHaveCSS('column-gap', '16px');
