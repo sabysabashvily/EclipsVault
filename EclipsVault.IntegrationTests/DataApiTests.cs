@@ -133,37 +133,37 @@ public sealed class DataApiTests(VaultFixture vault)
     [Fact]
     public async Task Two_accounts_see_and_export_only_their_own_data_even_with_injected_account_parameters()
     {
-        var a = await vault.SignInNewAccountAsync("it-data-scope-a", IPAddress.Parse("198.51.100.204"));
-        var b = await vault.SignInNewAccountAsync("it-data-scope-b", IPAddress.Parse("198.51.100.205"));
-        var aUserId = SessionApi.PrincipalOf(vault, a).GetUserId();
-        var bUserId = SessionApi.PrincipalOf(vault, b).GetUserId();
-        var aQuery = $"?userId={bUserId}&accountId={bUserId}&username=it-data-scope-b";
-        var bQuery = $"?userId={aUserId}&accountId={aUserId}&username=it-data-scope-a";
+        var account = await vault.SignInNewAccountAsync("it-data-scope-a", IPAddress.Parse("198.51.100.204"));
+        var otherAccount = await vault.SignInNewAccountAsync("it-data-scope-b", IPAddress.Parse("198.51.100.205"));
+        var accountId = SessionApi.PrincipalOf(vault, account).GetUserId();
+        var otherAccountId = SessionApi.PrincipalOf(vault, otherAccount).GetUserId();
+        var claimingOtherAccount = $"?userId={otherAccountId}&accountId={otherAccountId}&username=it-data-scope-b";
+        var claimingAccount = $"?userId={accountId}&accountId={accountId}&username=it-data-scope-a";
 
-        var aSummary = await a.Client.GetStringAsync("/api/ui/data");
-        var bSummary = await b.Client.GetStringAsync("/api/ui/data");
-        Assert.Equal(aSummary, await a.Client.GetStringAsync("/api/ui/data" + aQuery));
-        Assert.Equal(bSummary, await b.Client.GetStringAsync("/api/ui/data" + bQuery));
-        Assert.Contains("\"username\":\"it-data-scope-a\"", aSummary);
-        Assert.DoesNotContain("it-data-scope-b", aSummary);
-        Assert.Contains("\"username\":\"it-data-scope-b\"", bSummary);
-        Assert.DoesNotContain("it-data-scope-a", bSummary);
+        var summary = await account.Client.GetStringAsync("/api/ui/data");
+        var otherSummary = await otherAccount.Client.GetStringAsync("/api/ui/data");
+        Assert.Equal(summary, await account.Client.GetStringAsync("/api/ui/data" + claimingOtherAccount));
+        Assert.Equal(otherSummary, await otherAccount.Client.GetStringAsync("/api/ui/data" + claimingAccount));
+        Assert.Contains("\"username\":\"it-data-scope-a\"", summary);
+        Assert.DoesNotContain("it-data-scope-b", summary);
+        Assert.Contains("\"username\":\"it-data-scope-b\"", otherSummary);
+        Assert.DoesNotContain("it-data-scope-a", otherSummary);
         var before = await LegacySharing.AuditHeadAsync(vault);
 
-        var aFile = await (await SessionApi.WriteAsync(a, HttpMethod.Post, "/api/ui/data/export" + aQuery)).Content.ReadAsStringAsync();
-        var bFile = await (await SessionApi.WriteAsync(b, HttpMethod.Post, "/api/ui/data/export" + bQuery)).Content.ReadAsStringAsync();
+        var exported = await (await SessionApi.WriteAsync(account, HttpMethod.Post, "/api/ui/data/export" + claimingOtherAccount)).Content.ReadAsStringAsync();
+        var otherExported = await (await SessionApi.WriteAsync(otherAccount, HttpMethod.Post, "/api/ui/data/export" + claimingAccount)).Content.ReadAsStringAsync();
 
-        Assert.Contains("\"Username\": \"it-data-scope-a\"", aFile);
-        Assert.Contains("198.51.100.204", aFile);
-        Assert.DoesNotContain("it-data-scope-b", aFile);
-        Assert.DoesNotContain("198.51.100.205", aFile);
-        Assert.Contains("\"Username\": \"it-data-scope-b\"", bFile);
-        Assert.Contains("198.51.100.205", bFile);
-        Assert.DoesNotContain("it-data-scope-a", bFile);
-        Assert.DoesNotContain("198.51.100.204", bFile);
+        Assert.Contains("\"Username\": \"it-data-scope-a\"", exported);
+        Assert.Contains("198.51.100.204", exported);
+        Assert.DoesNotContain("it-data-scope-b", exported);
+        Assert.DoesNotContain("198.51.100.205", exported);
+        Assert.Contains("\"Username\": \"it-data-scope-b\"", otherExported);
+        Assert.Contains("198.51.100.205", otherExported);
+        Assert.DoesNotContain("it-data-scope-a", otherExported);
+        Assert.DoesNotContain("198.51.100.204", otherExported);
         var rows = await LegacySharing.AuditRowsAfterAsync(vault, before);
-        Assert.Equal([aUserId, bUserId], rows.Select(row => row.UserId));
-        Assert.Equal([aUserId, bUserId], rows.Select(row => row.ResourceId));
+        Assert.Equal([accountId, otherAccountId], rows.Select(row => row.UserId));
+        Assert.Equal([accountId, otherAccountId], rows.Select(row => row.ResourceId));
         Assert.All(rows, row => Assert.Equal(AuditAction.PersonalDataExported, row.Action));
     }
 

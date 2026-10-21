@@ -181,9 +181,7 @@ test('Your data reports a load failure and retries in place', async ({ page, bro
   expect(documents).toEqual([]);
 });
 
-test('the sidebar and palette open Your data inside Angular and keep mixed-case bookmarks', async ({
-  page,
-}) => {
+test('the sidebar opens Your data in-app with its entry active', async ({ page }) => {
   await openAsAdministrator(page, '/Access');
   const shell = new AppShell(page);
   await expect(shell.myAccess).toHaveAttribute('aria-current', 'page');
@@ -197,16 +195,27 @@ test('the sidebar and palette open Your data inside Angular and keep mixed-case 
   await expect(page).toHaveURL(/\/Data$/);
   await expect(page).toHaveTitle('Your data — EclipsVault');
   await expect(shell.yourData).toHaveAttribute('aria-current', 'page');
-  await shell.accessGroup.click();
-  await shell.myAccess.click();
+  expect(documents).toEqual([]);
+});
+
+test('the palette opens Your data without a document load', async ({ page }) => {
+  await openAsAdministrator(page, '/Access');
+  const shell = new AppShell(page);
+  const documents: string[] = [];
+  page.on('request', (request) => {
+    if (request.isNavigationRequest() && request.resourceType() === 'document')
+      documents.push(request.url());
+  });
   await openPalette(page);
   await shell.paletteQuery.fill('your data');
   await page.keyboard.press('Enter');
   await expect(new YourData(page).heading).toBeVisible();
   await expect(page).toHaveURL(/\/Data$/);
   expect(documents).toEqual([]);
+});
 
-  await page.goto('/dAtA/InDeX');
+test('a mixed-case Your data bookmark serves the titled Angular page', async ({ page }) => {
+  await openAsAdministrator(page, '/dAtA/InDeX');
   await expect(new YourData(page).heading).toBeVisible();
   await expect(page).toHaveTitle('Your data — EclipsVault');
 });

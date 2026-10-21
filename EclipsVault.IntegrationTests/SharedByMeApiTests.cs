@@ -69,29 +69,29 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
     [Fact]
     public async Task Two_issuers_list_and_revoke_only_their_own_shares_despite_injected_parameters()
     {
-        var a = await vault.SignInNewAccountAsync("it-shares-scope-a", IPAddress.Parse("192.0.2.82"));
-        var b = await vault.SignInNewAccountAsync("it-shares-scope-b", IPAddress.Parse("192.0.2.83"));
+        var issuer = await vault.SignInNewAccountAsync("it-shares-scope-a", IPAddress.Parse("192.0.2.82"));
+        var otherIssuer = await vault.SignInNewAccountAsync("it-shares-scope-b", IPAddress.Parse("192.0.2.83"));
         await vault.SignInNewAccountAsync("it-shares-scope-recipient", IPAddress.Parse("192.0.2.84"), project: "SHARES-SCOPE");
-        var aId = SessionApi.PrincipalOf(vault, a).GetUserId();
-        var bId = SessionApi.PrincipalOf(vault, b).GetUserId();
+        var issuerId = SessionApi.PrincipalOf(vault, issuer).GetUserId();
+        var otherIssuerId = SessionApi.PrincipalOf(vault, otherIssuer).GetUserId();
         var admin = await vault.AdminClientAsync();
-        var aDetails = await LegacySharing.CreateSecretAsync(admin, "it-shares-scope-secret-a");
-        var bDetails = await LegacySharing.CreateSecretAsync(admin, "it-shares-scope-secret-b");
-        await LegacySharing.ShareAsync(a.Client, aDetails, "it-shares-scope-recipient");
-        await LegacySharing.ShareAsync(b.Client, bDetails, "it-shares-scope-recipient");
-        var aShare = await LegacySharing.ShareOfAsync(vault, aDetails);
-        var bShare = await LegacySharing.ShareOfAsync(vault, bDetails);
-        var claimingB = $"?issuerId={bId}&issuerUserId={bId}&userId={bId}&accountId={bId}&username=it-shares-scope-b&issuer=it-shares-scope-b";
-        var claimingA = $"?issuerId={aId}&issuerUserId={aId}&userId={aId}&accountId={aId}&username=it-shares-scope-a&issuer=it-shares-scope-a";
+        var issuedSecret = await LegacySharing.CreateSecretAsync(admin, "it-shares-scope-secret-a");
+        var otherIssuedSecret = await LegacySharing.CreateSecretAsync(admin, "it-shares-scope-secret-b");
+        await LegacySharing.ShareAsync(issuer.Client, issuedSecret, "it-shares-scope-recipient");
+        await LegacySharing.ShareAsync(otherIssuer.Client, otherIssuedSecret, "it-shares-scope-recipient");
+        var issuedShare = await LegacySharing.ShareOfAsync(vault, issuedSecret);
+        var otherIssuedShare = await LegacySharing.ShareOfAsync(vault, otherIssuedSecret);
+        var claimingOtherIssuer = $"?issuerId={otherIssuerId}&issuerUserId={otherIssuerId}&userId={otherIssuerId}&accountId={otherIssuerId}&username=it-shares-scope-b&issuer=it-shares-scope-b";
+        var claimingIssuer = $"?issuerId={issuerId}&issuerUserId={issuerId}&userId={issuerId}&accountId={issuerId}&username=it-shares-scope-a&issuer=it-shares-scope-a";
         var before = await LegacySharing.AuditHeadAsync(vault);
 
-        var aList = await a.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me" + claimingB);
-        var bList = await b.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me" + claimingA);
-        Assert.Equal(aShare.Id, Assert.Single(aList!.Shares).ShareId);
-        Assert.Equal(bShare.Id, Assert.Single(bList!.Shares).ShareId);
-        var foreign = await SessionApi.WriteAsync(a, HttpMethod.Delete, $"/api/ui/shared-by-me/{bShare.Id}" + claimingB,
-            JsonContent.Create(new { issuerId = bId, issuerUserId = bId, accountId = bId, userId = bId, username = "it-shares-scope-b", issuer = "it-shares-scope-b" }));
-        var missing = await SessionApi.WriteAsync(b, HttpMethod.Delete, "/api/ui/shared-by-me/11111111-1111-1111-1111-111111111111");
+        var issuedShares = await issuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me" + claimingOtherIssuer);
+        var otherIssuedShares = await otherIssuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me" + claimingIssuer);
+        Assert.Equal(issuedShare.Id, Assert.Single(issuedShares!.Shares).ShareId);
+        Assert.Equal(otherIssuedShare.Id, Assert.Single(otherIssuedShares!.Shares).ShareId);
+        var foreign = await SessionApi.WriteAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{otherIssuedShare.Id}" + claimingOtherIssuer,
+            JsonContent.Create(new { issuerId = otherIssuerId, issuerUserId = otherIssuerId, accountId = otherIssuerId, userId = otherIssuerId, username = "it-shares-scope-b", issuer = "it-shares-scope-b" }));
+        var missing = await SessionApi.WriteAsync(otherIssuer, HttpMethod.Delete, "/api/ui/shared-by-me/11111111-1111-1111-1111-111111111111");
         await UiApiFailureContractTests.AssertProblemAsync(foreign, 404, "share_not_found");
         await UiApiFailureContractTests.AssertProblemAsync(missing, 404, "share_not_found");
         Assert.Equal(await missing.Content.ReadAsStringAsync(), await foreign.Content.ReadAsStringAsync());
@@ -99,11 +99,11 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         Assert.Equal("That grant no longer exists, or it wasn't yours to revoke.", problem.RootElement.GetProperty("title").GetString());
         Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
 
-        Assert.Equal(HttpStatusCode.NoContent, (await SessionApi.WriteAsync(a, HttpMethod.Delete, $"/api/ui/shared-by-me/{aShare.Id}" + claimingB)).StatusCode);
-        Assert.Empty((await a.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me"))!.Shares);
-        Assert.Equal(bShare.Id, Assert.Single((await b.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me"))!.Shares).ShareId);
-        Assert.Equal(HttpStatusCode.NoContent, (await SessionApi.WriteAsync(b, HttpMethod.Delete, $"/api/ui/shared-by-me/{bShare.Id}" + claimingA)).StatusCode);
-        Assert.Empty((await b.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me"))!.Shares);
+        Assert.Equal(HttpStatusCode.NoContent, (await SessionApi.WriteAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{issuedShare.Id}" + claimingOtherIssuer)).StatusCode);
+        Assert.Empty((await issuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me"))!.Shares);
+        Assert.Equal(otherIssuedShare.Id, Assert.Single((await otherIssuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me"))!.Shares).ShareId);
+        Assert.Equal(HttpStatusCode.NoContent, (await SessionApi.WriteAsync(otherIssuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{otherIssuedShare.Id}" + claimingIssuer)).StatusCode);
+        Assert.Empty((await otherIssuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me"))!.Shares);
     }
 
     [Fact]

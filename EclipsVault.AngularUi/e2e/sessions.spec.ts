@@ -269,7 +269,7 @@ test('Signed-in devices reports a load failure with retry and then its Legacy em
   await expect(devices.signOutOthers).toHaveCount(0);
 });
 
-test('the sidebar and palette open Signed-in devices inside Angular and preserve mixed-case bookmarks', async ({
+test('the sidebar opens Signed-in devices in-app with its Security group active', async ({
   page,
 }) => {
   await openOwner(page, '/Access');
@@ -283,23 +283,33 @@ test('the sidebar and palette open Signed-in devices inside Angular and preserve
   await link.click();
   await expect(page).toHaveURL(/\/Sessions$/);
   await expect(link).toHaveAttribute('aria-current', 'page');
-  const securityGroup = page.getByRole('group').filter({ has: link });
-  await expect(securityGroup).toHaveJSProperty('open', true);
+  await expect(page.getByRole('group').filter({ has: link })).toHaveJSProperty('open', true);
   await expect(link).toBeVisible();
-  await page.getByRole('link', { name: 'My activity', exact: true }).click();
+  expect(documents).toEqual([]);
+});
+
+test('the palette opens Signed-in devices without a document load', async ({ page }) => {
+  await openOwner(page, '/Activity');
+  const documents: string[] = [];
+  page.on('request', (request) => {
+    if (request.isNavigationRequest() && request.resourceType() === 'document')
+      documents.push(request.url());
+  });
   await openPalette(page);
   await page.getByRole('combobox').fill('signed-in devices');
   await page.keyboard.press('Enter');
+  await expect(new SignedInDevices(page).heading).toBeVisible();
   await expect(page).toHaveURL(/\/Sessions$/);
   expect(documents).toEqual([]);
-  await page.goto('/sEsSiOnS/iNdEx');
+});
+
+test('a mixed-case Signed-in devices bookmark serves the titled Angular page', async ({ page }) => {
+  await openOwner(page, '/sEsSiOnS/iNdEx');
   await expect(new SignedInDevices(page).heading).toBeVisible();
   await expect(page).toHaveTitle('Signed-in devices — EclipsVault');
 });
 
-test('Sign-in history and Security checkup open devices in-app while the profile link loads Legacy', async ({
-  page,
-}) => {
+test('Sign-in history opens Signed-in devices without a document load', async ({ page }) => {
   await page.route('**/api/ui/sign-ins', (route) =>
     route.fulfill({
       json: {
@@ -329,16 +339,35 @@ test('Sign-in history and Security checkup open devices in-app while the profile
   const documents: string[] = [];
   page.on('request', (request) => {
     if (request.isNavigationRequest() && request.resourceType() === 'document')
-      documents.push(new URL(request.url()).pathname);
+      documents.push(request.url());
   });
   await page.getByRole('link', { name: 'Review signed-in devices', exact: true }).click();
   await expect(new SignedInDevices(page).heading).toBeVisible();
   expect(documents).toEqual([]);
+});
+
+test('Security checkup opens Signed-in devices without a document load', async ({ page }) => {
   await page.route('**/api/ui/security', (route) => route.fulfill({ json: atRisk }));
-  await page.getByRole('link', { name: 'Security checkup', exact: true }).click();
+  await openOwner(page, '/Security');
+  const documents: string[] = [];
+  page.on('request', (request) => {
+    if (request.isNavigationRequest() && request.resourceType() === 'document')
+      documents.push(request.url());
+  });
   await page.getByRole('link', { name: 'Review devices', exact: true }).click();
   await expect(new SignedInDevices(page).heading).toBeVisible();
   expect(documents).toEqual([]);
+});
+
+test('the sign out everywhere link opens Profile on the same session through Legacy', async ({
+  page,
+}) => {
+  await openOwner(page);
+  const documents: string[] = [];
+  page.on('request', (request) => {
+    if (request.isNavigationRequest() && request.resourceType() === 'document')
+      documents.push(new URL(request.url()).pathname);
+  });
   await page.getByRole('link', { name: 'sign out everywhere', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Profile', exact: true })).toBeVisible();
   expect(documents).toEqual(['/Profile']);

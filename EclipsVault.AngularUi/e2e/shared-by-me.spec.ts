@@ -183,14 +183,12 @@ test('Shared by me shows "no expiry" for a share without an expiry', async ({ pa
   await expect(shares.accessUntilOf(shares.share('E2e_Shared_No_Expiry'))).toHaveText('no expiry');
 });
 
-test('the sidebar and palette open Shared by me in-app while Shared with me loads Legacy', async ({
-  page,
-}) => {
+test('the sidebar opens Shared by me in-app with its Sharing group active', async ({ page }) => {
   await openAsIssuer(page, '/Access');
   const documents: string[] = [];
   page.on('request', (request) => {
     if (request.isNavigationRequest() && request.resourceType() === 'document')
-      documents.push(new URL(request.url()).pathname);
+      documents.push(request.url());
   });
   await page.getByText('Sharing', { exact: true }).click();
   const link = page.getByRole('link', { name: 'Shared by me', exact: true });
@@ -198,20 +196,38 @@ test('the sidebar and palette open Shared by me in-app while Shared with me load
   await expect(new SharedByMe(page).heading).toBeVisible();
   await expect(link).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('group').filter({ has: link })).toHaveJSProperty('open', true);
-  await openPalette(page);
-  await page.getByRole('combobox').fill('My access');
-  await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(/\/Access$/);
+  expect(documents).toEqual([]);
+});
+
+test('the palette opens Shared by me without a document load', async ({ page }) => {
+  await openAsIssuer(page, '/Access');
+  const documents: string[] = [];
+  page.on('request', (request) => {
+    if (request.isNavigationRequest() && request.resourceType() === 'document')
+      documents.push(request.url());
+  });
   await openPalette(page);
   await page.getByRole('combobox').fill('Shared by me');
   await page.keyboard.press('Enter');
   await expect(new SharedByMe(page).heading).toBeVisible();
   expect(documents).toEqual([]);
+});
+
+test('Shared with me opens Legacy on the same session from Shared by me', async ({ page }) => {
+  await openAsIssuer(page);
+  const documents: string[] = [];
+  page.on('request', (request) => {
+    if (request.isNavigationRequest() && request.resourceType() === 'document')
+      documents.push(new URL(request.url()).pathname);
+  });
   await page.getByRole('link', { name: 'Shared with me', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Shared with me', exact: true })).toBeVisible();
   expect(documents).toEqual(['/Secrets/SharedWithMe']);
   await expect(page.getByRole('link', { name: 'Sign in', exact: true })).toHaveCount(0);
-  await page.goto('/sEcReTs/sHaReDbYmE');
+});
+
+test('a mixed-case Shared by me bookmark serves the titled Angular page', async ({ page }) => {
+  await openAsIssuer(page, '/sEcReTs/sHaReDbYmE');
   await expect(new SharedByMe(page).heading).toBeVisible();
   await expect(page).toHaveTitle('Shared by me — EclipsVault');
 });

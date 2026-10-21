@@ -64,41 +64,41 @@ public sealed class SessionApiTests(VaultFixture vault)
     [Fact]
     public async Task Two_accounts_list_and_revoke_only_their_own_devices_even_with_injected_account_parameters()
     {
-        var a = await SessionAccount.CreateAsync(vault, "it-sessions-scope-a", "198.51.100.172");
-        var b = await SessionAccount.CreateAsync(vault, "it-sessions-scope-b", "198.51.100.173");
-        var aDevice = await a.OpenDeviceAsync(0, "198.51.100.174");
-        var bDevice = await b.OpenDeviceAsync(0, "198.51.100.175");
-        var aId = (await SessionApi.CurrentAsync(aDevice)).SessionId;
-        var bId = (await SessionApi.CurrentAsync(bDevice)).SessionId;
-        var aUserId = SessionApi.PrincipalOf(vault, a.Browser).GetUserId();
-        var bUserId = SessionApi.PrincipalOf(vault, b.Browser).GetUserId();
-        var aQuery = $"?userId={bUserId}&accountId={bUserId}&username=it-sessions-scope-b&issuer={bUserId}";
-        var bQuery = $"?userId={aUserId}&accountId={aUserId}&username=it-sessions-scope-a&issuer={aUserId}";
+        var account = await SessionAccount.CreateAsync(vault, "it-sessions-scope-a", "198.51.100.172");
+        var otherAccount = await SessionAccount.CreateAsync(vault, "it-sessions-scope-b", "198.51.100.173");
+        var device = await account.OpenDeviceAsync(0, "198.51.100.174");
+        var otherDevice = await otherAccount.OpenDeviceAsync(0, "198.51.100.175");
+        var sessionId = (await SessionApi.CurrentAsync(device)).SessionId;
+        var otherSessionId = (await SessionApi.CurrentAsync(otherDevice)).SessionId;
+        var accountId = SessionApi.PrincipalOf(vault, account.Browser).GetUserId();
+        var otherAccountId = SessionApi.PrincipalOf(vault, otherAccount.Browser).GetUserId();
+        var claimingOtherAccount = $"?userId={otherAccountId}&accountId={otherAccountId}&username=it-sessions-scope-b&issuer={otherAccountId}";
+        var claimingAccount = $"?userId={accountId}&accountId={accountId}&username=it-sessions-scope-a&issuer={accountId}";
 
-        var aList = await a.Browser.Client.GetStringAsync("/api/ui/sessions");
-        var bList = await b.Browser.Client.GetStringAsync("/api/ui/sessions");
-        Assert.Equal(aList, await a.Browser.Client.GetStringAsync("/api/ui/sessions" + aQuery));
-        Assert.Equal(bList, await b.Browser.Client.GetStringAsync("/api/ui/sessions" + bQuery));
-        Assert.Contains("198.51.100.174", aList);
-        Assert.DoesNotContain("198.51.100.175", aList);
-        Assert.Contains("198.51.100.175", bList);
-        Assert.DoesNotContain("198.51.100.174", bList);
+        var listedDevices = await account.Browser.Client.GetStringAsync("/api/ui/sessions");
+        var otherListedDevices = await otherAccount.Browser.Client.GetStringAsync("/api/ui/sessions");
+        Assert.Equal(listedDevices, await account.Browser.Client.GetStringAsync("/api/ui/sessions" + claimingOtherAccount));
+        Assert.Equal(otherListedDevices, await otherAccount.Browser.Client.GetStringAsync("/api/ui/sessions" + claimingAccount));
+        Assert.Contains("198.51.100.174", listedDevices);
+        Assert.DoesNotContain("198.51.100.175", listedDevices);
+        Assert.Contains("198.51.100.175", otherListedDevices);
+        Assert.DoesNotContain("198.51.100.174", otherListedDevices);
         var before = await LegacySharing.AuditHeadAsync(vault);
 
-        await UiApiFailureContractTests.AssertProblemAsync(await SessionApi.WriteAsync(a.Browser, HttpMethod.Delete, $"/api/ui/sessions/{bId}" + aQuery), 404, "session_not_found");
-        await UiApiFailureContractTests.AssertProblemAsync(await SessionApi.WriteAsync(b.Browser, HttpMethod.Delete, $"/api/ui/sessions/{aId}" + bQuery), 404, "session_not_found");
+        await UiApiFailureContractTests.AssertProblemAsync(await SessionApi.WriteAsync(account.Browser, HttpMethod.Delete, $"/api/ui/sessions/{otherSessionId}" + claimingOtherAccount), 404, "session_not_found");
+        await UiApiFailureContractTests.AssertProblemAsync(await SessionApi.WriteAsync(otherAccount.Browser, HttpMethod.Delete, $"/api/ui/sessions/{sessionId}" + claimingAccount), 404, "session_not_found");
         Assert.Empty(await LegacySharing.AuditRowsAfterAsync(vault, before));
-        Assert.Equal(HttpStatusCode.OK, (await aDevice.Client.GetAsync("/api/ui/me")).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await bDevice.Client.GetAsync("/api/ui/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await device.Client.GetAsync("/api/ui/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await otherDevice.Client.GetAsync("/api/ui/me")).StatusCode);
 
-        Assert.Equal(HttpStatusCode.NoContent, (await SessionApi.WriteAsync(a.Browser, HttpMethod.Delete, $"/api/ui/sessions/{aId}" + aQuery)).StatusCode);
-        Assert.Equal(HttpStatusCode.NoContent, (await SessionApi.WriteAsync(b.Browser, HttpMethod.Delete, $"/api/ui/sessions/{bId}" + bQuery)).StatusCode);
-        await UiApiFailureContractTests.AssertProblemAsync(await aDevice.Client.GetAsync("/api/ui/me"), 401, "unauthenticated");
-        await UiApiFailureContractTests.AssertProblemAsync(await bDevice.Client.GetAsync("/api/ui/me"), 401, "unauthenticated");
+        Assert.Equal(HttpStatusCode.NoContent, (await SessionApi.WriteAsync(account.Browser, HttpMethod.Delete, $"/api/ui/sessions/{sessionId}" + claimingOtherAccount)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await SessionApi.WriteAsync(otherAccount.Browser, HttpMethod.Delete, $"/api/ui/sessions/{otherSessionId}" + claimingAccount)).StatusCode);
+        await UiApiFailureContractTests.AssertProblemAsync(await device.Client.GetAsync("/api/ui/me"), 401, "unauthenticated");
+        await UiApiFailureContractTests.AssertProblemAsync(await otherDevice.Client.GetAsync("/api/ui/me"), 401, "unauthenticated");
         var rows = await LegacySharing.AuditRowsAfterAsync(vault, before);
         Assert.Equal(2, rows.Length);
-        Assert.Equal([aUserId, bUserId], rows.Select(row => row.UserId));
-        Assert.Equal([aId, bId], rows.Select(row => row.ResourceId));
+        Assert.Equal([accountId, otherAccountId], rows.Select(row => row.UserId));
+        Assert.Equal([sessionId, otherSessionId], rows.Select(row => row.ResourceId));
         Assert.All(rows, row => Assert.Equal(AuditAction.SessionRevokedByUser, row.Action));
     }
 
