@@ -96,6 +96,50 @@ test('a separate vault account enrolls MFA for its signed-in device scenarios', 
   ownerCookies = await owner.context().cookies();
 });
 
+test('Signed-in devices requires Trusted Types for script sinks', async ({ page }) => {
+  await page.context().addCookies(ownerCookies);
+
+  const response = await page.goto('/Sessions');
+
+  expect(response?.status()).toBe(200);
+  expect(response?.headers()['content-security-policy']).toContain(
+    "require-trusted-types-for 'script'",
+  );
+});
+
+test('Signed-in devices identifies the page', async ({ page }) => {
+  const devices = await openOwner(page);
+
+  await expect(page).toHaveTitle('Signed-in devices — EclipsVault');
+  await expect(devices.heading).toBeVisible();
+});
+
+test('Signed-in devices explains how revocation affects access', async ({ page }) => {
+  await openOwner(page);
+
+  await expect(
+    page.getByText('Every place your account is currently signed in.', { exact: false }),
+  ).toHaveText(
+    "Every place your account is currently signed in. Don't recognise one? Sign it out — it loses access on its next request. To end every session at once (including this one), use sign out everywhere on your profile.",
+  );
+});
+
+test('Signed-in devices offers sign-out only for other devices', async ({ page }) => {
+  await page.route('**/api/ui/sessions', (route) =>
+    route.fulfill({ json: { sessions: [current, phone, terminal] } }),
+  );
+  const devices = await openOwner(page);
+
+  await expect(devices.rows).toHaveCount(3);
+  await expect(devices.device('Chrome on macOS').getByRole('button')).toHaveCount(0);
+  await expect(
+    devices.device('Safari on iOS').getByRole('button', { name: 'Sign out', exact: true }),
+  ).toBeVisible();
+  await expect(
+    devices.device('curl').getByRole('button', { name: 'Sign out', exact: true }),
+  ).toBeVisible();
+});
+
 for (const [theme, currentAccent, otherAccent] of [
   [
     'dark',
@@ -119,23 +163,9 @@ for (const [theme, currentAccent, otherAccent] of [
     await page.route('**/api/ui/sessions', (route) =>
       route.fulfill({ json: { sessions: [current, phone, terminal] } }),
     );
-    const response = await page.goto('/Sessions');
+    await page.goto('/Sessions');
     const devices = new SignedInDevices(page);
     await expect(devices.rows).toHaveCount(3);
-    expect(response?.headers()['content-security-policy']).toContain(
-      "require-trusted-types-for 'script'",
-    );
-    await expect(page).toHaveTitle('Signed-in devices — EclipsVault');
-    await expect(devices.heading).toBeVisible();
-    await expect(
-      page.getByText('Every place your account is currently signed in.', { exact: false }),
-    ).toHaveText(
-      "Every place your account is currently signed in. Don't recognise one? Sign it out — it loses access on its next request. To end every session at once (including this one), use sign out everywhere on your profile.",
-    );
-    await expect(devices.device('Chrome on macOS').getByRole('button')).toHaveCount(0);
-    await expect(
-      devices.device('Safari on iOS').getByRole('button', { name: 'Sign out', exact: true }),
-    ).toBeVisible();
     expect(await devices.presentation()).toEqual([
       {
         device: 'Chrome on macOS',
