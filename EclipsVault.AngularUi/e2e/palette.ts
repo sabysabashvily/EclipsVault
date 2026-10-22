@@ -2,27 +2,30 @@ import { execFileSync } from 'node:child_process';
 import type { Page } from '@playwright/test';
 import { expect } from './fixtures';
 
-/** Opens the palette with the platform's chord, as a person would, and waits for its field. */
 export async function openPalette(page: Page): Promise<void> {
+  await expect(
+    page.getByRole('button', { name: 'Search secrets or jump to a page', exact: true }),
+  ).toBeVisible();
   await page.keyboard.press('ControlOrMeta+k');
   await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
-  await expect(page.locator('.palette-input')).toBeFocused();
+  await expect(page.getByRole('combobox')).toBeFocused();
 }
 
 /** The palette's rows as a person reads them: what kind of thing, and its name. */
 export async function paletteEntries(page: Page): Promise<string[][]> {
-  return page
-    .locator('.palette-item')
-    .evaluateAll((items) =>
-      items.map((item) => [
-        item.querySelector('.palette-kind')?.textContent?.trim() ?? '',
-        item.querySelector('.palette-label')?.textContent?.trim() ?? '',
-      ]),
-    );
+  return page.getByRole('option').evaluateAll((items) =>
+    // Kind and label are unlabelled parts of an option's combined accessible name.
+    items.map((item) => [
+      item.querySelector('.palette-kind')?.textContent?.trim() ?? '',
+      item.querySelector('.palette-label')?.textContent?.trim() ?? '',
+    ]),
+  );
 }
 
 /** Every page link the sidebar renders, nav then account menu, in document order. */
 export async function sidebarPages(page: Page): Promise<string[]> {
+  // Sidebar links and account-menu menuitems have different roles. Include their anchors from
+  // closed groups too, in document order, while leaving out the menu's command buttons.
   return (await page.locator('.sidenav a, .account-menu-panel a').allTextContents()).map((text) =>
     text.trim(),
   );
@@ -37,7 +40,7 @@ export async function searchSecrets(
     const url = new URL(response.url());
     return url.pathname === '/Secrets/Search' && url.searchParams.get('q') === query;
   });
-  await page.locator('.palette-input').fill(query);
+  await page.getByRole('combobox').fill(query);
   const response = await answered;
   const names = ((await response.json()) as { name: string }[]).map((secret) => secret.name);
   await expect

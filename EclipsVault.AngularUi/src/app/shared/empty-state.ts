@@ -15,6 +15,12 @@ import { Component, input } from '@angular/core';
           stroke-linejoin="round"
         >
           @switch (icon()) {
+            @case ('share') {
+              <circle cx="18" cy="5" r="2.6" />
+              <circle cx="6" cy="12" r="2.6" />
+              <circle cx="18" cy="19" r="2.6" />
+              <path d="M8.3 10.7l7.4-4.4M8.3 13.3l7.4 4.4" />
+            }
             @case ('clipboard') {
               <path
                 d="M9 4h6a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h2V5a1 1 0 0 1 1-1Z"
@@ -31,11 +37,12 @@ import { Component, input } from '@angular/core';
       </div>
       <h3>{{ heading() }}</h3>
       <p>{{ message() }}</p>
+      <ng-content />
     </div>
   `,
 })
 export class EmptyState {
-  readonly icon = input.required<'clipboard' | 'lock'>();
+  readonly icon = input.required<'clipboard' | 'lock' | 'share'>();
   readonly heading = input.required<string>();
   readonly message = input.required<string>();
 }

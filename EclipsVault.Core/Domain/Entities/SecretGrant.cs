@@ -17,7 +17,16 @@ public class SecretGrant
     /// <summary>Denormalized for display in the sharing panel without an extra join.</summary>
     public string GranteeUsername { get; set; } = string.Empty;
 
-    /// <summary>Username of whoever created the grant.</summary>
+    /// <summary>
+    /// The issuer's account. Null when it isn't known: such a share is on nobody's Shared by me and
+    /// is revoked from its secret's sharing list instead.
+    /// </summary>
+    public Guid? IssuerUserId { get; set; }
+
+    /// <summary>
+    /// The issuer's username, for display and audit text only. It never identifies the issuer,
+    /// because a deleted account's username can be given to a new account.
+    /// </summary>
     public string GrantedBy { get; set; } = string.Empty;
 
     public DateTimeOffset CreatedAtUtc { get; set; }

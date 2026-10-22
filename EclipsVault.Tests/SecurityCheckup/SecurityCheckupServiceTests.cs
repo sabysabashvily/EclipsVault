@@ -16,18 +16,17 @@ namespace EclipsVault.Tests.SecurityCheckupTests;
 /// </summary>
 public class SecurityCheckupServiceTests
 {
+    // Fakes answer only for User, so a read keyed to anyone else shows up as missing data.
     private static readonly Guid User = Guid.NewGuid();
 
     private sealed class FakeProfile : IProfileService
     {
         private readonly ProfileDto? _dto;
-        public Guid LastUserId { get; private set; }
         public FakeProfile(ProfileDto? dto) => _dto = dto;
 
         public Task<ProfileDto?> GetAsync(Guid userId, CancellationToken ct)
         {
-            LastUserId = userId;
-            return Task.FromResult(_dto);
+            return Task.FromResult(userId == User ? _dto : null);
         }
 
         public Task<ProfileDto> UpdateAsync(Guid userId, string displayName, string email, CancellationToken ct) => throw new NotSupportedException();
@@ -41,12 +40,11 @@ public class SecurityCheckupServiceTests
     private sealed class FakePasskeys : IPasskeyService
     {
         private readonly int _count;
-        public bool Queried { get; private set; }
         public FakePasskeys(int count) => _count = count;
 
         public Task<IReadOnlyList<PasskeySummary>> ListForUserAsync(Guid userId, CancellationToken ct)
         {
-            Queried = true;
+            if (userId != User) return Task.FromResult<IReadOnlyList<PasskeySummary>>([]);
             IReadOnlyList<PasskeySummary> list = Enumerable.Range(0, _count)
                 .Select(i => new PasskeySummary(Guid.NewGuid(), $"key{i}", DateTimeOffset.UtcNow))
                 .ToList();
@@ -64,19 +62,18 @@ public class SecurityCheckupServiceTests
     {
         private readonly int _remaining;
         public FakeRecovery(int remaining) => _remaining = remaining;
-        public Task<int> CountRemainingAsync(Guid userId, CancellationToken ct) => Task.FromResult(_remaining);
+        public Task<int> CountRemainingAsync(Guid userId, CancellationToken ct) => Task.FromResult(userId == User ? _remaining : 0);
         public Task<IReadOnlyList<string>> GenerateAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
     }
 
     private sealed class FakeSessions : ISessionRegistry
     {
         private readonly int _count;
-        public Guid LastUserId { get; private set; }
         public FakeSessions(int count) => _count = count;
 
         public Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, CancellationToken ct = default)
         {
-            LastUserId = userId;
+            if (userId != User) return Task.FromResult<IReadOnlyList<ActiveSession>>([]);
             IReadOnlyList<ActiveSession> list = Enumerable.Range(0, _count)
                 .Select(_ => new ActiveSession(Guid.NewGuid(), "Chrome on macOS", "203.0.113.5", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow))
                 .ToList();
@@ -84,7 +81,7 @@ public class SecurityCheckupServiceTests
         }
 
         public Task RecordSeenAsync(SessionObservation observation, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<bool> RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<bool> IsRevokedAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new NotSupportedException();
     }
 
@@ -101,9 +98,8 @@ public class SecurityCheckupServiceTests
     }
 
     [Fact]
-    public async Task It_maps_each_input_into_the_posture()
+    public async Task Two_step_a_passkey_and_eight_codes_grade_the_account_strong_and_all_clear()
     {
-        // Two-step on, a passkey, plenty of codes, one device → a fully secured, Strong result.
         var service = new SecurityCheckupService(
             new FakeProfile(Profile(totp: true)), new FakePasskeys(1), new FakeRecovery(8), new FakeSessions(1));
 
@@ -126,17 +122,30 @@ public class SecurityCheckupServiceTests
     }
 
     [Fact]
-    public async Task Every_read_is_scoped_to_the_caller()
+    public async Task Every_posture_input_is_read_for_the_caller_only()
     {
-        var profile = new FakeProfile(Profile(totp: true));
-        var sessions = new FakeSessions(1);
-        var passkeys = new FakePasskeys(1);
-        var service = new SecurityCheckupService(profile, passkeys, new FakeRecovery(5), sessions);
+        var service = new SecurityCheckupService(
+            new FakeProfile(Profile(totp: true)), new FakePasskeys(2), new FakeRecovery(7), new FakeSessions(4));
 
-        await service.GetForUserAsync(User, CancellationToken.None);
+        var checkup = await service.GetForUserAsync(User, CancellationToken.None);
 
-        Assert.Equal(User, profile.LastUserId);
-        Assert.Equal(User, sessions.LastUserId);
-        Assert.True(passkeys.Queried);
+        Assert.NotNull(checkup);
+        Assert.Equal("An authenticator app is protecting your sign-in.",
+            Assert.Single(checkup.Checks, check => check.Kind == SecurityCheckKind.TwoStepSignIn).Detail);
+        Assert.Equal("You have 2 passkeys for phishing-resistant sign-in.",
+            Assert.Single(checkup.Checks, check => check.Kind == SecurityCheckKind.Passkey).Detail);
+        Assert.Equal("You have 7 one-time backup codes.",
+            Assert.Single(checkup.Checks, check => check.Kind == SecurityCheckKind.BackupCodes).Detail);
+        Assert.Equal("4 devices are signed in to your account.",
+            Assert.Single(checkup.Checks, check => check.Kind == SecurityCheckKind.SignedInDevices).Detail);
+    }
+
+    [Fact]
+    public async Task An_unknown_account_has_no_security_checkup()
+    {
+        var service = new SecurityCheckupService(
+            new FakeProfile(Profile(totp: true)), new FakePasskeys(2), new FakeRecovery(7), new FakeSessions(4));
+
+        Assert.Null(await service.GetForUserAsync(Guid.NewGuid(), CancellationToken.None));
     }
 }

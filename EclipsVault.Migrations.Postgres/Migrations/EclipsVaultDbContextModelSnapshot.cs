@@ -604,12 +604,17 @@ namespace EclipsVault.Migrations.Postgres.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<Guid?>("IssuerUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("SecretId")
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
                     b.HasIndex("GranteeUserId");
+
+                    b.HasIndex("IssuerUserId");
 
                     b.HasIndex("SecretId", "GranteeUserId")
                         .IsUnique();

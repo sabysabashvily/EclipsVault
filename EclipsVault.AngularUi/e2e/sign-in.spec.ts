@@ -31,6 +31,7 @@ import {
   verifySecurityCheckup,
 } from './security';
 import { freshTotp } from './totp';
+import { SignedInDevices } from './sessions';
 
 // The tests share one vault: the first enrolls the administrator's authenticator, the next signs in with it.
 test.describe.configure({ mode: 'serial' });
@@ -73,9 +74,8 @@ async function freshThrottleWindow(page: Page): Promise<void> {
 /** The ids of the sessions Signed-in devices offers to sign out: every session but the current one. */
 async function otherSessionIds(page: Page): Promise<string[]> {
   await page.goto('/Sessions');
-  return page
-    .locator('form input[name="id"]')
-    .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value));
+  const sessions = await new SignedInDevices(page).liveSessions();
+  return sessions.filter((session) => !session.isCurrent).map((session) => session.sessionId);
 }
 
 test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and return', async ({
@@ -243,6 +243,9 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
     (await context.cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')?.value,
   ).toBe(session?.value);
   administratorCookies = await context.cookies();
+  // The dependent suites reuse this disposable session: Signed-in devices provisions its own
+  // account with it, and Your data downloads the administrator's own file.
+  await context.storageState({ path: 'test-results/sessions-administrator.json' });
 });
 
 test("My activity shows the administrator's own rows in both themes, and nothing past the end", async ({
@@ -603,7 +606,21 @@ test('the palette is driven from the keyboard, traps focus, and hands it back on
     await expect(options).toHaveText([/Signed-in devices/]);
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/\/Sessions$/);
-    expect(documents).toEqual(['/Sessions']);
+    expect(documents).toEqual([]);
+
+    await openPalette(page);
+    await page.getByRole('combobox').fill('your data');
+    await expect(options).toHaveText([/Your data/]);
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/\/Data$/);
+    expect(documents).toEqual([]);
+
+    await openPalette(page);
+    await page.getByRole('combobox').fill('access requests');
+    await expect(options).toHaveText([/Access requests/]);
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/\/AccessRequests$/);
+    expect(documents).toEqual(['/AccessRequests']);
   });
 });
 
@@ -1461,42 +1478,40 @@ test('the sidebar and palette open Sign-in history in-app, and its callout links
       },
     ],
   };
-  for (const [name, path, heading] of [
-    ['Review signed-in devices', '/Sessions', 'Signed-in devices'],
-    ['Change password', '/Profile', 'Profile'],
-  ] as const) {
-    await test.step(`${name} is a full load into the Legacy UI on the same session`, async () => {
-      await page.route(
-        '**/api/ui/sign-ins',
-        async (route) => {
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify(unfamiliar),
-          });
-        },
-        { times: 1 },
-      );
-      await page.goto('/SignIns');
-      await expect(page.locator('.callout-warn')).toBeVisible();
-      documents.length = 0;
-      const legacyDocument = page.waitForResponse((response) =>
-        response.request().isNavigationRequest(),
-      );
-      await page.locator('.callout-warn').getByRole('link', { name, exact: true }).click();
-      expect((await legacyDocument).headers()['content-security-policy']).not.toContain(
-        'trusted-types',
-      );
-      await expect(page).toHaveURL(new RegExp(`${path}$`));
-      await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
-      expect(documents).toEqual([path]);
-      expect(signInRequests).toEqual([]);
-      expect(
-        (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')
-          ?.value,
-      ).toBe(session?.value);
-    });
-  }
+  await test.step('Change password is a full load into the Legacy UI on the same session', async () => {
+    await page.route(
+      '**/api/ui/sign-ins',
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(unfamiliar),
+        });
+      },
+      { times: 1 },
+    );
+    await page.goto('/SignIns');
+    await expect(page.locator('.callout-warn')).toBeVisible();
+    documents.length = 0;
+    const legacyDocument = page.waitForResponse((response) =>
+      response.request().isNavigationRequest(),
+    );
+    await page
+      .locator('.callout-warn')
+      .getByRole('link', { name: 'Change password', exact: true })
+      .click();
+    expect((await legacyDocument).headers()['content-security-policy']).not.toContain(
+      'trusted-types',
+    );
+    await expect(page).toHaveURL(/\/Profile$/);
+    await expect(page.getByRole('heading', { name: 'Profile', exact: true })).toBeVisible();
+    expect(documents).toEqual(['/Profile']);
+    expect(signInRequests).toEqual([]);
+    expect(
+      (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')
+        ?.value,
+    ).toBe(session?.value);
+  });
 });
 
 test('a sign-in history failure shows a retry and the next request restores the timeline', async ({
@@ -1743,7 +1758,6 @@ test('the sidebar and palette open Security checkup in-app, and fixes load Legac
     ['Set up two-step', '/Profile', 'Profile'],
     ['Generate codes', '/Profile', 'Profile'],
     ['Add a passkey', '/Profile', 'Profile'],
-    ['Review devices', '/Sessions', 'Signed-in devices'],
   ] as const) {
     await test.step(`${name} is a full load into Legacy on the same session`, async () => {
       await page.route(
@@ -1861,12 +1875,11 @@ test('a session revoked from another browser signs in again and returns to My ac
     await signIn(second);
     const first = (await otherSessionIds(second)).filter((id) => !othersOfFirst.includes(id));
     expect(first).toHaveLength(1);
-    await second
-      .locator(`form:has(input[name="id"][value="${first[0]}"])`)
-      .getByRole('button', { name: 'Sign out' })
-      .click();
+    await new SignedInDevices(second).signOutSession(first[0]!);
     await second.getByRole('alertdialog').getByRole('button', { name: 'Continue' }).click();
-    await expect(second.getByText('That session was signed out')).toBeVisible();
+    await expect(second.getByRole('status')).toHaveText(
+      'That session was signed out — it loses access on its next request.',
+    );
   });
 
   await test.step("the first browser's next UI API action sends it to sign-in, returning to My access", async () => {

@@ -44,11 +44,11 @@ public interface ISecretGrantService
 
     Task<IReadOnlyList<SharedSecretDto>> ListSharedWithUserAsync(Guid userId, CancellationToken ct);
 
-    /// <summary>Active grants this user has issued to others, across every secret — the "Shared by me" review.</summary>
-    Task<IReadOnlyList<OutgoingShareDto>> ListIssuedByAsync(string grantorUsername, CancellationToken ct);
+    /// <summary>Active shares this account has issued to others, across every secret — the "Shared by me" review.</summary>
+    Task<IReadOnlyList<OutgoingShareDto>> ListIssuedByAsync(Guid issuerUserId, CancellationToken ct);
 
     /// <summary>Grants a user (by username or email) access to a secret. Throws SharingException on invalid input.</summary>
-    Task GrantAsync(Guid secretId, string secretName, string granteeUsernameOrEmail, int? ttlDays, CancellationToken ct);
+    Task GrantAsync(Guid secretId, string granteeUsernameOrEmail, int? ttlDays, CancellationToken ct);
 
     /// <summary>
     /// Revokes a grant that belongs to <paramref name="secretId"/>. The secret is a required
@@ -60,9 +60,9 @@ public interface ISecretGrantService
     Task<bool> RevokeAsync(Guid grantId, Guid secretId, CancellationToken ct);
 
     /// <summary>
-    /// Revokes a grant only if the caller is the one who issued it. Returns false when the grant is
-    /// gone or was issued by someone else — so a caller can never revoke a grant that isn't theirs,
-    /// and the two cases are indistinguishable to avoid leaking whether a grant id exists.
+    /// Revokes a share only if this account issued it. Returns false when the share is gone or was
+    /// issued by another account — so a caller can never revoke a share that isn't theirs, and the
+    /// two cases are indistinguishable to avoid leaking whether a share id exists.
     /// </summary>
-    Task<bool> RevokeIssuedAsync(Guid grantId, string grantorUsername, CancellationToken ct);
+    Task<bool> RevokeIssuedAsync(Guid grantId, Guid issuerUserId, CancellationToken ct);
 }

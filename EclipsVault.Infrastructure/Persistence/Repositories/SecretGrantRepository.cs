@@ -1,5 +1,6 @@
 using EclipsVault.Core.Application.Secrets;
 using EclipsVault.Core.Domain.Entities;
+using EclipsVault.Core.Domain.Exceptions;
 using Microsoft.EntityFrameworkCore;
 
 namespace EclipsVault.Infrastructure.Persistence.Repositories;
@@ -13,7 +14,7 @@ public sealed class SecretGrantRepository : ISecretGrantRepository
     public async Task AddAsync(SecretGrant grant, CancellationToken ct)
     {
         _context.SecretGrants.Add(grant);
-        await _context.SaveChangesAsync(ct);
+        await SaveShareChangeAsync(ct);
     }
 
     public Task<SecretGrant?> FindAsync(Guid grantId, CancellationToken ct)
@@ -28,8 +29,37 @@ public sealed class SecretGrantRepository : ISecretGrantRepository
         }
 
         _context.SecretGrants.Remove(grant);
-        await _context.SaveChangesAsync(ct);
+        try
+        {
+            await SaveShareChangeAsync(ct);
+        }
+        catch (AuditWriteFailedException failure) when (failure.InnerException is DbUpdateConcurrencyException)
+        {
+            // The failed transaction has rolled back. A competing deletion is a missing share,
+            // not an unavailable audit store; every other save failure still fails closed.
+            if (await _context.SecretGrants.AsNoTracking().AnyAsync(share => share.Id == grantId, ct))
+            {
+                throw;
+            }
+
+            return false;
+        }
+
         return true;
+    }
+
+    private async Task SaveShareChangeAsync(CancellationToken ct)
+    {
+        try
+        {
+            await _context.SaveChangesAsync(ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The interceptor includes the audit row in this transaction. A failed save must use
+            // the same fail-closed response as a standalone audit write, after rollback completes.
+            throw new AuditWriteFailedException("The share and its audit row could not be persisted.", ex);
+        }
     }
 
     public Task<bool> HasActiveGrantAsync(Guid userId, Guid secretId, DateTimeOffset asOfUtc, CancellationToken ct)
@@ -61,11 +91,11 @@ public sealed class SecretGrantRepository : ISecretGrantRepository
             select new SharedSecretDto(s.Id, s.Name, s.ProjectKey, s.Environment, s.Sensitivity, g.GrantedBy, g.ExpiresAtUtc))
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<OutgoingShareDto>> ListIssuedByAsync(string grantorUsername, DateTimeOffset asOfUtc, CancellationToken ct)
+    public async Task<IReadOnlyList<OutgoingShareDto>> ListIssuedByAsync(Guid issuerUserId, DateTimeOffset asOfUtc, CancellationToken ct)
         => await (
             from g in _context.SecretGrants.AsNoTracking()
             join s in _context.Secrets.AsNoTracking() on g.SecretId equals s.Id
-            where g.GrantedBy == grantorUsername
+            where g.IssuerUserId == issuerUserId
                   && (g.ExpiresAtUtc == null || g.ExpiresAtUtc > asOfUtc)
                   && !s.IsShredded
             orderby g.CreatedAtUtc descending

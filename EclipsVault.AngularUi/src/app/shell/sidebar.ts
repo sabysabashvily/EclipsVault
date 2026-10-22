@@ -49,7 +49,7 @@ const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)
         icon: 'shared-with-me',
         children: [
           link('shared-with-me', 'Shared with me', '/Secrets/SharedWithMe'),
-          link('shared-by-me', 'Shared by me', '/Secrets/SharedByMe'),
+          link('shared-by-me', 'Shared by me', '/Secrets/SharedByMe', 'shared-by-me', true),
         ],
       },
     ],
@@ -71,11 +71,11 @@ const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)
         children: [
           link('security', 'Security checkup', '/Security', 'security', true),
           link('sign-ins', 'Sign-in history', '/SignIns', 'sign-ins', true),
-          link('sessions', 'Signed-in devices', '/Sessions'),
+          link('sessions', 'Signed-in devices', '/Sessions', 'sessions', true),
           link('activity', 'My activity', '/Activity', 'activity', true),
         ],
       },
-      link('data', 'Your data', '/Data'),
+      link('data', 'Your data', '/Data', 'data', true),
     ],
   },
   {

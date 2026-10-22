@@ -1,0 +1,55 @@
+using System.Net;
+using System.Security.Cryptography;
+using System.Text.RegularExpressions;
+using EclipsVault.Core.Domain.Enums;
+using Xunit;
+
+namespace EclipsVault.IntegrationTests;
+
+internal sealed partial class SessionAccount(VaultFixture vault, string username, string password, VaultSession browser, string[] recoveryCodes)
+{
+    public VaultSession Browser { get; } = browser;
+
+    public static async Task<SessionAccount> CreateAsync(VaultFixture vault, string username, string address,
+        ClearanceLevel clearance = ClearanceLevel.Standard)
+    {
+        var password = "It-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+        var browser = await vault.SignInNewAccountAsync(username, IPAddress.Parse(address), clearance, password: password);
+        var page = await browser.Client.GetStringAsync("/Profile");
+        var generated = await browser.Client.PostAsync("/Profile/GenerateRecoveryCodes", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(page, "/Profile")
+        }));
+        Assert.Equal(HttpStatusCode.Redirect, generated.StatusCode);
+        var codes = RecoveryCode().Matches(await browser.Client.GetStringAsync("/Profile/RecoveryCodes"))
+            .Select(match => WebUtility.HtmlDecode(match.Groups[1].Value)).ToArray();
+        Assert.Equal(10, codes.Length);
+        return new SessionAccount(vault, username, password, browser, codes);
+    }
+
+    public async Task<VaultSession> OpenDeviceAsync(int recoveryCodeIndex, string address)
+    {
+        var session = vault.CreateSession(source: IPAddress.Parse(address));
+        session.Client.DefaultRequestHeaders.UserAgent.ParseAdd("curl/8.0");
+        var login = await session.Client.GetStringAsync("/Account/Login");
+        var passwordStep = await session.Client.PostAsync("/Account/Login", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(login, "/Account/Login"),
+            ["Username"] = username,
+            ["Password"] = password
+        }));
+        Assert.Equal(HttpStatusCode.Redirect, passwordStep.StatusCode);
+        var recovery = await session.Client.GetStringAsync("/Account/RecoveryCode");
+        var secondFactor = await session.Client.PostAsync("/Account/RecoveryCode", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(recovery, "/Account/RecoveryCode"),
+            ["Code"] = recoveryCodes[recoveryCodeIndex]
+        }));
+        Assert.Equal(HttpStatusCode.Redirect, secondFactor.StatusCode);
+        Assert.NotNull(session.SessionCookie);
+        return session;
+    }
+
+    [GeneratedRegex("<li class=\"mono\">([^<]+)</li>")]
+    private static partial Regex RecoveryCode();
+}

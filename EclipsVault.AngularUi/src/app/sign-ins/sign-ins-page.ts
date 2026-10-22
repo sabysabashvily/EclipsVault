@@ -1,5 +1,6 @@
 import { httpResource } from '@angular/common/http';
 import { Component, computed } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { EmptyState } from '../shared/empty-state';
 import { relativeTime, utcTimestamp } from '../shared/relative-time';
 import type { components, paths } from '../ui-api/schema.generated';
@@ -33,7 +34,7 @@ const locations: Record<SignInEvent['locationFlag'], { text: string; tone: strin
 /** The signed-in account's recent sign-in events and their summary. The server picks the account. */
 @Component({
   selector: 'app-sign-ins-page',
-  imports: [EmptyState],
+  imports: [EmptyState, RouterLink],
   templateUrl: './sign-ins-page.html',
 })
 export class SignInsPage {

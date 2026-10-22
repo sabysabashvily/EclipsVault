@@ -13,4 +13,6 @@ Areas migrate in this order:
 8. **Sign-in.**
 9. **Final cleanup.**
 
-Risk grows down the list, so the patterns settle on pages where a mistake cannot leak a secret. Sign-in goes last because the Razor sign-in hands over to Angular areas unchanged, the same session cookie serving both. Every area touching encryption, authorization, the audit chain or MFA (3, 5, 6, 7, 8) is reviewed by the `security-reviewer` agent before merge.
+Risk grows down the list, so the patterns settle on pages where a mistake cannot leak a secret. Sign-in goes last because the Razor sign-in hands over to Angular areas unchanged, the same session cookie serving both. Every area touching encryption, authorization, the audit chain or MFA (2, 3, 5, 6, 7, 8) is reviewed by the `security-reviewer` agent before merge.
+
+Area 2 joined that list when its grill found it revokes sessions and shares and changes how they are audited (ADR-0021).

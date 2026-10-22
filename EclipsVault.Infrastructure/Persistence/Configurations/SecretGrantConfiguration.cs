@@ -17,6 +17,7 @@ public sealed class SecretGrantConfiguration : IEntityTypeConfiguration<SecretGr
         // One active grant per (secret, grantee).
         builder.HasIndex(g => new { g.SecretId, g.GranteeUserId }).IsUnique();
         builder.HasIndex(g => g.GranteeUserId);
+        builder.HasIndex(g => g.IssuerUserId);
 
         builder.HasOne<Secret>()
             .WithMany()

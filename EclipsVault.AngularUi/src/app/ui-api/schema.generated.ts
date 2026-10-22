@@ -76,6 +76,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ui/data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DataResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/data/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Stream"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ui/me": {
         parameters: {
             query?: never;
@@ -141,6 +211,235 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SessionsResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/sessions/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    sessionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["SessionProblemResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["SessionProblemResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["SessionProblemResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/sessions/sign-out-others": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SignOutOthersResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["SessionProblemResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/shared-by-me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SharedByMeResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/shared-by-me/{shareId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    shareId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ShareProblemResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ShareProblemResponse"];
+                    };
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -235,6 +534,40 @@ export interface components {
             notableCount: number | string;
             items: components["schemas"]["ActivityItemResponse"][];
         };
+        DataAccountResponse: {
+            username: string;
+            displayName: string;
+            email: string;
+            /** @enum {string} */
+            clearance: "Standard" | "Elevated" | "Secret" | "TopSecret";
+            projectKey: string;
+            hasCustomAvatar: boolean;
+        };
+        DataResponse: {
+            account: components["schemas"]["DataAccountResponse"];
+            twoStepEnabled: boolean;
+            /** Format: int32 */
+            passkeyCount: number | string;
+            /** Format: int32 */
+            backupCodesRemaining: number | string;
+            /** Format: int32 */
+            deviceCount: number | string;
+            /** Format: int32 */
+            accessRequestCount: number | string;
+            /** Format: int32 */
+            activityCount: number | string;
+            notice: string;
+        };
+        IssuedShareResponse: {
+            /** Format: uuid */
+            shareId: string;
+            secretName: string;
+            recipient: string;
+            /** Format: date-time */
+            createdAtUtc: string;
+            /** Format: date-time */
+            expiresAtUtc: null | string;
+        };
         LicenseNotice: {
             title: string;
             text: string;
@@ -273,6 +606,43 @@ export interface components {
             nextStep: null | string;
             checks: components["schemas"]["SecurityCheckResponse"][];
         };
+        SessionProblemResponse: {
+            type?: null | string;
+            title?: null | string;
+            /** Format: int32 */
+            status?: null | number | string;
+            detail?: null | string;
+            instance?: null | string;
+            code: string;
+            /** Format: int32 */
+            signedOut?: null | number | string;
+        };
+        SessionResponse: {
+            /** Format: uuid */
+            sessionId: string;
+            device: string;
+            ipAddress: string;
+            /** Format: date-time */
+            createdAtUtc: string;
+            /** Format: date-time */
+            lastSeenAtUtc: string;
+            isCurrent: boolean;
+        };
+        SessionsResponse: {
+            sessions: components["schemas"]["SessionResponse"][];
+        };
+        SharedByMeResponse: {
+            shares: components["schemas"]["IssuedShareResponse"][];
+        };
+        ShareProblemResponse: {
+            type?: null | string;
+            title?: null | string;
+            /** Format: int32 */
+            status?: null | number | string;
+            detail?: null | string;
+            instance?: null | string;
+            code: string;
+        };
         SignInEventResponse: {
             /** Format: date-time */
             timestampUtc: string;
@@ -304,6 +674,12 @@ export interface components {
             lastFailedUtc: null | string;
             needsAttention: boolean;
         };
+        SignOutOthersResponse: {
+            /** Format: int32 */
+            signedOut: number | string;
+        };
+        /** Format: binary */
+        Stream: string;
     };
     responses: never;
     parameters: never;

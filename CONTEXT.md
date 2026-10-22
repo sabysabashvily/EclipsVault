@@ -38,6 +38,20 @@ _Avoid_: Bot, machine user
 The credential a service account presents, optionally narrowed below its account by a scope.
 _Avoid_: Token, bearer token
 
+### Sharing
+
+**Share**:
+Access to one secret, given to one vault account by another, optionally until an expiry. Its issuer can revoke it, and it outlives the issuer's account.
+_Avoid_: Grant, permission
+
+**Issuer**:
+The vault account that gave a share, identified by its account, never by its username.
+_Avoid_: Grantor, sharer, owner
+
+**Recipient**:
+The vault account a share was given to.
+_Avoid_: Grantee
+
 ### The two APIs
 
 **Public API**:

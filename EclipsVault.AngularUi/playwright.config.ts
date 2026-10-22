@@ -24,5 +24,31 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: probes
+    ? [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }]
+    : [
+        {
+          name: 'chromium',
+          testIgnore: ['**/sessions.spec.ts', '**/data.spec.ts', '**/shared-by-me.spec.ts'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          name: 'sessions',
+          testMatch: '**/sessions.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          name: 'data',
+          testMatch: '**/data.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          name: 'shared-by-me',
+          testMatch: '**/shared-by-me.spec.ts',
+          dependencies: ['sessions', 'data'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+      ],
 });

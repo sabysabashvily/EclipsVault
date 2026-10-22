@@ -336,34 +336,6 @@ public sealed class SecretsController : VaultController
         return View(shared);
     }
 
-    /// <summary>
-    /// "Shared by me": an access review of every grant this user has handed out. Self-scoped by the
-    /// caller's username, so it only ever lists the caller's own outgoing shares.
-    /// </summary>
-    [HttpGet]
-    public async Task<IActionResult> SharedByMe(CancellationToken ct)
-    {
-        var issued = await _grants.ListIssuedByAsync(User.Identity?.Name ?? string.Empty, ct);
-        return View(issued);
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> RevokeSharedByMe(Guid grantId, CancellationToken ct)
-    {
-        // Issuer-scoped: RevokeIssuedAsync only removes the grant if the caller is the one who issued
-        // it, so a forged grant id belonging to someone else's share can never be revoked here.
-        if (await _grants.RevokeIssuedAsync(grantId, User.Identity?.Name ?? string.Empty, ct))
-        {
-            this.FlashSuccess("Access revoked.");
-        }
-        else
-        {
-            this.FlashError("That grant no longer exists, or it wasn't yours to revoke.");
-        }
-
-        return RedirectToAction(nameof(SharedByMe));
-    }
-
     [HttpPost]
     public async Task<IActionResult> Grant(ShareSecretViewModel model, CancellationToken ct)
     {
@@ -386,7 +358,7 @@ public sealed class SecretsController : VaultController
 
         try
         {
-            await _grants.GrantAsync(model.SecretId, details.Name, model.GranteeUsernameOrEmail, model.TtlDays, ct);
+            await _grants.GrantAsync(model.SecretId, model.GranteeUsernameOrEmail, model.TtlDays, ct);
             this.FlashSuccess($"Access to '{details.Name}' was shared with {model.GranteeUsernameOrEmail}.");
         }
         catch (SharingException ex)

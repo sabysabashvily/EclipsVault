@@ -7,16 +7,19 @@ using Xunit;
 namespace EclipsVault.Tests.Secrets;
 
 /// <summary>
-/// The self-scoped revoke on the "Shared by me" page must never let a caller revoke a grant they
-/// didn't issue. These tests pin that authorization boundary (the IDOR guard) and its indistinguishable
-/// failure, plus the case-insensitive issuer match.
+/// The self-scoped revoke on the "Shared by me" page must never let a caller revoke a share they
+/// didn't issue. These tests pin that authorization boundary (the IDOR guard), its indistinguishable
+/// failure, and that the issuer is an account, never a username a new account could be given.
 /// </summary>
 public class SecretGrantServiceTests
 {
+    private static readonly Guid AliceId = Guid.Parse("a11ce000-0000-0000-0000-000000000001");
+
     private sealed class FakeGrants : ISecretGrantRepository
     {
         private readonly SecretGrant? _grant;
         public int RemoveCalls { get; private set; }
+        public SecretGrant? Added { get; private set; }
         public FakeGrants(SecretGrant? grant) => _grant = grant;
 
         public Task<SecretGrant?> FindAsync(Guid grantId, CancellationToken ct) => Task.FromResult(_grant);
@@ -26,37 +29,26 @@ public class SecretGrantServiceTests
             return Task.FromResult(true);
         }
 
-        public Task AddAsync(SecretGrant grant, CancellationToken ct) => throw new NotSupportedException();
+        public Task AddAsync(SecretGrant grant, CancellationToken ct)
+        {
+            Added = grant;
+            return Task.CompletedTask;
+        }
+
+        public Task<bool> ExistsAsync(Guid userId, Guid secretId, CancellationToken ct) => Task.FromResult(false);
+
         public Task<bool> HasActiveGrantAsync(Guid userId, Guid secretId, DateTimeOffset asOfUtc, CancellationToken ct) => throw new NotSupportedException();
-        public Task<bool> ExistsAsync(Guid userId, Guid secretId, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<SecretGrant>> ListForSecretAsync(Guid secretId, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<SharedSecretDto>> ListSharedWithUserAsync(Guid userId, DateTimeOffset asOfUtc, CancellationToken ct) => throw new NotSupportedException();
-        public Task<IReadOnlyList<OutgoingShareDto>> ListIssuedByAsync(string grantorUsername, DateTimeOffset asOfUtc, CancellationToken ct) => throw new NotSupportedException();
-    }
-
-    private sealed class FakeSecrets : ISecretRepository
-    {
-        public Task<Secret?> FindAsync(Guid id, CancellationToken ct)
-            => Task.FromResult<Secret?>(new Secret { Id = id, Name = "prod/api-key" });
-
-        public Task<IReadOnlyList<Secret>> ListActiveAsync(DateTimeOffset asOfUtc, CancellationToken ct) => throw new NotSupportedException();
-        public Task<IReadOnlyList<Secret>> ListExpiredAsync(DateTimeOffset asOfUtc, CancellationToken ct) => throw new NotSupportedException();
-        public Task<IReadOnlyList<Secret>> ListExpiringAsync(DateTimeOffset asOfUtc, DateTimeOffset horizonUtc, CancellationToken ct) => throw new NotSupportedException();
-        public Task MarkExpiryNoticeSentAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
-        public Task AddAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
-        public Task UpdateAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
-        public Task DeleteAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
-        public Task RotateAsync(Secret secret, SecretVersion archivedVersion, CancellationToken ct) => throw new NotSupportedException();
-        public Task ShredAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
-        public Task<IReadOnlyList<SecretVersion>> ListVersionsAsync(Guid secretId, CancellationToken ct) => throw new NotSupportedException();
-        public Task<SecretVersion?> FindVersionAsync(Guid secretId, Guid versionId, CancellationToken ct) => throw new NotSupportedException();
-        public Task<int> CountVersionsAsync(Guid secretId, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyList<OutgoingShareDto>> ListIssuedByAsync(Guid issuerUserId, DateTimeOffset asOfUtc, CancellationToken ct) => throw new NotSupportedException();
     }
 
     private sealed class FakeUsers : IUserRepository
     {
         public Task<User?> FindByUsernameAsync(string username, CancellationToken ct) => throw new NotSupportedException();
-        public Task<User?> FindByUsernameOrEmailAsync(string identifier, CancellationToken ct) => throw new NotSupportedException();
+        public Task<User?> FindByUsernameOrEmailAsync(string identifier, CancellationToken ct)
+            => Task.FromResult<User?>(new User { Id = Guid.NewGuid(), Username = "carol" });
+
         public Task<IReadOnlyList<string>> FindEmailsWithPrefixAsync(string localPrefix, string domain, CancellationToken ct) => throw new NotSupportedException();
         public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<User>> ListAsync(CancellationToken ct) => throw new NotSupportedException();
@@ -68,90 +60,101 @@ public class SecretGrantServiceTests
         public Task RemoveAvatarAsync(User user, CancellationToken ct) => throw new NotSupportedException();
     }
 
-    private sealed class RecordingSink : IAuditSink
-    {
-        public int Writes { get; private set; }
-        public Task WriteAsync(AuditEntry entry, CancellationToken ct)
-        {
-            Writes++;
-            return Task.CompletedTask;
-        }
-    }
-
     private sealed class StubActor : IAuditContext
     {
-        public Guid? UserId => Guid.NewGuid();
+        public Guid? UserId => AliceId;
         public string? Username => "alice";
         public string? SourceIp => "::1";
     }
 
-    private static SecretGrant Grant(string grantedBy) => new()
+    private static SecretGrant Grant(Guid? issuerUserId, string grantedBy = "alice") => new()
     {
         Id = Guid.NewGuid(),
         SecretId = Guid.NewGuid(),
         GranteeUserId = Guid.NewGuid(),
         GranteeUsername = "carol",
+        IssuerUserId = issuerUserId,
         GrantedBy = grantedBy,
         CreatedAtUtc = DateTimeOffset.UtcNow.AddDays(-1)
     };
 
-    private static (SecretGrantService Service, FakeGrants Grants, RecordingSink Sink) NewService(SecretGrant? grant)
+    private static (SecretGrantService Service, FakeGrants Grants) NewService(SecretGrant? grant)
     {
         var grants = new FakeGrants(grant);
-        var sink = new RecordingSink();
-        var service = new SecretGrantService(grants, new FakeSecrets(), new FakeUsers(), sink, new StubActor(), TimeProvider.System);
-        return (service, grants, sink);
+        var service = new SecretGrantService(grants, new FakeUsers(), new StubActor(), TimeProvider.System);
+        return (service, grants);
     }
 
     [Fact]
-    public async Task Revokes_when_the_caller_issued_the_grant()
+    public async Task A_new_share_records_the_actor_as_its_issuer()
     {
-        var (service, grants, sink) = NewService(Grant(grantedBy: "alice"));
+        var (service, grants) = NewService(grant: null);
 
-        Assert.True(await service.RevokeIssuedAsync(Guid.NewGuid(), "alice", CancellationToken.None));
+        await service.GrantAsync(Guid.NewGuid(), "carol", ttlDays: null, CancellationToken.None);
+
+        var added = Assert.IsType<SecretGrant>(grants.Added);
+        Assert.Equal(AliceId, added.IssuerUserId);
+        Assert.Equal("alice", added.GrantedBy);
+    }
+
+    [Fact]
+    public async Task Revokes_when_the_caller_issued_the_share()
+    {
+        var (service, grants) = NewService(Grant(issuerUserId: AliceId));
+
+        Assert.True(await service.RevokeIssuedAsync(Guid.NewGuid(), AliceId, CancellationToken.None));
         Assert.Equal(1, grants.RemoveCalls);
-        Assert.Equal(1, sink.Writes); // the revoke is audited
     }
 
     [Fact]
-    public async Task Refuses_to_revoke_a_grant_issued_by_someone_else()
+    public async Task Refuses_to_revoke_a_share_issued_by_another_account()
     {
-        var (service, grants, sink) = NewService(Grant(grantedBy: "bob"));
+        var (service, grants) = NewService(Grant(issuerUserId: Guid.NewGuid(), grantedBy: "bob"));
 
-        // alice must not be able to revoke a grant bob issued, even with its real id.
-        Assert.False(await service.RevokeIssuedAsync(Guid.NewGuid(), "alice", CancellationToken.None));
-        Assert.Equal(0, grants.RemoveCalls); // nothing removed
-        Assert.Equal(0, sink.Writes);        // nothing audited
+        // alice must not be able to revoke a share bob issued, even with its real id.
+        Assert.False(await service.RevokeIssuedAsync(Guid.NewGuid(), AliceId, CancellationToken.None));
+        Assert.Equal(0, grants.RemoveCalls);
+    }
+
+    /// <summary>
+    /// A deleted account's username can be given to a new account. The share still names the old
+    /// account as its issuer, so the new one must not be able to revoke it.
+    /// </summary>
+    [Fact]
+    public async Task Refuses_to_revoke_a_share_issued_by_a_deleted_account_with_the_callers_username()
+    {
+        var (service, grants) = NewService(Grant(issuerUserId: Guid.NewGuid(), grantedBy: "alice"));
+
+        Assert.False(await service.RevokeIssuedAsync(Guid.NewGuid(), AliceId, CancellationToken.None));
+        Assert.Equal(0, grants.RemoveCalls);
     }
 
     [Fact]
-    public async Task The_issuer_match_is_case_insensitive()
+    public async Task Refuses_to_revoke_a_share_with_no_known_issuer()
     {
-        var (service, grants, _) = NewService(Grant(grantedBy: "Alice"));
+        var (service, grants) = NewService(Grant(issuerUserId: null, grantedBy: "alice"));
 
-        Assert.True(await service.RevokeIssuedAsync(Guid.NewGuid(), "alice", CancellationToken.None));
-        Assert.Equal(1, grants.RemoveCalls);
+        Assert.False(await service.RevokeIssuedAsync(Guid.NewGuid(), AliceId, CancellationToken.None));
+        Assert.Equal(0, grants.RemoveCalls);
     }
 
     [Fact]
     public async Task Returns_false_for_a_missing_grant_without_removing_anything()
     {
-        var (service, grants, sink) = NewService(grant: null);
+        var (service, grants) = NewService(grant: null);
 
-        Assert.False(await service.RevokeIssuedAsync(Guid.NewGuid(), "alice", CancellationToken.None));
+        Assert.False(await service.RevokeIssuedAsync(Guid.NewGuid(), AliceId, CancellationToken.None));
         Assert.Equal(0, grants.RemoveCalls);
-        Assert.Equal(0, sink.Writes);
     }
 
     [Fact]
     public async Task Revokes_a_grant_that_belongs_to_the_secret()
     {
-        var grant = Grant(grantedBy: "alice");
-        var (service, grants, sink) = NewService(grant);
+        var grant = Grant(issuerUserId: AliceId);
+        var (service, grants) = NewService(grant);
 
         Assert.True(await service.RevokeAsync(grant.Id, grant.SecretId, CancellationToken.None));
         Assert.Equal(1, grants.RemoveCalls);
-        Assert.Equal(1, sink.Writes);
     }
 
     /// <summary>
@@ -163,24 +166,22 @@ public class SecretGrantServiceTests
     [Fact]
     public async Task Refuses_a_grant_that_belongs_to_a_different_secret()
     {
-        var grant = Grant(grantedBy: "alice");
-        var (service, grants, sink) = NewService(grant);
+        var grant = Grant(issuerUserId: AliceId);
+        var (service, grants) = NewService(grant);
 
         var someOtherSecret = Guid.NewGuid();
         Assert.NotEqual(grant.SecretId, someOtherSecret);
 
         Assert.False(await service.RevokeAsync(grant.Id, someOtherSecret, CancellationToken.None));
-        Assert.Equal(0, grants.RemoveCalls); // nothing removed
-        Assert.Equal(0, sink.Writes);        // nothing audited
+        Assert.Equal(0, grants.RemoveCalls);
     }
 
     [Fact]
     public async Task Returns_false_for_a_missing_grant_on_the_owner_side_too()
     {
-        var (service, grants, sink) = NewService(grant: null);
+        var (service, grants) = NewService(grant: null);
 
         Assert.False(await service.RevokeAsync(Guid.NewGuid(), Guid.NewGuid(), CancellationToken.None));
         Assert.Equal(0, grants.RemoveCalls);
-        Assert.Equal(0, sink.Writes);
     }
 }

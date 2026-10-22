@@ -1,5 +1,6 @@
 import { httpResource } from '@angular/common/http';
 import { Component, computed } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import type { components, paths } from '../ui-api/schema.generated';
 
 type Security = paths['/api/ui/security']['get']['responses'][200]['content']['application/json'];
@@ -42,6 +43,7 @@ export function ringDasharray(score: number): string {
 /** The caller's posture, already scored and ordered by Core. All mappings here are presentation. */
 @Component({
   selector: 'app-security-page',
+  imports: [RouterLink],
   templateUrl: './security-page.html',
 })
 export class SecurityPage {

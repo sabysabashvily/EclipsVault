@@ -11,7 +11,7 @@
   },
   "e2e/palette.ts": {
     "playwright/no-raw-locators": {
-      "count": 4
+      "count": 1
     }
   },
   "e2e/security.ts": {
@@ -26,7 +26,7 @@
   },
   "e2e/sign-in.spec.ts": {
     "playwright/no-raw-locators": {
-      "count": 138
+      "count": 137
     }
   },
   "e2e/sign-ins.ts": {

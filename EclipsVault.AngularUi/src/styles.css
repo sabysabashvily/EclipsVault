@@ -1271,6 +1271,46 @@ app-command-palette {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
+.table-scroll .data-table {
+  min-width: 640px;
+}
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.data-table th {
+  text-align: left;
+  color: var(--text-faint);
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.5rem 0.7rem;
+  border-bottom: 1px solid var(--border-strong);
+  white-space: nowrap;
+}
+.data-table td {
+  padding: 0.65rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.data-table tbody tr {
+  transition: background var(--dur) var(--ease);
+}
+.data-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.025);
+}
+.cell-strong {
+  font-weight: 600;
+}
+.cell-actions {
+  text-align: right;
+  white-space: nowrap;
+}
 
 .badge.tone-ok {
   color: var(--ok);
@@ -1546,4 +1586,45 @@ app-command-palette {
   margin-top: 0.3rem;
   font-size: 0.82rem;
   color: var(--text-secondary);
+}
+
+/* ---- Signed-in devices ------------------------------------------------------- */
+.feed-item.session-current .feed-icon {
+  color: var(--ok);
+  border-color: transparent;
+  background: var(--ok-soft);
+}
+.current-pill {
+  font-size: 0.78rem;
+}
+
+/* Status stays in the page until another action or navigation replaces it. */
+.flash {
+  padding: 0.75rem 1rem 0.75rem 1.1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--ok);
+  background: var(--bg-raised-2);
+  box-shadow: var(--shadow);
+  margin: 0 0 1.2rem;
+  font-size: 0.92rem;
+}
+.flash-error {
+  border-left-color: var(--danger);
+}
+
+.confirmation-dialog {
+  width: calc(100% - 2rem);
+  max-width: 400px;
+  color: var(--text);
+  background: var(--bg-raised-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem 1.6rem;
+  box-shadow: var(--shadow-lg);
+}
+.confirmation-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
 }

@@ -20,15 +20,14 @@ namespace EclipsVault.Tests.DataExport;
 /// </summary>
 public class PersonalDataExportServiceTests
 {
+    // Fakes answer only for User, so a read keyed to anyone else shows up as missing data.
     private static readonly Guid User = Guid.NewGuid();
 
     private sealed class FakeProfile(ProfileDto? dto) : IProfileService
     {
-        public Guid LastUserId { get; private set; }
         public Task<ProfileDto?> GetAsync(Guid userId, CancellationToken ct)
         {
-            LastUserId = userId;
-            return Task.FromResult(dto);
+            return Task.FromResult(userId == User ? dto : null);
         }
         public Task<ProfileDto> UpdateAsync(Guid userId, string displayName, string email, CancellationToken ct) => throw new NotSupportedException();
         public Task ChangePasswordAsync(Guid userId, string currentPassword, string newPassword, CancellationToken ct) => throw new NotSupportedException();
@@ -42,6 +41,7 @@ public class PersonalDataExportServiceTests
     {
         public Task<IReadOnlyList<PasskeySummary>> ListForUserAsync(Guid userId, CancellationToken ct)
         {
+            if (userId != User) return Task.FromResult<IReadOnlyList<PasskeySummary>>([]);
             IReadOnlyList<PasskeySummary> list = Enumerable.Range(0, count)
                 .Select(i => new PasskeySummary(Guid.NewGuid(), $"key{i}", DateTimeOffset.UtcNow)).ToList();
             return Task.FromResult(list);
@@ -55,31 +55,29 @@ public class PersonalDataExportServiceTests
 
     private sealed class FakeRecovery(int remaining) : IMfaRecoveryService
     {
-        public Task<int> CountRemainingAsync(Guid userId, CancellationToken ct) => Task.FromResult(remaining);
+        public Task<int> CountRemainingAsync(Guid userId, CancellationToken ct) => Task.FromResult(userId == User ? remaining : 0);
         public Task<IReadOnlyList<string>> GenerateAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
     }
 
     private sealed class FakeSessions(int count) : ISessionRegistry
     {
-        public Guid LastUserId { get; private set; }
         public Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, CancellationToken ct = default)
         {
-            LastUserId = userId;
+            if (userId != User) return Task.FromResult<IReadOnlyList<ActiveSession>>([]);
             IReadOnlyList<ActiveSession> list = Enumerable.Range(0, count)
                 .Select(_ => new ActiveSession(Guid.NewGuid(), "Chrome on macOS", "203.0.113.5", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)).ToList();
             return Task.FromResult(list);
         }
         public Task RecordSeenAsync(SessionObservation observation, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<bool> RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<bool> IsRevokedAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new NotSupportedException();
     }
 
     private sealed class FakeAccessRequests(int count) : IAccessRequestService
     {
-        public Guid LastRequester { get; private set; }
         public Task<IReadOnlyList<AccessRequestDto>> ListMineAsync(Guid requesterUserId, CancellationToken ct)
         {
-            LastRequester = requesterUserId;
+            if (requesterUserId != User) return Task.FromResult<IReadOnlyList<AccessRequestDto>>([]);
             IReadOnlyList<AccessRequestDto> list = Enumerable.Range(0, count)
                 .Select(i => new AccessRequestDto(Guid.NewGuid(), Guid.NewGuid(), $"prod/db-{i}", "PHOENIX", "alice",
                     "need access", null, AccessRequestStatus.Pending, DateTimeOffset.UtcNow, null, null, null)).ToList();
@@ -95,12 +93,9 @@ public class PersonalDataExportServiceTests
 
     private sealed class FakeAuditReader(int rows) : IAuditLogReader
     {
-        public Guid LastActor { get; private set; }
-        public int LastTake { get; private set; } = -1;
         public Task<IReadOnlyList<AuditEntryDto>> ListForActorAsync(Guid actorUserId, int skip, int take, CancellationToken ct)
         {
-            LastActor = actorUserId;
-            LastTake = take;
+            if (actorUserId != User) return Task.FromResult<IReadOnlyList<AuditEntryDto>>([]);
             IReadOnlyList<AuditEntryDto> list = Enumerable.Range(0, Math.Min(rows, take))
                 .Select(_ => new AuditEntryDto(Guid.NewGuid(), DateTimeOffset.UtcNow, "alice", "203.0.113.5",
                     AuditAction.LoginSucceeded, "Account", null, null, false)).ToList();
@@ -116,16 +111,14 @@ public class PersonalDataExportServiceTests
         new(User, "alice", "Alice Example", "alice@example.com", ClearanceLevel.Standard, "PHOENIX", true, false);
 
     private static PersonalDataExportService NewService(
-        ProfileDto? profile = null, int passkeys = 1, int codes = 5, int devices = 2, int requests = 1, int activity = 3,
-        FakeProfile? profileFake = null, FakeSessions? sessionsFake = null,
-        FakeAccessRequests? requestsFake = null, FakeAuditReader? auditFake = null)
+        ProfileDto? profile = null, int passkeys = 1, int codes = 5, int devices = 2, int requests = 1, int activity = 3)
         => new(
-            profileFake ?? new FakeProfile(profile ?? Profile()),
+            new FakeProfile(profile ?? Profile()),
             new FakePasskeys(passkeys),
             new FakeRecovery(codes),
-            sessionsFake ?? new FakeSessions(devices),
-            requestsFake ?? new FakeAccessRequests(requests),
-            auditFake ?? new FakeAuditReader(activity));
+            new FakeSessions(devices),
+            new FakeAccessRequests(requests),
+            new FakeAuditReader(activity));
 
     [Fact]
     public async Task A_vanished_account_yields_null()
@@ -138,7 +131,7 @@ public class PersonalDataExportServiceTests
     }
 
     [Fact]
-    public async Task It_maps_every_source_into_the_export()
+    public async Task Every_source_is_read_for_the_caller_only()
     {
         var export = await NewService(passkeys: 2, codes: 7, devices: 3, requests: 4, activity: 5)
             .BuildForUserAsync(User, CancellationToken.None);
@@ -162,60 +155,54 @@ public class PersonalDataExportServiceTests
         var export = await NewService(activity: 1).BuildForUserAsync(User, CancellationToken.None);
 
         var entry = Assert.Single(export!.RecentActivity);
-        Assert.Equal("Signed in", entry.Action); // LoginSucceeded, via ActivityDescriber
+        Assert.Equal("Signed in", entry.Action);
     }
 
     [Fact]
-    public async Task Every_read_is_scoped_to_the_caller_and_activity_is_bounded()
+    public async Task An_unknown_account_has_no_export()
     {
-        var profile = new FakeProfile(Profile());
-        var sessions = new FakeSessions(1);
-        var requests = new FakeAccessRequests(1);
-        var audit = new FakeAuditReader(1000);
-        var service = NewService(profileFake: profile, sessionsFake: sessions, requestsFake: requests, auditFake: audit);
+        var export = await NewService().BuildForUserAsync(Guid.NewGuid(), CancellationToken.None);
 
-        await service.BuildForUserAsync(User, CancellationToken.None);
-
-        Assert.Equal(User, profile.LastUserId);
-        Assert.Equal(User, sessions.LastUserId);
-        Assert.Equal(User, requests.LastRequester);
-        Assert.Equal(User, audit.LastActor);
-        Assert.Equal(PersonalDataExportService.MaxActivityEntries, audit.LastTake);
+        Assert.Null(export);
     }
 
     [Fact]
-    public async Task The_serialized_export_carries_no_credential_field()
+    public async Task Recent_activity_contains_at_most_250_entries()
     {
-        var export = await NewService().BuildForUserAsync(User, CancellationToken.None);
-        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(export));
+        var export = await NewService(activity: 1000).BuildForUserAsync(User, CancellationToken.None);
 
-        // Walk every property NAME in the document (not values — the notice legitimately mentions
-        // "secret values" in prose). No field capable of carrying credential material may exist.
-        var forbidden = new[] { "ciphertext", "wrappeddek", "passwordhash", "passwordsalt", "totpsecret", "plaintext", "secretvalue" };
-        var names = new List<string>();
-        Collect(doc.RootElement, names);
+        Assert.NotNull(export);
+        Assert.Equal(250, export.RecentActivity.Count);
+    }
 
-        Assert.DoesNotContain(names, n => forbidden.Contains(n.ToLowerInvariant()));
-        Assert.Contains(names, n => n.Equals("Notice", StringComparison.OrdinalIgnoreCase));
+    [Fact]
+    public async Task The_serialized_export_contains_only_the_approved_metadata_fields()
+    {
+        var export = await NewService(passkeys: 1, devices: 1, requests: 1, activity: 1)
+            .BuildForUserAsync(User, CancellationToken.None);
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(export));
+        var root = document.RootElement;
 
-        static void Collect(JsonElement el, List<string> into)
-        {
-            switch (el.ValueKind)
-            {
-                case JsonValueKind.Object:
-                    foreach (var p in el.EnumerateObject())
-                    {
-                        into.Add(p.Name);
-                        Collect(p.Value, into);
-                    }
-                    break;
-                case JsonValueKind.Array:
-                    foreach (var item in el.EnumerateArray())
-                    {
-                        Collect(item, into);
-                    }
-                    break;
-            }
-        }
+        Assert.Equal(
+            ["GeneratedAtUtc", "SchemaVersion", "Account", "Security", "SignedInDevices", "AccessRequests", "RecentActivity", "Notice"],
+            root.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(
+            ["Username", "DisplayName", "Email", "Clearance", "ProjectKey", "HasCustomAvatar"],
+            root.GetProperty("Account").EnumerateObject().Select(property => property.Name));
+        Assert.Equal(
+            ["TwoStepEnabled", "BackupCodesRemaining", "Passkeys"],
+            root.GetProperty("Security").EnumerateObject().Select(property => property.Name));
+        Assert.Equal(
+            ["Nickname", "CreatedAtUtc"],
+            root.GetProperty("Security").GetProperty("Passkeys")[0].EnumerateObject().Select(property => property.Name));
+        Assert.Equal(
+            ["Device", "IpAddress", "SignedInAtUtc", "LastActiveAtUtc"],
+            root.GetProperty("SignedInDevices")[0].EnumerateObject().Select(property => property.Name));
+        Assert.Equal(
+            ["SecretName", "ProjectKey", "Status", "Reason", "CreatedAtUtc", "DecidedAtUtc", "DecidedBy"],
+            root.GetProperty("AccessRequests")[0].EnumerateObject().Select(property => property.Name));
+        Assert.Equal(
+            ["TimestampUtc", "Action", "Resource", "SourceIp"],
+            root.GetProperty("RecentActivity")[0].EnumerateObject().Select(property => property.Name));
     }
 }

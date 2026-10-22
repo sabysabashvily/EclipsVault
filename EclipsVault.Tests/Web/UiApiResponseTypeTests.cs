@@ -18,6 +18,13 @@ public class UiApiResponseTypeTests
     private static readonly Assembly Web = typeof(MeController).Assembly;
     private static readonly Assembly Core = typeof(User).Assembly;
 
+    /// <summary>
+    /// Actions that answer with a file, declared as a <see cref="Stream"/>, instead of a response type.
+    /// The personal data export keeps its own versioned format instead. Its fields are pinned by
+    /// <c>PersonalDataExportServiceTests</c>, every nested item included, and the served file by <c>DataApiTests</c>.
+    /// </summary>
+    private static readonly HashSet<string> FileDownloads = ["DataController.Export"];
+
     [Fact]
     public void EveryUiApiAction_DeclaresAResponseTypeTheWebLayerDefines()
     {
@@ -33,7 +40,9 @@ public class UiApiResponseTypeTests
             string.Join("\n  ", undeclared));
 
         var notWeb = actions
-            .SelectMany(action => ResponseTypes(action).Where(type => type.Assembly != Web).Select(type => $"{Name(action)}: {type}"))
+            .SelectMany(action => ResponseTypes(action)
+                .Where(type => type.Assembly != Web && !(type == typeof(Stream) && FileDownloads.Contains(Name(action))))
+                .Select(type => $"{Name(action)}: {type}"))
             .ToList();
         Assert.True(notWeb.Count == 0,
             "These UI API actions answer with a type the web layer does not define:\n  " + string.Join("\n  ", notWeb));

@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 namespace EclipsVault.Infrastructure.Persistence.Interceptors;
 
 /// <summary>
-/// Injects an AuditLog row for every change to an audited entity (see <see cref="InjectAuditEntries"/>
+/// Injects an AuditLog row for every change to an audited entity (see <see cref="SavingChangesAsync"/>
 /// for the set) into the SAME SaveChanges batch, which SQL Server executes as one implicit
 /// transaction. Fail-closed by construction: if the audit row cannot be written the entire
 /// transaction — including the change itself — is rolled back, and the failure is surfaced as a
@@ -45,7 +45,7 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
     public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
     {
         InjectAuditEntries(eventData.Context);
-        if (CollectAddedAuditRows(eventData.Context).Count > 0)
+        if (CollectAddedAuditRows(eventData.Context).Count > 0 || PendingShareChanges(eventData.Context).Count > 0)
         {
             // Throwing leaves the rows just injected staged; the context unstages them (see
             // EclipsVaultDbContext.DiscardPendingChanges), since anything left pending on this
@@ -65,6 +65,7 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
         CancellationToken cancellationToken = default)
     {
         InjectAuditEntries(eventData.Context);
+        await InjectShareAuditEntriesAsync(eventData.Context, cancellationToken);
         var rows = CollectAddedAuditRows(eventData.Context);
         if (rows.Count > 0 && eventData.Context is { } context)
         {
@@ -177,6 +178,46 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
                 IsCritical = row.IsCritical
             });
         }
+    }
+
+    private static List<EntityEntry<SecretGrant>> PendingShareChanges(DbContext? context)
+        => context?.ChangeTracker.Entries<SecretGrant>()
+            .Where(entry => entry.State is EntityState.Added or EntityState.Deleted)
+            .ToList() ?? [];
+
+    private async Task InjectShareAuditEntriesAsync(DbContext? context, CancellationToken ct)
+    {
+        var shares = PendingShareChanges(context);
+        if (context is null || shares.Count == 0)
+        {
+            return;
+        }
+
+        // Issuer-scoped revocation does not read the secret first. Resolve its name here so every
+        // persistence path records the secret itself, rather than trusting a caller's display text.
+        var secretNames = new Dictionary<Guid, string>();
+        foreach (var secretId in shares.Select(entry => entry.Entity.SecretId).Distinct())
+        {
+            var secret = await context.Set<Secret>().FindAsync([secretId], ct);
+            secretNames[secretId] = secret?.Name ?? "secret";
+        }
+
+        Inject<SecretGrant>(context, entry => DescribeShareChange(entry, secretNames[entry.Entity.SecretId]));
+    }
+
+    private static AuditRow? DescribeShareChange(EntityEntry<SecretGrant> entry, string secretName)
+    {
+        var share = entry.Entity;
+        return entry.State switch
+        {
+            EntityState.Added => new AuditRow(
+                AuditAction.SecretShared, nameof(Secret), share.SecretId, secretName,
+                $"Shared with '{share.GranteeUsername}'" + (share.ExpiresAtUtc is { } expiry ? $" until {expiry:u}" : "")),
+            EntityState.Deleted => new AuditRow(
+                AuditAction.SecretShareRevoked, nameof(Secret), share.SecretId, secretName,
+                $"Revoked access for '{share.GranteeUsername}'"),
+            _ => null
+        };
     }
 
     private static AuditRow? DescribeSecretChange(EntityEntry<Secret> entry)

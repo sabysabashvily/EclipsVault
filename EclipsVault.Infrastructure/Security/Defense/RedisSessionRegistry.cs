@@ -17,24 +17,45 @@ namespace EclipsVault.Infrastructure.Security;
 /// </summary>
 public sealed class RedisSessionRegistry : ISessionRegistry
 {
-    private const string UpsertScript = @"
-if redis.call('EXISTS', KEYS[2]) == 1 then return 0 end
-local existing = redis.call('HGET', KEYS[1], ARGV[1])
-if existing then
-    local ok, obj = pcall(cjson.decode, existing)
-    if ok and (tonumber(ARGV[2]) - tonumber(obj.LastSeenUnix) >= tonumber(ARGV[6])) then
-        obj.LastSeenUnix = tonumber(ARGV[2])
-        obj.ExpiresUnix = tonumber(ARGV[5])
-        obj.IpAddress = ARGV[4]
-        redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(obj))
-    end
-else
-    local obj = { SessionId = ARGV[1], Device = ARGV[3], IpAddress = ARGV[4],
-                  CreatedUnix = tonumber(ARGV[2]), LastSeenUnix = tonumber(ARGV[2]), ExpiresUnix = tonumber(ARGV[5]) }
-    redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(obj))
-end
-redis.call('EXPIRE', KEYS[1], ARGV[7])
-return 1";
+    private const string UpsertScript = """
+        local sessionsKey, tombstoneKey = KEYS[1], KEYS[2]
+        local sessionField, seenUnix, device, ipAddress = ARGV[1], tonumber(ARGV[2]), ARGV[3], ARGV[4]
+        local expiresUnix, throttleSeconds, ttlSeconds = tonumber(ARGV[5]), tonumber(ARGV[6]), ARGV[7]
+        if redis.call('EXISTS', tombstoneKey) == 1 then return 0 end
+        local existing = redis.call('HGET', sessionsKey, sessionField)
+        if existing then
+            local ok, stored = pcall(cjson.decode, existing)
+            if ok and (seenUnix - tonumber(stored.LastSeenUnix) >= throttleSeconds) then
+                stored.LastSeenUnix = seenUnix
+                stored.ExpiresUnix = expiresUnix
+                stored.IpAddress = ipAddress
+                redis.call('HSET', sessionsKey, sessionField, cjson.encode(stored))
+            end
+        else
+            local stored = { SessionId = sessionField, Device = device, IpAddress = ipAddress,
+                             CreatedUnix = seenUnix, LastSeenUnix = seenUnix, ExpiresUnix = expiresUnix }
+            redis.call('HSET', sessionsKey, sessionField, cjson.encode(stored))
+        end
+        redis.call('EXPIRE', sessionsKey, ttlSeconds)
+        return 1
+        """;
+
+    // One script prevents a competing revoke or touch from separating the live check and removal.
+    // Store the tombstone before deletion so a failed write cannot leave a session able to return.
+    // Missing metadata does not prove that the cookie has expired, so even a miss gets a tombstone.
+    private const string RevokeScript = """
+        local sessionsKey, tombstoneKey = KEYS[1], KEYS[2]
+        local sessionField, tombstoneSeconds = ARGV[1], ARGV[2]
+        local alreadyRevoked = redis.call('EXISTS', tombstoneKey)
+        local session = redis.call('HGET', sessionsKey, sessionField)
+        redis.call('SET', tombstoneKey, '1', 'EX', tombstoneSeconds)
+        local removed = redis.call('HDEL', sessionsKey, sessionField)
+        if alreadyRevoked == 1 or not session then return 0 end
+        local stored = cjson.decode(session)
+        local now = tonumber(redis.call('TIME')[1])
+        if tonumber(stored.ExpiresUnix) <= now then return 0 end
+        return removed
+        """;
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
 
@@ -61,20 +82,20 @@ return 1";
         _logger = logger;
     }
 
-    public async Task RecordSeenAsync(SessionObservation o, CancellationToken ct = default)
+    public async Task RecordSeenAsync(SessionObservation observation, CancellationToken ct = default)
     {
-        var ttlSeconds = Math.Max(60, (int)(o.ExpiresAtUtc - o.SeenAtUtc).TotalSeconds);
-        var db = _redis.GetDatabase();
-        await db.ScriptEvaluateAsync(
+        var ttlSeconds = Math.Max(60, (int)(observation.ExpiresAtUtc - observation.SeenAtUtc).TotalSeconds);
+        var database = _redis.GetDatabase();
+        await database.ScriptEvaluateAsync(
             UpsertScript,
-            new RedisKey[] { SessionsKey(o.UserId), RevokedKey(o.UserId, o.SessionId) },
+            new RedisKey[] { SessionsKey(observation.UserId), RevokedKey(observation.UserId, observation.SessionId) },
             new RedisValue[]
             {
-                o.SessionId.ToString("N"),
-                o.SeenAtUtc.ToUnixTimeSeconds(),
-                o.Device,
-                o.IpAddress,
-                o.ExpiresAtUtc.ToUnixTimeSeconds(),
+                observation.SessionId.ToString("N"),
+                observation.SeenAtUtc.ToUnixTimeSeconds(),
+                observation.Device,
+                observation.IpAddress,
+                observation.ExpiresAtUtc.ToUnixTimeSeconds(),
                 TouchThrottleSeconds,
                 ttlSeconds
             });
@@ -82,21 +103,21 @@ return 1";
 
     public async Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, CancellationToken ct = default)
     {
-        var db = _redis.GetDatabase();
-        var entries = await db.HashGetAllAsync(SessionsKey(userId));
+        var database = _redis.GetDatabase();
+        var entries = await database.HashGetAllAsync(SessionsKey(userId));
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         var result = new List<ActiveSession>(entries.Length);
         foreach (var entry in entries)
         {
             var stored = JsonSerializer.Deserialize<StoredSession>((string)entry.Value!, Json);
-            if (stored is null || stored.ExpiresUnix <= now || !Guid.TryParse(stored.SessionId, out var sid))
+            if (stored is null || stored.ExpiresUnix <= now || !Guid.TryParse(stored.SessionId, out var sessionId))
             {
                 continue;
             }
 
             result.Add(new ActiveSession(
-                sid,
+                sessionId,
                 stored.Device,
                 stored.IpAddress,
                 DateTimeOffset.FromUnixTimeSeconds(stored.CreatedUnix),
@@ -106,13 +127,20 @@ return 1";
         return result.OrderByDescending(s => s.LastSeenAtUtc).ToList();
     }
 
-    public async Task RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
+    public async Task<bool> RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
     {
-        var db = _redis.GetDatabase();
-        // Tombstone first (so a racing touch cannot re-create it), then drop it from the list.
-        await db.StringSetAsync(RevokedKey(userId, sessionId), "1", TimeSpan.FromSeconds(_tombstoneSeconds));
-        await db.HashDeleteAsync(SessionsKey(userId), sessionId.ToString("N"));
-        _logger.LogInformation("Session {SessionId} for user {UserId} was revoked", sessionId, userId);
+        var database = _redis.GetDatabase();
+        var result = await database.ScriptEvaluateAsync(
+            RevokeScript,
+            new RedisKey[] { SessionsKey(userId), RevokedKey(userId, sessionId) },
+            new RedisValue[] { sessionId.ToString("N"), _tombstoneSeconds });
+        var removed = (long)result == 1;
+        if (removed)
+        {
+            _logger.LogInformation("Session {SessionId} for user {UserId} was revoked", sessionId, userId);
+        }
+
+        return removed;
     }
 
     public async Task<bool> IsRevokedAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
