@@ -8,17 +8,20 @@ namespace EclipsVault.Core.Domain;
 public static class EmailIdentity
 {
     /// <summary>
-    /// Invariant casing keeps identity independent of the database's locale. Only characters of the
-    /// Basic Multilingual Plane change case: SQL Server translates single UTF-16 units, so both
-    /// databases can reproduce exactly this. Dots and plus tags stay significant: whether they
-    /// matter is each mail provider's rule, not the vault's.
+    /// Only the letters a to z ignore case. Unicode casing maps other letters onto them ('ı' and 'ſ'
+    /// become 'I' and 'S'), so a provider could vouch for a different mailbox, "admın@…", and single
+    /// sign-on would match the account for "admin@…". Dots and plus tags stay significant: whether
+    /// they matter is each mail provider's rule, not the vault's.
     /// </summary>
     public static string Normalize(string email)
     {
         var folded = email.Trim().ToCharArray();
         for (var i = 0; i < folded.Length; i++)
         {
-            folded[i] = char.ToUpperInvariant(folded[i]);
+            if (char.IsAsciiLetterLower(folded[i]))
+            {
+                folded[i] = char.ToUpperInvariant(folded[i]);
+            }
         }
 
         return new string(folded);

@@ -10,7 +10,7 @@ namespace EclipsVault.Infrastructure.Migrations
     {
         private const string Refusal =
             "EclipsVault cannot upgrade: some email addresses would belong to more than one account. " +
-            "Email addresses now compare ignoring Unicode letter case and surrounding white space, " +
+            "Email addresses now compare ignoring the case of letters A to Z and surrounding white space, " +
             "and no username may be the email address of a different account. " +
             "No account was changed. Give all but one account in each group below a different email " +
             "address or username, then upgrade again.";

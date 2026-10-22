@@ -1,14 +1,13 @@
-using System.Text;
-
 namespace EclipsVault.Infrastructure.Persistence;
 
 /// <summary>
 /// <see cref="Core.Domain.EmailIdentity.Normalize"/> written in each database's SQL. A database's own
-/// UPPER depends on its collation or locale, so the casing comes from .NET's invariant rules instead.
+/// UPPER depends on its collation or locale, so the letters are translated explicitly instead.
 /// </summary>
 public static class EmailIdentitySql
 {
-    private static readonly (string Letters, string Uppercase) CaseMapping = BuildCaseMapping();
+    private const string Lowercase = "abcdefghijklmnopqrstuvwxyz";
+    private const string Uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
     // The characters string.Trim() removes.
     private static readonly int[] WhiteSpaceCodePoints =
@@ -25,26 +24,8 @@ public static class EmailIdentitySql
 
     public static string NormalizeSqlServer(string column)
         => $"TRANSLATE(TRIM({SqlServerWhiteSpace} FROM {column} COLLATE Latin1_General_100_BIN2), " +
-           $"N'{CaseMapping.Letters}', N'{CaseMapping.Uppercase}')";
+           $"N'{Lowercase}', N'{Uppercase}')";
 
     public static string NormalizePostgres(string column)
-        => $"translate(btrim({column}, {PostgresWhiteSpace}), " +
-           $"'{CaseMapping.Letters}', '{CaseMapping.Uppercase}') COLLATE \"C\"";
-
-    private static (string Letters, string Uppercase) BuildCaseMapping()
-    {
-        var letters = new StringBuilder();
-        var uppercase = new StringBuilder();
-        for (var unit = char.MinValue; unit < char.MaxValue; unit++)
-        {
-            var folded = char.ToUpperInvariant(unit);
-            if (folded != unit)
-            {
-                letters.Append(unit);
-                uppercase.Append(folded);
-            }
-        }
-
-        return (letters.ToString(), uppercase.ToString());
-    }
+        => $"translate(btrim({column}, {PostgresWhiteSpace}), '{Lowercase}', '{Uppercase}') COLLATE \"C\"";
 }

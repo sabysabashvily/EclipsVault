@@ -115,22 +115,31 @@ public abstract class EmailIdentityPersistenceTests(EmailIdentityDatabases datab
     }
 
     [Fact]
-    public async Task Unicode_case_variants_cannot_be_given_to_a_second_account()
+    public async Task An_address_spelled_with_a_dotless_i_never_finds_the_account_spelled_with_a_dotted_i()
     {
-        var account = NewAccount("it-unicode-holder", "σς.Øyvind@Example.Test");
-        await databases.CurrentUsers().AddAsync(account, default);
+        await databases.CurrentUsers().AddAsync(NewAccount("it-dotted-admin", "it-dotted-admin@example.test"), default);
 
-        await Assert.ThrowsAsync<EmailAddressTakenException>(() =>
-            databases.CurrentUsers().AddAsync(NewAccount("it-unicode-taker", "ΣΣ.øyvind@example.test"), default));
+        Assert.Null(await databases.CurrentUsers().FindByEmailAsync("it-dotted-adm\u0131n@example.test", default));
     }
 
     [Fact]
-    public async Task Unicode_case_variants_find_the_original_account()
+    public async Task An_address_spelled_with_a_dotless_i_can_belong_to_another_account()
+    {
+        await databases.CurrentUsers().AddAsync(NewAccount("it-twin-dotted", "it-twin-admin@example.test"), default);
+        var dotless = NewAccount("it-twin-dotless", "it-twin-adm\u0131n@example.test");
+
+        await databases.CurrentUsers().AddAsync(dotless, default);
+
+        Assert.Equal(dotless.Id, (await databases.CurrentUsers().FindByEmailAsync(dotless.Email, default))?.Id);
+    }
+
+    [Fact]
+    public async Task An_email_with_letters_outside_a_to_z_finds_its_account_when_only_a_to_z_change_case()
     {
         var account = NewAccount("it-unicode-lookup", "σς.Lookup.Øyvind@Example.Test");
         await databases.CurrentUsers().AddAsync(account, default);
 
-        Assert.Equal(account.Id, (await databases.CurrentUsers().FindByEmailAsync("ΣΣ.lookup.øyvind@example.test", default))?.Id);
+        Assert.Equal(account.Id, (await databases.CurrentUsers().FindByEmailAsync("σς.LOOKUP.ØYVIND@example.test", default))?.Id);
     }
 }
 

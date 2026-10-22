@@ -7,7 +7,7 @@ namespace EclipsVault.Tests.Users;
 public class EmailIdentityTests
 {
     [Fact]
-    public void An_address_loses_surrounding_white_space_and_uses_invariant_letter_case()
+    public void An_address_loses_surrounding_white_space_and_the_case_of_its_letters_a_to_z()
         => Assert.Equal("ALICE.SMITH@EXAMPLE.TEST", EmailIdentity.Normalize("\u00A0\tAlice.Smith@Example.TEST\u3000 "));
 
     [Fact]
@@ -15,15 +15,12 @@ public class EmailIdentityTests
         => Assert.Equal("A.LICE+VAULT@EXAMPLE.TEST", EmailIdentity.Normalize("A.lice+Vault@example.test"));
 
     [Theory]
-    [InlineData("øyvind@example.test", "ØYVIND@EXAMPLE.TEST")]
-    [InlineData("σς@example.test", "ΣΣ@EXAMPLE.TEST")]
-    [InlineData("i@example.test", "I@EXAMPLE.TEST")]
-    public void Unicode_case_variants_use_one_invariant_identity(string email, string normalized)
+    [InlineData("adm\u0131n@example.test", "ADM\u0131N@EXAMPLE.TEST")]
+    [InlineData("\u017Fupport@example.test", "\u017FUPPORT@EXAMPLE.TEST")]
+    [InlineData("øyvind@example.test", "øYVIND@EXAMPLE.TEST")]
+    [InlineData("\U00010428@example.test", "\U00010428@EXAMPLE.TEST")]
+    public void Letters_outside_a_to_z_keep_their_case(string email, string normalized)
         => Assert.Equal(normalized, EmailIdentity.Normalize(email));
-
-    [Fact]
-    public void Letters_outside_the_basic_multilingual_plane_keep_their_case()
-        => Assert.Equal("\U00010428@EXAMPLE.TEST", EmailIdentity.Normalize("\U00010428@example.test"));
 
     [Fact]
     public void An_account_keeps_its_email_as_entered_and_compares_it_normalized()

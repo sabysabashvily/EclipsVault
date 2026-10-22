@@ -23,8 +23,8 @@ public abstract class EmailIdentityUpgradeTests(EmailIdentityDatabases databases
         => Assert.Equal(MixedCaseAccount, (await databases.UpgradedUsers().FindByEmailAsync("mixed.case@example.test", default))?.Id);
 
     [Fact]
-    public async Task After_upgrading_unicode_case_variants_find_the_original_account()
-        => Assert.Equal(UnicodeAccount, (await databases.UpgradedUsers().FindByEmailAsync("øyvind@example.test", default))?.Id);
+    public async Task After_upgrading_an_email_with_a_letter_outside_a_to_z_finds_its_account_when_only_a_to_z_change_case()
+        => Assert.Equal(UnicodeAccount, (await databases.UpgradedUsers().FindByEmailAsync("Øyvind@EXAMPLE.test", default))?.Id);
 
     [Fact]
     public async Task After_upgrading_an_email_with_a_character_outside_the_basic_multilingual_plane_finds_its_account()
@@ -84,18 +84,15 @@ public abstract class EmailIdentityUpgradeTests(EmailIdentityDatabases databases
     }
 
     [Fact]
-    public async Task Upgrading_refuses_unicode_case_collisions_including_disabled_accounts()
+    public async Task Upgrading_keeps_emails_that_differ_in_the_case_of_a_letter_outside_a_to_z_as_separate_accounts()
     {
-        var database = await databases.CreateBeforeEmailIdentityAsync("refused-unicode");
-        var active = Guid.NewGuid();
-        var disabled = Guid.NewGuid();
-        await InsertLegacyAccountAsync(database, active, "unicode-active", "Øyvind@Example.Test");
-        await InsertLegacyAccountAsync(database, disabled, "unicode-disabled", " øyvind@example.test", disabled: true);
+        var database = await databases.CreateBeforeEmailIdentityAsync("accepted-non-ascii-case");
+        await InsertLegacyAccountAsync(database, Guid.NewGuid(), "unicode-active", "Øyvind@Example.Test");
+        await InsertLegacyAccountAsync(database, Guid.NewGuid(), "unicode-disabled", " øyvind@example.test", disabled: true);
 
-        var refusal = await Assert.ThrowsAnyAsync<DbException>(() => UpgradeAsync(database));
+        await UpgradeAsync(database);
 
-        Assert.Contains(active.ToString(), refusal.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(disabled.ToString(), refusal.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith("_NormalizeEmailIdentity", await LatestMigrationAsync(database));
     }
 
     [Fact]

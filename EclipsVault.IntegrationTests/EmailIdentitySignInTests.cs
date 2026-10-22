@@ -70,6 +70,18 @@ public sealed class EmailIdentitySignInTests(VaultFixture vault)
     }
 
     [Fact]
+    public async Task Single_sign_on_refuses_an_address_spelled_with_a_dotless_i_for_the_account_spelled_with_a_dotted_i()
+    {
+        await ProvisionAsync("it-email-sso-dotted", "it-email-sso-admin@example.test");
+        var head = await AuditTrail.HeadAsync(vault);
+
+        var response = await CallBackFromIdentityProviderAsync("it-email-sso-adm\u0131n@example.test", "198.51.100.236");
+
+        Assert.Equal("/Account/Login", response.Headers.Location?.OriginalString);
+        Assert.DoesNotContain(await AuditTrail.RowsAfterAsync(vault, head), row => row.Action == AuditAction.SsoIdentityLinked);
+    }
+
+    [Fact]
     public async Task Password_sign_in_refuses_an_identifier_that_is_one_accounts_username_and_anothers_email()
     {
         const string password = "It-email-alias-shared-password-1";

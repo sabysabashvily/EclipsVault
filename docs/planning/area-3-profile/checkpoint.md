@@ -471,3 +471,6 @@ loop, SQL Server index-name match and THROW limit; HTTP tests for named-passkey 
 sharing with an ambiguous identifier. R10 full suite passed 257/257 before these changes. Final
 run logs to ~/Downloads/ev-84-final-r11.txt. Commit message: ~/Downloads/ev-84-commit-message.txt.
 GPT Sol 6.1 xhigh Standards review pending its 02:12 limit reset. Not committed.
+Committed a14474f. Then an automated security review found that Unicode upper-casing lets SSO
+match a look-alike mailbox (dotless i -> I). Normalization now ignores case only for A to Z, in the
+app and both backfills; 263 integration, 657 unit and 61 focused tests pass. Follow-up commit.
