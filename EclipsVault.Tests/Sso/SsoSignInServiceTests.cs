@@ -22,12 +22,11 @@ public class SsoSignInServiceTests
         private readonly User? _user;
         public FakeUsers(User? user) => _user = user;
 
-        public Task<User?> FindByUsernameOrEmailAsync(string identifier, CancellationToken ct)
-            => Task.FromResult(_user is not null &&
-                               (identifier.Equals(_user.Email, StringComparison.OrdinalIgnoreCase) ||
-                                identifier.Equals(_user.Username, StringComparison.OrdinalIgnoreCase))
-                ? _user
-                : null);
+        public Task<User?> FindByEmailAsync(string email, CancellationToken ct)
+            => Task.FromResult(_user);
+
+        public Task<User?> FindByUsernameOrEmailAsync(string identifier, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> IsEmailTakenAsync(string email, Guid accountId, CancellationToken ct) => throw new NotSupportedException();
 
         public Task<User?> FindByUsernameAsync(string username, CancellationToken ct) => Task.FromResult<User?>(null);
         public Task<IReadOnlyList<string>> FindEmailsWithPrefixAsync(string localPrefix, string domain, CancellationToken ct)

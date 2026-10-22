@@ -115,7 +115,7 @@ public abstract class ShareIssuerBackfill : IAsyncLifetime
             """);
     }
 
-    protected static string ContainerName(string engine)
+    internal static string ContainerName(string engine)
         => $"{Environment.GetEnvironmentVariable("ECLIPSVAULT_TEST_RESOURCE_PREFIX") ?? "eclipsvault-it"}-migration-{engine}-{Guid.NewGuid():N}";
 }
 
@@ -140,7 +140,7 @@ public sealed class SqlServerShareIssuerBackfill : ShareIssuerBackfill
 public sealed class PostgresShareIssuerBackfill : ShareIssuerBackfill
 {
     /// <summary>PostgreSQL 17, the version the demo and deployment compose files run, pinned by digest.</summary>
-    private const string PostgresImage =
+    internal const string PostgresImage =
         "postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3";
 
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder(PostgresImage)

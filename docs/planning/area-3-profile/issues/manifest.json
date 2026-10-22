@@ -1,0 +1,108 @@
+{
+  "status": "published",
+  "confirmed": true,
+  "repository": "sabysabashvily/EclipsVault",
+  "parent": {
+    "title": "Angular migration \u2014 Area 3: Profile",
+    "file": "spec.md",
+    "number": 83,
+    "url": "https://github.com/sabysabashvily/EclipsVault/issues/83",
+    "bodySha256": "98d768e33df05e210adb7d5a030c46303e47758b9245d1018833e218147da239"
+  },
+  "tickets": [
+    {
+      "order": 1,
+      "title": "Area 3 \u00b7 1/8: Make email identity consistent across both databases",
+      "file": "ticket-1.md",
+      "blockedByOrders": [],
+      "number": 84,
+      "url": "https://github.com/sabysabashvily/EclipsVault/issues/84",
+      "bodySha256": "d4e33d077d76416042d92d19ec30961decd7edf9fcc99f55921a77ad1c28b610"
+    },
+    {
+      "order": 2,
+      "title": "Area 3 \u00b7 2/8: Commit Profile changes and audit events together",
+      "file": "ticket-2.md",
+      "blockedByOrders": [
+        1
+      ],
+      "number": 85,
+      "url": "https://github.com/sabysabashvily/EclipsVault/issues/85",
+      "bodySha256": "3ef3ba1b348987f80da5f5f0af0858c3e112393d6508fe9570a46cc93e92a2ce"
+    },
+    {
+      "order": 3,
+      "title": "Area 3 \u00b7 3/8: Invalidate stale sessions and proofs without timestamp arithmetic",
+      "file": "ticket-3.md",
+      "blockedByOrders": [
+        2
+      ],
+      "number": 86,
+      "url": "https://github.com/sabysabashvily/EclipsVault/issues/86",
+      "bodySha256": "56ca507e1dd1a7e1ffa436f5927b38ab01a41b03f4ec60af0facd3338b341da3"
+    },
+    {
+      "order": 4,
+      "title": "Area 3 \u00b7 4/8: Verify one prepared Profile change at a time",
+      "file": "ticket-4.md",
+      "blockedByOrders": [
+        3
+      ],
+      "number": 87,
+      "url": "https://github.com/sabysabashvily/EclipsVault/issues/87",
+      "bodySha256": "1bcd4917a31a65ce0cca9a02bf5c43b3008b6bffc7eae74c003ed7540e7bb106"
+    },
+    {
+      "order": 5,
+      "title": "Area 3 \u00b7 5/8: Confirm mailbox ownership before activating email",
+      "file": "ticket-5.md",
+      "blockedByOrders": [
+        4
+      ],
+      "number": 88,
+      "url": "https://github.com/sabysabashvily/EclipsVault/issues/88",
+      "bodySha256": "e5d90af0dbdb19834a29de4932e4560f726024b96418269d20380b383f67a267"
+    },
+    {
+      "order": 6,
+      "title": "Area 3 \u00b7 6/8: Serve Profile details, avatar and password through Angular",
+      "file": "ticket-6.md",
+      "blockedByOrders": [
+        5
+      ],
+      "number": 89,
+      "url": "https://github.com/sabysabashvily/EclipsVault/issues/89",
+      "bodySha256": "861c3456d23cfce229e591dabee0ca6b9e74c462bda34f33aae18cb4d8d03eab"
+    },
+    {
+      "order": 7,
+      "title": "Area 3 \u00b7 7/8: Serve authenticator, recovery-code and passkey flows through Angular",
+      "file": "ticket-7.md",
+      "blockedByOrders": [
+        6
+      ],
+      "number": 90,
+      "url": "https://github.com/sabysabashvily/EclipsVault/issues/90",
+      "bodySha256": "6b459b8a26768bb7a40f763be6828842dd657e6239bb9e3a1ac256a340005412"
+    },
+    {
+      "order": 8,
+      "title": "Area 3 \u00b7 8/8: Retire Legacy Profile handlers and verify the complete Area",
+      "file": "ticket-8.md",
+      "blockedByOrders": [
+        7
+      ],
+      "number": 91,
+      "url": "https://github.com/sabysabashvily/EclipsVault/issues/91",
+      "bodySha256": "b218bcbaada5377d61bb0d7b447a9cc87d11cf4cb49b47e2f8349a94487225b6"
+    }
+  ],
+  "relationshipsVerified": true,
+  "review": {
+    "status": "completed",
+    "report": "../reviews/publication-review.md",
+    "findings": 1,
+    "resolved": 1,
+    "fallback": "fresh same-model Codex after Claude API rate limits"
+  }
+}

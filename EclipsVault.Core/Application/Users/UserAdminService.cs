@@ -76,9 +76,10 @@ public sealed class UserAdminService : IUserAdminService
     public async Task<CreatedUserDto> CreateAsync(CreateUserRequest request, CancellationToken ct)
     {
         var username = request.Username.Trim();
-        if (username.Length < 3)
+        if (!UsernameRules.Allows(username))
         {
-            throw new VaultAdminException("Usernames must be at least 3 characters long.");
+            throw new VaultAdminException(
+                $"Usernames are {UsernameRules.MinimumLength} to {UsernameRules.MaximumLength} characters. {UsernameRules.Description}");
         }
 
         var first = request.FirstName.Trim();
@@ -138,7 +139,17 @@ public sealed class UserAdminService : IUserAdminService
         var prefix = $"{Slug(first)}.{Slug(last)}";
         var existing = await _users.FindEmailsWithPrefixAsync(prefix, _directory.EmailDomain, ct);
         var next = existing.Select(e => ParseSequence(e, prefix)).DefaultIfEmpty(0).Max() + 1;
-        return $"{prefix}.{next}@{_directory.EmailDomain}";
+        // The scan above sees only emails. An older account's username can also be this address,
+        // and the new account is not saved yet, so no account's own address is exempt.
+        var notYetSaved = Guid.Empty;
+        while (await _users.IsEmailTakenAsync(Address(next), notYetSaved, ct))
+        {
+            next++;
+        }
+
+        return Address(next);
+
+        string Address(int sequence) => $"{prefix}.{sequence}@{_directory.EmailDomain}";
     }
 
     private static int ParseSequence(string email, string prefix)

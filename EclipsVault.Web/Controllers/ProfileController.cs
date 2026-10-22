@@ -85,7 +85,7 @@ public sealed class ProfileController : VaultController
             await ReissueReplacingClaimsAsync((VaultClaimTypes.Display, updated.DisplayName));
             this.FlashSuccess("Your profile was updated.");
         }
-        catch (ProfileException ex)
+        catch (Exception ex) when (ex is ProfileException or EmailAddressTakenException)
         {
             this.FlashError(ex.Message);
         }

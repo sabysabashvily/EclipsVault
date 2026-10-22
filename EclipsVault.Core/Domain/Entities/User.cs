@@ -16,7 +16,21 @@ public class User
     /// <summary>Human-friendly name shown across the UI; user-editable.</summary>
     public string DisplayName { get; set; } = string.Empty;
 
-    public string Email { get; set; } = string.Empty;
+    private string _email = string.Empty;
+
+    /// <summary>Spelled as it was entered, for display and delivery. Sign-in compares <see cref="NormalizedEmail"/>.</summary>
+    public string Email
+    {
+        get => _email;
+        set
+        {
+            _email = value;
+            NormalizedEmail = EmailIdentity.Normalize(value);
+        }
+    }
+
+    /// <summary>The email as the vault compares it, and the one each account must hold alone.</summary>
+    public string NormalizedEmail { get; private set; } = string.Empty;
 
     /// <summary>Argon2id hash (32 bytes).</summary>
     public byte[] PasswordHash { get; set; } = [];

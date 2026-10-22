@@ -774,6 +774,12 @@ namespace EclipsVault.Migrations.Postgres.Migrations
                     b.Property<DateTimeOffset?>("LockedUntilUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .UseCollation("C");
+
                     b.Property<byte[]>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -803,7 +809,7 @@ namespace EclipsVault.Migrations.Postgres.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Email")
+                    b.HasIndex("NormalizedEmail")
                         .IsUnique();
 
                     b.HasIndex("Username")

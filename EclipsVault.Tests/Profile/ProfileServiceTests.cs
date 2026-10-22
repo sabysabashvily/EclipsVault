@@ -54,13 +54,20 @@ public class ProfileServiceTests
         public int CorpusSize => 0;
     }
 
-    private sealed class StubUsers : IUserRepository
+    private sealed class StubUsers(User user, bool emailTaken) : IUserRepository
     {
-        private readonly User _user;
-        public StubUsers(User user) => _user = user;
+        public int Updates { get; private set; }
 
-        public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult<User?>(id == _user.Id ? _user : null);
-        public Task UpdateAsync(User user, CancellationToken ct) => Task.CompletedTask;
+        public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult<User?>(user);
+        public Task<bool> IsEmailTakenAsync(string email, Guid accountId, CancellationToken ct) => Task.FromResult(emailTaken);
+
+        public Task UpdateAsync(User user, CancellationToken ct)
+        {
+            Updates++;
+            return Task.CompletedTask;
+        }
+
+        public Task<User?> FindByEmailAsync(string email, CancellationToken ct) => throw new NotSupportedException();
 
         public Task<User?> FindByUsernameAsync(string username, CancellationToken ct) => throw new NotSupportedException();
         public Task<User?> FindByUsernameOrEmailAsync(string identifier, CancellationToken ct) => throw new NotSupportedException();
@@ -109,20 +116,24 @@ public class ProfileServiceTests
         public Task DeleteAllAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
     }
 
-    private static (ProfileService Service, RecordingRevocation Revocation) NewService(bool breached = false)
+    private static User Owner() => new()
     {
-        var user = new User
-        {
-            Id = UserId,
-            Username = "owner",
-            PasswordHash = Encoding.UTF8.GetBytes(CurrentPassword),
-            PasswordSalt = [9, 9, 9],
-            Clearance = ClearanceLevel.Standard
-        };
+        Id = UserId,
+        Username = "owner",
+        Email = "owner@example.test",
+        PasswordHash = Encoding.UTF8.GetBytes(CurrentPassword),
+        PasswordSalt = [9, 9, 9],
+        Clearance = ClearanceLevel.Standard
+    };
 
+    private static (ProfileService Service, RecordingRevocation Revocation) NewService(bool breached = false)
+        => NewService(new StubUsers(Owner(), emailTaken: false), breached);
+
+    private static (ProfileService Service, RecordingRevocation Revocation) NewService(StubUsers users, bool breached = false)
+    {
         var revocation = new RecordingRevocation();
         var service = new ProfileService(
-            new StubUsers(user),
+            users,
             new StubHasher(),
             new ThrowingAvatarProcessor(),
             new ThrowingRecoveryCodes(),
@@ -167,5 +178,18 @@ public class ProfileServiceTests
             service.ChangePasswordAsync(UserId, CurrentPassword, "a-brand-new-password", CancellationToken.None));
 
         Assert.Empty(revocation.Revocations);
+    }
+
+    [Fact]
+    public async Task An_email_another_account_signs_in_with_is_refused_without_naming_it_or_saving()
+    {
+        var users = new StubUsers(Owner(), emailTaken: true);
+        var (service, _) = NewService(users);
+
+        var refused = await Assert.ThrowsAsync<EmailAddressTakenException>(() =>
+            service.UpdateAsync(UserId, "Owner", "taken@example.test", CancellationToken.None));
+
+        Assert.Equal("That email address is already used by another account.", refused.Message);
+        Assert.Equal(0, users.Updates);
     }
 }

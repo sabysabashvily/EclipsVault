@@ -1,3 +1,4 @@
+using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Auditing;
 using EclipsVault.Core.Application.Dashboard;
 using EclipsVault.Core.Application.Secrets;
@@ -9,12 +10,9 @@ using Xunit;
 namespace EclipsVault.Tests.Web;
 
 /// <summary>
-/// The overview page used to build its secret figures straight from the repository, so every
-/// authenticated user saw the name, environment and expiry of secrets in projects they cannot open
-/// and cannot enumerate — the same disclosure the secrets list exists to prevent, one page over.
-/// These pin the rule that the dashboard reports on the caller's <em>visible</em> secrets and nothing
-/// else. The structural half of the fix is that the service no longer holds a secret repository at
-/// all: it can only report on what it is handed.
+/// Dashboard figures must describe only the caller's visible secrets: even a name or expiry can
+/// disclose a secret in another project. The service receives the filtered list rather than a
+/// repository so it cannot enumerate secrets the caller cannot open.
 /// </summary>
 public class DashboardServiceTests
 {
@@ -77,6 +75,8 @@ public class DashboardServiceTests
         public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task<User?> FindByUsernameAsync(string username, CancellationToken ct) => throw new NotSupportedException();
         public Task<User?> FindByUsernameOrEmailAsync(string identifier, CancellationToken ct) => throw new NotSupportedException();
+        public Task<User?> FindByEmailAsync(string email, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> IsEmailTakenAsync(string email, Guid accountId, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<string>> FindEmailsWithPrefixAsync(string localPrefix, string domain, CancellationToken ct) => throw new NotSupportedException();
         public Task AddAsync(User user, CancellationToken ct) => throw new NotSupportedException();
         public Task UpdateAsync(User user, CancellationToken ct) => throw new NotSupportedException();

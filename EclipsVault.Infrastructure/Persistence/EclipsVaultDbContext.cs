@@ -64,6 +64,14 @@ public sealed class EclipsVaultDbContext : DbContext
             .HasIndex(a => a.Sequence)
             .IsUnique()
             .HasFilter($"{sequence} <> 0");
+
+        // A normalized email is already folded, so it compares ordinally, never by a collation that
+        // ignores accents or width and would make two addresses one. The collation's name is the
+        // provider's; SQLite compares ordinally anyway.
+        var ordinal = Database.IsNpgsql() ? "C" : Database.IsSqlServer() ? "Latin1_General_100_BIN2" : null;
+        modelBuilder.Entity<User>()
+            .Property(u => u.NormalizedEmail)
+            .UseCollation(ordinal);
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
@@ -103,11 +111,9 @@ public sealed class EclipsVaultDbContext : DbContext
     /// staged failure is not waiting for a retry that never comes: it is waiting for the next
     /// SaveChanges by anyone at all, which commits it.
     ///
-    /// That is not hypothetical. It is how a secret rotation reported as failed came back — carried
-    /// in by the very audit row written to say it had failed — together with a correctly hashed
-    /// SecretUpdated entry for a change that had been rolled back. Nothing in this vault retries a
-    /// failed save (it fails closed and surfaces the error), so keeping the changes buys nothing and
-    /// costs the guarantee that a write reporting failure changed nothing.
+    /// A later audit write must not commit a failed credential or secret change. Nothing in this
+    /// vault retries a failed save: it fails closed and surfaces the error, so pending changes must
+    /// be discarded to preserve the guarantee that a write reporting failure changed nothing.
     ///
     /// This lives on the context rather than in a SaveChangesInterceptor because EF does not route a
     /// throw from the SavingChanges phase through SaveChangesFailed — and that phase is where the

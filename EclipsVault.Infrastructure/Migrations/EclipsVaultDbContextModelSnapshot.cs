@@ -774,6 +774,12 @@ namespace EclipsVault.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("LockedUntilUtc")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
                     b.Property<byte[]>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -803,7 +809,7 @@ namespace EclipsVault.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Email")
+                    b.HasIndex("NormalizedEmail")
                         .IsUnique();
 
                     b.HasIndex("Username")

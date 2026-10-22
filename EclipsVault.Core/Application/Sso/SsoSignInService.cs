@@ -43,7 +43,7 @@ public sealed class SsoSignInService : ISsoSignInService
                 ct, isCritical: true);
         }
 
-        var user = await _users.FindByUsernameOrEmailAsync(identity.Email, ct);
+        var user = await _users.FindByEmailAsync(identity.Email, ct);
         if (user is null)
         {
             // Real at the IdP, unknown here. The IdP authenticates; it does not decide who may in.

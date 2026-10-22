@@ -78,6 +78,11 @@ public sealed partial class ProfileService : IProfileService
             throw new ProfileException("Enter a valid email address.");
         }
 
+        if (await _users.IsEmailTakenAsync(email, user.Id, ct))
+        {
+            throw new EmailAddressTakenException();
+        }
+
         user.DisplayName = displayName;
         user.Email = email;
         await _users.UpdateAsync(user, ct);

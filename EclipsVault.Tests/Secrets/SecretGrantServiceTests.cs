@@ -49,6 +49,8 @@ public class SecretGrantServiceTests
         public Task<User?> FindByUsernameOrEmailAsync(string identifier, CancellationToken ct)
             => Task.FromResult<User?>(new User { Id = Guid.NewGuid(), Username = "carol" });
 
+        public Task<User?> FindByEmailAsync(string email, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> IsEmailTakenAsync(string email, Guid accountId, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<string>> FindEmailsWithPrefixAsync(string localPrefix, string domain, CancellationToken ct) => throw new NotSupportedException();
         public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<User>> ListAsync(CancellationToken ct) => throw new NotSupportedException();
