@@ -159,6 +159,10 @@ session cookies; use only throwaway test credentials. CI uploads them on failure
 
 ## Working rules
 
+- For delegated agents, use only GPT Sol 6.1 (`gpt-6.1-sol`) with extra-high reasoning
+  (`reasoningEffort: xhigh`) or Claude Opus 5.5 (`claude-opus-5-5`) with high reasoning
+  (`effort: high`). Pass these settings as tool options. If one is unavailable, use the other;
+  if both are unavailable, report the blocker before choosing another model.
 - Do not merge pull requests, push tags, force-push, delete branches, or rewrite history unless the
   owner asks for that specific action. Before any branch deletion, prove the branch is contained in
   `main` with `git merge-base --is-ancestor`.

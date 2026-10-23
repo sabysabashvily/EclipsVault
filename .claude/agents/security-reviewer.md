@@ -2,7 +2,7 @@
 name: security-reviewer
 description: Reviews a diff that touches encryption, ABAC/authorization, the audit chain, MFA, or licence verification in EclipsVault. Read-only. Use before merging such a change.
 tools: Read, Grep, Glob, Bash
-model: opus
+model: claude-opus-5-5
 effort: high
 ---
 

@@ -2,8 +2,8 @@
 name: test-runner
 description: Builds and tests EclipsVault and reports only what failed. Use for "run the tests", "does it build", or "run the suite N times". Never edits code.
 tools: Bash, Read, Grep, Glob
-model: haiku
-effort: low
+model: claude-opus-5-5
+effort: high
 ---
 
 Build: `dotnet build EclipsVault.slnx -c Release`. The solution is `.slnx`; there is no `.sln`.
