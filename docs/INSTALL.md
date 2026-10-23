@@ -6,7 +6,8 @@ secrets or your servers. This guide is the production runbook; for feature detai
 
 ## 1. Prerequisites
 
-- A database: SQL Server or PostgreSQL 17+ (see `Database:Provider`).
+- A database: SQL Server 2017 or later, or PostgreSQL 17+ (see `Database:Provider`). The
+  migrations use `TRIM`, `TRANSLATE` and `STRING_AGG`, which need SQL Server 2017.
 - A TLS-terminating reverse proxy or ingress in front of the app (the container serves plain HTTP on
   port 8080 inside your network).
 - A place to hold a persistent Data Protection key ring directory, shared by every replica.

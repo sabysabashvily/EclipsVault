@@ -1,10 +1,13 @@
 # Email identity is independent of database collation and never selects a username
 
-The vault trims and compares email identities case-insensitively, preserving the entered spelling
-for display and delivery. One application normalization policy and matching database uniqueness
-apply in SQL Server and PostgreSQL. Provider-specific dot or plus-address folding is not part of
-this policy. Leaving identity selection to deployment collation would make the same address select
-different accounts or fail to match after moving database providers.
+The vault trims email identities and ignores case for the letters A to Z only; every other character
+must match exactly. The entered spelling is kept for display and delivery. Full Unicode case folding
+was rejected: it maps look-alikes such as `ı` (dotless i) and `ſ` (long s) onto ASCII letters, so an
+address an identity provider verified as `admın@corp.com` would select the account for `admin@corp.com`.
+One application normalization policy and matching database uniqueness apply in SQL Server and
+PostgreSQL. Provider-specific dot or plus-address folding is not part of this policy. Leaving
+identity selection to deployment collation would make the same address select different accounts
+or fail to match after moving database providers.
 
 Migration checks every existing account, including disabled accounts. Canonical collisions and
 cross-account alias collisions require explicit operator resolution before migration; accounts are

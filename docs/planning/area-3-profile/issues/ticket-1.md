@@ -4,7 +4,7 @@
 
 ## What to build
 
-Email is a sign-in identity and SSO matching key. Apply trimmed, case-insensitive comparison consistently in application code and both databases while preserving spelling for display/delivery. SSO resolves email only; combined username/email callers refuse different matching account IDs.
+Email is a sign-in identity and SSO matching key. Apply trimmed comparison that ignores case for the letters A to Z only consistently in application code and both databases while preserving spelling for display/delivery. SSO resolves email only; combined username/email callers refuse different matching account IDs.
 
 This ticket creates `area-3-profile` from main at c7b4b1b or later, preserves the owner's existing uncommitted documents, and commits CONTEXT.md, modified ADR0021, new ADR0022–0026 and the confirmed records in `docs/planning/area-3-profile/`. The existing administrator form already forbids @ in usernames; the ambiguous SSO scenario requires old/custom provisioning. Do not describe it as an ordinary-user provisioning exploit.
 
