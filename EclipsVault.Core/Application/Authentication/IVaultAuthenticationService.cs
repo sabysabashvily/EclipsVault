@@ -13,6 +13,8 @@ public interface IVaultAuthenticationService
     /// <summary>Returns the user when the code is valid, null otherwise (the failure is audited).</summary>
     Task<UserDto?> VerifyTotpAsync(Guid userId, string code, CancellationToken ct);
 
+    Task<UserDto?> VerifyBreakGlassAsync(Guid userId, string code, CancellationToken ct);
+
     /// <summary>
     /// Redeems a single-use MFA recovery code in place of the TOTP step. On success the
     /// matched code is permanently consumed and the user is returned; a non-match is

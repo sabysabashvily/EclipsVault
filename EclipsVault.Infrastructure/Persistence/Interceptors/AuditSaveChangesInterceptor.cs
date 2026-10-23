@@ -29,6 +29,8 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
     // The chain batch stamped for the in-flight SaveChanges (the chain lock is held while set).
     private AuditBatch? _pending;
 
+    private IReadOnlyList<AuditEntry>? _operationEvents;
+
     public AuditSaveChangesInterceptor(IAuditContext actor, AuditChain chain, TimeProvider clock, ILogger<AuditSaveChangesInterceptor> logger)
     {
         _actor = actor;
@@ -74,6 +76,23 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
         }
 
         return await base.SavingChangesAsync(eventData, result, cancellationToken);
+    }
+
+    /// <summary>
+    /// An operation owns its semantic events, including multi-row resets and authentication
+    /// bookkeeping. User rows alone cannot identify whether a change was a Profile edit.
+    /// </summary>
+    public async Task SaveOperationAsync(DbContext context, IReadOnlyList<AuditEntry> events, CancellationToken ct)
+    {
+        _operationEvents = events;
+        try
+        {
+            await context.SaveChangesAsync(ct);
+        }
+        finally
+        {
+            _operationEvents = null;
+        }
     }
 
     public override int SavedChanges(SaveChangesCompletedEventData eventData, int result)
@@ -123,9 +142,9 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
             "SaveChanges failed with pending audit entries — transaction aborted, no unaudited change was persisted (fail-closed)");
 
     /// <summary>
-    /// The audited entities. A type belongs here only when its audit row must be atomic with the
-    /// change itself; everything else is written through <c>IAuditSink</c> from the service that
-    /// owns the operation.
+    /// The audited entities, then the operation being saved, if any. A type belongs here only
+    /// when its audit row must be atomic with the change itself; everything else is written through
+    /// <c>IAuditSink</c> from the service that owns the operation.
     /// </summary>
     private void InjectAuditEntries(DbContext? context)
     {
@@ -137,6 +156,25 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
         Inject<Secret>(context, DescribeSecretChange);
         Inject<TrustedNetwork>(context, DescribeTrustedNetworkChange);
         Inject<DynamicSecretLease>(context, DescribeLeaseChange);
+        InjectOperationEvents(context);
+    }
+
+    private void InjectOperationEvents(DbContext context)
+    {
+        if (_operationEvents is not { } events)
+        {
+            return;
+        }
+
+        _operationEvents = null;
+        var now = _clock.GetUtcNow();
+        foreach (var entry in events)
+        {
+            AddRow(context,
+                new AuditRow(entry.Action, entry.ResourceType, entry.ResourceId, entry.ResourceName, entry.Details, entry.IsCritical),
+                entry.ActorUserId ?? (entry.InheritActorUserId ? _actor.UserId : null),
+                entry.ActorUsername ?? _actor.Username ?? "system", now);
+        }
     }
 
     /// <summary>
@@ -163,22 +201,25 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
                 continue;
             }
 
-            context.Set<AuditLog>().Add(new AuditLog
-            {
-                Id = Guid.NewGuid(),
-                TimestampUtc = now,
-                UserId = _actor.UserId,
-                Username = _actor.Username ?? "system",
-                SourceIp = _actor.SourceIp ?? "internal",
-                Action = row.Action,
-                ResourceType = row.ResourceType,
-                ResourceId = row.ResourceId,
-                ResourceName = row.ResourceName,
-                Details = row.Details,
-                IsCritical = row.IsCritical
-            });
+            AddRow(context, row, _actor.UserId, _actor.Username ?? "system", now);
         }
     }
+
+    private void AddRow(DbContext context, AuditRow row, Guid? actorId, string actorName, DateTimeOffset now)
+        => context.Set<AuditLog>().Add(new AuditLog
+        {
+            Id = Guid.NewGuid(),
+            TimestampUtc = now,
+            UserId = actorId,
+            Username = actorName,
+            SourceIp = _actor.SourceIp ?? "internal",
+            Action = row.Action,
+            ResourceType = row.ResourceType,
+            ResourceId = row.ResourceId,
+            ResourceName = row.ResourceName,
+            Details = row.Details,
+            IsCritical = row.IsCritical
+        });
 
     private static List<EntityEntry<SecretGrant>> PendingShareChanges(DbContext? context)
         => context?.ChangeTracker.Entries<SecretGrant>()
@@ -310,7 +351,7 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
     private readonly record struct AuditRow(
         AuditAction Action,
         string ResourceType,
-        Guid ResourceId,
+        Guid? ResourceId,
         string? ResourceName,
         string? Details,
         bool IsCritical = false);

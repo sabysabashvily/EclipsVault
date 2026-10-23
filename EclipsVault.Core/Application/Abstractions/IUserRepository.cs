@@ -34,17 +34,51 @@ public interface IUserRepository
     /// <exception cref="EmailAddressTakenException">Another account took the user's email first.</exception>
     Task AddAsync(User user, CancellationToken ct);
 
+    /// <summary>
+    /// Saves the edits made to <paramref name="user"/> as loaded, writing only the fields that changed.
+    /// </summary>
     /// <exception cref="EmailAddressTakenException">Another account took the user's email first.</exception>
+    /// <exception cref="AccountChangedException">Another change to the account was saved after it was loaded.</exception>
     Task UpdateAsync(User user, CancellationToken ct);
 
     Task DeleteAsync(User user, CancellationToken ct);
 
     Task<byte[]?> GetAvatarPngAsync(Guid userId, CancellationToken ct);
 
-    /// <summary>Upserts the avatar blob and stamps <see cref="User.AvatarUpdatedAtUtc"/> in one transaction.</summary>
-    Task SetAvatarAsync(User user, byte[] png, CancellationToken ct);
+    /// <summary>
+    /// Stages the avatar blob and <see cref="User.AvatarUpdatedAtUtc"/>, to be saved through
+    /// <see cref="IAccountChangeCommitter"/>.
+    /// </summary>
+    Task StageAvatarAsync(User user, byte[] png, CancellationToken ct);
 
-    /// <summary>Deletes the avatar blob and clears <see cref="User.AvatarUpdatedAtUtc"/> in one transaction.</summary>
-    Task RemoveAvatarAsync(User user, CancellationToken ct);
+    /// <summary>
+    /// Stages deleting the avatar blob and clearing <see cref="User.AvatarUpdatedAtUtc"/>, to be saved
+    /// through <see cref="IAccountChangeCommitter"/>. Stages nothing when the account has no avatar.
+    /// </summary>
+    Task StageAvatarRemovalAsync(User user, CancellationToken ct);
 
+    /// <summary>
+    /// Records <paramref name="step"/> as the last authenticator step the account accepted, immediately
+    /// and only if the account still has the enabled authenticator it was loaded with and has not
+    /// accepted this step or a later one.
+    /// </summary>
+    /// <returns>True when this call accepted the step; false when another request got there first.</returns>
+    Task<bool> TryAcceptTotpStepAsync(User user, long step, CancellationToken ct);
+
+    /// <summary>
+    /// Enables the authenticator the account is enrolling, spending <paramref name="step"/> and clearing
+    /// failed attempts, immediately and only if the enrollment is still pending with that secret.
+    /// </summary>
+    /// <returns>True when this call completed the enrollment; false when another request got there first.</returns>
+    Task<bool> TryCompleteTotpEnrollmentAsync(User user, long step, CancellationToken ct);
+
+    /// <summary>
+    /// Counts one failed attempt, immediately, locking the account when it reaches the policy's limit.
+    /// Concurrent failures each count.
+    /// </summary>
+    /// <returns>True when this failure locked the account.</returns>
+    Task<bool> RecordFailedAttemptAsync(User user, LockoutPolicy lockout, DateTimeOffset nowUtc, CancellationToken ct);
+
+    /// <summary>Clears failed attempts and any lockout, immediately.</summary>
+    Task ClearFailedAttemptsAsync(User user, CancellationToken ct);
 }

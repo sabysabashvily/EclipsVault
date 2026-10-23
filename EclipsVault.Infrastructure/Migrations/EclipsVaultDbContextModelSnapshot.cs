@@ -749,6 +749,10 @@ namespace EclipsVault.Infrastructure.Migrations
                     b.Property<int>("Clearance")
                         .HasColumnType("int");
 
+                    b.Property<Guid>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasColumnType("datetimeoffset");
 

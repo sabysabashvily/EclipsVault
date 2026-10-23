@@ -23,6 +23,7 @@ public sealed class UserAdminService : IUserAdminService
     private readonly UserDirectoryOptions _directory;
     private readonly INotificationService _notifications;
     private readonly IAuditSink _audit;
+    private readonly IAccountChangeCommitter _changes;
     private readonly IAuditContext _actor;
     private readonly TimeProvider _clock;
 
@@ -35,6 +36,7 @@ public sealed class UserAdminService : IUserAdminService
         UserDirectoryOptions directory,
         INotificationService notifications,
         IAuditSink audit,
+        IAccountChangeCommitter changes,
         IAuditContext actor,
         TimeProvider clock)
     {
@@ -46,6 +48,7 @@ public sealed class UserAdminService : IUserAdminService
         _directory = directory;
         _notifications = notifications;
         _audit = audit;
+        _changes = changes;
         _actor = actor;
         _clock = clock;
     }
@@ -267,14 +270,19 @@ public sealed class UserAdminService : IUserAdminService
             return false;
         }
 
+        await _recoveryCodes.StageRemovalOfAllAsync(user.Id, ct);
         user.TotpSecret = null;
         user.TotpEnabled = false;
-        await _users.UpdateAsync(user, ct);
-        // Old recovery codes belong to the retired authenticator; clear them so they cannot bypass the fresh enrollment.
-        await _recoveryCodes.DeleteAllAsync(user.Id, ct);
-        await AuditUserAsync(
-            AuditAction.UserTotpReset, user.Id, _actor.Username ?? "system",
-            $"MFA reset for '{user.Username}'; TOTP re-enrollment required at next sign-in", ct);
+        user.LastTotpStep = null;
+        await _changes.CommitAsync(user, new AuditEntry
+        {
+            Action = AuditAction.UserTotpReset,
+            ResourceType = nameof(User),
+            ResourceId = user.Id,
+            ActorUserId = _actor.UserId,
+            ActorUsername = _actor.Username ?? "system",
+            Details = $"MFA reset for '{user.Username}'; TOTP re-enrollment required at next sign-in"
+        }, ct);
         return true;
     }
 

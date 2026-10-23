@@ -1,6 +1,8 @@
+using System.Linq.Expressions;
 using EclipsVault.Core.Domain;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Exceptions;
+using EclipsVault.Infrastructure.Persistence.Configurations;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -84,7 +86,14 @@ public sealed class UserRepository : IUserRepository
 
     public async Task UpdateAsync(User user, CancellationToken ct)
     {
-        _context.Users.Update(user);
+        // The account is tracked from when it was loaded, so saving writes only the fields that
+        // changed: marking it updated as a whole would write back every field as this copy last saw it.
+        var account = _context.Entry(user);
+        if (account.State == EntityState.Modified)
+        {
+            account.Property(UserConfiguration.ConcurrencyStamp).CurrentValue = Guid.NewGuid();
+        }
+
         await SaveClaimingEmailAsync(ct);
     }
 
@@ -101,26 +110,24 @@ public sealed class UserRepository : IUserRepository
             .Select(a => a.Png)
             .FirstOrDefaultAsync(ct)!;
 
-    public async Task SetAvatarAsync(User user, byte[] png, CancellationToken ct)
+    public async Task StageAvatarAsync(User user, byte[] png, CancellationToken ct)
     {
-        var now = _clock.GetUtcNow();
+        var updatedAtUtc = _clock.GetUtcNow();
         var existing = await _context.UserAvatars.FirstOrDefaultAsync(a => a.UserId == user.Id, ct);
         if (existing is null)
         {
-            _context.UserAvatars.Add(new UserAvatar { UserId = user.Id, Png = png, UpdatedAtUtc = now });
+            _context.UserAvatars.Add(new UserAvatar { UserId = user.Id, Png = png, UpdatedAtUtc = updatedAtUtc });
         }
         else
         {
             existing.Png = png;
-            existing.UpdatedAtUtc = now;
+            existing.UpdatedAtUtc = updatedAtUtc;
         }
 
-        user.AvatarUpdatedAtUtc = now;
-        _context.Users.Update(user);
-        await _context.SaveChangesAsync(ct);
+        user.AvatarUpdatedAtUtc = updatedAtUtc;
     }
 
-    public async Task RemoveAvatarAsync(User user, CancellationToken ct)
+    public async Task StageAvatarRemovalAsync(User user, CancellationToken ct)
     {
         var existing = await _context.UserAvatars.FirstOrDefaultAsync(a => a.UserId == user.Id, ct);
         if (existing is not null)
@@ -129,8 +136,119 @@ public sealed class UserRepository : IUserRepository
         }
 
         user.AvatarUpdatedAtUtc = null;
-        _context.Users.Update(user);
-        await _context.SaveChangesAsync(ct);
+    }
+
+    public async Task<bool> TryAcceptTotpStepAsync(User user, long step, CancellationToken ct)
+    {
+        var stamp = Guid.NewGuid();
+        var accepted = await _context.Users
+            .Where(u => u.Id == user.Id
+                        && u.TotpEnabled
+                        && u.TotpSecret == user.TotpSecret
+                        && (u.LastTotpStep == null || u.LastTotpStep < step))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(u => u.LastTotpStep, step)
+                .SetProperty(u => EF.Property<Guid>(u, UserConfiguration.ConcurrencyStamp), stamp), ct) == 1;
+        if (accepted)
+        {
+            AcceptConcurrencyStamp(user, stamp);
+            AcceptPersistedPropertyValue(user, u => u.LastTotpStep, step);
+        }
+
+        return accepted;
+    }
+
+    public async Task<bool> TryCompleteTotpEnrollmentAsync(User user, long step, CancellationToken ct)
+    {
+        var stamp = Guid.NewGuid();
+        var enrolled = await _context.Users
+            .Where(u => u.Id == user.Id
+                        && !u.TotpEnabled
+                        && u.TotpSecret == user.TotpSecret
+                        && (u.LastTotpStep == null || u.LastTotpStep < step))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(u => u.TotpEnabled, true)
+                .SetProperty(u => u.LastTotpStep, step)
+                .SetProperty(u => EF.Property<Guid>(u, UserConfiguration.ConcurrencyStamp), stamp)
+                .SetProperty(u => u.FailedAccessCount, 0)
+                .SetProperty(u => u.LockedUntilUtc, (DateTimeOffset?)null), ct) == 1;
+        if (enrolled)
+        {
+            AcceptConcurrencyStamp(user, stamp);
+            AcceptPersistedPropertyValue(user, u => u.TotpEnabled, true);
+            AcceptPersistedPropertyValue(user, u => u.LastTotpStep, step);
+            AcceptPersistedPropertyValue(user, u => u.FailedAccessCount, 0);
+            AcceptPersistedPropertyValue(user, u => u.LockedUntilUtc, null);
+        }
+
+        return enrolled;
+    }
+
+    public async Task<bool> RecordFailedAttemptAsync(User user, LockoutPolicy lockout, DateTimeOffset nowUtc, CancellationToken ct)
+    {
+        // Compare-and-set on the count, read again whenever another failure lands in between, so
+        // concurrent failures each add one rather than all writing the same next value.
+        while (true)
+        {
+            var failures = await _context.Users
+                .Where(u => u.Id == user.Id)
+                .Select(u => u.FailedAccessCount)
+                .SingleAsync(ct);
+            var locks = failures + 1 >= lockout.MaxFailedAttempts;
+            var newCount = locks ? 0 : failures + 1;
+            var lockedUntil = nowUtc + lockout.LockoutDuration;
+
+            var counted = await _context.Users
+                .Where(u => u.Id == user.Id && u.FailedAccessCount == failures)
+                .ExecuteUpdateAsync(setters =>
+                {
+                    setters.SetProperty(u => u.FailedAccessCount, newCount);
+                    if (locks)
+                    {
+                        setters.SetProperty(u => u.LockedUntilUtc, lockedUntil);
+                    }
+                }, ct) == 1;
+            if (!counted)
+            {
+                continue;
+            }
+
+            AcceptPersistedPropertyValue(user, u => u.FailedAccessCount, newCount);
+            if (locks)
+            {
+                AcceptPersistedPropertyValue(user, u => u.LockedUntilUtc, lockedUntil);
+            }
+
+            return locks;
+        }
+    }
+
+    public async Task ClearFailedAttemptsAsync(User user, CancellationToken ct)
+    {
+        await _context.Users
+            .Where(u => u.Id == user.Id)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(u => u.FailedAccessCount, 0)
+                .SetProperty(u => u.LockedUntilUtc, (DateTimeOffset?)null), ct);
+        AcceptPersistedPropertyValue(user, u => u.FailedAccessCount, 0);
+        AcceptPersistedPropertyValue(user, u => u.LockedUntilUtc, null);
+    }
+
+    private void AcceptConcurrencyStamp(User user, Guid stamp)
+    {
+        var concurrency = _context.Entry(user).Property<Guid>(UserConfiguration.ConcurrencyStamp);
+        concurrency.OriginalValue = stamp;
+        concurrency.CurrentValue = stamp;
+        concurrency.IsModified = false;
+    }
+
+    // ExecuteUpdate bypasses EF's tracker; accepting its value prevents the next save repeating it.
+    private void AcceptPersistedPropertyValue<TValue>(User user, Expression<Func<User, TValue>> property, TValue value)
+    {
+        var saved = _context.Entry(user).Property(property);
+        saved.OriginalValue = value;
+        saved.CurrentValue = value;
+        saved.IsModified = false;
     }
 
     /// <summary>
@@ -143,6 +261,10 @@ public sealed class UserRepository : IUserRepository
         {
             await _context.SaveChangesAsync(ct);
         }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new AccountChangedException();
+        }
         catch (DbUpdateException failure) when (ViolatesUniqueEmail(failure))
         {
             throw new EmailAddressTakenException();
@@ -150,7 +272,7 @@ public sealed class UserRepository : IUserRepository
     }
 
     // SQL Server names the violated index only in its message; PostgreSQL reports it as the constraint.
-    private static bool ViolatesUniqueEmail(DbUpdateException failure) => failure.InnerException switch
+    internal static bool ViolatesUniqueEmail(DbUpdateException failure) => failure.InnerException switch
     {
         SqlException sql => sql.Number is DuplicateKeyInUniqueIndex or DuplicateKeyInUniqueConstraint
                             && sql.Message.Contains(UniqueEmailIndex, StringComparison.Ordinal),

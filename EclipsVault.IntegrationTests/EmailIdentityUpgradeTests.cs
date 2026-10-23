@@ -92,7 +92,7 @@ public abstract class EmailIdentityUpgradeTests(EmailIdentityDatabases databases
 
         await UpgradeAsync(database);
 
-        Assert.EndsWith("_NormalizeEmailIdentity", await LatestMigrationAsync(database));
+        Assert.Equal([" øyvind@example.test", "Øyvind@Example.Test"], (await EmailsAsync(database)).Order(StringComparer.Ordinal));
     }
 
     [Fact]

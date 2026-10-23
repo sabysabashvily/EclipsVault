@@ -1,4 +1,5 @@
 using EclipsVault.Core.Application.Abstractions;
+using EclipsVault.Core.Application.Authentication;
 using EclipsVault.Core.Application.Sso;
 using EclipsVault.Core.Application.Users;
 using EclipsVault.Core.Domain.Entities;
@@ -37,8 +38,12 @@ public class SsoSignInServiceTests
         public Task UpdateAsync(User user, CancellationToken ct) => Task.CompletedTask;
         public Task DeleteAsync(User user, CancellationToken ct) => Task.CompletedTask;
         public Task<byte[]?> GetAvatarPngAsync(Guid userId, CancellationToken ct) => Task.FromResult<byte[]?>(null);
-        public Task SetAvatarAsync(User user, byte[] png, CancellationToken ct) => Task.CompletedTask;
-        public Task RemoveAvatarAsync(User user, CancellationToken ct) => Task.CompletedTask;
+        public Task StageAvatarAsync(User user, byte[] png, CancellationToken ct) => Task.CompletedTask;
+        public Task StageAvatarRemovalAsync(User user, CancellationToken ct) => Task.CompletedTask;
+        public Task<bool> TryAcceptTotpStepAsync(User user, long step, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> TryCompleteTotpEnrollmentAsync(User user, long step, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> RecordFailedAttemptAsync(User user, LockoutPolicy lockout, DateTimeOffset nowUtc, CancellationToken ct) => throw new NotSupportedException();
+        public Task ClearFailedAttemptsAsync(User user, CancellationToken ct) => throw new NotSupportedException();
     }
 
     private sealed class RecordingAudit : IAuditSink

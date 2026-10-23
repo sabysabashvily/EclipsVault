@@ -37,6 +37,13 @@ public sealed class AuditChain
     public AuditChain(IAuditChainLocker locker) => _locker = locker;
 
     /// <summary>
+    /// Acquire before writing rows referenced by other audited changes, so their foreign-key checks
+    /// cannot invert the chain/row lock order. The current transaction releases the lock on completion.
+    /// </summary>
+    public Task AcquireAsync(DbContext db, CancellationToken ct)
+        => _locker.AcquireAsync(db, LockResource, LockTimeout, ct);
+
+    /// <summary>
     /// Takes the chain, reads its head, and stamps <paramref name="rows"/> onto it. The returned
     /// batch must be handed to <see cref="CommitAsync"/> or <see cref="AbortAsync"/> — until then
     /// the chain is held and every other writer, on any replica, waits.
@@ -55,7 +62,7 @@ public sealed class AuditChain
 
         try
         {
-            await _locker.AcquireAsync(db, LockResource, LockTimeout, ct);
+            await AcquireAsync(db, ct);
 
             var tail = await db.Set<AuditLog>()
                 .AsNoTracking()

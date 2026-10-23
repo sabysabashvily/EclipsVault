@@ -66,6 +66,14 @@ internal sealed class PasskeyAuthenticator : IDisposable
         };
     }
 
+    public object AssertWithWrongSignature(JsonElement options)
+    {
+        var response = JsonSerializer.SerializeToNode(Assert(options))!;
+        response["signature"] = Base64Url.EncodeToString(
+            _key.SignData([1, 2, 3], HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence));
+        return response;
+    }
+
     private byte[] AuthenticatorData(string rpId, byte flags)
     {
         var data = new byte[37];

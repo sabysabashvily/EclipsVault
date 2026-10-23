@@ -474,3 +474,110 @@ GPT Sol 6.1 xhigh Standards review pending its 02:12 limit reset. Not committed.
 Committed a14474f. Then an automated security review found that Unicode upper-casing lets SSO
 match a look-alike mailbox (dotless i -> I). Normalization now ignores case only for A to Z, in the
 app and both backfills; 263 integration, 657 unit and 61 focused tests pass. Follow-up commit.
+
+## Ticket #85 implementation (started 2026-10-23, Claude Opus 5.5)
+
+Branch `area-3-profile` from 73b6a60, root checkout, uncommitted. Design: Core port
+`IAccountChangeCommitter.CommitAsync(account, action, details)` saves everything staged since the
+account was loaded and records one event through the new operation-aware interceptor rule
+`AuditSaveChangesInterceptor.SaveAccountChangeAsync` (no generic User rule). Repositories stage
+instead of saving (`StageAvatarAsync`, `StageReplacementAsync`, `StageRemovalOfAllAsync`,
+`StageAddition`/`StageRemoval`). A shadow `Users.ConcurrencyStamp` concurrency token (migration
+`AddAccountConcurrencyStamp`, both providers) changes on every tracked account save; a stale copy
+throws `AccountChangedException`. `UpdateAsync` no longer calls `Users.Update`, so only changed
+fields are written. Shared `SecondFactorVerifier` (sign-in, step-up, later Profile verification)
+spends TOTP steps and recovery codes with conditional updates; failures count by compare-and-set.
+Admin TOTP reset keeps its UserTotpReset event but saves the code deletion in the same save.
+Moved the touched ports IMfaRecoveryCodeRepository/IPasskeyCredentialRepository to Abstractions.
+Tests: AccountChangeRaceTests (SQL Server + PostgreSQL, 24), ProfileAuditTests (11 HTTP),
+ProfileAuditFailureTests (9). Logs in ~/Downloads/ev-85-*.txt. Mutation checks: removing the stamp
+bump fails 6 race tests; removing the TOTP step condition fails both same-code tests.
+Next: full integration suite, security-reviewer, Standards/Spec reviews, commit (message file in
+~/Downloads/ev-85-commit-message.txt). No push, PR or issue closure.
+
+## Ticket #85 resumed in Codex (2026-10-23)
+
+HEAD remains 73b6a60 on area-3-profile; all ticket work is uncommitted. Original full integration
+run: 305 passed, 2 failed because EmailIdentityUpgradeTests assumed its migration remained latest.
+That assertion now checks the preserved email values. Sol Standards/Spec r1 found: administrator
+reset was still save-before-audit and kept LastTotpStep; ledger/counter updates preceded their audit;
+break-glass reset failures before clearance; combined tests and redundant comments/naming.
+Corrections add AccountTransaction (per-account advisory lock before chain lock), AuthenticationAttempt
+(Core port; refresh account under lock, stage events through interceptor, commit with all bookkeeping),
+shared AuthenticationFailures, atomic administrator reset with preserved actor, and a dedicated
+break-glass verification boundary. Passkey counters use conditional field updates; genuine bad
+signatures/clone counters count against lockout. Profile tests are split into individual scenarios.
+
+Security-reviewer Sol r3 found staging/start/rollback cleanup gaps and passkey failure bypass. Reset
+now loads recovery rows before changing User; AccountTransaction catches start failure and clears
+tracking even when rollback reports failure. Added real-provider transaction fault tests, real SQL
+Server/Postgres rejected-audit ledger tests, and Production AuthenticationAuditFailureTests plus
+PasskeyLockoutTests. Focused recovery r3: 83 passed. Newer r5 run is in
+~/Downloads/ev-85-focused-recovery-r5.txt; build r5 passed with zero warnings/errors. Further provider
+failure tests were added after that build, so build and final verification remain necessary.
+
+Owner requires delegates only on Sol 6.1 xhigh or Opus 5.5 high: authoritative rule in AGENTS.md;
+CLAUDE.md and local agent definitions agree. The Astra security attempt was canceled at the owner's
+request. Its replacement Sol security review completed (two findings above). Prior native Opus
+security review failed quota. Final fresh Standards/Spec/security reviews still required after fixes;
+use the approved models and disclose same-model fresh-session review for Codex corrections if needed.
+Do not push, create a PR or close #85. Stage only explicit paths; restricted directories untouched.
+
+## Ticket #85 resumed in Claude (2026-10-23 evening)
+
+Codex stopped on its usage limit after the passkey reload-under-lock fix (Spec r6 P2) and a clean
+r7 build; its r7 reviews failed on the limit. Gates rerun on the current tree (r8): locked restore,
+Release build 0 warnings/0 errors, format clean, 657 unit, 6 guardrail, both model checks clean.
+Docker had stopped (first r8 integration attempt: 339 failed, no Docker socket); restarted it and
+reran to ~/Downloads/ev-85-integration-r8.txt. Final reviews on Opus 5.5 high (different model from
+the Sol corrections): clientRequestIds 85-security-final-r8-opus-high,
+85-standards-final-r8-opus-high, 85-spec-final-r8-opus-high. Commit message:
+~/Downloads/ev-85-commit-message.txt (63-character subject). Not committed, pushed or closed.
+
+## Ticket #85 final recovery in Codex
+
+Opus r8 Standards reported no hard violations; its nine judgment calls are answered in
+`~/Downloads/ev-85-review-resolutions.md`. Documentation/test naming fixes were applied in r9.
+Opus r8 Spec found an account-state disclosure in passkey errors and missing losing-request
+assertions in the concurrent HTTP TOTP test. Both are corrected in r10, with two new Production
+HTTP passkey regressions. Enrollment/step-up shared failure accounting remains as authorized by
+confirmed Q11. Account transaction errors retain the underlying cause and fail-closed operation
+outcome; the quoted acceptance criterion does not require audit-only diagnostic classification.
+
+R10 Release build: zero warnings/errors; format clean; 657 unit tests and all 341 integration tests
+pass, with no failures or skips. The full run includes 38 focused provider race/fault cases (19 per
+provider), 17 Profile event tests, 17 Production audit-rejection tests and 6 passkey accounting tests.
+Logs: `~/Downloads/ev-85-{build,format,unit,integration}-r10.txt`. Locked restore, both model checks
+and 6 guardrail tests passed r8; Angular prerequisite install/build passed on Node 24.22.0.
+
+Opus security r8 failed quota. Fresh Sol 6.1 xhigh final review clientRequestIds:
+`85-security-final-r10-sol-xhigh`, `85-standards-final-r10-sol-xhigh` and
+`85-spec-final-r10-sol-xhigh`, under task prefix
+`node:delegated-task:command%3Amcp%3Adfb4d046-1762-4313-8c29-5d67ea34fc48%3Adelegate-task%3A`.
+Spec reports no unresolved findings and accepts both responses above. Standards reports no hard
+violations and one remaining summary-wording judgment, now corrected to describe event/bookkeeping
+atomicity without promising an event on every guard exit. Security is pending. Implementation is
+uncommitted; delegate model policy is already committed as `16e4b4a`. No push, PR or issue closure.
+
+Security r10 then found a SQL Server authentication/share deadlock: authentication could hold a
+User row before waiting for the chain, while sharing held the chain before its foreign-key check.
+The correction acquires the chain after the account lock and before authentication writes, through
+`AuditChain.AcquireAsync`. `AuthenticationSharingTests` coordinates this exact interleaving and
+passes with the correction. Removing the early chain acquisition made that regression fail with
+an audit-chain lock refusal (1 failed). The correction is restored, and the r13 rebuild passes
+with zero warnings/errors. Mutation log: `~/Downloads/ev-85-sharing-mutation.txt`.
+
+Final r13 locked restore, format, unit and full integration checks pass, logged at
+`~/Downloads/ev-85-*-r13.txt`: Release build 0 warnings/errors, 657 unit and 342 integration tests,
+all with zero failures/skips. The suite includes 39 provider cases (20 SQL Server, 19 PostgreSQL).
+Both pending-model checks and 6 agent guardrails passed r8; model/hooks have not changed since.
+Fresh Sol 6.1 xhigh security/Standards/Spec follow-up reviews use the same
+task prefix above and clientRequestIds `85-{security,standards,spec}-final-r13-sol-xhigh`.
+All three report no remaining actionable findings. These are fresh-session same-model fallbacks
+for the final Sol corrections because Opus is quota-limited. Final reports:
+`~/Downloads/ev-85-final-reviews.md`; all prior findings/responses:
+`~/Downloads/ev-85-review-resolutions.md`. The implementation and sharing regression are staged
+explicitly for the final commit. Subject: "Save each Profile change with its one audit event or not
+at all" (63 characters), message file `~/Downloads/ev-85-commit-message.txt`. Separate model-policy
+commit: `16e4b4a`, "Use Sol 6.1 and Opus 5.5 for delegated agents" (45 characters).
+No push, PR or issue closure. Final report goes to coordinator `e877e718-6881-4791-bde5-e2c932ae4461`.

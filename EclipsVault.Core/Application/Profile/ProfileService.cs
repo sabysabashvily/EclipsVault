@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using EclipsVault.Core.Application.Mfa;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
 
@@ -7,7 +6,7 @@ namespace EclipsVault.Core.Application.Profile;
 
 /// <summary>
 /// Self-service profile management for the signed-in user. Cannot touch clearance or
-/// project (those are administrative); every change is written to the audit trail.
+/// project (those are administrative); every change commits together with its audit event.
 /// </summary>
 public sealed partial class ProfileService : IProfileService
 {
@@ -20,6 +19,7 @@ public sealed partial class ProfileService : IProfileService
     private readonly IBreachedPasswordScreen _breachScreen;
     private readonly INotificationService _notifications;
     private readonly ISessionRevocationService _revocation;
+    private readonly IAccountChangeCommitter _changes;
     private readonly IAuditSink _audit;
     private readonly IAuditContext _actor;
     private readonly TimeProvider _clock;
@@ -32,6 +32,7 @@ public sealed partial class ProfileService : IProfileService
         IBreachedPasswordScreen breachScreen,
         INotificationService notifications,
         ISessionRevocationService revocation,
+        IAccountChangeCommitter changes,
         IAuditSink audit,
         IAuditContext actor,
         TimeProvider clock)
@@ -43,6 +44,7 @@ public sealed partial class ProfileService : IProfileService
         _breachScreen = breachScreen;
         _notifications = notifications;
         _revocation = revocation;
+        _changes = changes;
         _audit = audit;
         _actor = actor;
         _clock = clock;
@@ -85,8 +87,7 @@ public sealed partial class ProfileService : IProfileService
 
         user.DisplayName = displayName;
         user.Email = email;
-        await _users.UpdateAsync(user, ct);
-        await AuditUserAsync(AuditAction.ProfileUpdated, user.Id, user.Username, "Display name / email updated", ct);
+        await _changes.CommitAsync(user, AuditAction.ProfileUpdated, "Display name / email updated", ct);
 
         return new ProfileDto(user.Id, user.Username, user.DisplayName, user.Email,
             user.Clearance, user.ProjectKey, user.TotpEnabled, user.AvatarUpdatedAtUtc is not null);
@@ -119,19 +120,19 @@ public sealed partial class ProfileService : IProfileService
             throw new ProfileException("This password has appeared in a known data breach. Choose a different one.");
         }
 
-        var hashed = _hasher.Hash(newPassword);
-        user.PasswordHash = hashed.Hash;
-        user.PasswordSalt = hashed.Salt;
-        await _users.UpdateAsync(user, ct);
-
         // A changed password must not leave a session opened with the old one alive. Revoke every
         // session issued up to now — this device included; the caller's own cookie is then re-issued
         // with a later strong-auth time by the controller, so only the *other* devices are turned
         // out. Doing it here rather than at the call site keeps a stolen session from surviving a
-        // password reset no matter which entry point triggers the change.
+        // password reset no matter which entry point triggers the change. Revoked before the commit,
+        // so the event the commit records is true when it says so; a commit that then fails has
+        // only signed sessions out.
         await _revocation.RevokeAsync(user.Id, _clock.GetUtcNow(), ct);
 
-        await AuditUserAsync(AuditAction.PasswordChanged, user.Id, user.Username, "Password changed by owner; sessions revoked", ct);
+        var hashed = _hasher.Hash(newPassword);
+        user.PasswordHash = hashed.Hash;
+        user.PasswordSalt = hashed.Salt;
+        await _changes.CommitAsync(user, AuditAction.PasswordChanged, "Password changed by owner; sessions revoked", ct);
         await _notifications.NotifyPasswordChangedAsync(user.Id, ct);
     }
 
@@ -144,8 +145,8 @@ public sealed partial class ProfileService : IProfileService
                    ?? throw new ProfileException("Your account could not be loaded.");
 
         var png = _avatar.ProcessToPng(uploadedBytes); // validates + re-encodes; throws ProfileException if unreadable
-        await _users.SetAvatarAsync(user, png, ct);
-        await AuditUserAsync(AuditAction.AvatarUpdated, user.Id, user.Username, "Profile picture updated", ct);
+        await _users.StageAvatarAsync(user, png, ct);
+        await _changes.CommitAsync(user, AuditAction.AvatarUpdated, "Profile picture updated", ct);
     }
 
     public async Task RemoveAvatarAsync(Guid userId, CancellationToken ct)
@@ -153,8 +154,8 @@ public sealed partial class ProfileService : IProfileService
         var user = await _users.FindByIdAsync(userId, ct)
                    ?? throw new ProfileException("Your account could not be loaded.");
 
-        await _users.RemoveAvatarAsync(user, ct);
-        await AuditUserAsync(AuditAction.AvatarRemoved, user.Id, user.Username, "Profile picture removed", ct);
+        await _users.StageAvatarRemovalAsync(user, ct);
+        await _changes.CommitAsync(user, AuditAction.AvatarRemoved, "Profile picture removed", ct);
     }
 
     public async Task ResetOwnMfaAsync(Guid userId, CancellationToken ct)
@@ -162,12 +163,13 @@ public sealed partial class ProfileService : IProfileService
         var user = await _users.FindByIdAsync(userId, ct)
                    ?? throw new ProfileException("Your account could not be loaded.");
 
+        // Load the rows before changing the account, so a failed query leaves no reset staged.
+        await _recoveryCodes.StageRemovalOfAllAsync(user.Id, ct);
         user.TotpSecret = null;
         user.TotpEnabled = false;
-        await _users.UpdateAsync(user, ct);
-        // The authenticator is gone, so its recovery codes must not remain a live second factor.
-        await _recoveryCodes.DeleteAllAsync(user.Id, ct);
-        await AuditUserAsync(AuditAction.SelfMfaReset, user.Id, user.Username, "Authenticator reset by owner; re-enrollment required", ct);
+        // The replay marker belongs to the retired authenticator, so it goes with it.
+        user.LastTotpStep = null;
+        await _changes.CommitAsync(user, AuditAction.SelfMfaReset, "Authenticator reset by owner; re-enrollment required", ct);
     }
 
     [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$")]

@@ -307,22 +307,12 @@ public sealed class AccountController : Controller
 
         var credentials = await _auth.ValidateCredentialsAsync(model.Username, model.Password, ct);
         var user = credentials.Status == CredentialStatus.RequiresTotp && credentials.User is not null
-            ? await _auth.VerifyTotpAsync(credentials.User.Id, model.Code, ct)
+            ? await _auth.VerifyBreakGlassAsync(credentials.User.Id, model.Code, ct)
             : null;
 
         if (user is null)
         {
             _logger.LogWarning("Break-glass recovery failed for {Username} from {SourceIp}", model.Username, sourceIp);
-            ModelState.AddModelError(string.Empty, "Recovery could not be completed with these credentials.");
-            return View(model);
-        }
-
-        if (user.Clearance != ClearanceLevel.TopSecret)
-        {
-            await AuditRecoveryAsync(
-                AuditAction.LoginFailed, user.Id, user.Username,
-                "Break-glass recovery denied: insufficient clearance", ct);
-            _logger.LogWarning("Break-glass recovery denied for {Username}: insufficient clearance", user.Username);
             ModelState.AddModelError(string.Empty, "Recovery could not be completed with these credentials.");
             return View(model);
         }

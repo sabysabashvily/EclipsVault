@@ -749,6 +749,10 @@ namespace EclipsVault.Migrations.Postgres.Migrations
                     b.Property<int>("Clearance")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uuid");
+
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 

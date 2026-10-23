@@ -59,6 +59,7 @@ public static class DependencyInjection
             MaxAuthAgeMinutes = stepUp.GetValue<int?>("MaxAuthAgeMinutes") ?? new StepUpOptions().MaxAuthAgeMinutes
         });
         services.AddScoped<IStepUpService, StepUpService>();
+        services.AddScoped<SecondFactorVerifier>();
 
         // Email domain used when auto-generating account emails.
         services.AddSingleton(new UserDirectoryOptions(
@@ -97,6 +98,10 @@ public static class DependencyInjection
         services.AddSingleton<AuditGroupCommitter>();
         services.AddHostedService(sp => sp.GetRequiredService<AuditGroupCommitter>());
         services.AddScoped<IAuditSink, AuditSink>();
+        services.AddScoped<IAccountChangeCommitter, AccountChangeCommitter>();
+        services.AddScoped<AccountTransaction>();
+        services.AddScoped<IAuthenticationAttempt, AuthenticationAttempt>();
+        services.AddScoped<AuthenticationFailures>();
 
         services.AddScoped<ISecretRepository, SecretRepository>();
         services.AddScoped<ISecretGrantRepository, SecretGrantRepository>();

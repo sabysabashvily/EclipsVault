@@ -1,3 +1,4 @@
+using EclipsVault.Core.Application.Authentication;
 using EclipsVault.Core.Domain.Enums;
 
 namespace EclipsVault.Core.Application.StepUp;
@@ -6,15 +7,20 @@ public sealed class StepUpService : IStepUpService
 {
     private readonly StepUpOptions _options;
     private readonly IUserRepository _users;
-    private readonly ITotpService _totp;
-    private readonly IAuditSink _audit;
+    private readonly SecondFactorVerifier _secondFactors;
+    private readonly IAuthenticationAttempt _attempt;
+    private readonly AuthenticationFailures _failures;
+    private readonly TimeProvider _clock;
 
-    public StepUpService(StepUpOptions options, IUserRepository users, ITotpService totp, IAuditSink audit)
+    public StepUpService(StepUpOptions options, IUserRepository users, SecondFactorVerifier secondFactors,
+        IAuthenticationAttempt attempt, AuthenticationFailures failures, TimeProvider clock)
     {
         _options = options;
         _users = users;
-        _totp = totp;
-        _audit = audit;
+        _secondFactors = secondFactors;
+        _attempt = attempt;
+        _failures = failures;
+        _clock = clock;
     }
 
     public int MaxAuthAgeMinutes => _options.MaxAuthAgeMinutes;
@@ -27,27 +33,28 @@ public sealed class StepUpService : IStepUpService
     {
         var user = await _users.FindByIdAsync(userId, ct);
 
-        // Step-up shares the single-use ledger with sign-in, deliberately: the code that just let
-        // someone in must not also unlock a high-sensitivity reveal, and a code spent here must not
-        // then work at the login screen.
-        long step = 0;
-        if (user is null
-            || !user.TotpEnabled
-            || string.IsNullOrEmpty(user.TotpSecret)
-            || !_totp.TryValidateCode(user.TotpSecret, code, user.LastTotpStep, out step))
+        if (user is null)
         {
-            if (user is not null)
-            {
-                await _audit.WriteUserEventAsync(AuditAction.StepUpFailed, user.Id, user.Username, "Step-up re-authentication failed", ct);
-            }
-
             return false;
         }
 
-        user.LastTotpStep = step;
-        await _users.UpdateAsync(user, ct);
+        return await _attempt.RunAsync(user, async token =>
+        {
+            if (user.IsDisabled || user.IsLockedOut(_clock.GetUtcNow()))
+            {
+                _attempt.RecordUserEvent(AuditAction.StepUpFailed, user, "Account is disabled or locked out");
+                return false;
+            }
 
-        await _audit.WriteUserEventAsync(AuditAction.StepUpVerified, user.Id, user.Username, "Re-authenticated for a sensitive reveal", ct);
-        return true;
+            if (!await _secondFactors.TryAcceptAuthenticatorCodeAsync(user, code, token))
+            {
+                await _failures.RecordAsync(user, AuditAction.StepUpFailed, "Step-up re-authentication failed", token);
+                return false;
+            }
+
+            await _failures.ResetAsync(user, token);
+            _attempt.RecordUserEvent(AuditAction.StepUpVerified, user, "Re-authenticated for a sensitive reveal");
+            return true;
+        }, ct);
     }
 }

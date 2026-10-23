@@ -11,6 +11,7 @@ public sealed class MfaRecoveryCodeRepository : IMfaRecoveryCodeRepository
 
     public async Task<IReadOnlyList<MfaRecoveryCode>> ListUnusedAsync(Guid userId, CancellationToken ct)
         => await _context.MfaRecoveryCodes
+            .AsNoTracking()
             .Where(c => c.UserId == userId && c.UsedAtUtc == null)
             .OrderBy(c => c.CreatedAtUtc)
             .ToListAsync(ct);
@@ -18,29 +19,28 @@ public sealed class MfaRecoveryCodeRepository : IMfaRecoveryCodeRepository
     public Task<int> CountUnusedAsync(Guid userId, CancellationToken ct)
         => _context.MfaRecoveryCodes.CountAsync(c => c.UserId == userId && c.UsedAtUtc == null, ct);
 
-    public async Task ReplaceAllAsync(Guid userId, IReadOnlyList<MfaRecoveryCode> codes, CancellationToken ct)
+    public async Task StageReplacementAsync(Guid userId, IReadOnlyList<MfaRecoveryCode> codes, CancellationToken ct)
+    {
+        await StageRemovalOfAllAsync(userId, ct);
+        _context.MfaRecoveryCodes.AddRange(codes);
+    }
+
+    public async Task StageRemovalOfAllAsync(Guid userId, CancellationToken ct)
     {
         var existing = await _context.MfaRecoveryCodes.Where(c => c.UserId == userId).ToListAsync(ct);
         _context.MfaRecoveryCodes.RemoveRange(existing);
-        await _context.MfaRecoveryCodes.AddRangeAsync(codes, ct);
-        await _context.SaveChangesAsync(ct);
     }
 
-    public async Task MarkUsedAsync(MfaRecoveryCode code, CancellationToken ct)
+    public async Task<bool> TryRedeemAsync(MfaRecoveryCode code, DateTimeOffset usedAtUtc, CancellationToken ct)
     {
-        _context.MfaRecoveryCodes.Update(code);
-        await _context.SaveChangesAsync(ct);
-    }
-
-    public async Task DeleteAllAsync(Guid userId, CancellationToken ct)
-    {
-        var existing = await _context.MfaRecoveryCodes.Where(c => c.UserId == userId).ToListAsync(ct);
-        if (existing.Count == 0)
+        var redeemed = await _context.MfaRecoveryCodes
+            .Where(c => c.Id == code.Id && c.UsedAtUtc == null)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(c => c.UsedAtUtc, usedAtUtc), ct) == 1;
+        if (redeemed)
         {
-            return;
+            code.UsedAtUtc = usedAtUtc;
         }
 
-        _context.MfaRecoveryCodes.RemoveRange(existing);
-        await _context.SaveChangesAsync(ct);
+        return redeemed;
     }
 }
