@@ -25,4 +25,5 @@ docs/
 # Local key rings / license files
 keyring/
 license.key
+evaluation/.local/
 sbom/
