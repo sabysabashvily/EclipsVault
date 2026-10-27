@@ -60,6 +60,8 @@ public sealed partial class VaultFixture : IAsyncLifetime
     private WebApplicationFactory<Program>? _factory;
     private Task<HttpClient>? _adminClient;
 
+    public string? RedisConfiguration { get; init; }
+
     public async Task InitializeAsync()
     {
         await _sql.StartAsync();
@@ -71,6 +73,13 @@ public sealed partial class VaultFixture : IAsyncLifetime
         SetEnvironment("ECLIPSVAULT_AUDIT_SIGNING_KEY", Convert.ToBase64String(signingKey.ExportPkcs8PrivateKey()));
         SetEnvironment("DataProtection__KeyRingPath", _keyRing.FullName);
         SetEnvironment("Seed__AdminPassword", _adminPassword);
+        if (RedisConfiguration is not null)
+        {
+            SetEnvironment("Redis__Enabled", "true");
+            SetEnvironment("Redis__Configuration", RedisConfiguration + ",asyncTimeout=1000,syncTimeout=1000");
+            SetEnvironment("Redis__AllowUnauthenticated", "true");
+            SetEnvironment("Redis__SessionIncarnation", "before-recovery");
+        }
         // The single-node install with no deploy pipeline, which lets the vault apply its own migrations.
         SetEnvironment("Database__MigrateOnStartup", "true");
         // Register the production OIDC correlation cookie for HTTP callback scoping tests.
@@ -134,6 +143,8 @@ public sealed partial class VaultFixture : IAsyncLifetime
         AllowAutoRedirect = false,
         HandleCookies = true,
     });
+
+    public Task<HttpContext> SendAsync(Action<HttpContext> configure) => _factory!.Server.SendAsync(configure);
 
     /// <summary>
     /// The bootstrap administrator's session, signed in once per run through the vault's real sign-in:

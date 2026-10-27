@@ -60,14 +60,12 @@ public sealed class SessionApiTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task Two_accounts_list_and_revoke_only_their_own_devices_even_with_injected_account_parameters()
+    public async Task Two_accounts_list_only_their_own_devices_even_with_injected_account_parameters()
     {
         var account = await SessionAccount.CreateAsync(vault, "it-sessions-scope-a", "198.51.100.172");
         var otherAccount = await SessionAccount.CreateAsync(vault, "it-sessions-scope-b", "198.51.100.173");
         var device = await account.OpenDeviceAsync(0, "198.51.100.174");
         var otherDevice = await otherAccount.OpenDeviceAsync(0, "198.51.100.175");
-        var sessionId = (await SessionApi.CurrentAsync(device)).SessionId;
-        var otherSessionId = (await SessionApi.CurrentAsync(otherDevice)).SessionId;
         var accountId = SessionApi.PrincipalOf(vault, account.Browser).GetUserId();
         var otherAccountId = SessionApi.PrincipalOf(vault, otherAccount.Browser).GetUserId();
         var claimingOtherAccount = $"?userId={otherAccountId}&accountId={otherAccountId}&username=it-sessions-scope-b&issuer={otherAccountId}";
@@ -81,6 +79,22 @@ public sealed class SessionApiTests(VaultFixture vault)
         Assert.DoesNotContain("198.51.100.175", listedDevices);
         Assert.Contains("198.51.100.175", otherListedDevices);
         Assert.DoesNotContain("198.51.100.174", otherListedDevices);
+    }
+
+    [Fact]
+    public async Task Two_accounts_revoke_only_their_own_devices_even_with_injected_account_parameters()
+    {
+        var account = await SessionAccount.CreateAsync(vault, "it-sessions-revoke-scope-a", "198.18.241.172");
+        var otherAccount = await SessionAccount.CreateAsync(vault, "it-sessions-revoke-scope-b", "198.18.241.173");
+        var device = await account.OpenDeviceAsync(0, "198.18.241.174");
+        var otherDevice = await otherAccount.OpenDeviceAsync(0, "198.18.241.175");
+        var sessionId = (await SessionApi.CurrentAsync(device)).SessionId;
+        var otherSessionId = (await SessionApi.CurrentAsync(otherDevice)).SessionId;
+        var accountId = SessionApi.PrincipalOf(vault, account.Browser).GetUserId();
+        var otherAccountId = SessionApi.PrincipalOf(vault, otherAccount.Browser).GetUserId();
+        var claimingOtherAccount = $"?userId={otherAccountId}&accountId={otherAccountId}&username=it-sessions-revoke-scope-b&issuer={otherAccountId}";
+        var claimingAccount = $"?userId={accountId}&accountId={accountId}&username=it-sessions-revoke-scope-a&issuer={accountId}";
+
         var before = await AuditTrail.HeadAsync(vault);
 
         await UiApiFailureContractTests.AssertProblemAsync(await UiApiRequest.WriteWithAntiforgeryAsync(account.Browser, HttpMethod.Delete, $"/api/ui/sessions/{otherSessionId}" + claimingOtherAccount), 404, "session_not_found");
@@ -163,7 +177,8 @@ public sealed class SessionApiTests(VaultFixture vault)
         var device = await SessionApi.CurrentAsync(other);
         var userId = SessionApi.PrincipalOf(vault, account.Browser).GetUserId();
         var registry = vault.Services.GetRequiredService<ISessionRegistry>();
-        await registry.RecordSeenAsync(new SessionObservation(userId, device.SessionId, device.Device, device.IpAddress,
+        var stamp = SessionApi.PrincipalOf(vault, other).GetSessionStampOrNull()!;
+        await registry.RecordSeenAsync(new SessionObservation(userId, device.SessionId, stamp, device.Device, device.IpAddress,
             new DateTimeOffset(device.LastSeenAtUtc).AddMinutes(1), DateTimeOffset.UtcNow.AddSeconds(-1)));
         var before = await AuditTrail.HeadAsync(vault);
 

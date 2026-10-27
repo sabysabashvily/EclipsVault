@@ -79,69 +79,9 @@ try
             var cookieDefaults = new CookieAuthenticationEvents();
             options.Events = new CookieAuthenticationEvents
             {
-                // Server-side kill switch: sessions revoked by the intrusion response
-                // die on their next request, regardless of cookie lifetime.
-                OnValidatePrincipal = async context =>
-                {
-                    var revocation = context.HttpContext.RequestServices.GetRequiredService<ISessionRevocationService>();
-
-                    var userIdClaim = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
-                    var authTimeClaim = context.Principal?.FindFirstValue(VaultClaimTypes.AuthTime);
-
-                    var isValid = false;
-                    if (Guid.TryParse(userIdClaim, out var userId) &&
-                        long.TryParse(authTimeClaim, out var authTimeUnix))
-                    {
-                        // Account-wide kill switch: sessions issued at or before a revocation instant die.
-                        isValid = !await revocation.IsRevokedAsync(userId, DateTimeOffset.FromUnixTimeSeconds(authTimeUnix));
-
-                        // In-memory revocation is lost on restart, but account removal is durable.
-                        // A decryptable cookie must still belong to an existing, enabled account.
-                        if (isValid)
-                        {
-                            var users = context.HttpContext.RequestServices.GetRequiredService<IUserRepository>();
-                            isValid = await users.FindByIdAsync(userId, context.HttpContext.RequestAborted)
-                                is { IsDisabled: false };
-                        }
-
-                        // Per-session kill switch + activity tracking, for sessions that carry a session id.
-                        if (isValid && Guid.TryParse(context.Principal?.FindFirstValue(VaultClaimTypes.SessionId), out var sessionId))
-                        {
-                            var registry = context.HttpContext.RequestServices.GetRequiredService<ISessionRegistry>();
-                            if (await registry.IsRevokedAsync(userId, sessionId))
-                            {
-                                isValid = false;
-                            }
-                            else
-                            {
-                                // Last-seen is best-effort metadata — never fail a valid session over it.
-                                try
-                                {
-                                    var now = DateTimeOffset.UtcNow;
-                                    await registry.RecordSeenAsync(new SessionObservation(
-                                        userId,
-                                        sessionId,
-                                        UserAgentSummary.Describe(context.Request.Headers.UserAgent.ToString()),
-                                        context.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-                                        now,
-                                        now + SessionDefaults.InteractiveLifetime));
-                                }
-                                catch (Exception ex)
-                                {
-                                    context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
-                                        .CreateLogger("SessionRegistry")
-                                        .LogDebug(ex, "Non-fatal: could not record session activity");
-                                }
-                            }
-                        }
-                    }
-
-                    if (!isValid)
-                    {
-                        context.RejectPrincipal();
-                        await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-                    }
-                },
+                // Server-side kill switch: a revoked session dies on its next request, regardless of
+                // cookie lifetime.
+                OnValidatePrincipal = SessionCookieValidation.ValidatePrincipalAsync,
 
                 // The UI API answers with Problem Details, not a redirect to an HTML page (ADR-0006).
                 // A missing or revoked session is a 401 the Angular UI turns into a trip to sign-in.
@@ -163,6 +103,7 @@ try
             options.LoginPath = "/Account/Login";
             options.ExpireTimeSpan = TimeSpan.FromMinutes(6);
             options.SlidingExpiration = false;
+            options.Events.OnValidatePrincipal = SessionCookieValidation.ValidatePendingPrincipalAsync;
         })
         .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(AuthSchemes.ApiKey, _ => { });
 
@@ -246,6 +187,8 @@ try
     // AuthThrottleFilter on AccountController; the budget itself lives behind IAuthThrottle so it
     // can be shared by every replica (Redis) instead of granting each one its own (in-process).
     builder.Services.AddScoped<AuthThrottleFilter>();
+    builder.Services.AddScoped<SessionIssuer>();
+    builder.Services.AddScoped<AccountSignOut>();
 
     // Recover the real client IP behind a reverse proxy / load balancer. Without this,
     // every IP-based control — the auth rate limiter, the intrusion IP-blacklist, the
@@ -339,6 +282,8 @@ try
     app.UseHttpsRedirection();
     app.UseMiddleware<SecurityHeadersMiddleware>();
     app.UseStaticFiles();
+    // Before everything that reads the session store or the account, so it still works when they fail.
+    app.UseLocalSignOut();
     app.UseMiddleware<IpBlacklistMiddleware>();
     app.UseRouting();
     app.UseSession();

@@ -36,10 +36,11 @@ public sealed class MfaRecoveryService : IMfaRecoveryService
     public Task<int> CountRemainingAsync(Guid userId, CancellationToken ct)
         => _codes.CountUnusedAsync(userId, ct);
 
-    public async Task<IReadOnlyList<string>> GenerateAsync(Guid userId, CancellationToken ct)
+    public async Task<RecoveryCodeSet> GenerateAsync(Guid userId, long credentialGeneration, CancellationToken ct)
     {
         var user = await _users.FindByIdAsync(userId, ct)
                    ?? throw new InvalidOperationException($"User '{userId}' was not found.");
+        user.RequireCredentialGeneration(credentialGeneration);
 
         var now = _clock.GetUtcNow();
         var display = new List<string>(CodesPerSet);
@@ -64,10 +65,11 @@ public sealed class MfaRecoveryService : IMfaRecoveryService
         // Committed against the account as loaded above, so a replacement saved by another request in
         // the meantime refuses this one rather than leaving both new sets valid.
         await _codes.StageReplacementAsync(userId, entities, ct);
+        user.CredentialGeneration++;
         await _changes.CommitAsync(
             user, AuditAction.RecoveryCodesGenerated,
             $"{CodesPerSet} single-use MFA recovery codes generated; any previous codes invalidated", ct);
 
-        return display;
+        return new RecoveryCodeSet(display, user.CredentialGeneration);
     }
 }

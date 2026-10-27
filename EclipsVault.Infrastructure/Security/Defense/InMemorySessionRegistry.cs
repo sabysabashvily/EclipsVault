@@ -17,7 +17,7 @@ public sealed class InMemorySessionRegistry : ISessionRegistry
     private static readonly TimeSpan TombstoneSweepInterval = TimeSpan.FromMinutes(1);
 
     private sealed record Entry(
-        Guid SessionId, string Device, string IpAddress,
+        Guid SessionId, SessionStamp Stamp, string Device, string IpAddress,
         DateTimeOffset CreatedAtUtc, DateTimeOffset LastSeenAtUtc, DateTimeOffset ExpiresAtUtc);
 
     private readonly Lock _gate = new();
@@ -52,7 +52,7 @@ public sealed class InMemorySessionRegistry : ISessionRegistry
             if (!sessions.TryGetValue(observation.SessionId, out var existing))
             {
                 sessions.Add(observation.SessionId, new Entry(
-                    observation.SessionId, observation.Device, observation.IpAddress,
+                    observation.SessionId, observation.Stamp, observation.Device, observation.IpAddress,
                     observation.SeenAtUtc, observation.SeenAtUtc, observation.ExpiresAtUtc));
             }
             else if (observation.SeenAtUtc - existing.LastSeenAtUtc >= TouchThrottle)
@@ -69,7 +69,7 @@ public sealed class InMemorySessionRegistry : ISessionRegistry
         return Task.CompletedTask;
     }
 
-    public Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, CancellationToken ct = default)
+    public Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, SessionStamp current, CancellationToken ct = default)
     {
         lock (_gate)
         {
@@ -86,6 +86,7 @@ public sealed class InMemorySessionRegistry : ISessionRegistry
             }
 
             IReadOnlyList<ActiveSession> list = sessions.Values
+                .Where(entry => entry.Stamp == current)
                 .OrderByDescending(entry => entry.LastSeenAtUtc)
                 .Select(entry => new ActiveSession(
                     entry.SessionId, entry.Device, entry.IpAddress, entry.CreatedAtUtc, entry.LastSeenAtUtc))
@@ -111,6 +112,26 @@ public sealed class InMemorySessionRegistry : ISessionRegistry
 
         _logger.LogInformation("Session {SessionId} for user {UserId} was revoked", sessionId, userId);
         return Task.FromResult(true);
+    }
+
+    public Task<bool> TryRetireForReplacementAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            if (_revokedAt.ContainsKey((userId, sessionId)))
+            {
+                return Task.FromResult(false);
+            }
+
+            var now = _clock.GetUtcNow();
+            SweepStaleTombstones(now);
+            _revokedAt[(userId, sessionId)] = now;
+            if (_sessions.TryGetValue(userId, out var sessions))
+            {
+                sessions.Remove(sessionId);
+            }
+            return Task.FromResult(true);
+        }
     }
 
     private void SweepStaleTombstones(DateTimeOffset now)

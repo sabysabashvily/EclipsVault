@@ -15,6 +15,9 @@ internal static class Totp
 
     public static int SecondsLeftInStep() => StepSeconds - (int)(DateTimeOffset.UtcNow.ToUnixTimeSeconds() % StepSeconds);
 
+    /// <summary>A code for the next step, so it is newer than any code the sign-in already spent.</summary>
+    public static string NextCode(string base32Secret) => Code(base32Secret, CurrentStep() + 1);
+
     public static string Code(string base32Secret, long step)
     {
         Span<byte> counter = stackalloc byte[8];

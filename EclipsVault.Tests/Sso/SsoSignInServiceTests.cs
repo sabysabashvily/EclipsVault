@@ -4,6 +4,8 @@ using EclipsVault.Core.Application.Sso;
 using EclipsVault.Core.Application.Users;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Infrastructure.Security;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace EclipsVault.Tests.Sso;
@@ -33,6 +35,12 @@ public class SsoSignInServiceTests
         public Task<IReadOnlyList<string>> FindEmailsWithPrefixAsync(string localPrefix, string domain, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<string>>([]);
         public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult<User?>(null);
+        public Action<User> BeforeReload { get; init; } = _ => { };
+        public Task<bool> ReloadAsync(User user, CancellationToken ct)
+        {
+            BeforeReload(user);
+            return Task.FromResult(true);
+        }
         public Task<IReadOnlyList<User>> ListAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<User>>([]);
         public Task AddAsync(User user, CancellationToken ct) => Task.CompletedTask;
         public Task UpdateAsync(User user, CancellationToken ct) => Task.CompletedTask;
@@ -77,7 +85,41 @@ public class SsoSignInServiceTests
     private static (SsoSignInService Service, RecordingAudit Audit) Build(User? user, bool trustIdpMfa = false)
     {
         var audit = new RecordingAudit();
-        return (new SsoSignInService(new FakeUsers(user), audit, new SsoPolicy(trustIdpMfa)), audit);
+        var revocation = new InMemorySessionRevocationService(NullLogger<InMemorySessionRevocationService>.Instance);
+        return (new SsoSignInService(new FakeUsers(user), audit, revocation, new SsoPolicy(trustIdpMfa)), audit);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Sso_refuses_an_identity_matched_before_its_accounts_credentials_changed(bool trustIdpMfa)
+    {
+        var account = VaultUser();
+        var users = new FakeUsers(account) { BeforeReload = user => user.CredentialGeneration = 1 };
+        var audit = new RecordingAudit();
+        var revocation = new InMemorySessionRevocationService(NullLogger<InMemorySessionRevocationService>.Instance);
+        var service = new SsoSignInService(users, audit, revocation, new SsoPolicy(trustIdpMfa));
+
+        var result = await service.SignInAsync(Identity(amr: ["mfa"]), CancellationToken.None);
+
+        Assert.Equal(SsoOutcome.NoVaultAccount, result.Outcome);
+        Assert.Null(result.Stamp);
+        Assert.Equal(AuditAction.SsoSignInRefused, Assert.Single(audit.Entries).Action);
+    }
+
+    [Fact]
+    public async Task Sso_refuses_a_mailbox_that_no_longer_matches_after_the_account_reload()
+    {
+        var account = VaultUser();
+        var users = new FakeUsers(account) { BeforeReload = user => user.Email = "replacement@example.test" };
+        var audit = new RecordingAudit();
+        var revocation = new InMemorySessionRevocationService(NullLogger<InMemorySessionRevocationService>.Instance);
+        var service = new SsoSignInService(users, audit, revocation, new SsoPolicy(true));
+
+        var result = await service.SignInAsync(Identity(amr: ["mfa"]), CancellationToken.None);
+
+        Assert.Equal(SsoOutcome.NoVaultAccount, result.Outcome);
+        Assert.Null(result.Stamp);
     }
 
     [Fact]

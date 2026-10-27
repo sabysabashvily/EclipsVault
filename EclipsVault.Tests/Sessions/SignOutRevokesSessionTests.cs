@@ -44,10 +44,14 @@ public class SignOutRevokesSessionTests
     private sealed class WriteFailingRegistry : ISessionRegistry
     {
         public Task RecordSeenAsync(SessionObservation observation, CancellationToken ct = default) => Task.CompletedTask;
-        public Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<ActiveSession>>([]);
+        public Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, SessionStamp current, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<ActiveSession>>([]);
         public Task<bool> RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new InvalidOperationException("OOM command not allowed");
+        public Task<bool> TryRetireForReplacementAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new NotSupportedException();
+
         public Task<bool> IsRevokedAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => Task.FromResult(false);
     }
+
+    private static readonly SessionStamp Stamp = new(0, "current-version");
 
     private static (AccountController Controller, RecordingAuthentication Auth) SignedInController(
         ISessionRegistry sessions, params Claim[] claims)
@@ -61,7 +65,7 @@ public class SignOutRevokesSessionTests
 
         // Logout touches only the session registry and the authentication service; the other
         // collaborators belong to the sign-in flows and are never reached here.
-        var controller = new AccountController(null!, null!, null!, sessions, null!, null!, null!,
+        var controller = new AccountController(null!, null!, null!, sessions, null!, null!, null!, null!,
             NullLogger<AccountController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = http }
@@ -78,7 +82,7 @@ public class SignOutRevokesSessionTests
         var userId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
         await sessions.RecordSeenAsync(new SessionObservation(
-            userId, sessionId, "Chrome on macOS", "203.0.113.5", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1)));
+            userId, sessionId, Stamp, "Chrome on macOS", "203.0.113.5", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1)));
         var (controller, auth) = SignedInController(sessions,
             new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
             new Claim(VaultClaimTypes.SessionId, sessionId.ToString()));
@@ -87,7 +91,7 @@ public class SignOutRevokesSessionTests
 
         Assert.True(auth.SignedOut);
         Assert.True(await sessions.IsRevokedAsync(userId, sessionId));
-        Assert.Empty(await sessions.ListAsync(userId));
+        Assert.Empty(await sessions.ListAsync(userId, Stamp));
     }
 
     [Fact]

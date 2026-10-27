@@ -20,6 +20,8 @@ namespace EclipsVault.Infrastructure.Security.WebAuthn;
 public sealed class PasskeyService : IPasskeyService
 {
     private const int ChallengeBytes = 32;
+    private const int Es256Algorithm = -7;
+    private const int Rs256Algorithm = -257;
     private const int CeremonyTimeoutMs = 120_000;
 
     private readonly IUserRepository _users;
@@ -27,6 +29,7 @@ public sealed class PasskeyService : IPasskeyService
     private readonly IAccountChangeCommitter _changes;
     private readonly IAuthenticationAttempt _attempt;
     private readonly AuthenticationFailures _failures;
+    private readonly ISessionRevocationService _revocation;
     private readonly WebAuthnOptions _options;
     private readonly TimeProvider _clock;
 
@@ -36,6 +39,7 @@ public sealed class PasskeyService : IPasskeyService
         IAccountChangeCommitter changes,
         IAuthenticationAttempt attempt,
         AuthenticationFailures failures,
+        ISessionRevocationService revocation,
         IOptions<WebAuthnOptions> options,
         TimeProvider clock)
     {
@@ -44,6 +48,7 @@ public sealed class PasskeyService : IPasskeyService
         _changes = changes;
         _attempt = attempt;
         _failures = failures;
+        _revocation = revocation;
         _options = options.Value;
         _clock = clock;
     }
@@ -68,8 +73,8 @@ public sealed class PasskeyService : IPasskeyService
             challenge = Base64Url.EncodeToString(challenge),
             pubKeyCredParams = new[]
             {
-                new { type = "public-key", alg = -7 },
-                new { type = "public-key", alg = -257 }
+                new { type = "public-key", alg = Es256Algorithm },
+                new { type = "public-key", alg = Rs256Algorithm }
             },
             timeout = CeremonyTimeoutMs,
             excludeCredentials = existing
@@ -83,12 +88,17 @@ public sealed class PasskeyService : IPasskeyService
     }
 
     public async Task<PasskeyRegistrationResult> CompleteRegistrationAsync(
-        Guid userId, string expectedChallenge, string responseJson, string? nickname, CancellationToken ct)
+        Guid userId, long credentialGeneration, string expectedChallenge, string responseJson, string? nickname, CancellationToken ct)
     {
         var user = await _users.FindByIdAsync(userId, ct);
         if (user is null)
         {
             return PasskeyRegistrationResult.Failed("Your account could not be loaded.");
+        }
+
+        if (user.CredentialGeneration != credentialGeneration)
+        {
+            return PasskeyRegistrationResult.Failed("Your sign-in details changed while this passkey was being added. Try again.");
         }
 
         byte[] rawId, clientDataJson, attestationObject;
@@ -142,8 +152,9 @@ public sealed class PasskeyService : IPasskeyService
         };
 
         _passkeys.StageAddition(entity);
+        user.CredentialGeneration++;
         await _changes.CommitAsync(user, AuditAction.PasskeyRegistered, $"Passkey '{entity.Nickname}' registered", ct);
-        return PasskeyRegistrationResult.Ok;
+        return PasskeyRegistrationResult.Registered(user.CredentialGeneration);
     }
 
     public async Task<PasskeyCeremonyOptions> BeginAssertionAsync(string? usernameOrEmail, CancellationToken ct)
@@ -153,13 +164,20 @@ public sealed class PasskeyService : IPasskeyService
         // A named user scopes the allowed credentials; an unknown or omitted name yields an
         // empty list (discoverable-credential mode), which also avoids leaking account existence.
         IReadOnlyList<byte[]> allowed = [];
+        PasskeyNamedAccount? namedAccount = null;
         if (!string.IsNullOrWhiteSpace(usernameOrEmail))
         {
             var user = await _users.FindByUsernameOrEmailAsync(usernameOrEmail.Trim(), ct);
             if (user is not null)
             {
+                var version = await _revocation.CaptureAsync(user.Id, ct);
+                if (!await _users.ReloadAsync(user, ct))
+                {
+                    return new PasskeyCeremonyOptions("{}", Base64Url.EncodeToString(challenge));
+                }
                 var creds = await _passkeys.ListForUserAsync(user.Id, ct);
                 allowed = creds.Select(c => c.CredentialId).ToList();
+                namedAccount = new PasskeyNamedAccount(user.Id, new SessionStamp(user.CredentialGeneration, version));
             }
         }
 
@@ -174,10 +192,11 @@ public sealed class PasskeyService : IPasskeyService
             userVerification = "required"
         };
 
-        return new PasskeyCeremonyOptions(JsonSerializer.Serialize(options), Base64Url.EncodeToString(challenge));
+        return new PasskeyCeremonyOptions(JsonSerializer.Serialize(options), Base64Url.EncodeToString(challenge), namedAccount);
     }
 
-    public async Task<PasskeyAssertionResult> CompleteAssertionAsync(string expectedChallenge, string responseJson, CancellationToken ct)
+    public async Task<PasskeyAssertionResult> CompleteAssertionAsync(
+        string expectedChallenge, PasskeyNamedAccount? namedAccount, string responseJson, CancellationToken ct)
     {
         byte[] rawId, clientDataJson, authenticatorData, signature;
         try
@@ -205,14 +224,32 @@ public sealed class PasskeyService : IPasskeyService
             return PasskeyAssertionResult.Failed("This passkey is not recognized.");
         }
 
+        // A named sign-in proves only the account it named, so another account's passkey cannot finish it.
+        if (namedAccount is not null && namedAccount.AccountId != stored.UserId)
+        {
+            return PasskeyAssertionResult.Failed("This passkey could not be verified.");
+        }
+
         var user = await _users.FindByIdAsync(stored.UserId, ct);
         if (user is null)
         {
             return PasskeyAssertionResult.Failed("The account for this passkey no longer exists.");
         }
 
+        // Without a name, the credential has just identified its account, so its generation is taken
+        // now, before the assertion is verified. Both are captured before the attempt reloads the
+        // account, so a change committed since then refuses this sign-in instead of passing it under
+        // a newer stamp.
+        var credentialGeneration = namedAccount?.Stamp.CredentialGeneration ?? user.CredentialGeneration;
+        var revocationVersion = namedAccount?.Stamp.RevocationVersion ?? await _revocation.CaptureAsync(user.Id, ct);
         return await _attempt.RunAsync(user, async token =>
         {
+            if (user.CredentialGeneration != credentialGeneration
+                || await _revocation.FindAsync(user.Id, token) != revocationVersion)
+            {
+                return PasskeyAssertionResult.Failed("This sign-in expired. Try again.");
+            }
+
             if (user.IsDisabled)
             {
                 _attempt.RecordUserEvent(AuditAction.LoginFailed, user, "Passkey sign-in blocked: account is disabled");
@@ -262,7 +299,7 @@ public sealed class PasskeyService : IPasskeyService
 
             await _failures.ResetAsync(user, token);
             _attempt.RecordUserEvent(AuditAction.PasskeyLogin, user, "Passwordless sign-in with a passkey");
-            return PasskeyAssertionResult.Succeeded(Map(user));
+            return PasskeyAssertionResult.Succeeded(Map(user), new SessionStamp(credentialGeneration, revocationVersion));
         }, ct);
     }
 
@@ -274,17 +311,20 @@ public sealed class PasskeyService : IPasskeyService
             .ToList();
     }
 
-    public async Task<bool> RemoveAsync(Guid userId, Guid passkeyId, CancellationToken ct)
+    public async Task<long?> RemoveAsync(Guid userId, long credentialGeneration, Guid passkeyId, CancellationToken ct)
     {
         var user = await _users.FindByIdAsync(userId, ct);
         var credential = await _passkeys.FindByIdForUserAsync(passkeyId, userId, ct);
         if (user is null || credential is null)
         {
-            return false;
+            return null;
         }
 
+        user.RequireCredentialGeneration(credentialGeneration);
         _passkeys.StageRemoval(credential);
-        return await _changes.CommitAsync(user, AuditAction.PasskeyRemoved, $"Passkey '{credential.Nickname ?? "Passkey"}' removed", ct);
+        user.CredentialGeneration++;
+        await _changes.CommitAsync(user, AuditAction.PasskeyRemoved, $"Passkey '{credential.Nickname ?? "Passkey"}' removed", ct);
+        return user.CredentialGeneration;
     }
 
     /// <summary>Validates ceremony type, challenge, and origin from the raw clientDataJSON. Returns an error message, or null when valid.</summary>

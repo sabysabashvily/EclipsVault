@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using EclipsVault.Core.Domain;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
 
@@ -18,11 +19,9 @@ public sealed partial class ProfileService : IProfileService
     private readonly IMfaRecoveryCodeRepository _recoveryCodes;
     private readonly IBreachedPasswordScreen _breachScreen;
     private readonly INotificationService _notifications;
-    private readonly ISessionRevocationService _revocation;
     private readonly IAccountChangeCommitter _changes;
     private readonly IAuditSink _audit;
     private readonly IAuditContext _actor;
-    private readonly TimeProvider _clock;
 
     public ProfileService(
         IUserRepository users,
@@ -31,11 +30,9 @@ public sealed partial class ProfileService : IProfileService
         IMfaRecoveryCodeRepository recoveryCodes,
         IBreachedPasswordScreen breachScreen,
         INotificationService notifications,
-        ISessionRevocationService revocation,
         IAccountChangeCommitter changes,
         IAuditSink audit,
-        IAuditContext actor,
-        TimeProvider clock)
+        IAuditContext actor)
     {
         _users = users;
         _hasher = hasher;
@@ -43,11 +40,9 @@ public sealed partial class ProfileService : IProfileService
         _recoveryCodes = recoveryCodes;
         _breachScreen = breachScreen;
         _notifications = notifications;
-        _revocation = revocation;
         _changes = changes;
         _audit = audit;
         _actor = actor;
-        _clock = clock;
     }
 
     private Task AuditUserAsync(AuditAction action, Guid? userId, string username, string? details, CancellationToken ct)
@@ -62,10 +57,11 @@ public sealed partial class ProfileService : IProfileService
                 user.Clearance, user.ProjectKey, user.TotpEnabled, user.AvatarUpdatedAtUtc is not null);
     }
 
-    public async Task<ProfileDto> UpdateAsync(Guid userId, string displayName, string email, CancellationToken ct)
+    public async Task<ProfileUpdate> UpdateAsync(Guid userId, long credentialGeneration, string displayName, string email, CancellationToken ct)
     {
         var user = await _users.FindByIdAsync(userId, ct)
                    ?? throw new ProfileException("Your account could not be loaded.");
+        user.RequireCredentialGeneration(credentialGeneration);
 
         displayName = displayName.Trim();
         email = email.Trim();
@@ -85,18 +81,28 @@ public sealed partial class ProfileService : IProfileService
             throw new EmailAddressTakenException();
         }
 
+        // Email is a sign-in identity; a new spelling of the same address is not a new one.
+        var emailChanged = user.NormalizedEmail != EmailIdentity.Normalize(email);
         user.DisplayName = displayName;
         user.Email = email;
+        if (emailChanged)
+        {
+            user.CredentialGeneration++;
+        }
+
         await _changes.CommitAsync(user, AuditAction.ProfileUpdated, "Display name / email updated", ct);
 
-        return new ProfileDto(user.Id, user.Username, user.DisplayName, user.Email,
+        var profile = new ProfileDto(user.Id, user.Username, user.DisplayName, user.Email,
             user.Clearance, user.ProjectKey, user.TotpEnabled, user.AvatarUpdatedAtUtc is not null);
+        return new ProfileUpdate(profile, emailChanged, user.CredentialGeneration);
     }
 
-    public async Task ChangePasswordAsync(Guid userId, string currentPassword, string newPassword, CancellationToken ct)
+    public async Task<long> ChangePasswordAsync(
+        Guid userId, long credentialGeneration, string currentPassword, string newPassword, CancellationToken ct)
     {
         var user = await _users.FindByIdAsync(userId, ct)
                    ?? throw new ProfileException("Your account could not be loaded.");
+        user.RequireCredentialGeneration(credentialGeneration);
 
         if (!_hasher.Verify(currentPassword, user.PasswordHash, user.PasswordSalt))
         {
@@ -120,20 +126,15 @@ public sealed partial class ProfileService : IProfileService
             throw new ProfileException("This password has appeared in a known data breach. Choose a different one.");
         }
 
-        // A changed password must not leave a session opened with the old one alive. Revoke every
-        // session issued up to now — this device included; the caller's own cookie is then re-issued
-        // with a later strong-auth time by the controller, so only the *other* devices are turned
-        // out. Doing it here rather than at the call site keeps a stolen session from surviving a
-        // password reset no matter which entry point triggers the change. Revoked before the commit,
-        // so the event the commit records is true when it says so; a commit that then fails has
-        // only signed sessions out.
-        await _revocation.RevokeAsync(user.Id, _clock.GetUtcNow(), ct);
-
         var hashed = _hasher.Hash(newPassword);
         user.PasswordHash = hashed.Hash;
         user.PasswordSalt = hashed.Salt;
+        // Committed with the password, so no session the old password opened survives the change,
+        // whether or not the session store is reachable.
+        user.CredentialGeneration++;
         await _changes.CommitAsync(user, AuditAction.PasswordChanged, "Password changed by owner; sessions revoked", ct);
         await _notifications.NotifyPasswordChangedAsync(user.Id, ct);
+        return user.CredentialGeneration;
     }
 
     public Task<byte[]?> GetAvatarPngAsync(Guid userId, CancellationToken ct)
@@ -144,7 +145,7 @@ public sealed partial class ProfileService : IProfileService
         var user = await _users.FindByIdAsync(userId, ct)
                    ?? throw new ProfileException("Your account could not be loaded.");
 
-        var png = _avatar.ProcessToPng(uploadedBytes); // validates + re-encodes; throws ProfileException if unreadable
+        var png = _avatar.ProcessToPng(uploadedBytes);
         await _users.StageAvatarAsync(user, png, ct);
         await _changes.CommitAsync(user, AuditAction.AvatarUpdated, "Profile picture updated", ct);
     }
@@ -158,10 +159,11 @@ public sealed partial class ProfileService : IProfileService
         await _changes.CommitAsync(user, AuditAction.AvatarRemoved, "Profile picture removed", ct);
     }
 
-    public async Task ResetOwnMfaAsync(Guid userId, CancellationToken ct)
+    public async Task ResetOwnMfaAsync(Guid userId, long credentialGeneration, CancellationToken ct)
     {
         var user = await _users.FindByIdAsync(userId, ct)
                    ?? throw new ProfileException("Your account could not be loaded.");
+        user.RequireCredentialGeneration(credentialGeneration);
 
         // Load the rows before changing the account, so a failed query leaves no reset staged.
         await _recoveryCodes.StageRemovalOfAllAsync(user.Id, ct);
@@ -169,6 +171,7 @@ public sealed partial class ProfileService : IProfileService
         user.TotpEnabled = false;
         // The replay marker belongs to the retired authenticator, so it goes with it.
         user.LastTotpStep = null;
+        user.CredentialGeneration++;
         await _changes.CommitAsync(user, AuditAction.SelfMfaReset, "Authenticator reset by owner; re-enrollment required", ct);
     }
 

@@ -82,7 +82,7 @@ public sealed class SessionApiRevocationTests
         Assert.Equal("revoked_unrecorded", problem.Code);
         Assert.Null(problem.SignedOut);
         Assert.True(await sessions.IsRevokedAsync(userId, device));
-        Assert.Empty(await sessions.ListAsync(userId));
+        Assert.Empty(await sessions.ListAsync(userId, Stamp));
         Assert.Equal(device, Assert.Single(audit.Attempts).ResourceId);
     }
 
@@ -115,7 +115,7 @@ public sealed class SessionApiRevocationTests
         var problem = Assert.IsType<SessionProblemResponse>(response.Value);
         Assert.Equal("revoked_unrecorded", problem.Code);
         Assert.Equal(2, problem.SignedOut);
-        Assert.Equal(current, Assert.Single(await sessions.ListAsync(userId)).SessionId);
+        Assert.Equal(current, Assert.Single(await sessions.ListAsync(userId, Stamp)).SessionId);
         Assert.Equal(2, audit.Attempts.Count);
         Assert.Contains(audit.Attempts, entry => entry.ResourceId == first);
         Assert.Contains(audit.Attempts, entry => entry.ResourceId == second);
@@ -168,11 +168,13 @@ public sealed class SessionApiRevocationTests
         Assert.Equal(2, audit.Recorded.Count);
         Assert.Contains(audit.Recorded, entry => entry.ResourceId == first);
         Assert.Contains(audit.Recorded, entry => entry.ResourceId == second);
-        Assert.Equal(current, Assert.Single(await sessions.ListAsync(userId)).SessionId);
+        Assert.Equal(current, Assert.Single(await sessions.ListAsync(userId, Stamp)).SessionId);
     }
 
+    private static readonly SessionStamp Stamp = new(0, "current-version");
+
     private static SessionsController Controller(ISessionRegistry sessions, IAuditSink audit, Guid userId, Guid current)
-        => new(sessions, audit, null!, NullLogger<SessionsController>.Instance)
+        => new(sessions, new DevicesUnderStamp(sessions), audit, null!, NullLogger<SessionsController>.Instance)
         {
             ControllerContext = new ControllerContext
             {
@@ -188,7 +190,7 @@ public sealed class SessionApiRevocationTests
         };
 
     private static Task RecordAsync(ISessionRegistry sessions, Guid userId, Guid device)
-        => sessions.RecordSeenAsync(new SessionObservation(userId, device, "Chrome on macOS", "198.51.100.1",
+        => sessions.RecordSeenAsync(new SessionObservation(userId, device, Stamp, "Chrome on macOS", "198.51.100.1",
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1)));
 
     private sealed class FailingAudit : IAuditSink
@@ -219,7 +221,7 @@ public sealed class SessionApiRevocationTests
     {
         private readonly HashSet<Guid> _revoked = [];
 
-        public Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, CancellationToken ct = default)
+        public Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, SessionStamp stamp, CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<ActiveSession>>(
                 [Device(current), Device(first), Device(unavailable), Device(last)]);
 
@@ -233,6 +235,8 @@ public sealed class SessionApiRevocationTests
             return Task.FromResult(_revoked.Add(sessionId));
         }
 
+        public Task<bool> TryRetireForReplacementAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new NotSupportedException();
+
         public Task<bool> IsRevokedAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
             => Task.FromResult(_revoked.Contains(sessionId));
 
@@ -241,6 +245,13 @@ public sealed class SessionApiRevocationTests
 
         private static ActiveSession Device(Guid id)
             => new(id, "Chrome", "198.51.100.1", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+    }
+
+    // The account's current stamp is the one every device here was recorded under.
+    private sealed class DevicesUnderStamp(ISessionRegistry sessions) : ISignedInDevices
+    {
+        public Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, CancellationToken ct)
+            => sessions.ListAsync(userId, Stamp, ct);
     }
 
     private sealed class DelayedAudit : IAuditSink

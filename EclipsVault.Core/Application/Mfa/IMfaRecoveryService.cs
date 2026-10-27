@@ -13,7 +13,12 @@ public interface IMfaRecoveryService
 
     /// <summary>
     /// Generates a fresh set, invalidating any codes the user held before, and returns the
-    /// plaintext codes to display exactly once. Audited.
+    /// plaintext codes to display exactly once. Audited. A new set changes how the account signs in,
+    /// so it advances the credential generation of a session issued under <paramref name="credentialGeneration"/>.
     /// </summary>
-    Task<IReadOnlyList<string>> GenerateAsync(Guid userId, CancellationToken ct);
+    /// <exception cref="Domain.Exceptions.StaleProofException">The account's credentials changed after the session was issued.</exception>
+    Task<RecoveryCodeSet> GenerateAsync(Guid userId, long credentialGeneration, CancellationToken ct);
 }
+
+/// <summary>A newly generated set, shown once, and the credential generation it committed.</summary>
+public sealed record RecoveryCodeSet(IReadOnlyList<string> Codes, long CredentialGeneration);

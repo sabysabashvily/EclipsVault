@@ -75,6 +75,13 @@ public sealed class UserRepository : IUserRepository
     public Task<User?> FindByIdAsync(Guid id, CancellationToken ct)
         => _context.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
 
+    public async Task<bool> ReloadAsync(User user, CancellationToken ct)
+    {
+        var account = _context.Entry(user);
+        await account.ReloadAsync(ct);
+        return account.State != EntityState.Detached;
+    }
+
     public async Task<IReadOnlyList<User>> ListAsync(CancellationToken ct)
         => await _context.Users.AsNoTracking().OrderBy(u => u.Username).ToListAsync(ct);
 

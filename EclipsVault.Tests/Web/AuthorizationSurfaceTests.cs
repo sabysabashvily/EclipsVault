@@ -1,4 +1,5 @@
 using System.Reflection;
+using EclipsVault.Web.Authentication;
 using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Controllers;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -10,28 +11,17 @@ using Xunit;
 namespace EclipsVault.Tests.Web;
 
 /// <summary>
-/// Every endpoint in this vault is either behind a session or deliberately open, and which one it is
-/// must never be an accident.
-///
-/// <para>
-/// Before these tests, twelve of the twenty controllers — including the ones serving secrets, the
-/// audit trail, and the personal-data export — carried no authorization attribute at all. They were
-/// protected, but only by the default-deny fallback policy configured in <c>Program.cs</c>: three
-/// lines, in a different file, that no controller referenced. Deleting or reordering them during a
-/// refactor would have exposed all twelve to anonymous callers, and every test in this suite would
-/// still have passed, because nothing anywhere asserted the relationship.
-/// </para>
-///
-/// <para>
-/// So the protection is now stated twice — <c>[Authorize]</c> on the controllers themselves, plus
-/// the fallback policy as a backstop for anything new that forgets — and the anonymous surface is
-/// pinned below by name. <b>A new <c>[AllowAnonymous]</c> fails this test until someone adds it to
-/// the list</b>, which is the point: opening an endpoint to the internet should cost a deliberate
-/// edit to a file that says so, not a one-line attribute nobody reviews.
-/// </para>
+/// The fallback policy is a backstop; each controller must state its authorization explicitly,
+/// and opening an anonymous action or terminal branch requires an explicit allowlist entry here.
 /// </summary>
 public class AuthorizationSurfaceTests
 {
+    private static readonly string[] IntentionallyAnonymousTerminalPaths = ["/local-sign-out"];
+
+    [Fact]
+    public void The_local_cookie_branch_has_an_explicit_anonymous_allowlist_entry()
+        => Assert.Equal(LocalSignOut.Path, Assert.Single(IntentionallyAnonymousTerminalPaths));
+
     /// <summary>
     /// The complete set of actions reachable without a session, as <c>Controller.Action</c>.
     /// Every one of them by definition runs before a session exists: the password sign-in, the

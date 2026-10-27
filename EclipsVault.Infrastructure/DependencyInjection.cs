@@ -142,7 +142,7 @@ public static class DependencyInjection
             RedisConnectionGuard.RequireAuthentication(redisOptions);
 
             // One multiplexer per process (the expensive, thread-safe singleton). Connecting here
-            // fails fast at startup if the shared store is unreachable — it now holds security state.
+            // fails fast at startup if the shared store holding security state is unreachable.
             services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisOptions.Configuration));
             services.AddSingleton<ISecretCache, RedisSecretCache>();
             services.AddSingleton<IIpBlacklist, RedisIpBlacklist>();
@@ -214,6 +214,7 @@ public static class DependencyInjection
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IActivityService, ActivityService>();
         services.AddScoped<ISignInHistoryService, SignInHistoryService>();
+        services.AddScoped<ISignedInDevices, SignedInDevices>();
         services.AddScoped<ISecurityCheckupService, SecurityCheckupService>();
         services.AddScoped<IPersonalDataExportService, PersonalDataExportService>();
         services.AddScoped<IPasskeyService, PasskeyService>();

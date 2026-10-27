@@ -30,7 +30,7 @@ public abstract class AccountChangeRaceTests(AccountChangeDatabases databases)
             Assert.True(await signIn.SecondFactors.TryAcceptAuthenticatorCodeAsync(current, Totp.Code(account.TotpSecret!, step), default));
         }
 
-        await Assert.ThrowsAsync<AccountChangedException>(() => stale.Profile.ResetOwnMfaAsync(account.Id, default));
+        await Assert.ThrowsAsync<AccountChangedException>(() => stale.Profile.ResetOwnMfaAsync(account.Id, 0, default));
 
         await using var check = databases.NewRequest();
         var stored = await check.LoadAsync(account.Id);
@@ -64,7 +64,7 @@ public abstract class AccountChangeRaceTests(AccountChangeDatabases databases)
             }, default));
         }
 
-        await Assert.ThrowsAsync<AccountChangedException>(() => stale.Profile.ResetOwnMfaAsync(account.Id, default));
+        await Assert.ThrowsAsync<AccountChangedException>(() => stale.Profile.ResetOwnMfaAsync(account.Id, 0, default));
 
         await using var check = databases.NewRequest();
         var stored = await check.LoadAsync(account.Id);
@@ -212,7 +212,7 @@ public abstract class AccountChangeRaceTests(AccountChangeDatabases databases)
     {
         var account = await databases.CreateEnrolledAccountAsync("it-race-same-recovery-code");
         await using var setup = databases.NewRequest();
-        var codes = await setup.Recovery.GenerateAsync(account.Id, default);
+        var codes = (await setup.Recovery.GenerateAsync(account.Id, 0, default)).Codes;
         await using var first = databases.NewRequest();
         await using var second = databases.NewRequest();
         var firstCopy = await first.LoadAsync(account.Id);
@@ -235,10 +235,10 @@ public abstract class AccountChangeRaceTests(AccountChangeDatabases databases)
         await stale.LoadAsync(account.Id);
         await using (var other = databases.NewRequest())
         {
-            await other.Recovery.GenerateAsync(account.Id, default);
+            await other.Recovery.GenerateAsync(account.Id, 0, default);
         }
 
-        await Assert.ThrowsAsync<AccountChangedException>(() => stale.Recovery.GenerateAsync(account.Id, default));
+        await Assert.ThrowsAsync<AccountChangedException>(() => stale.Recovery.GenerateAsync(account.Id, 0, default));
 
         await using var check = databases.NewRequest();
         Assert.Equal(10, await check.Context.MfaRecoveryCodes.CountAsync(code => code.UserId == account.Id));
@@ -293,7 +293,7 @@ public abstract class AccountChangeRaceTests(AccountChangeDatabases databases)
     {
         var account = await databases.CreateEnrolledAccountAsync("it-race-one-event");
         await using var setup = databases.NewRequest();
-        await setup.Recovery.GenerateAsync(account.Id, default);
+        await setup.Recovery.GenerateAsync(account.Id, 0, default);
         await using var reset = databases.NewRequest();
         var current = await reset.LoadAsync(account.Id);
         current.TotpSecret = null;

@@ -8,6 +8,8 @@ namespace EclipsVault.Core.Application.Authentication;
 /// Password (Argon2id) + TOTP verification workflow. Authentication events commit with their
 /// associated replay and lockout bookkeeping in one transaction.
 /// An unknown username has no account to keep books for, so it is audited through <see cref="IAuditSink"/>.
+/// Each later step checks the pending sign-in's credential generation after the attempt reloads the
+/// account under its lock, so a credential change cannot commit between the check and the step.
 /// </summary>
 public sealed class VaultAuthenticationService : IVaultAuthenticationService
 {
@@ -24,6 +26,7 @@ public sealed class VaultAuthenticationService : IVaultAuthenticationService
     private readonly AuthenticationFailures _failures;
     private readonly IAuditSink _audit;
     private readonly IAuthenticationAttempt _attempt;
+    private readonly ISessionRevocationService _revocation;
     private readonly TimeProvider _clock;
 
     public VaultAuthenticationService(
@@ -35,6 +38,7 @@ public sealed class VaultAuthenticationService : IVaultAuthenticationService
         AuthenticationFailures failures,
         IAuditSink audit,
         IAuthenticationAttempt attempt,
+        ISessionRevocationService revocation,
         TimeProvider clock)
     {
         _users = users;
@@ -45,6 +49,7 @@ public sealed class VaultAuthenticationService : IVaultAuthenticationService
         _failures = failures;
         _audit = audit;
         _attempt = attempt;
+        _revocation = revocation;
         _clock = clock;
     }
 
@@ -61,6 +66,9 @@ public sealed class VaultAuthenticationService : IVaultAuthenticationService
             return CredentialCheckResult.Invalid;
         }
 
+        // Captured before the attempt reloads the account: an administrator who changes its access
+        // and signs it out after this point leaves this sign-in holding a version that is no longer current.
+        var revocationVersion = await _revocation.CaptureAsync(user.Id, ct);
         return await _attempt.RunAsync(user, async token =>
         {
             if (user.IsLockedOut(_clock.GetUtcNow()))
@@ -83,17 +91,18 @@ public sealed class VaultAuthenticationService : IVaultAuthenticationService
             }
 
             var status = user.TotpEnabled ? CredentialStatus.RequiresTotp : CredentialStatus.RequiresTotpEnrollment;
-            return new CredentialCheckResult(status, UserDto.From(user));
+            return new CredentialCheckResult(status, UserDto.From(user), new SessionStamp(user.CredentialGeneration, revocationVersion));
         }, ct);
     }
 
-    public Task<UserDto?> VerifyTotpAsync(Guid userId, string code, CancellationToken ct)
-        => VerifyAuthenticatorAsync(userId, code, administratorRequired: false, ct);
+    public Task<UserDto?> VerifyTotpAsync(Guid userId, SessionStamp stamp, string code, CancellationToken ct)
+        => VerifyAuthenticatorAsync(userId, stamp, code, administratorRequired: false, ct);
 
-    public Task<UserDto?> VerifyBreakGlassAsync(Guid userId, string code, CancellationToken ct)
-        => VerifyAuthenticatorAsync(userId, code, administratorRequired: true, ct);
+    public Task<UserDto?> VerifyBreakGlassAsync(Guid userId, SessionStamp stamp, string code, CancellationToken ct)
+        => VerifyAuthenticatorAsync(userId, stamp, code, administratorRequired: true, ct);
 
-    private async Task<UserDto?> VerifyAuthenticatorAsync(Guid userId, string code, bool administratorRequired, CancellationToken ct)
+    private async Task<UserDto?> VerifyAuthenticatorAsync(
+        Guid userId, SessionStamp stamp, string code, bool administratorRequired, CancellationToken ct)
     {
         var user = await _users.FindByIdAsync(userId, ct);
         if (user is null)
@@ -103,6 +112,7 @@ public sealed class VaultAuthenticationService : IVaultAuthenticationService
 
         return await _attempt.RunAsync<UserDto?>(user, async token =>
         {
+            await RequireCurrentProofAsync(user, stamp, ct);
             if (user.IsDisabled || !user.TotpEnabled || user.TotpSecret is null)
             {
                 return null;
@@ -133,7 +143,7 @@ public sealed class VaultAuthenticationService : IVaultAuthenticationService
         }, ct);
     }
 
-    public async Task<UserDto?> VerifyRecoveryCodeAsync(Guid userId, string code, CancellationToken ct)
+    public async Task<UserDto?> VerifyRecoveryCodeAsync(Guid userId, SessionStamp stamp, string code, CancellationToken ct)
     {
         var user = await _users.FindByIdAsync(userId, ct);
         if (user is null)
@@ -143,6 +153,7 @@ public sealed class VaultAuthenticationService : IVaultAuthenticationService
 
         return await _attempt.RunAsync<UserDto?>(user, async token =>
         {
+            await RequireCurrentProofAsync(user, stamp, ct);
             if (user.IsDisabled || !user.TotpEnabled)
             {
                 return null;
@@ -168,10 +179,11 @@ public sealed class VaultAuthenticationService : IVaultAuthenticationService
         }, ct);
     }
 
-    public async Task<TotpEnrollmentDto> BeginTotpEnrollmentAsync(Guid userId, CancellationToken ct)
+    public async Task<TotpEnrollmentDto> BeginTotpEnrollmentAsync(Guid userId, SessionStamp stamp, CancellationToken ct)
     {
         var user = await _users.FindByIdAsync(userId, ct)
                    ?? throw new TotpEnrollmentException($"User '{userId}' was not found.");
+        await RequireCurrentProofAsync(user, stamp, ct);
 
         if (user.TotpEnabled)
         {
@@ -189,7 +201,7 @@ public sealed class VaultAuthenticationService : IVaultAuthenticationService
         return new TotpEnrollmentDto(user.TotpSecret, _totp.BuildOtpAuthUri(user.TotpSecret, user.Username));
     }
 
-    public async Task<UserDto?> CompleteTotpEnrollmentAsync(Guid userId, string code, CancellationToken ct)
+    public async Task<UserDto?> CompleteTotpEnrollmentAsync(Guid userId, SessionStamp stamp, string code, CancellationToken ct)
     {
         var user = await _users.FindByIdAsync(userId, ct);
         if (user is null)
@@ -199,6 +211,7 @@ public sealed class VaultAuthenticationService : IVaultAuthenticationService
 
         return await _attempt.RunAsync<UserDto?>(user, async token =>
         {
+            await RequireCurrentProofAsync(user, stamp, ct);
             if (user.IsDisabled || user.TotpEnabled || string.IsNullOrEmpty(user.TotpSecret))
             {
                 return null;
@@ -222,6 +235,14 @@ public sealed class VaultAuthenticationService : IVaultAuthenticationService
             _attempt.RecordUserEvent(AuditAction.LoginSucceeded, user, "Password + TOTP enrollment");
             return UserDto.From(user);
         }, ct);
+    }
+    private async Task RequireCurrentProofAsync(User user, SessionStamp stamp, CancellationToken ct)
+    {
+        user.RequireCredentialGeneration(stamp.CredentialGeneration);
+        if (await _revocation.FindAsync(user.Id, ct) != stamp.RevocationVersion)
+        {
+            throw new StaleProofException();
+        }
     }
 
 }

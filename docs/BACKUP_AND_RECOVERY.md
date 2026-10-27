@@ -45,6 +45,38 @@ If step 6 reveals a secret, your restore is real. If it cannot, stop and fix the
 the environment — a half-restored vault that "starts fine" but cannot decrypt is the worst outcome,
 because it looks healthy.
 
+## Restoring Redis (multi-node deployments)
+
+With `Redis:Enabled=true`, Redis holds which sessions have been signed out. Redis is not in the
+backup list above because losing it costs only sessions: when its state is gone, every session is
+refused and everyone signs in again. **Restoring it from a snapshot, backup or lagging replica is
+different.** The copy can predate sign-outs, so a session that was signed out everywhere, or whose
+account an administrator demoted, disabled or force-signed-out, becomes valid again.
+
+So after any Redis restore or failover that may have lost writes, **do not let traffic back until
+every node has moved to a new session-store incarnation:**
+
+1. **Stop traffic** to every vault node (at the load balancer, or stop the nodes).
+2. **Pick a new incarnation**, one never used before, for example the date and time of the
+   recovery: `Redis__SessionIncarnation=2026-10-24T1530`.
+3. **Set it on every node** and restart them all. Session keys live under the incarnation, so the
+   nodes ignore everything in the restored copy and refuse every existing session and pending
+   sign-in. The value lives in your deployment configuration, outside Redis, so the restore
+   cannot bring the old one back.
+4. **Retire any node you cannot change.** A node still on the old incarnation would accept the
+   restored sessions; so would a node running a release older than the one that introduced
+   `SessionIncarnation`.
+5. **Resume traffic.** Everyone signs in again once.
+
+The vault cannot tell a restored copy from the live one, so it cannot do this for you: the
+guarantee holds only when the recovery follows these steps. Losing Redis entirely needs no action;
+the missing state already refuses the sessions it covered.
+
+Run Redis with `maxmemory-policy noeviction`, which is Redis's own default but not every managed
+service's. Evicting an account's revocation version is safe, but evicting the record that one device
+signed out lets a copy of that device's cookie back in. Under `noeviction` a full Redis refuses the
+write instead, so the sign-out fails where the user can see it rather than being undone later.
+
 ## Test the restore (do this on a schedule, not after a disaster)
 
 A backup you have never restored is a hypothesis. Once a quarter (and after any KEK rotation):

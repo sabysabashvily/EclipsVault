@@ -50,6 +50,9 @@ internal static class LegacyProfile
     public static Task<HttpResponseMessage> GenerateRecoveryCodesAsync(HttpClient client)
         => PostFromProfileAsync(client, "/Profile/GenerateRecoveryCodes", []);
 
+    public static Task<HttpResponseMessage> SignOutEverywhereAsync(HttpClient client)
+        => PostFromProfileAsync(client, "/Profile/SignOutEverywhere", []);
+
     public static Task<HttpResponseMessage> RemovePasskeyAsync(HttpClient client, Guid passkeyId)
         => PostFromProfileAsync(client, "/Profile/RemovePasskey", new() { ["id"] = passkeyId.ToString() });
 

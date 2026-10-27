@@ -29,12 +29,12 @@ public class SecurityCheckupServiceTests
             return Task.FromResult(userId == User ? _dto : null);
         }
 
-        public Task<ProfileDto> UpdateAsync(Guid userId, string displayName, string email, CancellationToken ct) => throw new NotSupportedException();
-        public Task ChangePasswordAsync(Guid userId, string currentPassword, string newPassword, CancellationToken ct) => throw new NotSupportedException();
+        public Task<ProfileUpdate> UpdateAsync(Guid userId, long credentialGeneration, string displayName, string email, CancellationToken ct) => throw new NotSupportedException();
+        public Task<long> ChangePasswordAsync(Guid userId, long credentialGeneration, string currentPassword, string newPassword, CancellationToken ct) => throw new NotSupportedException();
         public Task<byte[]?> GetAvatarPngAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
         public Task SetAvatarAsync(Guid userId, byte[] uploadedBytes, CancellationToken ct) => throw new NotSupportedException();
         public Task RemoveAvatarAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
-        public Task ResetOwnMfaAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
+        public Task ResetOwnMfaAsync(Guid userId, long credentialGeneration, CancellationToken ct) => throw new NotSupportedException();
     }
 
     private sealed class FakePasskeys : IPasskeyService
@@ -52,10 +52,10 @@ public class SecurityCheckupServiceTests
         }
 
         public Task<PasskeyCeremonyOptions> BeginRegistrationAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
-        public Task<PasskeyRegistrationResult> CompleteRegistrationAsync(Guid userId, string expectedChallenge, string responseJson, string? nickname, CancellationToken ct) => throw new NotSupportedException();
+        public Task<PasskeyRegistrationResult> CompleteRegistrationAsync(Guid userId, long credentialGeneration, string expectedChallenge, string responseJson, string? nickname, CancellationToken ct) => throw new NotSupportedException();
         public Task<PasskeyCeremonyOptions> BeginAssertionAsync(string? usernameOrEmail, CancellationToken ct) => throw new NotSupportedException();
-        public Task<PasskeyAssertionResult> CompleteAssertionAsync(string expectedChallenge, string responseJson, CancellationToken ct) => throw new NotSupportedException();
-        public Task<bool> RemoveAsync(Guid userId, Guid passkeyId, CancellationToken ct) => throw new NotSupportedException();
+        public Task<PasskeyAssertionResult> CompleteAssertionAsync(string expectedChallenge, PasskeyNamedAccount? namedAccount, string responseJson, CancellationToken ct) => throw new NotSupportedException();
+        public Task<long?> RemoveAsync(Guid userId, long credentialGeneration, Guid passkeyId, CancellationToken ct) => throw new NotSupportedException();
     }
 
     private sealed class FakeRecovery : IMfaRecoveryService
@@ -63,15 +63,15 @@ public class SecurityCheckupServiceTests
         private readonly int _remaining;
         public FakeRecovery(int remaining) => _remaining = remaining;
         public Task<int> CountRemainingAsync(Guid userId, CancellationToken ct) => Task.FromResult(userId == User ? _remaining : 0);
-        public Task<IReadOnlyList<string>> GenerateAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
+        public Task<RecoveryCodeSet> GenerateAsync(Guid userId, long credentialGeneration, CancellationToken ct) => throw new NotSupportedException();
     }
 
-    private sealed class FakeSessions : ISessionRegistry
+    private sealed class FakeSessions : ISignedInDevices
     {
         private readonly int _count;
         public FakeSessions(int count) => _count = count;
 
-        public Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, CancellationToken ct = default)
+        public Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, CancellationToken ct)
         {
             if (userId != User) return Task.FromResult<IReadOnlyList<ActiveSession>>([]);
             IReadOnlyList<ActiveSession> list = Enumerable.Range(0, _count)
@@ -80,9 +80,6 @@ public class SecurityCheckupServiceTests
             return Task.FromResult(list);
         }
 
-        public Task RecordSeenAsync(SessionObservation observation, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<bool> RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<bool> IsRevokedAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new NotSupportedException();
     }
 
     private static ProfileDto Profile(bool totp) =>

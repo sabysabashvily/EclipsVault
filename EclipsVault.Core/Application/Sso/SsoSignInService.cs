@@ -1,6 +1,7 @@
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Authentication;
 using EclipsVault.Core.Application.Users;
+using EclipsVault.Core.Domain;
 using EclipsVault.Core.Domain.Enums;
 
 namespace EclipsVault.Core.Application.Sso;
@@ -16,12 +17,14 @@ public sealed class SsoSignInService : ISsoSignInService
 {
     private readonly IUserRepository _users;
     private readonly IAuditSink _audit;
+    private readonly ISessionRevocationService _revocation;
     private readonly SsoPolicy _policy;
 
-    public SsoSignInService(IUserRepository users, IAuditSink audit, SsoPolicy policy)
+    public SsoSignInService(IUserRepository users, IAuditSink audit, ISessionRevocationService revocation, SsoPolicy policy)
     {
         _users = users;
         _audit = audit;
+        _revocation = revocation;
         _policy = policy;
     }
 
@@ -51,6 +54,19 @@ public sealed class SsoSignInService : ISsoSignInService
                 $"'{identity.Email}' has no account in this vault", ct);
         }
 
+        // Captured before the account is read again for its session: an administrator who changes its
+        // access and signs it out after this point leaves this sign-in holding a version that is no
+        // longer current, rather than the old access under the new version.
+        var credentialGeneration = user.CredentialGeneration;
+        var revocationVersion = await _revocation.CaptureAsync(user.Id, ct);
+        if (!await _users.ReloadAsync(user, ct)
+            || user.CredentialGeneration != credentialGeneration
+            || user.NormalizedEmail != EmailIdentity.Normalize(identity.Email))
+        {
+            return await RefuseAsync(SsoOutcome.NoVaultAccount, identity,
+                $"'{identity.Email}' has no account in this vault", ct);
+        }
+
         if (user.IsDisabled)
         {
             return await RefuseAsync(SsoOutcome.Disabled, identity,
@@ -76,7 +92,8 @@ public sealed class SsoSignInService : ISsoSignInService
             ActorUsername = user.Username
         }, ct);
 
-        return SsoSignInResult.Linked(UserDto.From(user), secondFactorSatisfied);
+        return SsoSignInResult.Linked(
+            UserDto.From(user), new SessionStamp(credentialGeneration, revocationVersion), secondFactorSatisfied);
     }
 
     private async Task<SsoSignInResult> RefuseAsync(

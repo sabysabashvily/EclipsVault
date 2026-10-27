@@ -581,3 +581,76 @@ explicitly for the final commit. Subject: "Save each Profile change with its one
 at all" (63 characters), message file `~/Downloads/ev-85-commit-message.txt`. Separate model-policy
 commit: `16e4b4a`, "Use Sol 6.1 and Opus 5.5 for delegated agents" (45 characters).
 No push, PR or issue closure. Final report goes to coordinator `e877e718-6881-4791-bde5-e2c932ae4461`.
+
+## Ticket #86 implementation (started 2026-10-24, Claude Opus 5.5)
+
+Root checkout, branch `area-3-profile` from `d786a89`; logs and reviews in `logs/ticket-86/`.
+Design, to resume from if interrupted:
+
+- `User.CredentialGeneration` (bigint, both providers). Password, active email (normalized change),
+  recovery replacement, passkey add/remove, self and administrator authenticator reset advance it in
+  the same `IAccountChangeCommitter` transaction; each service takes the session's expected
+  generation and returns the committed one. Mismatch throws `StaleProofException`.
+- `SessionStamp(CredentialGeneration, RevocationVersion)` travels in claims `vault:cg`/`vault:rv`
+  of the pending-MFA and session cookies; registry observations store it and listings filter on the
+  current stamp (`SignedInDevices`). Cookies without both claims are refused (one-time sign-in).
+- `ISessionRevocationService`: `CaptureAsync` (atomic init with random value), `FindAsync` (null when
+  missing; Redis GETEX refreshes TTL), `RevokeAsync` (new random value). No timestamps.
+- Capture the version after resolving the account id and before the locked reload/snapshot
+  (password stage, discoverable passkey, SSO via `ReloadAsync`). Verification steps fence the pending
+  generation under the account lock; `SessionIssuer` refuses issuance unless the captured version is
+  current. Renewal/step-up copy claims, so they keep the original version.
+- Redis session keys are scoped by `Redis:SessionIncarnation` (config, outside Redis); recovery gate:
+  stop traffic, set a new value on every node, restart all, retire nodes that cannot.
+- Sign out everywhere: Core `AccountSignOut` revoke-first, audit `SessionsRevokedSelf` second;
+  outcomes SignedOut / RevokedUnrecorded / Incomplete; Legacy controller always clears the cookie.
+- ADR-0026 branch `/local-sign-out` mapped before the blacklist/session/auth middleware.
+Progress 2026-10-24: production code, both `AddCredentialGeneration` migrations and docs
+(BACKUP_AND_RECOVERY Redis gate, INSTALL §8 Upgrading, README) are written, uncommitted; Web builds.
+Next: fix existing tests, add new tests, full verification, reviews, commit.
+
+## Ticket #86 resumed in Codex (2026-10-24 evening)
+
+Still root checkout, `area-3-profile`, HEAD `d786a89`, all ticket work uncommitted. Restricted
+folders untouched. Every new artifact/log/review is under `logs/ticket-86/` (gitignored).
+
+Added production proof fencing at pending-cookie validation and locked factor verification, retained
+external versions for named passkeys, rechecked durable generation at issuance/replacement, bound
+registration to its original account/session/stamp, and preserved SSO's initially matched generation
+and email across reload. Committed-change replacement failures now return 503
+`changed_sign_in_required`; account-wide sign-out failures return the specified 503 codes and keep
+Legacy warnings. Local clearing reports only `sign_out_incomplete`. Session replacement atomically
+retires its old ID against per-device revocation (memory lock and Redis Lua); metadata stays best-effort.
+
+Added real SQL Server/PostgreSQL generation upgrade/persistence/stale-proof/rollback tests, generation
+rollback assertions throughout AuditFailureFixture, real Redis version/expiry/stale-observation and
+retirement tests, Production Redis hosts for outage/recovery (two rotated nodes against restored
+populated state), local-cookie paths/methods/CSRF/chunks, every revoker on memory/Redis, stale factor
+POSTs, named/discoverable keys, and renewal/issuance races. Redis outage fixtures pause the container:
+a stop/start remaps Docker's random host port, confirmed in `redis-port-probe.txt` (own probe removed).
+
+Reviews r1: Opus security failed quota; fresh Sol 6.1 xhigh security found a per-device retirement
+race (fixed atomically). Spec found SSO generation upgrading and missing sign-out statuses (fixed).
+Standards had six grouped findings plus typed-state advice (fixed). R2 Standards has two naming/comment
+findings (fixed) and named-state grouping advice (fixed with PasskeySignInState). R2 security and Spec
+are still running. All tasks use provider codex, model gpt-6.1-sol, reasoningEffort xhigh, serviceTier
+default, task prefix `node:delegated-task:command%3Amcp%3A4052bddb-f2dc-4f35-9891-468614ccfa1c%3Adelegate-task%3A`,
+clientRequestIds `86-{security,standards,spec}-r2-sol-xhigh`. Read reports under logs/ticket-86/.
+
+R10 locked restore and six guardrails passed. R10 Release build: zero warnings/errors; full integration
+and unit suites plus both pending-model checks are running (`*-r10.txt`). Last earlier focused run:
+79/80 passed; failure was the now-diagnosed Redis port remapping. Failure-path r9: 15/16 passed; its
+one failure was the test's @@SPID int16/int32 mismatch, corrected with an explicit SQL cast in r10.
+Angular prerequisite npm ci --ignore-scripts and production build passed on pinned Node 24.22.0;
+install reports one moderate advisory (no high/critical). New source edits since the r10 build group
+named passkey state and rename the retirement helper, so final build/format/unit/integration gates
+must run again after any remaining review corrections. No commit, push, PR or issue closure.
+
+## Ticket #86 finished in Claude (2026-10-27)
+
+Resumed on Opus 5.5 after Codex hit its quota. Fixed the one r10 integration failure (an admin MFA
+reset now ends the target's sessions), added the step-up renewal regression Spec r2 asked for, and
+ran the security-reviewer plus Standards/Spec reviews on Opus high. Findings and resolutions:
+`logs/ticket-86/review-resolutions.md` (Final round). Open owner decisions: a Redis
+`maxmemory-policy` startup check, auditing sessions refused at issuance, and the role-change
+revoke-before-audit ordering (pre-existing). Committed as one commit; not pushed.

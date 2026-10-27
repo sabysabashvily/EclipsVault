@@ -200,7 +200,7 @@ public sealed class UserAdminService : IUserAdminService
 
         // A clearance/project change alters what the user may reach, so drop their
         // current sessions; the new attributes take effect at their next sign-in.
-        await _revocation.RevokeAsync(user.Id, _clock.GetUtcNow(), ct);
+        await _revocation.RevokeAsync(user.Id, ct);
 
         await AuditUserAsync(
             AuditAction.UserRoleChanged, user.Id, _actor.Username ?? "system",
@@ -237,7 +237,7 @@ public sealed class UserAdminService : IUserAdminService
         if (!enabled)
         {
             // Kill active sessions immediately; new sign-ins are blocked at credential check.
-            await _revocation.RevokeAsync(user.Id, _clock.GetUtcNow(), ct);
+            await _revocation.RevokeAsync(user.Id, ct);
         }
 
         await AuditUserAsync(
@@ -255,7 +255,7 @@ public sealed class UserAdminService : IUserAdminService
             return false;
         }
 
-        await _revocation.RevokeAsync(user.Id, _clock.GetUtcNow(), ct);
+        await _revocation.RevokeAsync(user.Id, ct);
         await AuditUserAsync(
             AuditAction.UserForceLoggedOut, user.Id, _actor.Username ?? "system",
             $"All sessions for '{user.Username}' revoked by administrator", ct);
@@ -274,6 +274,9 @@ public sealed class UserAdminService : IUserAdminService
         user.TotpSecret = null;
         user.TotpEnabled = false;
         user.LastTotpStep = null;
+        // A reset retires the account's authenticator, so it ends what the authenticator opened:
+        // sessions and pending sign-ins are refused, as after the account's own reset.
+        user.CredentialGeneration++;
         await _changes.CommitAsync(user, new AuditEntry
         {
             Action = AuditAction.UserTotpReset,
@@ -281,7 +284,7 @@ public sealed class UserAdminService : IUserAdminService
             ResourceId = user.Id,
             ActorUserId = _actor.UserId,
             ActorUsername = _actor.Username ?? "system",
-            Details = $"MFA reset for '{user.Username}'; TOTP re-enrollment required at next sign-in"
+            Details = $"MFA reset for '{user.Username}'; sessions revoked; TOTP re-enrollment required at next sign-in"
         }, ct);
         return true;
     }
@@ -306,7 +309,7 @@ public sealed class UserAdminService : IUserAdminService
 
         // A session carries the account's clearance and project, so one that outlived the account
         // would keep its access. Revoked first: if the delete then fails, the account only lost its sessions.
-        await _revocation.RevokeAsync(user.Id, _clock.GetUtcNow(), ct);
+        await _revocation.RevokeAsync(user.Id, ct);
         await _users.DeleteAsync(user, ct);
         await AuditUserAsync(
             AuditAction.UserDeleted, userId, _actor.Username ?? "system",

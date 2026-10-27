@@ -1,8 +1,12 @@
 using System.Security.Claims;
 using EclipsVault.Core.Application.Authentication;
+using EclipsVault.Core.Application.Sessions;
 using EclipsVault.Core.Application.Sso;
+using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Security;
+using EclipsVault.Tests.Sessions;
+using EclipsVault.Web.Authentication;
 using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Controllers;
 using Microsoft.AspNetCore.Authentication;
@@ -19,7 +23,7 @@ namespace EclipsVault.Tests.Web;
 
 /// <summary>
 /// When the identity provider satisfied both factors, SSO completes the session in its callback.
-/// Its default landing page has always been the dashboard, not the password flow's secrets list;
+/// Its default landing page is the dashboard;
 /// a return target replaces that default only when it is one the password flow would accept too.
 /// SSO needs a live identity provider, so this drives the callback directly rather than through
 /// the integration host.
@@ -38,11 +42,12 @@ public class SsoSignInRedirectTests
         public Task ForbidAsync(HttpContext context, string? scheme, AuthenticationProperties? properties) => throw new NotSupportedException();
     }
 
-    private sealed class BothFactorsAtTheIdp : ISsoSignInService
+    private sealed class BothFactorsAtTheIdp(Guid accountId, string revocationVersion) : ISsoSignInService
     {
         public Task<SsoSignInResult> SignInAsync(ExternalIdentity identity, CancellationToken ct) =>
-            Task.FromResult(SsoSignInResult.Linked(new UserDto(Guid.NewGuid(), "sso-user", "SSO User",
-                "sso@example.test", ClearanceLevel.Standard, "GLOBAL", TotpEnabled: false, IsDisabled: false), true));
+            Task.FromResult(SsoSignInResult.Linked(new UserDto(accountId, "sso-user", "SSO User",
+                "sso@example.test", ClearanceLevel.Standard, "GLOBAL", TotpEnabled: false, IsDisabled: false),
+                new SessionStamp(0, revocationVersion), true));
     }
 
     // Conventional routes resolve to /Controller; local-URL checks are the framework's own.
@@ -65,9 +70,13 @@ public class SsoSignInRedirectTests
                 .AddSingleton<IAuthenticationService>(new AcceptingAuthentication())
                 .BuildServiceProvider()
         };
-        var controller = new AccountController(null!, null!, null!,
-            new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance, TimeProvider.System), null!,
-            new BothFactorsAtTheIdp(), null!, NullLogger<AccountController>.Instance)
+        var accountId = Guid.NewGuid();
+        var revocation = new InMemorySessionRevocationService(NullLogger<InMemorySessionRevocationService>.Instance);
+        var sessions = new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance, TimeProvider.System);
+        var issuer = new SessionIssuer(new SessionAccountStore(new User { Id = accountId }), revocation, sessions, NullLogger<SessionIssuer>.Instance);
+        var controller = new AccountController(null!, null!, null!, sessions, null!,
+            new BothFactorsAtTheIdp(accountId, await revocation.CaptureAsync(accountId)), null!, issuer,
+            NullLogger<AccountController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = http }
         };

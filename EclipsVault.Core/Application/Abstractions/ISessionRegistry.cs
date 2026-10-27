@@ -16,8 +16,12 @@ public interface ISessionRegistry
     /// </summary>
     Task RecordSeenAsync(SessionObservation observation, CancellationToken ct = default);
 
-    /// <summary>The user's active (non-expired, non-revoked) sessions, most-recently-active first.</summary>
-    Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, CancellationToken ct = default);
+    /// <summary>
+    /// The user's active (non-expired, non-revoked) sessions that were issued under
+    /// <paramref name="current"/>, most-recently-active first. A session issued under an earlier
+    /// stamp is invalid, even when a request that started before the change records it again.
+    /// </summary>
+    Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, SessionStamp current, CancellationToken ct = default);
 
     /// <summary>
     /// Revokes a single session: it is rejected on its next request (a tombstone the cookie
@@ -27,6 +31,13 @@ public interface ISessionRegistry
     /// A tombstone is retained even without metadata, so signing out still rejects copied cookies.
     /// </summary>
     Task<bool> RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Retires the old session before issuing its replacement. Shares the revocation boundary with
+    /// <see cref="RevokeAsync"/>: if a device sign-out got there first, returns false; if retirement
+    /// won, a later sign-out cannot claim it removed that old session. Missing metadata is harmless.
+    /// </summary>
+    Task<bool> TryRetireForReplacementAsync(Guid userId, Guid sessionId, CancellationToken ct = default);
 
     Task<bool> IsRevokedAsync(Guid userId, Guid sessionId, CancellationToken ct = default);
 }

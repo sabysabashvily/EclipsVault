@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Claims;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Web.Authorization;
@@ -6,13 +7,18 @@ namespace EclipsVault.Web.Extensions;
 
 /// <summary>
 /// The single source of truth for reading the claims EclipsVault stamps onto a signed-in
-/// principal. Parsing these by hand was duplicated across nearly every controller, the
-/// authorization handlers, and the audit context; centralising it keeps the claim names — and,
-/// crucially, their fail-closed defaults — in one reviewed place. The write side lives in
+/// principal. Keeping parsing here gives controllers, authorization handlers and the audit context
+/// the same claim names and fail-closed defaults. The write side lives in
 /// <see cref="EclipsVault.Web.Authentication.VaultClaimsFactory"/>.
 /// </summary>
 public static class ClaimsPrincipalExtensions
 {
+    public static DateTimeOffset GetLastStrongAuthUtc(this ClaimsPrincipal principal)
+    {
+        long Read(string claimType) => long.TryParse(principal.FindFirstValue(claimType), out var seconds) ? seconds : 0;
+        return DateTimeOffset.FromUnixTimeSeconds(Math.Max(Read(VaultClaimTypes.AuthTime), Read(VaultClaimTypes.StepUpTime)));
+    }
+
     /// <summary>
     /// The signed-in user's id, or <see cref="Guid.Empty"/> when absent. Empty is the fail-closed
     /// default: it scopes a self-service read to no rows rather than risking another user's data.
@@ -42,6 +48,16 @@ public static class ClaimsPrincipalExtensions
     /// <summary>This device's session id, or null when the principal carries none (e.g. an API-key caller).</summary>
     public static Guid? GetSessionId(this ClaimsPrincipal principal)
         => Guid.TryParse(principal.FindFirstValue(VaultClaimTypes.SessionId), out var id) ? id : null;
+
+    /// <summary>
+    /// The stamp the session or pending sign-in was issued under, or null when it carries none. A
+    /// cookie without one cannot be fenced, so it is refused rather than trusted.
+    /// </summary>
+    public static SessionStamp? GetSessionStampOrNull(this ClaimsPrincipal principal)
+        => long.TryParse(principal.FindFirstValue(VaultClaimTypes.CredentialGeneration), NumberStyles.None, CultureInfo.InvariantCulture, out var generation)
+           && principal.FindFirstValue(VaultClaimTypes.RevocationVersion) is { Length: > 0 } version
+            ? new SessionStamp(generation, version)
+            : null;
 
     /// <summary>The project the principal is scoped to, or empty when none is present.</summary>
     public static string GetProject(this ClaimsPrincipal principal)

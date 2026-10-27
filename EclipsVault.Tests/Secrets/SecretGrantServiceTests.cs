@@ -54,6 +54,7 @@ public class SecretGrantServiceTests
         public Task<bool> IsEmailTakenAsync(string email, Guid accountId, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<string>> FindEmailsWithPrefixAsync(string localPrefix, string domain, CancellationToken ct) => throw new NotSupportedException();
         public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> ReloadAsync(User user, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<User>> ListAsync(CancellationToken ct) => throw new NotSupportedException();
         public Task AddAsync(User user, CancellationToken ct) => throw new NotSupportedException();
         public Task UpdateAsync(User user, CancellationToken ct) => throw new NotSupportedException();

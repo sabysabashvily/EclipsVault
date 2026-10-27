@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using EclipsVault.Core.Domain.Exceptions;
+using EclipsVault.Web.Authentication;
 using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Extensions;
 using EclipsVault.Web.Models;
@@ -19,38 +21,35 @@ namespace EclipsVault.Web.Controllers;
 public sealed class ProfileController : VaultController
 {
     /// <summary>Session key holding the challenge issued for an in-flight passkey registration.</summary>
-    private const string PasskeyRegistrationChallengeKey = "passkey:registration:challenge";
+    private const string PasskeyRegistrationKey = "passkey:registration";
 
     /// <summary>TempData key that carries a freshly generated code set across the post-redirect-get to the one-time display page.</summary>
     private const string RecoveryCodesTempDataKey = "MfaRecoveryCodes";
 
     private readonly IProfileService _profile;
     private readonly IAvatarProcessor _avatarProcessor;
-    private readonly ISessionRevocationService _revocation;
     private readonly IPasskeyService _passkeys;
     private readonly IMfaRecoveryService _recovery;
     private readonly IBreachedPasswordScreen _breachScreen;
-    private readonly TimeProvider _clock;
-    private readonly ILogger<ProfileController> _logger;
+    private readonly SessionIssuer _issuer;
+    private readonly AccountSignOut _signOut;
 
     public ProfileController(
         IProfileService profile,
         IAvatarProcessor avatarProcessor,
-        ISessionRevocationService revocation,
         IPasskeyService passkeys,
         IMfaRecoveryService recovery,
         IBreachedPasswordScreen breachScreen,
-        TimeProvider clock,
-        ILogger<ProfileController> logger)
+        SessionIssuer issuer,
+        AccountSignOut signOut)
     {
         _profile = profile;
         _avatarProcessor = avatarProcessor;
-        _revocation = revocation;
         _passkeys = passkeys;
         _recovery = recovery;
         _breachScreen = breachScreen;
-        _clock = clock;
-        _logger = logger;
+        _issuer = issuer;
+        _signOut = signOut;
     }
 
     [HttpGet]
@@ -79,18 +78,26 @@ public sealed class ProfileController : VaultController
             return View(nameof(Index), model);
         }
 
+        ProfileUpdate update;
         try
         {
-            var updated = await _profile.UpdateAsync(CurrentUserId(), model.DisplayName, model.Email, ct);
-            await ReissueReplacingClaimsAsync((VaultClaimTypes.Display, updated.DisplayName));
-            this.FlashSuccess("Your profile was updated.");
+            update = await _profile.UpdateAsync(CurrentUserId(), CurrentCredentialGeneration(), model.DisplayName, model.Email, ct);
         }
-        catch (Exception ex) when (ex is ProfileException or EmailAddressTakenException)
+        catch (Exception ex) when (ex is ProfileException or EmailAddressTakenException or StaleProofException)
         {
             this.FlashError(ex.Message);
+            return RedirectToAction(nameof(Index));
         }
 
-        return RedirectToAction(nameof(Index));
+        if (!update.EmailChanged)
+        {
+            await ReissueReplacingClaimsAsync((VaultClaimTypes.Display, update.Profile.DisplayName));
+            this.FlashSuccess("Your profile was updated.");
+            return RedirectToAction(nameof(Index));
+        }
+
+        var display = (VaultClaimTypes.Display, update.Profile.DisplayName);
+        return await ReplaceSessionAsync(update.CredentialGeneration, "Your profile was updated. Any other signed-in devices have been signed out.", display);
     }
 
     [HttpPost]
@@ -164,26 +171,19 @@ public sealed class ProfileController : VaultController
             return View(model);
         }
 
+        long committed;
         try
         {
-            await _profile.ChangePasswordAsync(CurrentUserId(), model.CurrentPassword, model.NewPassword, ct);
+            committed = await _profile.ChangePasswordAsync(
+                CurrentUserId(), CurrentCredentialGeneration(), model.CurrentPassword, model.NewPassword, ct);
         }
-        catch (ProfileException ex)
+        catch (Exception ex) when (ex is ProfileException or StaleProofException)
         {
             ModelState.AddModelError(string.Empty, ex.Message);
             return View(model);
         }
 
-        // The service revoked every session issued up to now — this one included. Re-issue THIS
-        // device with a strong-auth time strictly after that instant (the kill switch compares at
-        // one-second granularity, so an equal timestamp would revoke the session we are keeping), so
-        // whoever just proved the new password stays signed in while every other device is signed
-        // out on its next request.
-        var freshAuthTime = _clock.GetUtcNow().AddSeconds(1).ToUnixTimeSeconds().ToString();
-        await ReissueReplacingClaimsAsync((VaultClaimTypes.AuthTime, freshAuthTime));
-
-        this.FlashSuccess("Your password was changed. Any other signed-in devices have been signed out.");
-        return RedirectToAction(nameof(Index));
+        return await ReplaceSessionAsync(committed, "Your password was changed. Any other signed-in devices have been signed out.");
     }
 
     /// <summary>
@@ -201,7 +201,7 @@ public sealed class ProfileController : VaultController
     [HttpPost]
     public async Task<IActionResult> ResetMfa(CancellationToken ct)
     {
-        await _profile.ResetOwnMfaAsync(CurrentUserId(), ct);
+        await _profile.ResetOwnMfaAsync(CurrentUserId(), CurrentCredentialGeneration(), ct);
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         this.FlashInfo("Your authenticator was reset. Sign in to set up a new one.");
         return RedirectToAction("Login", "Account");
@@ -214,8 +214,14 @@ public sealed class ProfileController : VaultController
     [HttpPost]
     public async Task<IActionResult> GenerateRecoveryCodes(CancellationToken ct)
     {
-        var codes = await _recovery.GenerateAsync(CurrentUserId(), ct);
-        TempData[RecoveryCodesTempDataKey] = string.Join('\n', codes);
+        var set = await _recovery.GenerateAsync(CurrentUserId(), CurrentCredentialGeneration(), ct);
+        if (!await _issuer.ReplaceAsync(HttpContext, set.CredentialGeneration))
+        {
+            // The display page needs a session, so the codes could not be shown: they stay unseen.
+            return ChangedSignInRequired("New recovery codes were generated. Sign in and deliberately generate a new set to see codes.");
+        }
+
+        TempData[RecoveryCodesTempDataKey] = string.Join('\n', set.Codes);
         return RedirectToAction(nameof(RecoveryCodes));
     }
 
@@ -237,13 +243,30 @@ public sealed class ProfileController : VaultController
     }
 
     [HttpPost]
-    public async Task<IActionResult> SignOutEverywhere(CancellationToken ct)
+    public async Task<IActionResult> SignOutEverywhere()
     {
-        // Revoke all sessions issued up to now (this device included), then sign out here.
-        await _revocation.RevokeAsync(CurrentUserId(), _clock.GetUtcNow(), ct);
-        _logger.LogInformation("User {Username} signed out of all sessions", User.Identity?.Name);
-        await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-        this.FlashInfo("You have been signed out of all sessions. Sign in again to continue.");
+        SignOutEverywhereOutcome outcome;
+        try
+        {
+            outcome = await _signOut.EverywhereAsync(CurrentUserId(), CurrentUsername());
+        }
+        finally
+        {
+            await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        }
+        switch (outcome)
+        {
+            case SignOutEverywhereOutcome.SignedOut:
+                this.FlashInfo("You have been signed out of all sessions. Sign in again to continue.");
+                break;
+            case SignOutEverywhereOutcome.RevokedUnrecorded:
+                this.FlashError("You have been signed out of all sessions, but the vault couldn't record it in the audit trail. Tell your administrator.");
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new { code = "revoked_unrecorded" });
+            default:
+                this.FlashError("This browser was signed out, but the vault couldn't confirm that your other devices were. Sign in and try again.");
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new { code = "sign_out_incomplete" });
+        }
+
         return RedirectToAction("Login", "Account");
     }
 
@@ -252,7 +275,8 @@ public sealed class ProfileController : VaultController
     public async Task<IActionResult> PasskeyRegisterBegin(CancellationToken ct)
     {
         var options = await _passkeys.BeginRegistrationAsync(CurrentUserId(), ct);
-        HttpContext.Session.SetString(PasskeyRegistrationChallengeKey, options.Challenge);
+        var ceremony = new PasskeyRegistrationState(options.Challenge, CurrentUserId(), User.GetSessionId()!.Value, User.GetSessionStampOrNull()!);
+        HttpContext.Session.SetString(PasskeyRegistrationKey, JsonSerializer.Serialize(ceremony));
         return Content(options.OptionsJson, "application/json");
     }
 
@@ -260,44 +284,73 @@ public sealed class ProfileController : VaultController
     [HttpPost]
     public async Task<IActionResult> PasskeyRegisterComplete([FromBody] PasskeyRegistrationCompletion request, CancellationToken ct)
     {
-        var challenge = HttpContext.Session.GetString(PasskeyRegistrationChallengeKey);
-        HttpContext.Session.Remove(PasskeyRegistrationChallengeKey);
-        if (string.IsNullOrEmpty(challenge))
+        var ceremony = PasskeyRegistrationState.Read(HttpContext.Session.GetString(PasskeyRegistrationKey));
+        HttpContext.Session.Remove(PasskeyRegistrationKey);
+        // The ceremony is bound to the credential generation it began under, not the session's current one.
+        if (ceremony is null || !ceremony.BelongsTo(User))
         {
             return Json(new { success = false, error = "Registration timed out. Try again." });
         }
 
         var result = await _passkeys.CompleteRegistrationAsync(
-            CurrentUserId(), challenge, request.Credential.GetRawText(), request.Nickname, ct);
+            CurrentUserId(), ceremony.Stamp.CredentialGeneration, ceremony.Challenge, request.Credential.GetRawText(), request.Nickname, ct);
+        if (result.CredentialGeneration is not { } committed)
+        {
+            return Json(new { success = false, error = result.Error });
+        }
 
-        if (result.Success)
+        // The page reloads after success, landing on sign-in when this browser could not be kept signed in.
+        if (await _issuer.ReplaceAsync(HttpContext, committed))
         {
             this.FlashSuccess("Passkey added. You can now sign in with it.");
         }
+        else
+        {
+            return ChangedSignInRequired("Passkey added. Sign in again to continue.");
+        }
 
-        return Json(new { success = result.Success, error = result.Error });
+        return Json(new { success = true, error = (string?)null });
     }
 
     [HttpPost]
     public async Task<IActionResult> RemovePasskey(Guid id, CancellationToken ct)
     {
-        if (await _passkeys.RemoveAsync(CurrentUserId(), id, ct))
-        {
-            this.FlashSuccess("Passkey removed.");
-        }
-        else
+        if (await _passkeys.RemoveAsync(CurrentUserId(), CurrentCredentialGeneration(), id, ct) is not { } committed)
         {
             this.FlashError("That passkey could not be found.");
+            return RedirectToAction(nameof(Index));
         }
 
-        return RedirectToAction(nameof(Index));
+        return await ReplaceSessionAsync(committed, "Passkey removed. Any other signed-in devices have been signed out.");
     }
 
     /// <summary>
+    /// Keeps this browser signed in after a credential change by replacing its session, and lands on
+    /// sign-in when it cannot: the change has committed either way, and every earlier session is ended.
+    /// </summary>
+    private async Task<IActionResult> ReplaceSessionAsync(
+        long committedGeneration, string changedMessage, params (string Type, string Value)[] updates)
+    {
+        if (!await _issuer.ReplaceAsync(HttpContext, committedGeneration))
+        {
+            return ChangedSignInRequired($"{changedMessage} Sign in again to continue.");
+        }
+
+        if (updates.Length > 0)
+        {
+            await ReissueReplacingClaimsAsync(updates);
+        }
+
+        this.FlashSuccess(changedMessage);
+        return RedirectToAction(nameof(Index));
+    }
+
+    private ObjectResult ChangedSignInRequired(string message)
+        => StatusCode(StatusCodes.Status503ServiceUnavailable, new { code = "changed_sign_in_required", message });
+
+    /// <summary>
     /// Re-issues the auth cookie with the given claim(s) replaced, preserving every claim not named
-    /// in the update. Callers that leave the auth-time anchor alone (profile edits, avatar changes)
-    /// do not disturb the session-revocation kill switch; the change-password flow deliberately
-    /// replaces it, to survive the account-wide revocation it just raised.
+    /// in the update. It renews the same session, so the session keeps the stamp it was issued under.
     /// </summary>
     private async Task ReissueReplacingClaimsAsync(params (string Type, string Value)[] updates)
     {

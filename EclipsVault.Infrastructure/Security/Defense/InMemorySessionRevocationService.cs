@@ -4,28 +4,31 @@ using Microsoft.Extensions.Logging;
 namespace EclipsVault.Infrastructure.Security;
 
 /// <summary>
-/// Tracks the most recent revocation instant per user in process memory. Any session
-/// issued at or before that instant is rejected by cookie validation on its next
-/// request. Suitable for a single node; multi-node deployments use the Redis-backed
-/// implementation so a revocation reaches every node.
+/// Holds each account's session revocation version in process memory. Suitable for a single node;
+/// multi-node deployments use the Redis-backed implementation so a revocation reaches every node.
+/// A restart loses every version, which refuses every existing session: the versions they carry
+/// may have been revoked in the state the restart lost.
 /// </summary>
 public sealed class InMemorySessionRevocationService : ISessionRevocationService
 {
-    private readonly ConcurrentDictionary<Guid, DateTimeOffset> _revokedAt = new();
+    private readonly ConcurrentDictionary<Guid, string> _versions = new();
     private readonly ILogger<InMemorySessionRevocationService> _logger;
 
     public InMemorySessionRevocationService(ILogger<InMemorySessionRevocationService> logger) => _logger = logger;
 
-    public Task RevokeAsync(Guid userId, DateTimeOffset revokedAtUtc, CancellationToken ct = default)
+    // GetOrAdd may build two candidates in a race, but stores and returns only one of them.
+    public Task<string> CaptureAsync(Guid userId, CancellationToken ct = default)
+        => Task.FromResult(_versions.GetOrAdd(userId, _ => NewVersion()));
+
+    public Task<string?> FindAsync(Guid userId, CancellationToken ct = default)
+        => Task.FromResult(_versions.TryGetValue(userId, out var version) ? version : null);
+
+    public Task RevokeAsync(Guid userId, CancellationToken ct = default)
     {
-        _revokedAt.AddOrUpdate(
-            userId,
-            revokedAtUtc,
-            (_, existing) => revokedAtUtc > existing ? revokedAtUtc : existing);
-        _logger.LogWarning("All sessions for user {UserId} issued at or before {RevokedAtUtc} are now revoked", userId, revokedAtUtc);
+        _versions[userId] = NewVersion();
+        _logger.LogWarning("Every session of user {UserId} was revoked", userId);
         return Task.CompletedTask;
     }
 
-    public Task<bool> IsRevokedAsync(Guid userId, DateTimeOffset sessionIssuedAtUtc, CancellationToken ct = default)
-        => Task.FromResult(_revokedAt.TryGetValue(userId, out var revokedAt) && sessionIssuedAtUtc <= revokedAt);
+    private static string NewVersion() => Guid.NewGuid().ToString("N");
 }

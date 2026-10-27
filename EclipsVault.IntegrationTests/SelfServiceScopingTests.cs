@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using EclipsVault.Core.Application.Activity;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Extensions;
@@ -36,12 +37,13 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
     {
         const string username = "it-scope-admin-actions";
         var target = await vault.SignInNewAccountAsync(username, IPAddress.Parse("198.51.100.111"));
-        var before = await target.Client.GetStringAsync("/api/ui/activity");
+        var before = await OwnActivityAsync(AccountIdOf(target));
         var admin = await vault.AdminClientAsync();
 
         var reset = await PostFormAsync(admin, $"/Admin/ResetTotp/{AccountIdOf(target):D}", new(), "/Admin/Users");
         Assert.Equal(HttpStatusCode.Redirect, reset.StatusCode);
-        Assert.Equal(before, await target.Client.GetStringAsync("/api/ui/activity"));
+        // The reset ends the target's sessions, so its own feed is read as its next session would see it.
+        Assert.Equal(before, await OwnActivityAsync(AccountIdOf(target)));
         await vault.DeleteAccountAsync(username);
 
         using var activity = JsonDocument.Parse(await admin.GetStringAsync("/api/ui/activity"));
@@ -366,6 +368,14 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         await ReadEndpointsAsync(session.Client);
 
         Assert.Equal(before, await session.Client.GetStringAsync("/api/ui/activity"));
+    }
+
+    private async Task<string[]> OwnActivityAsync(Guid accountId)
+    {
+        using var request = vault.Services.CreateScope();
+        var feed = await request.ServiceProvider.GetRequiredService<IActivityService>()
+            .GetForUserAsync(accountId, 1, ActivityService.DefaultPageSize, default);
+        return feed.Items.Select(item => $"{item.TimestampUtc:O} {item.Title} {item.SourceIp}").ToArray();
     }
 
     private static void AssertActivity(JsonElement activity, int notableCount, string[] titles, string[] sources)

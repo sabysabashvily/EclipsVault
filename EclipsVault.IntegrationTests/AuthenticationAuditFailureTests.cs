@@ -4,7 +4,9 @@ using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Authentication;
 using EclipsVault.Core.Application.Mfa;
 using EclipsVault.Core.Application.Passkeys;
+using EclipsVault.Core.Application.Sessions;
 using EclipsVault.Core.Application.StepUp;
+using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -26,12 +28,13 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         var before = await AuditTrail.HeadAsync(vault);
         using var request = vault.Services.CreateScope();
         var auth = request.ServiceProvider.GetRequiredService<IVaultAuthenticationService>();
+        var stamp = await CurrentStampAsync(vault, account);
         var code = Totp.Code(account.TotpSecret!, Totp.CurrentStep() + 1);
 
         await failure.RejectAuditWritesAsync();
         try
         {
-            await Assert.ThrowsAsync<AuditWriteFailedException>(() => auth.VerifyTotpAsync(account.Id, code, default));
+            await Assert.ThrowsAsync<AuditWriteFailedException>(() => auth.VerifyTotpAsync(account.Id, stamp, code, default));
         }
         finally
         {
@@ -43,7 +46,7 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         Assert.Equal(account.LastTotpStep, stored.LastTotpStep);
         Assert.Equal(2, stored.FailedAccessCount);
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
-        Assert.NotNull(await auth.VerifyTotpAsync(account.Id, code, default));
+        Assert.NotNull(await auth.VerifyTotpAsync(account.Id, stamp, code, default));
     }
 
     [Fact]
@@ -53,15 +56,18 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         await vault.SignInNewAccountAsync("it-ledger-recovery", IPAddress.Parse("203.0.113.171"));
         var account = await LegacyProfile.AccountAsync(vault, "it-ledger-recovery");
         using var request = vault.Services.CreateScope();
-        var codes = await request.ServiceProvider.GetRequiredService<IMfaRecoveryService>().GenerateAsync(account.Id, default);
+        var recovery = await request.ServiceProvider.GetRequiredService<IMfaRecoveryService>()
+            .GenerateAsync(account.Id, account.CredentialGeneration, default);
+        var codes = recovery.Codes;
         await SetFailuresAsync("it-ledger-recovery", 2);
         var auth = request.ServiceProvider.GetRequiredService<IVaultAuthenticationService>();
+        var stamp = await CurrentStampAsync(vault, account);
         var before = await AuditTrail.HeadAsync(vault);
 
         await failure.RejectAuditWritesAsync();
         try
         {
-            await Assert.ThrowsAsync<AuditWriteFailedException>(() => auth.VerifyRecoveryCodeAsync(account.Id, codes[0], default));
+            await Assert.ThrowsAsync<AuditWriteFailedException>(() => auth.VerifyRecoveryCodeAsync(account.Id, stamp, codes[0], default));
         }
         finally
         {
@@ -72,7 +78,7 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         Assert.All(await LegacyProfile.RecoveryCodesAsync(vault, account.Id), code => Assert.Null(code.UsedAtUtc));
         Assert.Equal(2, (await LegacyProfile.AccountAsync(vault, "it-ledger-recovery")).FailedAccessCount);
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
-        Assert.NotNull(await auth.VerifyRecoveryCodeAsync(account.Id, codes[0], default));
+        Assert.NotNull(await auth.VerifyRecoveryCodeAsync(account.Id, stamp, codes[0], default));
     }
 
     [Fact]
@@ -94,12 +100,13 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         var before = await AuditTrail.HeadAsync(vault);
         using var request = vault.Services.CreateScope();
         var auth = request.ServiceProvider.GetRequiredService<IVaultAuthenticationService>();
+        var stamp = await CurrentStampAsync(vault, account);
         var code = Totp.Code(account.TotpSecret!, Totp.CurrentStep());
 
         await failure.RejectAuditWritesAsync();
         try
         {
-            await Assert.ThrowsAsync<AuditWriteFailedException>(() => auth.CompleteTotpEnrollmentAsync(account.Id, code, default));
+            await Assert.ThrowsAsync<AuditWriteFailedException>(() => auth.CompleteTotpEnrollmentAsync(account.Id, stamp, code, default));
         }
         finally
         {
@@ -125,6 +132,7 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         var before = await AuditTrail.HeadAsync(vault);
         using var request = vault.Services.CreateScope();
         var auth = request.ServiceProvider.GetRequiredService<IVaultAuthenticationService>();
+        var stamp = await CurrentStampAsync(vault, account);
 
         await failure.RejectAuditWritesAsync();
         try
@@ -152,12 +160,13 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         var before = await AuditTrail.HeadAsync(vault);
         using var request = vault.Services.CreateScope();
         var stepUp = request.ServiceProvider.GetRequiredService<IStepUpService>();
+        var stamp = await CurrentStampAsync(vault, account);
         var code = Totp.Code(account.TotpSecret!, Totp.CurrentStep() + 1);
 
         await failure.RejectAuditWritesAsync();
         try
         {
-            await Assert.ThrowsAsync<AuditWriteFailedException>(() => stepUp.VerifyAsync(account.Id, code, default));
+            await Assert.ThrowsAsync<AuditWriteFailedException>(() => stepUp.VerifyAsync(account.Id, stamp, code, default));
         }
         finally
         {
@@ -167,7 +176,7 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         await request.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().SaveChangesAsync();
         Assert.Equal(account.LastTotpStep, (await LegacyProfile.AccountAsync(vault, "it-ledger-step-up")).LastTotpStep);
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
-        Assert.True(await stepUp.VerifyAsync(account.Id, code, default));
+        Assert.True(await stepUp.VerifyAsync(account.Id, stamp, code, default));
     }
 
     [Fact]
@@ -189,7 +198,7 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         await failure.RejectAuditWritesAsync();
         try
         {
-            await Assert.ThrowsAsync<AuditWriteFailedException>(() => passkeys.CompleteAssertionAsync(ceremony.Challenge, response, default));
+            await Assert.ThrowsAsync<AuditWriteFailedException>(() => passkeys.CompleteAssertionAsync(ceremony.Challenge, ceremony.NamedAccount, response, default));
         }
         finally
         {
@@ -220,7 +229,7 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         await failure.RejectAuditWritesAsync();
         try
         {
-            await Assert.ThrowsAsync<AuditWriteFailedException>(() => passkeys.CompleteAssertionAsync(ceremony.Challenge, response, default));
+            await Assert.ThrowsAsync<AuditWriteFailedException>(() => passkeys.CompleteAssertionAsync(ceremony.Challenge, ceremony.NamedAccount, response, default));
         }
         finally
         {
@@ -243,4 +252,8 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         account.FailedAccessCount = failures;
         await db.SaveChangesAsync();
     }
+    private static async Task<SessionStamp> CurrentStampAsync(VaultFixture vault, User account)
+        => new((await LegacyProfile.AccountAsync(vault, account.Username)).CredentialGeneration,
+            await vault.Services.GetRequiredService<ISessionRevocationService>().CaptureAsync(account.Id));
+
 }

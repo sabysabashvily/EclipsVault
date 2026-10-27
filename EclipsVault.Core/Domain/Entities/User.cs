@@ -1,4 +1,5 @@
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Core.Domain.Exceptions;
 
 namespace EclipsVault.Core.Domain.Entities;
 
@@ -55,6 +56,22 @@ public class User
 
     /// <summary>ABAC subject attribute: the project this user is assigned to.</summary>
     public string ProjectKey { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Advances with every change to how the account signs in. Sessions and pending sign-ins issued
+    /// under an earlier generation are refused, so a changed credential ends what the old one opened.
+    /// </summary>
+    public long CredentialGeneration { get; set; }
+
+    /// <summary>Refuses a session or proof issued under any generation but the current one.</summary>
+    /// <exception cref="StaleProofException">The account's credentials changed since it was issued.</exception>
+    public void RequireCredentialGeneration(long credentialGeneration)
+    {
+        if (CredentialGeneration != credentialGeneration)
+        {
+            throw new StaleProofException();
+        }
+    }
 
     /// <summary>When true, the account cannot sign in and active sessions are rejected.</summary>
     public bool IsDisabled { get; set; }

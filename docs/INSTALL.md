@@ -104,3 +104,15 @@ Put your reverse proxy in front, terminating TLS and forwarding `X-Forwarded-For
 Back up the database **and** the Data Protection key ring directory. The key ring is sealed with your
 KEK, so a backup is inert without `ECLIPSVAULT_KEK` — keep the KEK in your secret manager, not beside
 the backup.
+
+## 8. Upgrading
+
+Every session carries the account's credential generation and session revocation version, and ends
+when either moves on: a credential change, or signing out everywhere. Two rules follow when you
+upgrade from a release whose sessions carry neither:
+
+- **Everyone signs in again once.** The vault refuses those sessions, and sign-ins left half-finished
+  across the upgrade, rather than guess what they would carry.
+- **Upgrade every node before relying on this.** A node still running the earlier release keeps its
+  own rules, so it would accept sessions the new one has ended. Drain and retire old nodes instead of
+  running both releases behind one load balancer.

@@ -29,12 +29,12 @@ public class PersonalDataExportServiceTests
         {
             return Task.FromResult(userId == User ? dto : null);
         }
-        public Task<ProfileDto> UpdateAsync(Guid userId, string displayName, string email, CancellationToken ct) => throw new NotSupportedException();
-        public Task ChangePasswordAsync(Guid userId, string currentPassword, string newPassword, CancellationToken ct) => throw new NotSupportedException();
+        public Task<ProfileUpdate> UpdateAsync(Guid userId, long credentialGeneration, string displayName, string email, CancellationToken ct) => throw new NotSupportedException();
+        public Task<long> ChangePasswordAsync(Guid userId, long credentialGeneration, string currentPassword, string newPassword, CancellationToken ct) => throw new NotSupportedException();
         public Task<byte[]?> GetAvatarPngAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
         public Task SetAvatarAsync(Guid userId, byte[] uploadedBytes, CancellationToken ct) => throw new NotSupportedException();
         public Task RemoveAvatarAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
-        public Task ResetOwnMfaAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
+        public Task ResetOwnMfaAsync(Guid userId, long credentialGeneration, CancellationToken ct) => throw new NotSupportedException();
     }
 
     private sealed class FakePasskeys(int count) : IPasskeyService
@@ -47,30 +47,27 @@ public class PersonalDataExportServiceTests
             return Task.FromResult(list);
         }
         public Task<PasskeyCeremonyOptions> BeginRegistrationAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
-        public Task<PasskeyRegistrationResult> CompleteRegistrationAsync(Guid userId, string expectedChallenge, string responseJson, string? nickname, CancellationToken ct) => throw new NotSupportedException();
+        public Task<PasskeyRegistrationResult> CompleteRegistrationAsync(Guid userId, long credentialGeneration, string expectedChallenge, string responseJson, string? nickname, CancellationToken ct) => throw new NotSupportedException();
         public Task<PasskeyCeremonyOptions> BeginAssertionAsync(string? usernameOrEmail, CancellationToken ct) => throw new NotSupportedException();
-        public Task<PasskeyAssertionResult> CompleteAssertionAsync(string expectedChallenge, string responseJson, CancellationToken ct) => throw new NotSupportedException();
-        public Task<bool> RemoveAsync(Guid userId, Guid passkeyId, CancellationToken ct) => throw new NotSupportedException();
+        public Task<PasskeyAssertionResult> CompleteAssertionAsync(string expectedChallenge, PasskeyNamedAccount? namedAccount, string responseJson, CancellationToken ct) => throw new NotSupportedException();
+        public Task<long?> RemoveAsync(Guid userId, long credentialGeneration, Guid passkeyId, CancellationToken ct) => throw new NotSupportedException();
     }
 
     private sealed class FakeRecovery(int remaining) : IMfaRecoveryService
     {
         public Task<int> CountRemainingAsync(Guid userId, CancellationToken ct) => Task.FromResult(userId == User ? remaining : 0);
-        public Task<IReadOnlyList<string>> GenerateAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
+        public Task<RecoveryCodeSet> GenerateAsync(Guid userId, long credentialGeneration, CancellationToken ct) => throw new NotSupportedException();
     }
 
-    private sealed class FakeSessions(int count) : ISessionRegistry
+    private sealed class FakeSessions(int count) : ISignedInDevices
     {
-        public Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, CancellationToken ct = default)
+        public Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, CancellationToken ct)
         {
             if (userId != User) return Task.FromResult<IReadOnlyList<ActiveSession>>([]);
             IReadOnlyList<ActiveSession> list = Enumerable.Range(0, count)
                 .Select(_ => new ActiveSession(Guid.NewGuid(), "Chrome on macOS", "203.0.113.5", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)).ToList();
             return Task.FromResult(list);
         }
-        public Task RecordSeenAsync(SessionObservation observation, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<bool> RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<bool> IsRevokedAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new NotSupportedException();
     }
 
     private sealed class FakeAccessRequests(int count) : IAccessRequestService

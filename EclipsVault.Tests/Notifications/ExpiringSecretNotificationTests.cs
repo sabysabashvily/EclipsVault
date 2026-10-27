@@ -56,6 +56,7 @@ public class ExpiringSecretNotificationTests
         public FakeUsers(User? user) => _user = user;
 
         public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult(_user);
+        public Task<bool> ReloadAsync(User user, CancellationToken ct) => throw new NotSupportedException();
 
         public Task<User?> FindByUsernameAsync(string username, CancellationToken ct) => throw new NotSupportedException();
         public Task<User?> FindByUsernameOrEmailAsync(string identifier, CancellationToken ct) => throw new NotSupportedException();

@@ -29,6 +29,10 @@ public interface IUserRepository
 
     Task<User?> FindByIdAsync(Guid id, CancellationToken ct);
 
+    /// <summary>Replaces the values of <paramref name="user"/> with the account as it is stored now.</summary>
+    /// <returns>False when the account no longer exists.</returns>
+    Task<bool> ReloadAsync(User user, CancellationToken ct);
+
     Task<IReadOnlyList<User>> ListAsync(CancellationToken ct);
 
     /// <exception cref="EmailAddressTakenException">Another account took the user's email first.</exception>

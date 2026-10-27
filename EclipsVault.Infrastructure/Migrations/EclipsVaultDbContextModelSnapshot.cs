@@ -756,6 +756,9 @@ namespace EclipsVault.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<long>("CredentialGeneration")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasMaxLength(64)

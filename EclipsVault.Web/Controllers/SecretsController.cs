@@ -77,7 +77,7 @@ public sealed class SecretsController : VaultController
     /// someone to open a decoy) and the same <c>VisibleToAsync</c>, so a search can only ever return
     /// names the caller was already entitled to enumerate. A palette that queried the repository
     /// directly — or filtered on claims of its own — would be a second, unpoliced enumeration route
-    /// around the ABAC filter, which is exactly the disclosure the list was fixed to close.
+    /// around the ABAC filter.
     ///
     /// Enumeration is not per-row audited, matching every other list view; opening a result is.
     /// </summary>
@@ -164,7 +164,7 @@ public sealed class SecretsController : VaultController
             return denied;
         }
 
-        if (string.IsNullOrWhiteSpace(code) || !await _stepUp.VerifyAsync(CurrentUserId(), code, ct))
+        if (string.IsNullOrWhiteSpace(code) || !await _stepUp.VerifyAsync(CurrentUserId(), User.GetSessionStampOrNull()!, code, ct))
         {
             return View("Details", await BuildViewModelAsync(details, ct,
                 stepUpRequired: true, stepUpVersionId: versionId,
@@ -301,9 +301,8 @@ public sealed class SecretsController : VaultController
             return View(model);
         }
 
-        // Creating is an access decision too. ProjectKey and Sensitivity arrive from the posted form,
-        // and the read path treats project as a boundary — so without this the form was a way to write
-        // a credential into a namespace the caller cannot open, where its owners would deploy it.
+        // Project and sensitivity come from the form, so creation must enforce the same access
+        // boundary as reading: a caller cannot plant a credential in another project.
         var projectKey = (model.ProjectKey ?? string.Empty).Trim();
 
         var decision = SecretCreationPolicy.Evaluate(
@@ -468,16 +467,12 @@ public sealed class SecretsController : VaultController
 
     /// <summary>Whether revealing a secret of this sensitivity needs a fresh re-authentication right now.</summary>
     private bool StepUpNeeded(SensitivityLevel sensitivity)
-        => _stepUp.IsRequired(sensitivity, LastStrongAuthUtc(), _clock.GetUtcNow());
+        => _stepUp.IsRequired(sensitivity, User.GetLastStrongAuthUtc(), _clock.GetUtcNow());
 
-    /// <summary>The more recent of the original sign-in and the last step-up — the strong-auth clock.</summary>
-    private DateTimeOffset LastStrongAuthUtc()
-    {
-        long Read(string claimType) => long.TryParse(User.FindFirstValue(claimType), out var seconds) ? seconds : 0;
-        return DateTimeOffset.FromUnixTimeSeconds(Math.Max(Read(VaultClaimTypes.AuthTime), Read(VaultClaimTypes.StepUpTime)));
-    }
-
-    /// <summary>Re-issues the auth cookie with a fresh step-up timestamp, preserving every other claim.</summary>
+    /// <summary>
+    /// Re-issues the auth cookie with a fresh step-up timestamp, preserving every other claim, so the
+    /// session keeps the stamp it was issued under.
+    /// </summary>
     private async Task StampStepUpAsync()
     {
         var now = _clock.GetUtcNow().ToUnixTimeSeconds().ToString();

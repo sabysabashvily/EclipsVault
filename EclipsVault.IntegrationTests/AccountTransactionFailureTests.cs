@@ -44,7 +44,7 @@ public abstract class AccountTransactionFailureTests(AccountChangeDatabases data
     {
         var account = await databases.CreateEnrolledAccountAsync("it-provider-ledger-recovery");
         await using var request = databases.NewRequest();
-        var codes = await request.Recovery.GenerateAsync(account.Id, default);
+        var codes = (await request.Recovery.GenerateAsync(account.Id, 0, default)).Codes;
         var loaded = await request.LoadAsync(account.Id);
 
         await databases.RejectAuditWritesAsync();
@@ -75,13 +75,13 @@ public abstract class AccountTransactionFailureTests(AccountChangeDatabases data
         var account = await databases.CreateEnrolledAccountAsync("it-cleanup-staging");
         await using (var setup = databases.NewRequest())
         {
-            await setup.Recovery.GenerateAsync(account.Id, default);
+            await setup.Recovery.GenerateAsync(account.Id, 0, default);
         }
 
         await using var request = databases.NewRequest(new CancelRecoveryRead());
         var before = await request.Context.AuditLogs.CountAsync();
 
-        await Assert.ThrowsAsync<OperationCanceledException>(() => request.Profile.ResetOwnMfaAsync(account.Id, default));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => request.Profile.ResetOwnMfaAsync(account.Id, 1, default));
         await request.Context.SaveChangesAsync();
 
         await using var check = databases.NewRequest();

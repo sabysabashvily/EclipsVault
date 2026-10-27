@@ -13,29 +13,15 @@ using Xunit;
 namespace EclipsVault.Tests.Profile;
 
 /// <summary>
-/// A password change is a credential reset, so it must turn out every other session: a session
-/// opened with the old password cannot be allowed to outlive it. These pin that the account-wide
-/// revocation fires on success — and, crucially, only on success — so a rejected change (wrong
-/// current password, breached new one) never disturbs a live session.
+/// Changing how an account signs in must end every session the old credentials opened, so the change
+/// advances the credential generation in the same commit. These pin that it does on success, only on
+/// success, and only for a real sign-in change: a rejected change or a new display name leaves every
+/// live session alone.
 /// </summary>
 public class ProfileServiceTests
 {
     private const string CurrentPassword = "current-password-value";
     private static readonly Guid UserId = Guid.NewGuid();
-
-    private sealed class RecordingRevocation : ISessionRevocationService
-    {
-        public List<(Guid UserId, DateTimeOffset At)> Revocations { get; } = [];
-
-        public Task RevokeAsync(Guid userId, DateTimeOffset revokedAtUtc, CancellationToken ct = default)
-        {
-            Revocations.Add((userId, revokedAtUtc));
-            return Task.CompletedTask;
-        }
-
-        public Task<bool> IsRevokedAsync(Guid userId, DateTimeOffset sessionIssuedAtUtc, CancellationToken ct = default)
-            => throw new NotSupportedException();
-    }
 
     // Verifies the fixed "current-password" bytes and nothing else, so a test can drive the
     // wrong-password branch by passing anything but CurrentPassword.
@@ -58,6 +44,7 @@ public class ProfileServiceTests
     private sealed class StubUsers(User user, bool emailTaken) : IUserRepository
     {
         public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult<User?>(user);
+        public Task<bool> ReloadAsync(User user, CancellationToken ct) => throw new NotSupportedException();
         public Task<bool> IsEmailTakenAsync(string email, Guid accountId, CancellationToken ct) => Task.FromResult(emailTaken);
 
         public Task UpdateAsync(User user, CancellationToken ct) => throw new NotSupportedException();
@@ -92,11 +79,11 @@ public class ProfileServiceTests
         public Task<bool> CommitAsync(User account, AuditEntry entry, CancellationToken ct)
             => CommitAsync(account, entry.Action, entry.Details!, ct);
 
-        public List<AuditAction> Committed { get; } = [];
+        public List<(AuditAction Action, long CredentialGeneration)> Committed { get; } = [];
 
         public Task<bool> CommitAsync(User account, AuditAction action, string details, CancellationToken ct)
         {
-            Committed.Add(action);
+            Committed.Add((action, account.CredentialGeneration));
             return Task.FromResult(true);
         }
     }
@@ -138,10 +125,9 @@ public class ProfileServiceTests
         Clearance = ClearanceLevel.Standard
     };
 
-    private static (ProfileService Service, RecordingRevocation Revocation, RecordingChanges Changes) NewService(
+    private static (ProfileService Service, RecordingChanges Changes) NewService(
         bool breached = false, bool emailTaken = false)
     {
-        var revocation = new RecordingRevocation();
         var changes = new RecordingChanges();
         var service = new ProfileService(
             new StubUsers(Owner(), emailTaken),
@@ -150,57 +136,98 @@ public class ProfileServiceTests
             new ThrowingRecoveryCodes(),
             new StubBreachScreen(breached),
             new NoopNotifications(),
-            revocation,
             changes,
             new NoopSink(),
-            new StubActor(),
-            TimeProvider.System);
+            new StubActor());
 
-        return (service, revocation, changes);
+        return (service, changes);
     }
 
     [Fact]
-    public async Task Changing_the_password_revokes_every_session_for_the_user()
+    public async Task Changing_the_password_advances_the_credential_generation_in_the_same_commit()
     {
-        var (service, revocation, _) = NewService();
+        var (service, changes) = NewService();
 
-        await service.ChangePasswordAsync(UserId, CurrentPassword, "a-brand-new-password", CancellationToken.None);
+        var committed = await service.ChangePasswordAsync(UserId, 0, CurrentPassword, "a-brand-new-password", CancellationToken.None);
 
-        var revoked = Assert.Single(revocation.Revocations);
-        Assert.Equal(UserId, revoked.UserId);
+        Assert.Equal(1, committed);
+        Assert.Equal([(AuditAction.PasswordChanged, 1L)], changes.Committed);
     }
 
     [Fact]
-    public async Task A_wrong_current_password_changes_nothing_and_revokes_nothing()
+    public async Task A_wrong_current_password_commits_nothing()
     {
-        var (service, revocation, changes) = NewService();
+        var (service, changes) = NewService();
 
         await Assert.ThrowsAsync<ProfileException>(() =>
-            service.ChangePasswordAsync(UserId, "not-the-current-password", "a-brand-new-password", CancellationToken.None));
+            service.ChangePasswordAsync(UserId, 0, "not-the-current-password", "a-brand-new-password", CancellationToken.None));
 
-        Assert.Empty(revocation.Revocations); // a rejected change must not disturb a live session
         Assert.Empty(changes.Committed);
     }
 
     [Fact]
-    public async Task A_breached_new_password_is_rejected_without_revoking()
+    public async Task A_breached_new_password_is_rejected_without_committing()
     {
-        var (service, revocation, changes) = NewService(breached: true);
+        var (service, changes) = NewService(breached: true);
 
         await Assert.ThrowsAsync<ProfileException>(() =>
-            service.ChangePasswordAsync(UserId, CurrentPassword, "a-brand-new-password", CancellationToken.None));
+            service.ChangePasswordAsync(UserId, 0, CurrentPassword, "a-brand-new-password", CancellationToken.None));
 
-        Assert.Empty(revocation.Revocations);
         Assert.Empty(changes.Committed);
+    }
+
+    [Fact]
+    public async Task A_password_change_from_a_session_of_an_earlier_generation_is_refused()
+    {
+        var (service, changes) = NewService();
+
+        await Assert.ThrowsAsync<StaleProofException>(() =>
+            service.ChangePasswordAsync(UserId, 3, CurrentPassword, "a-brand-new-password", CancellationToken.None));
+
+        Assert.Empty(changes.Committed);
+    }
+
+    [Fact]
+    public async Task Changing_the_email_advances_the_credential_generation()
+    {
+        var (service, changes) = NewService();
+
+        var update = await service.UpdateAsync(UserId, 0, "Owner", "new-owner@example.test", CancellationToken.None);
+
+        Assert.True(update.EmailChanged);
+        Assert.Equal(1, update.CredentialGeneration);
+        Assert.Equal([(AuditAction.ProfileUpdated, 1L)], changes.Committed);
+    }
+
+    [Fact]
+    public async Task Changing_only_the_display_name_keeps_the_credential_generation()
+    {
+        var (service, changes) = NewService();
+
+        var update = await service.UpdateAsync(UserId, 0, "A new display name", "owner@example.test", CancellationToken.None);
+
+        Assert.False(update.EmailChanged);
+        Assert.Equal([(AuditAction.ProfileUpdated, 0L)], changes.Committed);
+    }
+
+    [Fact]
+    public async Task Respelling_the_email_in_other_letter_case_keeps_the_credential_generation()
+    {
+        var (service, changes) = NewService();
+
+        var update = await service.UpdateAsync(UserId, 0, "Owner", "Owner@Example.TEST", CancellationToken.None);
+
+        Assert.False(update.EmailChanged);
+        Assert.Equal([(AuditAction.ProfileUpdated, 0L)], changes.Committed);
     }
 
     [Fact]
     public async Task An_email_another_account_signs_in_with_is_refused_without_naming_it_or_saving()
     {
-        var (service, _, changes) = NewService(emailTaken: true);
+        var (service, changes) = NewService(emailTaken: true);
 
         var refused = await Assert.ThrowsAsync<EmailAddressTakenException>(() =>
-            service.UpdateAsync(UserId, "Owner", "taken@example.test", CancellationToken.None));
+            service.UpdateAsync(UserId, 0, "Owner", "taken@example.test", CancellationToken.None));
 
         Assert.Equal("That email address is already used by another account.", refused.Message);
         Assert.Empty(changes.Committed);

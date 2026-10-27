@@ -74,12 +74,12 @@ public abstract class AccountChangeDatabases : IAsyncLifetime
         await request.Context.Database.ExecuteSqlRawAsync("ALTER TABLE \"AuditLogs\" DROP CONSTRAINT \"CK_AccountTestsRejectAudits\"");
     }
 
-    public AccountRequest NewRequest(IInterceptor? fault = null)
+    public AccountRequest NewRequest(IInterceptor? fault = null, string database = Database)
     {
         var interceptor = new AuditSaveChangesInterceptor(
             new NoSession(), _chain!, TimeProvider.System, NullLogger<AuditSaveChangesInterceptor>.Instance);
         var options = new DbContextOptionsBuilder<EclipsVaultDbContext>();
-        options.UseVaultDatabase(Provider, ConnectionString(Database)).AddInterceptors(interceptor);
+        options.UseVaultDatabase(Provider, ConnectionString(database)).AddInterceptors(interceptor);
         if (fault is not null)
         {
             options.AddInterceptors(fault);
@@ -131,7 +131,7 @@ public sealed class AccountRequest : IAsyncDisposable
         Recovery = new MfaRecoveryService(Users, RecoveryCodes, hasher, Changes, TimeProvider.System);
         // Reset uses only the account, recovery and commit ports; the other Profile operations
         // need host services that this focused persistence fixture deliberately does not create.
-        Profile = new ProfileService(Users, hasher, null!, RecoveryCodes, null!, null!, null!, Changes, null!, null!, TimeProvider.System);
+        Profile = new ProfileService(Users, hasher, null!, RecoveryCodes, null!, null!, Changes, null!, null!);
     }
 
     public EclipsVaultDbContext Context { get; }

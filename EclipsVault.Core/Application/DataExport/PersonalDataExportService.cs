@@ -21,7 +21,7 @@ public sealed class PersonalDataExportService : IPersonalDataExportService
     private readonly IProfileService _profile;
     private readonly IPasskeyService _passkeys;
     private readonly IMfaRecoveryService _recovery;
-    private readonly ISessionRegistry _sessions;
+    private readonly ISignedInDevices _sessions;
     private readonly IAccessRequestService _accessRequests;
     private readonly IAuditLogReader _audit;
 
@@ -29,7 +29,7 @@ public sealed class PersonalDataExportService : IPersonalDataExportService
         IProfileService profile,
         IPasskeyService passkeys,
         IMfaRecoveryService recovery,
-        ISessionRegistry sessions,
+        ISignedInDevices sessions,
         IAccessRequestService accessRequests,
         IAuditLogReader audit)
     {
