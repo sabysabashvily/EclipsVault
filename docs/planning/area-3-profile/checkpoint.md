@@ -654,3 +654,15 @@ ran the security-reviewer plus Standards/Spec reviews on Opus high. Findings and
 `logs/ticket-86/review-resolutions.md` (Final round). Open owner decisions: a Redis
 `maxmemory-policy` startup check, auditing sessions refused at issuance, and the role-change
 revoke-before-audit ordering (pre-existing). Committed as one commit; not pushed.
+
+### Owner decisions on #86 review findings (2026-10-28)
+
+- An administrator's MFA reset ends the target's sessions: confirmed.
+- Auditing a sign-in that `SessionIssuer` refuses after the success event was committed (and
+  break-glass lifting the IP block before issuance): deferred to #93.
+- A role change that commits, then revokes in Redis, then audits, so a Redis failure leaves it
+  unaudited: deferred to #92.
+- Redis eviction: enforced. With Redis enabled the vault reads `maxmemory_policy` from `INFO memory`
+  on every server at startup (a short-lived admin connection; the vault's own connection stays
+  non-admin) and refuses to start unless it is `noeviction`. Second commit on `area-3-profile` after
+  `f12ba30`; logs under `logs/ticket-86/` (`*-r13.txt`).

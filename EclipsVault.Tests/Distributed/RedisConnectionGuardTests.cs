@@ -1,3 +1,4 @@
+using System.Net;
 using EclipsVault.Infrastructure.Distributed;
 using Xunit;
 
@@ -63,5 +64,24 @@ public class RedisConnectionGuardTests
             () => RedisConnectionGuard.RequireAuthentication(Options("localhost:6379,ssl=not-a-bool")));
 
         Assert.Contains("could not be parsed", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_policy_that_could_not_be_read_is_refused_with_the_fix()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => RedisConnectionGuard.RequireNoEviction(new DnsEndPoint("cache", 6379), policy: null));
+
+        Assert.Contains("could not read maxmemory_policy from INFO memory", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Set maxmemory-policy to noeviction", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_allkeys_policy_is_refused_too()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => RedisConnectionGuard.RequireNoEviction(new DnsEndPoint("cache", 6379), "allkeys-lru"));
+
+        Assert.Contains("maxmemory-policy allkeys-lru", ex.Message, StringComparison.Ordinal);
     }
 }

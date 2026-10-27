@@ -1,9 +1,10 @@
+using System.Net;
 using StackExchange.Redis;
 
 namespace EclipsVault.Infrastructure.Distributed;
 
 /// <summary>
-/// Refuses to put the vault's security state in a Redis that anyone can write.
+/// Refuses to put the vault's security state in a Redis that anyone can write, or that may evict it.
 ///
 /// When Redis is enabled it holds the session-revocation markers, the intrusion IP blacklist, the
 /// auth throttle and the encrypted-envelope cache. The first two are answers the vault trusts: an
@@ -17,6 +18,70 @@ namespace EclipsVault.Infrastructure.Distributed;
 /// </summary>
 public static class RedisConnectionGuard
 {
+    private const string NoEviction = "noeviction";
+
+    /// <summary>
+    /// Connects to the configured Redis, refusing one without credentials or one that may evict keys.
+    /// Connecting at startup also fails fast when the store holding security state is unreachable.
+    /// </summary>
+    public static ConnectionMultiplexer Connect(RedisOptions options)
+    {
+        RequireAuthentication(options);
+        RequireNoEvictionOnEveryServer(options);
+        return ConnectionMultiplexer.Connect(options.Configuration);
+    }
+
+    /// <summary>
+    /// Refuses a Redis whose eviction policy is not noeviction, or whose policy could not be read.
+    /// A device's sign-out is a key with an expiry, which any volatile-* or allkeys-* policy may
+    /// evict under memory pressure; the vault would then accept a copy of that device's cookie again.
+    /// </summary>
+    public static void RequireNoEviction(EndPoint server, string? policy)
+    {
+        if (policy == NoEviction)
+        {
+            return;
+        }
+
+        var found = policy is null
+            ? $"The vault could not read maxmemory_policy from INFO memory on Redis {server}"
+            : $"Redis {server} runs with maxmemory-policy {policy}";
+        throw new InvalidOperationException(
+            found + ". The vault keeps each device's sign-out in Redis as a key with an expiry, and any " +
+            "policy other than noeviction may evict it under memory pressure, letting a copy of that " +
+            "device's cookie back in. Set maxmemory-policy to noeviction (in redis.conf, or the managed " +
+            "service's parameter of that name), make sure INFO is allowed, then start the vault again.");
+    }
+
+    private static void RequireNoEvictionOnEveryServer(RedisOptions options)
+    {
+        // The client treats INFO as an admin command, so the policy is read on a short-lived
+        // connection; the vault's own connection never gets admin commands.
+        var probe = ConfigurationOptions.Parse(options.Configuration);
+        probe.AllowAdmin = true;
+        using var connection = ConnectionMultiplexer.Connect(probe);
+        foreach (var server in connection.GetServers())
+        {
+            RequireNoEviction(server.EndPoint, ReadEvictionPolicy(server));
+        }
+    }
+
+    private static string? ReadEvictionPolicy(IServer server)
+    {
+        try
+        {
+            return server.Info("memory")
+                .SelectMany(section => section)
+                .Where(entry => entry.Key == "maxmemory_policy")
+                .Select(entry => entry.Value)
+                .FirstOrDefault();
+        }
+        catch (Exception ex) when (ex is RedisException or RedisTimeoutException)
+        {
+            return null;
+        }
+    }
+
     public static void RequireAuthentication(RedisOptions options)
     {
         if (options.AllowUnauthenticated)

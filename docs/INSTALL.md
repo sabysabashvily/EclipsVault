@@ -116,3 +116,8 @@ upgrade from a release whose sessions carry neither:
 - **Upgrade every node before relying on this.** A node still running the earlier release keeps its
   own rules, so it would accept sessions the new one has ended. Drain and retire old nodes instead of
   running both releases behind one load balancer.
+- **Redis must not evict.** With `Redis:Enabled=true` the vault refuses to start unless Redis reports
+  `maxmemory-policy noeviction` and allows `INFO`. Many managed services default to `volatile-lru`;
+  change that parameter before upgrading. Every configured server must answer at startup: a vault
+  that used to start while one endpoint was down now refuses until it is back. See
+  [`BACKUP_AND_RECOVERY.md`](BACKUP_AND_RECOVERY.md).

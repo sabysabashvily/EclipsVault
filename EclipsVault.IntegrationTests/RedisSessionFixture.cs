@@ -11,12 +11,15 @@ namespace EclipsVault.IntegrationTests;
 public sealed class RedisSessionFixture : IAsyncLifetime
 {
     /// <summary>Redis 7.4, the version <c>docker-compose.yml</c> runs, pinned by digest.</summary>
-    private const string RedisImage =
+    internal const string RedisImage =
         "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499";
 
     private static readonly RedisOptions OptionsValue = new() { InstanceName = "session-tests" };
 
-    private readonly RedisContainer _container = new RedisBuilder(RedisImage).Build();
+    // The vault refuses to start on any other policy; set explicitly so the image default cannot change it.
+    private readonly RedisContainer _container = new RedisBuilder(RedisImage)
+        .WithCommand("--maxmemory-policy", "noeviction")
+        .Build();
 
     private ConnectionMultiplexer? _connection;
     private ConnectionMultiplexer? _peerConnection;

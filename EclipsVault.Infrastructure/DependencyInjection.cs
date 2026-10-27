@@ -139,11 +139,8 @@ public static class DependencyInjection
         var redisOptions = configuration.GetSection(RedisOptions.SectionName).Get<RedisOptions>() ?? new RedisOptions();
         if (redisOptions.Enabled)
         {
-            RedisConnectionGuard.RequireAuthentication(redisOptions);
-
-            // One multiplexer per process (the expensive, thread-safe singleton). Connecting here
-            // fails fast at startup if the shared store holding security state is unreachable.
-            services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisOptions.Configuration));
+            // One multiplexer per process (the expensive, thread-safe singleton).
+            services.AddSingleton<IConnectionMultiplexer>(RedisConnectionGuard.Connect(redisOptions));
             services.AddSingleton<ISecretCache, RedisSecretCache>();
             services.AddSingleton<IIpBlacklist, RedisIpBlacklist>();
             services.AddSingleton<ISessionRevocationService, RedisSessionRevocationService>();

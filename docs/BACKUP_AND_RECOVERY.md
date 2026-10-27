@@ -72,10 +72,18 @@ The vault cannot tell a restored copy from the live one, so it cannot do this fo
 guarantee holds only when the recovery follows these steps. Losing Redis entirely needs no action;
 the missing state already refuses the sessions it covered.
 
-Run Redis with `maxmemory-policy noeviction`, which is Redis's own default but not every managed
-service's. Evicting an account's revocation version is safe, but evicting the record that one device
-signed out lets a copy of that device's cookie back in. Under `noeviction` a full Redis refuses the
-write instead, so the sign-out fails where the user can see it rather than being undone later.
+Redis must run with `maxmemory-policy noeviction`, which is Redis's own default but not every managed
+service's: many default to `volatile-lru`. Evicting an account's revocation version is safe, but the
+record that one device signed out is a key with an expiry, and evicting it lets a copy of that
+device's cookie back in. Under `noeviction` a full Redis refuses the write instead, so the sign-out
+fails where the user can see it rather than being undone later.
+
+The vault enforces this at startup. It reads `maxmemory_policy` from `INFO memory` on every Redis
+server known when it starts, and refuses to start when the policy is anything else or cannot be read,
+with a message naming the setting and the fix. It does not check again while it runs: a policy
+changed later with `CONFIG SET` or a parameter group, or a server added or promoted after startup,
+goes unnoticed until the next restart. Pin `maxmemory-policy noeviction` in `redis.conf` or the
+parameter group of every node, including replicas and any restored or replacement Redis.
 
 ## Test the restore (do this on a schedule, not after a disaster)
 
