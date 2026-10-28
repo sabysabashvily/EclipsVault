@@ -1,5 +1,5 @@
 import { httpResource } from '@angular/common/http';
-import { Component, computed, inject, signal, viewChild } from '@angular/core';
+import { DestroyRef, Component, computed, inject, signal, viewChild } from '@angular/core';
 import { Subscription, takeUntil } from 'rxjs';
 import { StatusLine } from '../shared/status-line';
 import { passwordStrength } from './password-strength';
@@ -30,7 +30,7 @@ export class ChangePasswordPage {
   private preview: Subscription | undefined;
 
   constructor() {
-    this.session.onClear(() => this.clear());
+    this.session.onClear(() => this.clear(), inject(DestroyRef));
   }
 
   protected candidateChanged(value: string): void {

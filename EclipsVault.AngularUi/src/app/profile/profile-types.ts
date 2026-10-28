@@ -6,6 +6,10 @@ export type VerifiedOperation = components['schemas']['VerifiedOperationResponse
 export type PrepareChange = components['schemas']['PrepareProfileOperationRequest'];
 export type ProofMethod = PreparedOperation['methods'][number];
 export type PendingEmail = components['schemas']['PendingEmailResponse'];
+export type ProfilePasskey = Profile['passkeys'][number];
+export type NewRecoveryCodes = components['schemas']['RecoveryCodesResponse'];
+export type PasskeyOptions = components['schemas']['PasskeyOptionsResponse'];
+export type RegisteredPasskey = components['schemas']['RegisteredPasskeyResponse'];
 
 export function refusalReason(code: string | null): string {
   switch (code) {

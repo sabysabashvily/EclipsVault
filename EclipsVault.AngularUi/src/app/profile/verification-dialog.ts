@@ -1,11 +1,13 @@
 import { HttpClient } from '@angular/common/http';
 import {
   Component,
+  DestroyRef,
   DOCUMENT,
   ElementRef,
   Injector,
   afterNextRender,
   inject,
+  input,
   output,
   signal,
   viewChild,
@@ -23,6 +25,8 @@ import type { PreparedOperation, ProofMethod, VerifiedOperation } from './profil
   templateUrl: './verification-dialog.html',
 })
 export class VerificationDialog {
+  /** Starts every element id, so a second dialog on the page keeps its labels on its own fields. */
+  readonly idPrefix = input('verification');
   readonly verified = output<VerifiedOperation>();
   readonly cancelled = output<void>();
   private readonly http = inject(HttpClient);
@@ -50,7 +54,7 @@ export class VerificationDialog {
   protected readonly message = signal('');
 
   constructor() {
-    this.session.onClear(() => this.close());
+    this.session.onClear(() => this.close(), inject(DestroyRef));
   }
 
   open(

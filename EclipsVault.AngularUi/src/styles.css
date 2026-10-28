@@ -895,7 +895,51 @@ a.stat-card:hover {
   overflow-wrap: anywhere;
 }
 
+/* ---- MFA recovery codes --------------------------------------------- */
+.recovery-panel {
+  max-width: 640px;
+}
+.recovery-codes {
+  list-style: none;
+  margin: 1.4rem 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.6rem;
+  counter-reset: recovery;
+}
+.recovery-codes li {
+  counter-increment: recovery;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  font-size: 1.15rem;
+  letter-spacing: 0.12em;
+  user-select: all;
+}
+.recovery-codes li::before {
+  content: counter(recovery);
+  font-family: var(--sans, inherit);
+  font-size: 0.75rem;
+  letter-spacing: normal;
+  color: var(--text-faint);
+  min-width: 1.2em;
+  text-align: right;
+}
+.recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
 @media (max-width: 560px) {
+  .recovery-codes {
+    grid-template-columns: 1fr;
+  }
   /* Phone widths: drop the fixed label column and let long button labels wrap so
        nothing forces horizontal page scroll. */
   .detail-grid {
@@ -1198,8 +1242,15 @@ kbd {
 @media print {
   .sidebar,
   .content-footer,
+  .recovery-actions,
+  .flash,
   .notice {
     display: none !important;
+  }
+  .recovery-codes li {
+    border-color: #000;
+    background: #fff;
+    color: #000;
   }
 }
 
@@ -1780,6 +1831,16 @@ fieldset {
 }
 .verification-dialog {
   width: min(100% - 2rem, 480px);
+}
+
+.passkey-add {
+  margin-top: 1.1rem;
+}
+.passkey-status {
+  min-height: 1.2rem;
+  margin: 0.6rem 0 0;
+  font-size: 0.84rem;
+  color: var(--text-muted);
 }
 
 .field-note {

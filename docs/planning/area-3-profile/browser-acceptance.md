@@ -27,6 +27,16 @@ with #90's credential controls, then implement and execute this inventory using 
 - Verify all sensitive inputs clear on Cancel, navigation, pagehide, back-forward restoration and
   session loss. Aborted UV prompts cannot fall back or complete later. No secret appears in storage,
   URL, console, application logs, notification history or audit details.
+- Reset the authenticator with real account proof; confirm current/copied/other sessions end and
+  Legacy sign-in shows its one-shot notice. Local TOTP enrollment follows sign-in policy; existing
+  passkeys and SSO remain usable. A crafted sign-in link cannot claim a reset happened.
+- Replace recovery codes after TOTP enrollment and verification. Check exactly ten codes, Print,
+  Done, refresh and back clearing, including hidden mailbox/factor inputs. A direct or refreshed
+  `/Profile/RecoveryCodes` visit returns to Profile with the one-time-display explanation. Lost
+  replies and postcommit renewal failures never recover plaintext or replay generation.
+- Add, verify with and remove UV virtual passkeys. Check frozen names, UTC dates, browser dismissal,
+  the server's two-minute expiry, late completion after departure/session loss, stale capabilities
+  and final-key refusal when no proven surviving method remains. Exercise keyboard and both themes.
 - Induce known committed/session-renewal failure and unknown response loss: never replay a write.
   Exercise successful, revoked-unrecorded and incomplete account-wide sign-out. Under real store
   outage use the anonymous token/local-cookie fallback and retain its warning into Legacy sign-in.

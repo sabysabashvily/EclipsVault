@@ -97,6 +97,29 @@ describe('ProfileSession', () => {
     expect(assign).not.toHaveBeenCalled();
     expect(state.status().error).toBe(true);
   });
+  it('can clear the local cookie after the account-wide sign-out reply is lost', () => {
+    const state = session();
+    state.signOutEverywhere();
+    backend.expectOne('/api/ui/profile/sign-out-everywhere').error(new ProgressEvent('error'));
+    expect(state.blocked()).toBe(true);
+    state.clearLocalCookie();
+    backend.expectOne('/local-sign-out').flush({ requestToken: 'anonymous-token' });
+    backend
+      .expectOne({ method: 'POST', url: '/local-sign-out' })
+      .flush('{"code":"sign_out_incomplete"}', { status: 503, statusText: 'Unavailable' });
+    expect(assign).toHaveBeenCalledExactlyOnceWith('/Account/Login?signOut=sign_out_incomplete');
+  });
+  it('can retry local-cookie clearing after its own reply is lost', () => {
+    const state = session();
+    state.clearLocalCookie();
+    backend.expectOne('/local-sign-out').error(new ProgressEvent('error'));
+    state.clearLocalCookie();
+    backend.expectOne('/local-sign-out').flush({ requestToken: 'retry-token' });
+    backend
+      .expectOne({ method: 'POST', url: '/local-sign-out' })
+      .flush('{"code":"sign_out_incomplete"}', { status: 503, statusText: 'Unavailable' });
+    expect(assign).toHaveBeenCalledExactlyOnceWith('/Account/Login?signOut=sign_out_incomplete');
+  });
   it('starts shared logout even when session loss disposes the Profile write', () => {
     const state = session();
     const cleared = vi.fn();

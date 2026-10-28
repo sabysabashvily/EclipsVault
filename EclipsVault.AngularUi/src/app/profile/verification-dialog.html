@@ -2,19 +2,19 @@
   role="dialog"
   #dialog
   class="modal verification-dialog"
-  aria-labelledby="verification-title"
-  aria-describedby="verification-intent"
+  [attr.aria-labelledby]="idPrefix() + '-title'"
+  [attr.aria-describedby]="idPrefix() + '-intent'"
   (cancel)="cancel($event)"
   (keydown)="trapFocus($event)"
 >
-  <h2 id="verification-title">Verify your account</h2>
-  <p id="verification-intent">{{ intent() }}</p>
+  <h2 [id]="idPrefix() + '-title'">Verify your account</h2>
+  <p [id]="idPrefix() + '-intent'">{{ intent() }}</p>
   <app-status-line [message]="message()" [error]="true" />
   <form (submit)="submit($event)">
     <div class="field">
-      <label for="verification-method">Verify with</label>
+      <label [attr.for]="idPrefix() + '-method'">Verify with</label>
       <select
-        id="verification-method"
+        [id]="idPrefix() + '-method'"
         [value]="method()"
         (change)="selectMethod($any($event.target).value)"
         [disabled]="busy() || expired()"
@@ -34,9 +34,9 @@
     </div>
     @if (method() !== 'Passkey' || needsPassword()) {
       <div class="field">
-        <label for="verification-password">Current password</label>
+        <label [attr.for]="idPrefix() + '-password'">Current password</label>
         <input
-          id="verification-password"
+          [id]="idPrefix() + '-password'"
           type="password"
           autocomplete="current-password"
           maxlength="1024"
@@ -49,11 +49,11 @@
     }
     @if (method() !== 'Passkey') {
       <div class="field">
-        <label for="verification-code">{{
+        <label [attr.for]="idPrefix() + '-code'">{{
           method() === 'PasswordAndRecoveryCode' ? 'Recovery code' : 'Authenticator code'
         }}</label>
         <input
-          id="verification-code"
+          [id]="idPrefix() + '-code'"
           autocomplete="one-time-code"
           maxlength="64"
           required

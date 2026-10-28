@@ -1,25 +1,45 @@
-import { DatePipe } from '@angular/common';
 import { httpResource } from '@angular/common/http';
-import { Component, inject, signal, viewChild } from '@angular/core';
+import { DestroyRef, Component, inject, signal, viewChild } from '@angular/core';
+import { catchError, throwError } from 'rxjs';
 import { ConfirmationDialog } from '../shared/confirmation-dialog';
+import { PAGE_LOCATION } from '../shell/command-palette';
 import { StatusLine } from '../shared/status-line';
+import { UiApiError } from '../ui-api/ui-api-errors';
+import { CredentialChange } from './credential-change';
 import { EmailChange } from './email-change';
+import { PasskeysPanel } from './passkeys-panel';
 import { ProfileSession } from './profile-session';
-import { Profile, refusalReason } from './profile-types';
+import { NewRecoveryCodes, Profile, refusalReason } from './profile-types';
+import { RecoveryCodes } from './recovery-codes';
 
 @Component({
   selector: 'app-profile-page',
-  imports: [DatePipe, ConfirmationDialog, StatusLine, EmailChange],
+  imports: [
+    ConfirmationDialog,
+    StatusLine,
+    EmailChange,
+    CredentialChange,
+    PasskeysPanel,
+    RecoveryCodes,
+  ],
   providers: [ProfileSession],
   templateUrl: './profile-page.html',
 })
 export class ProfilePage {
   protected readonly session = inject(ProfileSession);
+  private readonly location = inject(PAGE_LOCATION);
   protected readonly profile = httpResource<Profile>(() => '/api/ui/profile');
   protected readonly refusalReason = refusalReason;
   private readonly confirmation = viewChild.required(ConfirmationDialog);
+  private readonly changes = viewChild.required(CredentialChange);
   private action: 'avatar' | 'sessions' | null = null;
   protected readonly confirming = signal(false);
+  /** The only copy of a new recovery-code set, dropped on Done and whenever the page is left. */
+  protected readonly recoveryCodes = signal<readonly string[] | null>(null);
+
+  constructor() {
+    this.session.onClear(() => this.recoveryCodes.set(null), inject(DestroyRef));
+  }
 
   protected saveName(event: Event, displayName: string): void {
     event.preventDefault();
@@ -68,9 +88,72 @@ export class ProfilePage {
       );
   }
 
+  /** Reset ends every session, this one included, so sign-in decides whether to enroll again. */
+  protected resetAuthenticator(event: Event): void {
+    this.changes().start<void>(
+      {
+        confirmation:
+          "Reset your authenticator? You'll be signed out and set up a new one at next sign-in.",
+        change: { kind: 'ResetAuthenticator' },
+        intent:
+          'Reset your authenticator and recovery codes. Every session, including this one, will be signed out.',
+        commit: (operationId) =>
+          this.session.http.post<void>('/api/ui/profile/authenticator/reset', { operationId }),
+        committed: () => {
+          this.session.clear();
+          this.location.assign('/Account/Login');
+        },
+        reconcileAfterFailure: () => this.profile.reload(),
+      },
+      event.currentTarget as Element,
+    );
+  }
+
+  protected replaceRecoveryCodes(event: Event): void {
+    this.changes().start<NewRecoveryCodes>(
+      {
+        confirmation:
+          'Generate a new set of recovery codes? Any codes you already have will immediately stop working.',
+        change: { kind: 'ReplaceRecoveryCodes' },
+        intent:
+          'Generate new recovery codes. Your current codes stop working, and any other signed-in devices will be signed out.',
+        lostReply:
+          'The response was lost, so no new codes can be shown. If a new set was generated, your old codes no longer work. Check your account or sign in, then deliberately generate a new set.',
+        commit: (operationId) =>
+          this.session.http
+            .post<NewRecoveryCodes>('/api/ui/profile/recovery-codes', { operationId })
+            .pipe(
+              catchError((error: unknown) => throwError(() => explainRecoveryCodeFailure(error))),
+            ),
+        committed: ({ codes }) => {
+          this.recoveryCodes.set(codes);
+          this.session.refreshed();
+          this.profile.reload();
+        },
+        reconcileAfterFailure: () => this.profile.reload(),
+      },
+      event.currentTarget as Element,
+    );
+  }
+
+  protected recoveryCodesSaved(): void {
+    this.recoveryCodes.set(null);
+  }
+
   private avatarSaved(message: string): void {
     this.session.refreshed();
     this.profile.reload();
     this.session.status.set({ message, error: false });
   }
+}
+
+/** A set saved without a session to show it on stays unseen; only a deliberate new set shows codes. */
+function explainRecoveryCodeFailure(error: unknown): unknown {
+  return error instanceof UiApiError && error.code === 'changed_sign_in_required'
+    ? new UiApiError(
+        error.status,
+        error.code,
+        'New recovery codes were generated. Sign in and deliberately generate a new set to see codes.',
+      )
+    : error;
 }

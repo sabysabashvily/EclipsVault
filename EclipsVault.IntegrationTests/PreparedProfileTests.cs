@@ -170,4 +170,28 @@ public sealed class PreparedProfileTests(VaultFixture vault)
         Assert.Equal([AuditAction.SelfMfaReset], await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
         await ProfileApi.AssertNoticeAsync(vault, owner, "ResetAuthenticator");
     }
+
+    [Fact]
+    public async Task Sign_in_explains_an_authenticator_reset_once()
+    {
+        var owner = await ProfileAccount.CreateAsync(vault, "it-ui90-reset-notice", "100.65.90.1");
+        var operationId = await ProfileApi.VerifiedWithAuthenticatorAsync(owner, new { kind = "ResetAuthenticator" });
+        await ProfileApi.SendAsync(owner.Browser, HttpMethod.Post, "/api/ui/profile/authenticator/reset", new { operationId });
+
+        var signIn = await owner.Browser.Client.GetStringAsync("/Account/Login");
+        var signInAgain = await owner.Browser.Client.GetStringAsync("/Account/Login");
+
+        Assert.Contains("Your authenticator was reset. Sign in to set up a new one.", signIn, StringComparison.Ordinal);
+        Assert.DoesNotContain("Your authenticator was reset.", signInAgain, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_sign_in_link_cannot_claim_an_authenticator_reset()
+    {
+        using var client = vault.CreateClient();
+
+        var signIn = await client.GetStringAsync("/Account/Login?signOut=authenticator_reset");
+
+        Assert.DoesNotContain("Your authenticator was reset.", signIn, StringComparison.Ordinal);
+    }
 }

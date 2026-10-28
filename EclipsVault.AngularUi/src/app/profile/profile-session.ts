@@ -25,7 +25,7 @@ export class ProfileSession {
   readonly status = signal({ message: '', error: false });
   readonly localSignOutAvailable = signal(false);
   readonly signInRequired = signal(false);
-  private readonly clearers: (() => void)[] = [];
+  private readonly clearers = new Set<() => void>();
 
   constructor() {
     const clear = () => this.clear();
@@ -50,8 +50,12 @@ export class ProfileSession {
     });
   }
 
-  onClear(clear: () => void): void {
-    this.clearers.push(clear);
+  onClear(clear: () => void, owner?: DestroyRef): void {
+    this.clearers.add(clear);
+    owner?.onDestroy(() => {
+      clear();
+      this.clearers.delete(clear);
+    });
   }
 
   clear(): void {
@@ -63,7 +67,13 @@ export class ProfileSession {
     this.account.me.reload();
   }
 
-  write<T>(request: Observable<T>, saved: (value: T) => void, onFailure?: () => void): void {
+  /** @param lostReply What to say when no reply arrived, so the write's outcome is unknown. */
+  write<T>(
+    request: Observable<T>,
+    saved: (value: T) => void,
+    onFailure?: () => void,
+    lostReply?: string,
+  ): void {
     if (this.busy() || this.blocked()) return;
     this.busy.set(true);
     this.status.set({ message: '', error: false });
@@ -75,23 +85,30 @@ export class ProfileSession {
       .subscribe({
         next: saved,
         error: (error: unknown) => {
-          this.failed(error);
+          this.failed(error, lostReply);
           if (!this.blocked()) onFailure?.();
         },
       });
   }
 
-  failed(error: unknown): void {
-    if (error instanceof UiApiError && error.code === 'changed_sign_in_required') {
+  failed(
+    error: unknown,
+    lostReply = 'The response was lost. The change may have been saved. Check your account or sign in before deliberately trying again.',
+  ): void {
+    const unknownOutcome =
+      !(error instanceof UiApiError) ||
+      error.status === 0 ||
+      error.code === 'unknown' ||
+      (error.status >= 500 &&
+        error.code !== 'audit_unavailable' &&
+        error.code !== 'changed_sign_in_required');
+    if (unknownOutcome || error.code === 'changed_sign_in_required') {
       this.blocked.set(true);
       this.signInRequired.set(true);
       this.clear();
     }
     this.status.set({
-      message:
-        error instanceof UiApiError && error.status !== 0
-          ? error.title
-          : 'The response was lost. The change may have been saved. Check your account or sign in before deliberately trying again.',
+      message: unknownOutcome ? lostReply : error.title,
       error: true,
     });
   }
@@ -118,8 +135,12 @@ export class ProfileSession {
 
   /** Uses an anonymous token because an authenticated token cannot pass the outage-only branch. */
   clearLocalCookie(): void {
-    this.write(
-      this.http.get<{ requestToken: string }>('/local-sign-out').pipe(
+    if (this.busy()) return;
+    this.busy.set(true);
+    // Local recovery must remain usable even when an uncertain credential write blocked this page.
+    this.http
+      .get<{ requestToken: string }>('/local-sign-out')
+      .pipe(
         switchMap((token) =>
           this.http
             .post('/local-sign-out', null, {
@@ -150,9 +171,13 @@ export class ProfileSession {
               }),
             ),
         ),
-      ),
-      () => this.localCookieCleared(),
-    );
+        takeUntil(this.ended),
+        finalize(() => this.busy.set(false)),
+      )
+      .subscribe({
+        next: () => this.localCookieCleared(),
+        error: (error: unknown) => this.failed(error),
+      });
   }
 
   private localCookieCleared(): void {

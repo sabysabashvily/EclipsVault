@@ -1,0 +1,57 @@
+<section class="panel">
+  <div class="panel-header"><h2>Passkeys</h2></div>
+  <p class="hint muted">
+    Sign in without a password using Touch ID, Windows Hello, or a security key. A passkey verifies
+    you on your device, so it stands in for both your password and your authenticator.
+  </p>
+  @for (key of profile().passkeys; track key.id) {
+    <div class="settings-row">
+      <div>
+        <strong>{{ key.nickname }}</strong>
+        <p class="muted">Added {{ key.createdAtUtc | date: 'd MMM yyyy' : 'UTC' }} UTC</p>
+        @if (!key.removal.available) {
+          <p class="hint muted">{{ refusalReason(key.removal.unavailableReason) }}</p>
+        }
+      </div>
+      <button
+        type="button"
+        class="button danger"
+        (click)="remove(key, $event)"
+        [disabled]="locked() || !key.removal.available"
+      >
+        Remove
+      </button>
+    </div>
+  } @empty {
+    <p class="hint muted">No passkeys registered yet.</p>
+  }
+
+  <div class="field passkey-add">
+    <label for="passkey-nickname">New passkey name</label>
+    <input
+      id="passkey-nickname"
+      type="text"
+      maxlength="64"
+      autocomplete="off"
+      placeholder="e.g. MacBook Touch ID"
+      [value]="nickname()"
+      (input)="nickname.set($any($event.target).value)"
+      [disabled]="locked()"
+    />
+  </div>
+  <button
+    type="button"
+    class="button primary"
+    (click)="add($event)"
+    [disabled]="locked() || !creation.supported || !profile().changes.addPasskey.available"
+    [attr.title]="creation.supported ? null : 'This browser does not support passkeys.'"
+  >
+    Add a passkey
+  </button>
+  @if (!profile().changes.addPasskey.available) {
+    <p class="hint muted">{{ refusalReason(profile().changes.addPasskey.unavailableReason) }}</p>
+  }
+  <p class="passkey-status" role="status" aria-live="polite">
+    {{ prompting() ? 'Follow the prompt on your device…' : '' }}
+  </p>
+</section>

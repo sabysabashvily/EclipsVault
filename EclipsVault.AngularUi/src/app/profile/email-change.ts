@@ -1,4 +1,4 @@
-import { Component, inject, input, output, signal, viewChild } from '@angular/core';
+import { DestroyRef, Component, inject, input, output, signal, viewChild } from '@angular/core';
 import { ProfileSession } from './profile-session';
 import { VerificationDialog } from './verification-dialog';
 import type { PendingEmail, PreparedOperation, Profile, VerifiedOperation } from './profile-types';
@@ -19,7 +19,7 @@ export class EmailChange {
   private action: 'request' | 'resend' | 'confirm' | null = null;
 
   constructor() {
-    this.session.onClear(() => this.clear());
+    this.session.onClear(() => this.clear(), inject(DestroyRef));
   }
 
   protected start(event: Event): void {

@@ -167,7 +167,7 @@ describe('EmailChange', () => {
       .expectOne('/api/ui/profile/email/request')
       .flush(
         { code: 'mail_unavailable', title: 'Delivery failed. Verify again before resending.' },
-        { status: 503, statusText: 'Unavailable' },
+        { status: 409, statusText: 'Conflict' },
       );
     expect(changed).toHaveBeenCalledOnce();
     fixture.componentRef.setInput('profile', { ...profile, pendingEmail: pending });
@@ -181,7 +181,7 @@ describe('EmailChange', () => {
     backend.expectNone('/api/ui/profile/email/request');
   });
   it.each([
-    ['mail_unavailable', 503, 'Delivery failed. Verify again before resending.'],
+    ['mail_unavailable', 409, 'Delivery failed. Verify again before resending.'],
     ['throttled', 429, 'Too many attempts. Wait before resending.'],
   ])('announces %s after a failed resend without repeating it', async (code, status, title) => {
     const { fixture, page, changed } = await render();

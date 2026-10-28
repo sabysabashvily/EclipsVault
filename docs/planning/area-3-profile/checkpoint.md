@@ -906,3 +906,65 @@ that staged Angular Profile pages have browser parity before #91 activates them.
 verification passed: all eight intentional failures were confirmed. Both final browser runners
 removed their own containers, networks and temporary images. All required gates are complete.
 The final report and review ledgers are under logs/ticket-89/. No push, PR or issue closure.
+
+## Ticket #90 continuation (2026-10-28, Codex)
+
+Claude authored the staged authenticator reset, recovery display and passkey controls from exactly
+`1778ee2`, then hit API quota. Root checkout remains `area-3-profile`; all changes are uncommitted.
+Neither excluded documentation directory was accessed. No branch/worktree/push/PR/issue closure.
+Evidence and bounded check runner: `logs/ticket-90/`. Profile ownership remains Legacy until #91.
+
+Initial Standards review (Sol xhigh) found two misleading/redundant names/comments and one naming
+judgment, all corrected. Spec r1 found lost-response reloads erasing warnings, destroyed EmailChange
+instances retaining mailbox inputs, and missing passkey lifecycle cases. Unknown outcomes now block
+writes and show explicit sign-in without protected reload; cleanup registrations clear/unregister on
+component destruction; new regressions cover retained mailbox state, late UV completion after
+pagehide/session loss, server expiry and duplicate submissions. Native Opus security-reviewer r1's
+SEC1 (forgeable reset notice) is fixed with the existing protected one-shot TempData flash and real
+HTTP notice-once/forgery-refusal tests. Client now navigates to plain Legacy sign-in.
+
+Final Opus Standards/Spec/security attempts failed API quota; fresh Sol 6.1 xhigh fallback sessions
+are rechecking the complete diff. Initial r1 backend gates passed 608 integration/700 unit tests;
+final backend r2 is running after the notice fix (focused HTTP passed 16/16). Angular final r4 passes
+lint (six guard probes), format, 267 Vitest tests, 15 build checks, generated-type check, build and
+high-threshold npm audit (the existing moderate fast-uri advisory remains visible). Backend r2
+restore/build/format/700 units/six guardrails pass, zero Release warnings/errors; full integration
+is still running. Run browser and all eight guard probes separately after integration. Do not report
+completion or commit before remaining reviews and runtime gates have been checked.
+
+Ticket #90 final backend r2 passed 607/607 integration tests, zero skipped, in 6m13s with only
+collection parallelism disabled locally (explicit race requests still concurrent). Final Angular
+final2 gates pass: 272 Vitest tests, 15 build checks, lint/six lint guards, format, generated-type
+check, production build and high-threshold audit. No API route or response shape changed, so the
+generated schema remains unchanged. Unit tests remain 700/700; Release has zero warnings/errors.
+
+Standards r2 found no new issues. Spec r2 found ambiguous nonzero HTTP errors and blocked local
+cookie clearing; corrected with five regressions. Two existing email mocks were corrected from
+503 to the actual mail_unavailable 409 contract (pinned by real HTTP tests). Security r2 inspected
+these current corrections, closed its matching SEC2/SEC3 observations and SEC1, and found no
+unresolved demonstrated defect. All rechecks used fresh Sol 6.1 xhigh sessions after final Opus
+attempts failed API quota; disclose the fresh-session fallback for Codex's continuation edits.
+Full review reports and resolutions remain in logs/ticket-90/. Browser final is in progress,
+followed by all eight guard probes. Still no commit/push/PR/issue closure.
+
+Final production E2E passed 75/75 in 10.1 minutes and removed its disposable stack/image. This
+checks existing production routes and SMTP/session regressions; new Angular credential controls
+remain staged and have component coverage until #91's ownership cutover. Final guard verification
+is running against a separate fresh vault; all eight deliberate failures must be detected before
+completion. Expected commit subject: "Stage verified authenticator, recovery code and passkey controls"
+(64 characters), message file logs/ticket-90/commit-message.txt; stage only the explicit 26-path
+manifest logs/ticket-90/stage-paths.txt. No commit yet.
+
+## Ticket #90 complete (2026-10-28, Codex continuation)
+
+All runtime gates passed on the final source. Browser-health verification correctly detected all
+eight intentional failures and exited zero; its own stack/image were removed. Final production
+E2E is 75/75; Vitest 272/272; unit 700/700; full integration 607/607, zero skipped. Both six-test
+guard sets and 15 build checks passed. Restore/build/format/type checks/audit passed as above.
+All review findings are resolved, including both late Spec/security findings; security r2 inspected
+the current corrections. Full reports, resolution ledger and command evidence are logs/ticket-90/.
+
+The completion commit follows 1778ee2 and uses the counted 64-character behavior subject recorded
+above. Source remains frozen; only this checkpoint changed after the checks. The commit SHA and
+three required code excerpts will be in logs/ticket-90/final-report.md and the coordinator report.
+No push, PR, issue closure, branch/worktree or excluded-directory access.
