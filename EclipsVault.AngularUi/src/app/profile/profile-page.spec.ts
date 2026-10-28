@@ -147,4 +147,67 @@ describe('ProfilePage', () => {
     expect(page.textContent).toContain('The change may have been saved.');
     backend.expectNone('/api/ui/profile/details');
   });
+  it.each(['Remove', 'Sign out everywhere'])(
+    'Cancel restores the enabled %s opener',
+    async (openerText) => {
+      const { fixture, page } = render();
+      backend.expectOne('/api/ui/profile').flush({ ...profile, hasCustomAvatar: true });
+      await fixture.whenStable();
+      const opener = button(page, openerText);
+      opener.focus();
+      opener.click();
+      await fixture.whenStable();
+      button(page.querySelector('app-confirmation-dialog')!, 'Cancel').click();
+      await fixture.whenStable();
+      expect(opener.disabled).toBe(false);
+      expect(document.activeElement).toBe(opener);
+      backend.expectNone((request) => request.method !== 'GET');
+    },
+  );
+  it.each(['Remove', 'Sign out everywhere'])(
+    'Escape restores the enabled %s opener',
+    async (openerText) => {
+      const { fixture, page } = render();
+      backend.expectOne('/api/ui/profile').flush({ ...profile, hasCustomAvatar: true });
+      await fixture.whenStable();
+      const opener = button(page, openerText);
+      opener.focus();
+      opener.click();
+      await fixture.whenStable();
+      page
+        .querySelector('app-confirmation-dialog dialog')!
+        .dispatchEvent(new Event('cancel', { cancelable: true }));
+      await fixture.whenStable();
+      expect(opener.disabled).toBe(false);
+      expect(document.activeElement).toBe(opener);
+      backend.expectNone((request) => request.method !== 'GET');
+    },
+  );
+  it('refreshes the snapshot after a mailbox invalidation and offers a fresh email change', async () => {
+    const { fixture, page } = render();
+    backend.expectOne('/api/ui/profile').flush({
+      ...profile,
+      pendingEmail: {
+        operationId: operation.operationId,
+        address: 'pending@example.test',
+        expiresAtUtc: operation.expiresAtUtc,
+      },
+    });
+    await fixture.whenStable();
+    fill(page, 'mailbox-code', 'last-wrong-code');
+    button(page, 'Confirm email').click();
+    backend
+      .expectOne('/api/ui/profile/email/confirm')
+      .flush(
+        { code: 'email_code_invalid', title: 'That mailbox code is not valid.' },
+        { status: 400, statusText: 'Bad Request' },
+      );
+    fixture.detectChanges();
+    backend.expectOne('/api/ui/profile').flush(profile);
+    await fixture.whenStable();
+    expect(page.querySelector('#mailbox-code')).toBeNull();
+    expect(button(page, 'Change email')).toBeDefined();
+    expect(page.textContent).toContain('That mailbox code is not valid.');
+    backend.expectNone('/api/ui/profile/email/confirm');
+  });
 });

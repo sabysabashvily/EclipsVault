@@ -1639,12 +1639,6 @@ app-command-palette {
   gap: 0.3rem;
   margin-top: 0.55rem;
 }
-/* `display` here outranks the user agent's [hidden] rule, so the meter needs to opt back out
-   explicitly — without this it shows an empty track before a single character is typed. */
-.strength[hidden] {
-  display: none;
-}
-
 .strength-track {
   height: 4px;
   border-radius: var(--radius-pill);

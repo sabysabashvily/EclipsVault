@@ -45,13 +45,13 @@
               accept="image/png,image/jpeg"
               class="visually-hidden"
               (change)="upload(avatarFile)"
-              [disabled]="session.busy() || session.blocked() || confirming()"
+              [disabled]="session.busy() || session.blocked()"
             />
             <button
               type="button"
               class="button"
               (click)="avatarFile.click()"
-              [disabled]="session.busy() || session.blocked() || confirming()"
+              [disabled]="session.busy() || session.blocked()"
             >
               Upload image
             </button>
@@ -60,7 +60,7 @@
                 type="button"
                 class="button danger"
                 (click)="ask('avatar')"
-                [disabled]="session.busy() || session.blocked() || confirming()"
+                [disabled]="session.busy() || session.blocked()"
               >
                 Remove
               </button>
@@ -179,7 +179,7 @@
             type="button"
             class="button danger"
             (click)="ask('sessions')"
-            [disabled]="session.busy() || session.blocked() || confirming()"
+            [disabled]="session.busy() || session.blocked()"
           >
             Sign out everywhere
           </button>

@@ -63,7 +63,7 @@ export class ProfileSession {
     this.account.me.reload();
   }
 
-  write<T>(request: Observable<T>, saved: (value: T) => void): void {
+  write<T>(request: Observable<T>, saved: (value: T) => void, onFailure?: () => void): void {
     if (this.busy() || this.blocked()) return;
     this.busy.set(true);
     this.status.set({ message: '', error: false });
@@ -74,7 +74,10 @@ export class ProfileSession {
       )
       .subscribe({
         next: saved,
-        error: (error: unknown) => this.failed(error),
+        error: (error: unknown) => {
+          this.failed(error);
+          if (!this.blocked()) onFailure?.();
+        },
       });
   }
 

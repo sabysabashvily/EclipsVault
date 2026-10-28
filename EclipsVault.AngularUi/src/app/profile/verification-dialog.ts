@@ -197,6 +197,7 @@ export class VerificationDialog {
   private finish(result: VerifiedOperation): void {
     this.close(true);
     if (Date.parse(result.commitByUtc) <= Date.now()) {
+      this.cancelled.emit();
       this.session.failed(
         new UiApiError(
           409,

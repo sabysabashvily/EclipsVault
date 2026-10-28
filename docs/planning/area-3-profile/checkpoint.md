@@ -870,3 +870,22 @@ new test-data collision, corrected with a unique account suffix. Browser failure
 ERR_NETWORK_CHANGED: 6 passed, 1 failed, 68 not run. Both full runs are restarted; original output
 is retained. Corrected components pass 210 Vitest tests. Latest Release build remains zero warnings.
 All final gates and fresh complete-diff reviews still need confirmed results before completion.
+
+## Ticket #89 final review outcomes and serialized verification
+
+Completed fresh Sol 6.1 xhigh security r2 found no defects, including focused logout-order and late
+passkey-disposal probes. Standards r2 verified prior fixes and accepted the Legacy wire-contract
+assertions; its only remaining minor stale hidden-meter rule/comment was removed. Spec r2 found
+four P2 UI state issues, all accepted: disabled confirmation openers lost focus, expired verified
+replies kept parent forms locked, removed email operations kept stale controls, and email failure
+coverage was incomplete. Narrow fixes plus 16 regressions now pass 226/226 Vitest tests. Detailed
+responses are `logs/ticket-89/spec-resolutions-r2.md`; original review reports remain unchanged.
+
+The concurrent rerun hit SQL Server startup crashes/readiness failures before product tests.
+Docker reported only 4 GB total memory and severe CPU contention across several SQL containers.
+Stopped only this run's integration process group; Testcontainers and the browser runner cleaned
+up their own resources. Restarted the complete integration suite with an ignored local runsettings
+file disabling collection parallelism (tests' own explicit concurrency remains active). Run E2E
+and guard verification separately after that suite; do not count startup-failed runs as passing.
+No product code or fixture was weakened for resource limits. Latest restore/build/format/unit and
+agent guardrails passed again; Release build has zero warnings/errors and unit tests remain 700/700.

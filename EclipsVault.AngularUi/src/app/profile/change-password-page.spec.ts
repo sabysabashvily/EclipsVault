@@ -174,4 +174,16 @@ describe('ChangePasswordPage', () => {
     await fixture.whenStable();
     expect(page.textContent).not.toContain('Not found in the breach corpus.');
   });
+  it('unlocks the password form after a delayed verification reply has expired', async () => {
+    const { fixture, page } = await preparePassword();
+    fill(page, 'verification-code', '123456');
+    button(page, 'Verify account').click();
+    backend
+      .expectOne(`/api/ui/profile/operations/${operation.operationId}/verify`)
+      .flush({ operationId: operation.operationId, commitByUtc: '2000-01-01T00:00:00Z' });
+    await fixture.whenStable();
+    expect(page.querySelector('fieldset')?.disabled).toBe(false);
+    expect(page.textContent).toContain('Your verification expired.');
+    backend.expectNone('/api/ui/profile/password');
+  });
 });

@@ -41,6 +41,7 @@ export class EmailChange {
           { opener },
         );
       },
+      () => this.changed.emit(),
     );
   }
 
@@ -87,6 +88,7 @@ export class EmailChange {
         });
         this.changed.emit();
       },
+      () => this.changed.emit(),
     );
   }
 
@@ -109,6 +111,7 @@ export class EmailChange {
         });
         this.changed.emit();
       },
+      () => this.changed.emit(),
     );
   }
 
@@ -127,6 +130,7 @@ export class EmailChange {
         });
         this.changed.emit();
       },
+      () => this.changed.emit(),
     );
   }
 
