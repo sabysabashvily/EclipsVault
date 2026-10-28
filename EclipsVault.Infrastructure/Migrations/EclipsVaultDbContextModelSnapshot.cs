@@ -415,6 +415,32 @@ namespace EclipsVault.Infrastructure.Migrations
                     b.ToTable("EmailLogs", (string)null);
                 });
 
+            modelBuilder.Entity("EclipsVault.Core.Domain.Entities.EmailVerificationSend", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("SentAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("SourceHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId", "SentAtUtc");
+
+                    b.HasIndex("SourceHash", "SentAtUtc");
+
+                    b.ToTable("EmailVerificationSends");
+                });
+
             modelBuilder.Entity("EclipsVault.Core.Domain.Entities.FeatureEvaluation", b =>
                 {
                     b.Property<string>("FeatureKey")
@@ -535,6 +561,19 @@ namespace EclipsVault.Infrastructure.Migrations
                     b.Property<int>("Kind")
                         .HasColumnType("int");
 
+                    b.Property<byte[]>("MailboxCodeHash")
+                        .HasMaxLength(32)
+                        .HasColumnType("varbinary(32)");
+
+                    b.Property<bool>("MailboxDelivered")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("MailboxExpiresAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("MailboxFailures")
+                        .HasColumnType("int");
+
                     b.Property<string>("PasskeyNickname")
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
@@ -550,6 +589,10 @@ namespace EclipsVault.Infrastructure.Migrations
                     b.Property<Guid>("SessionId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("TargetEmail")
+                        .HasMaxLength(254)
+                        .HasColumnType("nvarchar(254)");
+
                     b.Property<Guid?>("TargetPasskeyId")
                         .HasColumnType("uniqueidentifier");
 
@@ -560,6 +603,10 @@ namespace EclipsVault.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasFilter("[Kind] = 6");
 
                     b.HasIndex("UserId", "SessionId")
                         .IsUnique();

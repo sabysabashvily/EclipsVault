@@ -60,11 +60,23 @@ public sealed partial class VaultFixture : IAsyncLifetime
     private WebApplicationFactory<Program>? _factory;
     private Task<HttpClient>? _adminClient;
 
+    public bool TrustIdpMfa { get; init; }
+
+    public SmtpCapture? Mailbox { get; init; }
+
     public string? RedisConfiguration { get; init; }
 
     public async Task InitializeAsync()
     {
         await _sql.StartAsync();
+        if (Mailbox is not null)
+        {
+            await Mailbox.StartAsync();
+            SetEnvironment("Email__Sender", "Smtp");
+            SetEnvironment("Email__Enabled", "true");
+            SetEnvironment("Email__Smtp__Host", Mailbox.Host);
+            SetEnvironment("Email__Smtp__Port", Mailbox.Port.ToString(CultureInfo.InvariantCulture));
+        }
 
         using var signingKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         SetEnvironment("ConnectionStrings__DefaultConnection",
@@ -85,6 +97,7 @@ public sealed partial class VaultFixture : IAsyncLifetime
         // Register the production OIDC correlation cookie for HTTP callback scoping tests.
         // Those start after the IdP assertion, so this authority is never contacted.
         SetEnvironment("Sso__Enabled", "true");
+        SetEnvironment("Sso__TrustIdpMultiFactor", TrustIdpMfa.ToString());
         SetEnvironment("Sso__Authority", "https://idp.example.test/realms/integration");
         SetEnvironment("Sso__ClientId", "integration-vault");
         SetEnvironment("Sso__ClientSecret", Convert.ToHexString(RandomNumberGenerator.GetBytes(32)));
@@ -128,6 +141,10 @@ public sealed partial class VaultFixture : IAsyncLifetime
         }
 
         await _sql.DisposeAsync();
+        if (Mailbox is not null)
+        {
+            await Mailbox.DisposeAsync();
+        }
         foreach (var name in _environment)
         {
             Environment.SetEnvironmentVariable(name, null);

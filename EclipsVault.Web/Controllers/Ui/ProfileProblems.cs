@@ -29,6 +29,10 @@ public static class ProfileProblems
 
     public static JsonResult For(ProfileOperationRefusedException refused) => refused.Refusal switch
     {
+        ProfileRefusal.MailUnavailable => Conflict("mail_unavailable", "Email changes require configured, enabled SMTP. Delivery may be unavailable; verify again before deliberately resending."),
+        ProfileRefusal.EmailConflict => Conflict("email_conflict", "That email address cannot be used."),
+        ProfileRefusal.EmailCodeInvalid => Problem(StatusCodes.Status400BadRequest, "email_code_invalid", "That mailbox code is not valid."),
+        ProfileRefusal.EmailCodeExpired => Conflict("email_code_expired", "The mailbox code expired. Start the change again."),
         ProfileRefusal.InvalidInput => InvalidField(refused.Field ?? "request", refused.Message),
         ProfileRefusal.VerificationFailed => Problem(StatusCodes.Status400BadRequest, "verification_failed",
             "That didn't verify your account. Check what you entered and try again."),
@@ -54,6 +58,7 @@ public static class ProfileProblems
     {
         null => null,
         ProfileRefusal.AuthenticatorNotEnrolled => "authenticator_not_enrolled",
+        ProfileRefusal.MailUnavailable => "mail_unavailable",
         ProfileRefusal.AlternateMethodRequired => "alternate_method_required",
         _ => "method_unavailable",
     };
@@ -69,6 +74,7 @@ public sealed class ProfileProblemFilter : IExceptionFilter
         context.Result = context.Exception switch
         {
             ProfileOperationRefusedException refused => ProfileProblems.For(refused),
+            EmailAddressTakenException => ProfileProblems.For(new ProfileOperationRefusedException(ProfileRefusal.EmailConflict)),
             ProfileException invalid => ProfileProblems.Problem(StatusCodes.Status400BadRequest, "validation_failed", invalid.Message),
             AccountChangedException or StaleProofException => ProfileProblems.For(new ProfileOperationRefusedException(ProfileRefusal.OperationChanged)),
             _ => null,

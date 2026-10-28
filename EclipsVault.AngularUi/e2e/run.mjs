@@ -151,7 +151,7 @@ async function main() {
     }
     // Discover the address Docker assigned instead of trusting arbitrary forwarded headers or
     // reserving a fixed subnet that could collide with another developer's network.
-    await compose(['up', '-d', '--wait', '--wait-timeout', '180', 'sql', 'proxy']);
+    await compose(['up', '-d', '--wait', '--wait-timeout', '180', 'sql', 'proxy', 'smtp']);
     const proxyId = await compose(['ps', '-q', 'proxy'], { capture: true });
     env.E2E_PROXY_IP = await checked(
       'docker',
@@ -161,6 +161,8 @@ async function main() {
     );
     const address = await compose(['port', 'proxy', '443'], { capture: true });
     env.E2E_BASE_URL = `https://localhost:${address.split(':').at(-1)}`;
+    const smtpAddress = await compose(['port', 'smtp', '8025'], { capture: true });
+    env.E2E_SMTP_URL = `http://127.0.0.1:${smtpAddress.split(':').at(-1)}`;
     await compose(['up', '-d', 'vault']);
     await waitForVault(env.E2E_BASE_URL);
 

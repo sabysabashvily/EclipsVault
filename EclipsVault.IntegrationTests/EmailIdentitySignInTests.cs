@@ -212,37 +212,6 @@ public sealed class EmailIdentitySignInTests(VaultFixture vault)
         return account;
     }
 
-    /// <summary>
-    /// Arrives at the callback as if the identity provider had just verified <paramref name="email"/>.
-    /// This begins after the provider's assertion, with the real correlation cookie scheme and its
-    /// protector: it covers how the vault matches an account, not how it validates the provider's tokens.
-    /// </summary>
-    private async Task<HttpResponseMessage> CallBackFromIdentityProviderAsync(string email, string source)
-    {
-        var callback = vault.CreateSession(source: IPAddress.Parse(source));
-        var options = vault.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
-            .Get(AuthSchemes.OidcCorrelation);
-        var assertion = new ClaimsPrincipal(new ClaimsIdentity(
-        [
-            new Claim("iss", "https://idp.example.test/realms/integration"),
-            new Claim("sub", "it-email-" + Guid.NewGuid()),
-            new Claim("email", email),
-            new Claim("email_verified", "true"),
-        ], AuthSchemes.Oidc));
-        var ticket = new AuthenticationTicket(assertion, new AuthenticationProperties
-        {
-            IssuedUtc = DateTimeOffset.UtcNow,
-            ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(10),
-        }, AuthSchemes.OidcCorrelation);
-        var cookieName = Assert.IsType<string>(options.Cookie.Name);
-        callback.Cookies.Add(callback.Client.BaseAddress!, new Cookie(cookieName, options.TicketDataFormat.Protect(ticket), "/")
-        {
-            Secure = true,
-            HttpOnly = true,
-        });
-
-        var response = await callback.Client.GetAsync("/Account/ExternalCallback");
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        return response;
-    }
+    private Task<HttpResponseMessage> CallBackFromIdentityProviderAsync(string email, string source)
+        => PostIdpAssertion.InvokeAsync(vault, email, source);
 }

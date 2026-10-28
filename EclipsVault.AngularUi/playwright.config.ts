@@ -29,7 +29,18 @@ export default defineConfig({
     : [
         {
           name: 'chromium',
-          testIgnore: ['**/sessions.spec.ts', '**/data.spec.ts', '**/shared-by-me.spec.ts'],
+          testIgnore: [
+            '**/sessions.spec.ts',
+            '**/data.spec.ts',
+            '**/shared-by-me.spec.ts',
+            '**/mailbox.spec.ts',
+          ],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          name: 'mailbox',
+          testMatch: '**/mailbox.spec.ts',
+          dependencies: ['shared-by-me'],
           use: { ...devices['Desktop Chrome'] },
         },
         {

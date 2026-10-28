@@ -116,6 +116,8 @@ public enum AuditAction
 
     /// <summary>A wrong proof for a prepared Profile change. It counts towards the account's lockout.</summary>
     AccountVerificationFailed = 151,
+    EmailChangeRequested = 152,
+    EmailChanged = 153,
 
     /// <summary>
     /// The vault started without a valid license outside Development — a soft, one-per-startup marker

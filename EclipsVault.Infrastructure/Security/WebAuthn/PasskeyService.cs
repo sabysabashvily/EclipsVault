@@ -32,6 +32,7 @@ public sealed class PasskeyService : IPasskeyService
     private readonly ISessionRevocationService _revocation;
     private readonly WebAuthnOptions _options;
     private readonly TimeProvider _clock;
+    private readonly INotificationService? _notifications;
 
     public PasskeyService(
         IUserRepository users,
@@ -41,7 +42,8 @@ public sealed class PasskeyService : IPasskeyService
         AuthenticationFailures failures,
         ISessionRevocationService revocation,
         IOptions<WebAuthnOptions> options,
-        TimeProvider clock)
+        TimeProvider clock,
+        INotificationService? notifications = null)
     {
         _users = users;
         _passkeys = passkeys;
@@ -51,6 +53,7 @@ public sealed class PasskeyService : IPasskeyService
         _revocation = revocation;
         _options = options.Value;
         _clock = clock;
+        _notifications = notifications;
     }
 
     public async Task<PasskeyCeremonyOptions> BeginRegistrationAsync(Guid userId, CancellationToken ct)
@@ -110,6 +113,10 @@ public sealed class PasskeyService : IPasskeyService
         _passkeys.StageAddition(entity);
         user.CredentialGeneration++;
         await _changes.CommitAsync(user, AuditAction.PasskeyRegistered, $"Passkey '{entity.Nickname}' registered", ct);
+        if (_notifications is not null)
+        {
+            await _notifications.NotifySensitiveChangeAsync(user.Email, ProfileOperationKind.AddPasskey, CancellationToken.None);
+        }
         return PasskeyRegistrationResult.Registered(user.CredentialGeneration);
     }
 
@@ -355,6 +362,10 @@ public sealed class PasskeyService : IPasskeyService
         _passkeys.StageRemoval(credential);
         user.CredentialGeneration++;
         await _changes.CommitAsync(user, AuditAction.PasskeyRemoved, $"Passkey '{credential.Nickname ?? "Passkey"}' removed", ct);
+        if (_notifications is not null)
+        {
+            await _notifications.NotifySensitiveChangeAsync(user.Email, ProfileOperationKind.RemovePasskey, CancellationToken.None);
+        }
         return user.CredentialGeneration;
     }
 

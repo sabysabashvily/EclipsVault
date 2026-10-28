@@ -7,7 +7,7 @@ namespace EclipsVault.Core.Application.Profile;
 /// set: <see cref="NewPassword"/> for a password change, <see cref="PasskeyNickname"/> for adding a
 /// passkey, <see cref="PasskeyId"/> for removing one.
 /// </summary>
-public sealed record ProfileChangeRequest(ProfileOperationKind Kind, string? NewPassword, string? PasskeyNickname, Guid? PasskeyId);
+public sealed record ProfileChangeRequest(ProfileOperationKind Kind, string? NewPassword, string? PasskeyNickname, Guid? PasskeyId, string? NewEmail = null);
 
 /// <summary>A prepared change and the methods that can verify it.</summary>
 public sealed record PreparedOperation(

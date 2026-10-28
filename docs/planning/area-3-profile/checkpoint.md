@@ -771,3 +771,34 @@ Commit follows `6dc23c7`, subject "Verify one frozen Profile change with existin
 (66 characters), using the message file and explicit staged paths. No push, PR or issue closure.
 The root checkout remains on area-3-profile. Legacy unsafe handlers remain for the planned #91
 cutover; this ticket does not claim those routes require the new Profile verification workflow.
+
+## Ticket #88 implementation (2026-10-28, Codex)
+
+Started from exactly `a1d92486513f4a689a906bfda57ff0930b7fb238` on `area-3-profile` in the root
+checkout. Evidence is under `logs/ticket-88/`. Neither excluded documentation directory was read
+or changed. No push, PR, issue closure, worktree or new implementation thread.
+
+The frozen ChangeEmail operation owns its target, SHA-256 digest of a random 128-bit mailbox code,
+15-minute absolute code deadline, delivered flag and five-attempt counter. A filtered unique index
+in both providers permits one email operation per account. Account transactions serialize request,
+resend, confirmation, cancellation and proof refresh; active email, generation, both proof
+consumptions and the EmailChanged event commit together through the audit interceptor. The existing
+session stamp also fences the operation against revocation and session-store incarnation changes.
+
+Delivery reserves shared database account/IP minute and sliding-hour budgets before SMTP. It clears
+the grant and leaves the code unusable until the real SMTP transport succeeds; success restores only
+the original grant deadline. Failed delivery needs fresh account verification before deliberate
+resend. Neither codes, bodies nor relay exception text enters ordinary notification history.
+Completed-change notices use captured trusted addresses, with email activation notifying its old
+address. Shared Legacy credential callers also attempt these notices pending their planned removal.
+
+Typed session-only request/resend/confirm/cancel routes, capability explanations and pending status
+are exposed and TypeScript regenerated. The E2E stack now includes digest-pinned Mailpit and a
+browser flow for activation, single use and copied-session rejection. No Profile UI cutover occurred.
+
+Focused r3 passed 37/37; expanded r5 passed 94/94 before the last provider tests and final naming
+cleanup. Release builds through r10 have zero warnings/errors. r11 locked restore/build/format and
+local E2E/guard gates are in progress. Angular lint with six guard probes, 162 Vitest tests, 15 build
+checks, six agent guardrails and npm audit at high threshold have passed; the existing moderate
+fast-uri advisory remains visible. Full final integration, final model checks and complete-diff
+Standards/Spec/security reviews remain required. Do not report completion from this checkpoint.

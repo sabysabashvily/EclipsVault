@@ -777,6 +777,346 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ui/profile/email/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["VerifiedOperationRequest"];
+                    "text/json": components["schemas"]["VerifiedOperationRequest"];
+                    "application/*+json": components["schemas"]["VerifiedOperationRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PendingEmailResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/profile/email/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["VerifiedOperationRequest"];
+                    "text/json": components["schemas"]["VerifiedOperationRequest"];
+                    "application/*+json": components["schemas"]["VerifiedOperationRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PendingEmailResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/profile/email/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ConfirmEmailRequest"];
+                    "text/json": components["schemas"]["ConfirmEmailRequest"];
+                    "application/*+json": components["schemas"]["ConfirmEmailRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/profile/email/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["VerifiedOperationRequest"];
+                    "text/json": components["schemas"]["VerifiedOperationRequest"];
+                    "application/*+json": components["schemas"]["VerifiedOperationRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ui/profile/operations": {
         parameters: {
             query?: never;
@@ -1464,6 +1804,11 @@ export interface components {
             notableCount: number | string;
             items: components["schemas"]["ActivityItemResponse"][];
         };
+        ConfirmEmailRequest: {
+            /** Format: uuid */
+            operationId: string;
+            code: string;
+        };
         DataAccountResponse: {
             username: string;
             displayName: string;
@@ -1487,6 +1832,11 @@ export interface components {
             /** Format: int32 */
             activityCount: number | string;
             notice: string;
+        };
+        EmailChangeCapabilityResponse: {
+            available: boolean;
+            unavailableReason: null | string;
+            explanation: null | string;
         };
         /** Format: binary */
         IFormFile: string;
@@ -1526,22 +1876,30 @@ export interface components {
             operationId: string;
             credential: components["schemas"]["JsonElement"];
         };
+        PendingEmailResponse: {
+            /** Format: uuid */
+            operationId: string;
+            address: string;
+            /** Format: date-time */
+            expiresAtUtc: string;
+        };
         PreparedOperationResponse: {
             /** Format: uuid */
             operationId: string;
             /** @enum {string} */
-            kind: "ChangePassword" | "ResetAuthenticator" | "ReplaceRecoveryCodes" | "AddPasskey" | "RemovePasskey";
+            kind: "ChangePassword" | "ResetAuthenticator" | "ReplaceRecoveryCodes" | "AddPasskey" | "RemovePasskey" | "ChangeEmail";
             /** Format: date-time */
             expiresAtUtc: string;
             methods: ("PasswordAndAuthenticatorCode" | "PasswordAndRecoveryCode" | "Passkey")[];
         };
         PrepareProfileOperationRequest: {
             /** @enum {string} */
-            kind: "ChangePassword" | "ResetAuthenticator" | "ReplaceRecoveryCodes" | "AddPasskey" | "RemovePasskey";
+            kind: "ChangePassword" | "ResetAuthenticator" | "ReplaceRecoveryCodes" | "AddPasskey" | "RemovePasskey" | "ChangeEmail";
             newPassword?: null | string;
             passkeyNickname?: null | string;
             /** Format: uuid */
             passkeyId?: null | string;
+            newEmail?: null | string;
         };
         ProfileActionResponse: {
             available: boolean;
@@ -1552,6 +1910,7 @@ export interface components {
             resetAuthenticator: components["schemas"]["ProfileActionResponse"];
             replaceRecoveryCodes: components["schemas"]["ProfileActionResponse"];
             addPasskey: components["schemas"]["ProfileActionResponse"];
+            changeEmail: components["schemas"]["EmailChangeCapabilityResponse"];
         };
         ProfileDetailsRequest: {
             displayName: string;
@@ -1592,6 +1951,7 @@ export interface components {
             passkeys: components["schemas"]["ProfilePasskeyResponse"][];
             verificationMethods: ("PasswordAndAuthenticatorCode" | "PasswordAndRecoveryCode" | "Passkey")[];
             changes: components["schemas"]["ProfileChangesResponse"];
+            pendingEmail: null | components["schemas"]["PendingEmailResponse"];
         };
         RecoveryCodesResponse: {
             codes: string[];

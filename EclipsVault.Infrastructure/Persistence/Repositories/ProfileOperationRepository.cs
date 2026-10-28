@@ -9,6 +9,11 @@ namespace EclipsVault.Infrastructure.Persistence.Repositories;
 
 public sealed class ProfileOperationRepository(EclipsVaultDbContext context, AccountTransaction transaction) : IProfileOperationRepository
 {
+    public Task<PendingEmail?> FindPendingEmailAsync(Guid accountId, Guid sessionId, CancellationToken ct)
+        => context.ProfileOperations.Where(o => o.UserId == accountId && o.SessionId == sessionId
+                && o.Kind == ProfileOperationKind.ChangeEmail && o.MailboxCodeHash != null)
+            .Select(o => new PendingEmail(o.Id, o.TargetEmail!, o.MailboxExpiresAtUtc!.Value)).SingleOrDefaultAsync(ct);
+
     public Task<ProfileOperation?> FindAsync(Guid operationId, Guid accountId, Guid sessionId, CancellationToken ct)
         => context.ProfileOperations.FirstOrDefaultAsync(
             o => o.Id == operationId && o.UserId == accountId && o.SessionId == sessionId, ct);
@@ -36,6 +41,12 @@ public sealed class ProfileOperationRepository(EclipsVaultDbContext context, Acc
                 .Where(o => o.UserId == operation.UserId)
                 .Where(IsOutOfTime(nowUtc))
                 .ExecuteDeleteAsync(token);
+            if (operation.Kind == ProfileOperationKind.ChangeEmail)
+            {
+                await context.ProfileOperations.Where(o => o.UserId == operation.UserId && o.Kind == ProfileOperationKind.ChangeEmail)
+                    .ExecuteDeleteAsync(token);
+            }
+
             context.ProfileOperations.Add(operation);
             await context.SaveChangesAsync(token);
             return true;
@@ -43,9 +54,9 @@ public sealed class ProfileOperationRepository(EclipsVaultDbContext context, Acc
     }
 
     public async Task<bool> DeleteAsync(Guid operationId, Guid accountId, Guid sessionId, CancellationToken ct)
-        => await context.ProfileOperations
+        => await transaction.RunAsync(accountId, async token => await context.ProfileOperations
             .Where(o => o.Id == operationId && o.UserId == accountId && o.SessionId == sessionId)
-            .ExecuteDeleteAsync(ct) == 1;
+            .ExecuteDeleteAsync(token) == 1, ct);
 
     public async Task<bool> IssueChallengeAsync(ProfileOperation operation, PasskeyCeremonyPurpose purpose, string challenge,
         DateTimeOffset expiresAtUtc, CancellationToken ct)
@@ -82,12 +93,15 @@ public sealed class ProfileOperationRepository(EclipsVaultDbContext context, Acc
     private static Expression<Func<ProfileOperation, bool>> IsLive(DateTimeOffset nowUtc)
     {
         var grantedSince = nowUtc - ProfileOperationLimits.GrantLifetime;
-        return o => (o.VerifiedAtUtc == null && o.ExpiresAtUtc > nowUtc) || (o.VerifiedAtUtc != null && o.VerifiedAtUtc > grantedSince);
+        return o => (o.Kind == ProfileOperationKind.ChangeEmail && o.ExpiresAtUtc > nowUtc)
+            || (o.VerifiedAtUtc == null && o.ExpiresAtUtc > nowUtc) || (o.VerifiedAtUtc != null && o.VerifiedAtUtc > grantedSince);
     }
 
     private static Expression<Func<ProfileOperation, bool>> IsOutOfTime(DateTimeOffset nowUtc)
     {
         var grantedSince = nowUtc - ProfileOperationLimits.GrantLifetime;
-        return o => (o.VerifiedAtUtc == null && o.ExpiresAtUtc <= nowUtc) || (o.VerifiedAtUtc != null && o.VerifiedAtUtc <= grantedSince);
+        return o => o.Kind == ProfileOperationKind.ChangeEmail
+            ? o.ExpiresAtUtc <= nowUtc && (o.VerifiedAtUtc == null || o.VerifiedAtUtc <= grantedSince)
+            : (o.VerifiedAtUtc == null && o.ExpiresAtUtc <= nowUtc) || (o.VerifiedAtUtc != null && o.VerifiedAtUtc <= grantedSince);
     }
 }

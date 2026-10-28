@@ -40,5 +40,9 @@ public enum ProfileRefusal
     AlternateMethodRequired,
 
     /// <summary>The change needs an enrolled authenticator.</summary>
-    AuthenticatorNotEnrolled
+    AuthenticatorNotEnrolled,
+    MailUnavailable,
+    EmailConflict,
+    EmailCodeInvalid,
+    EmailCodeExpired
 }

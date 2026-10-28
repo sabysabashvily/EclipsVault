@@ -136,7 +136,7 @@ public sealed partial class ProfileService : IProfileService
         // whether or not the session store is reachable.
         user.CredentialGeneration++;
         await _changes.CommitAsync(user, AuditAction.PasswordChanged, "Password changed by owner; sessions revoked", ct);
-        await _notifications.NotifyPasswordChangedAsync(user.Id, ct);
+        await _notifications.NotifySensitiveChangeAsync(user.Email, ProfileOperationKind.ChangePassword, CancellationToken.None);
         return user.CredentialGeneration;
     }
 
@@ -176,6 +176,7 @@ public sealed partial class ProfileService : IProfileService
         user.LastTotpStep = null;
         user.CredentialGeneration++;
         await _changes.CommitAsync(user, AuditAction.SelfMfaReset, "Authenticator reset by owner; re-enrollment required", ct);
+        await _notifications.NotifySensitiveChangeAsync(user.Email, ProfileOperationKind.ResetAuthenticator, CancellationToken.None);
     }
 
     private static string ValidDisplayName(string displayName)

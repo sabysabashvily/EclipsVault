@@ -19,6 +19,8 @@ public sealed class ProfileOperationConfiguration : IEntityTypeConfiguration<Pro
         builder.Property(o => o.CandidatePasswordSalt).HasMaxLength(32);
         builder.Property(o => o.PasskeyNickname).HasMaxLength(64);
         builder.Property(o => o.Challenge).HasMaxLength(128);
+        builder.Property(o => o.TargetEmail).HasMaxLength(254);
+        builder.Property(o => o.MailboxCodeHash).HasMaxLength(32);
 
         // A session holds one operation, so it has one passkey prompt in flight; preparing replaces it.
         builder.HasIndex(o => new { o.UserId, o.SessionId }).IsUnique();

@@ -58,7 +58,7 @@ public sealed class ProfileOperationsController(
         }
 
         var prepared = await preparation.PrepareAsync(session,
-            new ProfileChangeRequest(kind, request.NewPassword, request.PasskeyNickname, request.PasskeyId), ct);
+            new ProfileChangeRequest(kind, request.NewPassword, request.PasskeyNickname, request.PasskeyId, request.NewEmail), ct);
         return StatusCode(StatusCodes.Status201Created, new PreparedOperationResponse(
             prepared.OperationId,
             prepared.Kind.ToString(),

@@ -29,6 +29,7 @@ public sealed class ProfileDetailsController(
     IMfaRecoveryService recovery,
     IAvatarProcessor avatars,
     ProfileOperationPreparation preparation,
+    IProfileOperationRepository operations,
     AccountSignOut signOut,
     ITempDataDictionaryFactory tempData,
     IAntiforgery antiforgery) : ControllerBase
@@ -46,6 +47,8 @@ public sealed class ProfileDetailsController(
 
         var security = await preparation.DescribeAsync(profile.Id, ct);
         var keys = await passkeys.ListForUserAsync(profile.Id, ct);
+        var pending = User.GetProfileSessionOrNull() is { } session
+            ? await operations.FindPendingEmailAsync(session.AccountId, session.SessionId, ct) : null;
         return new ProfileResponse(
             profile.Username,
             profile.DisplayName,
@@ -62,7 +65,9 @@ public sealed class ProfileDetailsController(
                 Action(security.Changes[ProfileOperationKind.ChangePassword]),
                 Action(security.Changes[ProfileOperationKind.ResetAuthenticator]),
                 Action(security.Changes[ProfileOperationKind.ReplaceRecoveryCodes]),
-                Action(security.Changes[ProfileOperationKind.AddPasskey])));
+                Action(security.Changes[ProfileOperationKind.AddPasskey]),
+                EmailCapability(security.Changes[ProfileOperationKind.ChangeEmail])),
+            pending is null ? null : new PendingEmailResponse(pending.OperationId, pending.Address, pending.ExpiresAtUtc.UtcDateTime));
     }
 
     [HttpPatch("details")]
@@ -139,6 +144,14 @@ public sealed class ProfileDetailsController(
             _ => ProfileProblems.Problem(StatusCodes.Status503ServiceUnavailable, "sign_out_incomplete", message),
         };
     }
+
+    private static EmailChangeCapabilityResponse EmailCapability(ProfileRefusal? refusal)
+        => new(refusal is null, ProfileProblems.CodeOf(refusal), refusal switch
+        {
+            null => null,
+            ProfileRefusal.MailUnavailable => "Email changes require configured, enabled SMTP delivery.",
+            _ => "Email changes require an existing local credential to verify your account.",
+        });
 
     private static ProfileActionResponse Action(ProfileRefusal? refusal) => new(refusal is null, ProfileProblems.CodeOf(refusal));
 

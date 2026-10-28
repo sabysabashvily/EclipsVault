@@ -11,6 +11,8 @@ public interface INotificationService
     Task NotifyAccessRequestDecidedAsync(
         Guid requesterUserId, string secretName, bool approved, string reviewer, string? note, CancellationToken ct);
 
+    Task NotifySensitiveChangeAsync(string trustedAddress, ProfileOperationKind kind, CancellationToken ct);
+
     Task NotifyPasswordChangedAsync(Guid userId, CancellationToken ct);
 
     Task NotifyCredentialChangedAsync(Guid userId, ProfileOperationKind kind, CancellationToken ct);

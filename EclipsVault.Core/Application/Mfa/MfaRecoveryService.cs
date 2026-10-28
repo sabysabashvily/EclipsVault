@@ -18,19 +18,22 @@ public sealed class MfaRecoveryService : IMfaRecoveryService
     private readonly IPasswordHasher _hasher;
     private readonly IAccountChangeCommitter _changes;
     private readonly TimeProvider _clock;
+    private readonly INotificationService? _notifications;
 
     public MfaRecoveryService(
         IUserRepository users,
         IMfaRecoveryCodeRepository codes,
         IPasswordHasher hasher,
         IAccountChangeCommitter changes,
-        TimeProvider clock)
+        TimeProvider clock,
+        INotificationService? notifications = null)
     {
         _users = users;
         _codes = codes;
         _hasher = hasher;
         _changes = changes;
         _clock = clock;
+        _notifications = notifications;
     }
 
     public Task<int> CountRemainingAsync(Guid userId, CancellationToken ct)
@@ -49,6 +52,11 @@ public sealed class MfaRecoveryService : IMfaRecoveryService
         await _changes.CommitAsync(
             user, AuditAction.RecoveryCodesGenerated,
             $"{CodesPerSet} single-use MFA recovery codes generated; any previous codes invalidated", ct);
+
+        if (_notifications is not null)
+        {
+            await _notifications.NotifySensitiveChangeAsync(user.Email, ProfileOperationKind.ReplaceRecoveryCodes, CancellationToken.None);
+        }
 
         return new RecoveryCodeSet(display, user.CredentialGeneration);
     }

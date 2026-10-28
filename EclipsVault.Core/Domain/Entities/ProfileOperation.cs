@@ -37,6 +37,16 @@ public class ProfileOperation
     /// <summary>The passkey being removed.</summary>
     public Guid? TargetPasskeyId { get; set; }
 
+    public string? TargetEmail { get; set; }
+
+    public byte[]? MailboxCodeHash { get; set; }
+
+    public DateTimeOffset? MailboxExpiresAtUtc { get; set; }
+
+    public int MailboxFailures { get; set; }
+
+    public bool MailboxDelivered { get; set; }
+
     public DateTimeOffset CreatedAtUtc { get; set; }
 
     /// <summary>An operation not verified by this instant can no longer be verified.</summary>

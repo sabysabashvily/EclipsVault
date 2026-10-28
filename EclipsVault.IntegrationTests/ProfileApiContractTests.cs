@@ -37,6 +37,10 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
     [InlineData("POST", "/api/ui/profile/passkeys/registration/begin")]
     [InlineData("POST", "/api/ui/profile/passkeys/registration/complete")]
     [InlineData("DELETE", "/api/ui/profile/passkeys/" + AnyId)]
+    [InlineData("POST", "/api/ui/profile/email/request")]
+    [InlineData("POST", "/api/ui/profile/email/resend")]
+    [InlineData("POST", "/api/ui/profile/email/confirm")]
+    [InlineData("DELETE", "/api/ui/profile/email/pending")]
     public async Task Each_profile_route_refuses_anonymous_and_working_api_key_callers(string method, string path)
     {
         var client = vault.CreateClient();
@@ -63,6 +67,10 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
     [InlineData("POST", "/api/ui/profile/passkeys/registration/begin", "100.64.87.13")]
     [InlineData("POST", "/api/ui/profile/passkeys/registration/complete", "100.64.87.14")]
     [InlineData("DELETE", "/api/ui/profile/passkeys/" + AnyId, "100.64.87.15")]
+    [InlineData("POST", "/api/ui/profile/email/request", "100.64.88.21")]
+    [InlineData("POST", "/api/ui/profile/email/resend", "100.64.88.22")]
+    [InlineData("POST", "/api/ui/profile/email/confirm", "100.64.88.23")]
+    [InlineData("DELETE", "/api/ui/profile/email/pending", "100.64.88.24")]
     public async Task Each_profile_write_refuses_a_session_without_its_antiforgery_token(string method, string path, string address)
     {
         var owner = await ProfileAccount.CreateAsync(vault, $"it-ui87-profile-csrf-{address.Split('.')[^1]}", address);
@@ -102,7 +110,7 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
         Assert.True(response.Headers.CacheControl?.NoStore);
         var profile = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(
-            ["authenticatorEnrolled", "avatarUrl", "changes", "clearance", "displayName", "email", "passkeys", "project",
+            ["authenticatorEnrolled", "avatarUrl", "changes", "clearance", "displayName", "email", "passkeys", "pendingEmail", "project",
                 "recoveryCodesRemaining", "username", "verificationMethods"],
             ProfileApi.NamesOf(profile));
         Assert.Equal("it-ui87-profile-snapshot", profile.GetProperty("username").GetString());
@@ -122,7 +130,7 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
         Assert.EndsWith("Z", passkey.GetProperty("createdAtUtc").GetString());
         Assert.Equal("""{"available":true,"unavailableReason":null}""", passkey.GetProperty("removal").GetRawText());
         Assert.Equal(
-            """{"changePassword":{"available":true,"unavailableReason":null},"resetAuthenticator":{"available":true,"unavailableReason":null},"replaceRecoveryCodes":{"available":true,"unavailableReason":null},"addPasskey":{"available":true,"unavailableReason":null}}""",
+            """{"changePassword":{"available":true,"unavailableReason":null},"resetAuthenticator":{"available":true,"unavailableReason":null},"replaceRecoveryCodes":{"available":true,"unavailableReason":null},"addPasskey":{"available":true,"unavailableReason":null},"changeEmail":{"available":false,"unavailableReason":"mail_unavailable","explanation":"Email changes require configured, enabled SMTP delivery."}}""",
             profile.GetProperty("changes").GetRawText());
     }
 

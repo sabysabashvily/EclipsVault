@@ -1,3 +1,5 @@
+using System.Net.Mail;
+using EclipsVault.Core.Domain;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
@@ -16,11 +18,13 @@ public sealed class ProfileOperationPreparation(
     IPasskeyCredentialRepository passkeys,
     IBreachedPasswordScreen breachScreen,
     CandidatePasswordHashing hashing,
-    TimeProvider clock)
+    TimeProvider clock,
+    IEmailVerificationDelivery delivery)
 {
     private static readonly ProfileOperationKind[] AccountWideChanges =
     [
         ProfileOperationKind.ChangePassword,
+        ProfileOperationKind.ChangeEmail,
         ProfileOperationKind.ResetAuthenticator,
         ProfileOperationKind.ReplaceRecoveryCodes,
         ProfileOperationKind.AddPasskey,
@@ -31,7 +35,8 @@ public sealed class ProfileOperationPreparation(
         var credentials = await CredentialsOfAsync(accountId, ct);
         return new ProfileSecurity(
             credentials.MethodsFor(ProfileOperationKind.ChangePassword, null),
-            AccountWideChanges.ToDictionary(kind => kind, kind => credentials.RefusalFor(kind, null)),
+            AccountWideChanges.ToDictionary(kind => kind, kind => kind == ProfileOperationKind.ChangeEmail && !delivery.Available
+                ? ProfileRefusal.MailUnavailable : credentials.RefusalFor(kind, null)),
             credentials.PasskeyIds.ToDictionary(id => id, id => credentials.RefusalFor(ProfileOperationKind.RemovePasskey, id)));
     }
 
@@ -50,6 +55,26 @@ public sealed class ProfileOperationPreparation(
         if (account is null || account.CredentialGeneration != session.Stamp.CredentialGeneration)
         {
             throw new ProfileOperationRefusedException(ProfileRefusal.OperationChanged);
+        }
+
+        if (change.Kind == ProfileOperationKind.ChangeEmail)
+        {
+            if (!delivery.Available)
+            {
+                throw new ProfileOperationRefusedException(ProfileRefusal.MailUnavailable);
+            }
+
+            if (change.NewEmail?.Trim() is not { Length: > 0 and <= 254 } email
+                || !MailAddress.TryCreate(email, out var address) || address.Address != email)
+            {
+                throw Invalid("newEmail", "Enter a valid email address.");
+            }
+
+            if (EmailIdentity.Normalize(email) == EmailIdentity.Normalize(account.Email)
+                || await users.IsEmailTakenAsync(email, account.Id, ct))
+            {
+                throw new ProfileOperationRefusedException(ProfileRefusal.EmailConflict);
+            }
         }
 
         var credentials = await CredentialsOfAsync(account.Id, ct);
@@ -74,6 +99,7 @@ public sealed class ProfileOperationPreparation(
             Kind = change.Kind,
             PasskeyNickname = change.Kind == ProfileOperationKind.AddPasskey ? PasskeyNickname.Normalize(change.PasskeyNickname) : null,
             TargetPasskeyId = change.PasskeyId,
+            TargetEmail = change.NewEmail?.Trim(),
             CreatedAtUtc = now,
             ExpiresAtUtc = now + ProfileOperationLimits.VerificationWindow,
         };
@@ -106,6 +132,11 @@ public sealed class ProfileOperationPreparation(
 
     private static void RejectFieldsOfOtherKinds(ProfileChangeRequest change)
     {
+        if (change.NewEmail is not null && change.Kind != ProfileOperationKind.ChangeEmail)
+        {
+            throw Invalid("newEmail", "Only an email change takes a new address.");
+        }
+
         if (change.NewPassword is not null && change.Kind != ProfileOperationKind.ChangePassword)
         {
             throw Invalid("newPassword", "Only a password change takes a new password.");

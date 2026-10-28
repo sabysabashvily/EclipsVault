@@ -7,7 +7,7 @@ namespace EclipsVault.IntegrationTests;
 
 public sealed class AuditFailureFixture : IAsyncLifetime
 {
-    public VaultFixture Vault { get; } = new();
+    public VaultFixture Vault { get; } = new() { Mailbox = new SmtpCapture() };
 
     public Task InitializeAsync() => Vault.InitializeAsync();
 

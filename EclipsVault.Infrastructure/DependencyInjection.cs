@@ -215,6 +215,10 @@ public static class DependencyInjection
         services.AddScoped<ProfileOperationPreparation>();
         services.AddScoped<AccountVerification>();
         services.AddScoped<VerifiedProfileChanges>();
+        services.AddScoped<ProfileEmailChanges>();
+        services.AddScoped<IEmailVerificationSendLimits, EmailVerificationSendLimits>();
+        services.AddSingleton<SmtpEmailSender>();
+        services.AddSingleton<IEmailVerificationDelivery, EmailVerificationDelivery>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IActivityService, ActivityService>();
         services.AddScoped<ISignInHistoryService, SignInHistoryService>();

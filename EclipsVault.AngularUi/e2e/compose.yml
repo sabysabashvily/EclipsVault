@@ -16,6 +16,10 @@ services:
       timeout: 5s
       retries: 90
 
+  smtp:
+    image: axllent/mailpit:v1.27.8@sha256:6abc8e633df15eaf785cfcf38bae48e66f64beecdc03121e249d0f9ec15f0707
+    ports: ['127.0.0.1::8025']
+
   vault:
     image: ${E2E_IMAGE:?Set by run.mjs}
     environment:
@@ -28,9 +32,14 @@ services:
       ECLIPSVAULT_KEK: ${ECLIPSVAULT_KEK:?Supply a base64 32-byte test KEK}
       ECLIPSVAULT_AUDIT_SIGNING_KEY: ${ECLIPSVAULT_AUDIT_SIGNING_KEY:?Set by run.mjs}
       DataProtection__KeyRingPath: /tmp/keyring
-      Email__Enabled: 'false'
+      Email__Enabled: 'true'
+      Email__Sender: Smtp
+      Email__Smtp__Host: smtp
+      Email__Smtp__Port: '1025'
       WebAuthn__Origins__0: ${E2E_BASE_URL:-https://localhost}
     depends_on:
+      smtp:
+        condition: service_started
       sql:
         condition: service_healthy
 

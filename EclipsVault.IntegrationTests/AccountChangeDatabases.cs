@@ -127,6 +127,7 @@ public sealed class AccountRequest : IAsyncDisposable
         var transaction = new AccountTransaction(context, locks);
         Changes = new AccountChangeCommitter(context, interceptor, transaction);
         ProfileOperations = new ProfileOperationRepository(context, transaction);
+        EmailLimits = new EmailVerificationSendLimits(context, locks);
         Attempt = new AuthenticationAttempt(context, transaction, interceptor, chain);
         SecondFactors = new SecondFactorVerifier(Users, RecoveryCodes, new TotpService(TimeProvider.System), hasher, TimeProvider.System);
         Recovery = new MfaRecoveryService(Users, RecoveryCodes, hasher, Changes, TimeProvider.System);
@@ -144,6 +145,8 @@ public sealed class AccountRequest : IAsyncDisposable
     public AccountChangeCommitter Changes { get; }
 
     public ProfileOperationRepository ProfileOperations { get; }
+
+    public IEmailVerificationSendLimits EmailLimits { get; }
 
     public IAuthenticationAttempt Attempt { get; }
 

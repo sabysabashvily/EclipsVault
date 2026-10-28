@@ -7,5 +7,6 @@ public enum ProfileOperationKind
     ResetAuthenticator = 2,
     ReplaceRecoveryCodes = 3,
     AddPasskey = 4,
-    RemovePasskey = 5
+    RemovePasskey = 5,
+    ChangeEmail = 6
 }

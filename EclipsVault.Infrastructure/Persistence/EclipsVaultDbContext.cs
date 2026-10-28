@@ -1,4 +1,5 @@
 using EclipsVault.Core.Domain.Entities;
+using EclipsVault.Core.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace EclipsVault.Infrastructure.Persistence;
@@ -48,6 +49,8 @@ public sealed class EclipsVaultDbContext : DbContext
     public DbSet<DynamicSecretLease> DynamicSecretLeases => Set<DynamicSecretLease>();
 
     /// <summary>Profile security changes prepared for account verification, until they are committed or expire.</summary>
+    public DbSet<EmailVerificationSend> EmailVerificationSends => Set<EmailVerificationSend>();
+
     public DbSet<ProfileOperation> ProfileOperations => Set<ProfileOperation>();
 
     /// <summary>When each Licensed Capability was first exercised, which opens its evaluation period.</summary>
@@ -71,6 +74,9 @@ public sealed class EclipsVaultDbContext : DbContext
         // A normalized email is already folded, so it compares ordinally, never by a collation that
         // ignores accents or width and would make two addresses one. The collation's name is the
         // provider's; SQLite compares ordinally anyway.
+        var kind = Database.IsNpgsql() ? "\"Kind\"" : "[Kind]";
+        modelBuilder.Entity<ProfileOperation>().HasIndex(o => o.UserId).IsUnique().HasFilter($"{kind} = {(int)ProfileOperationKind.ChangeEmail}");
+
         var ordinal = Database.IsNpgsql() ? "C" : Database.IsSqlServer() ? "Latin1_General_100_BIN2" : null;
         modelBuilder.Entity<User>()
             .Property(u => u.NormalizedEmail)

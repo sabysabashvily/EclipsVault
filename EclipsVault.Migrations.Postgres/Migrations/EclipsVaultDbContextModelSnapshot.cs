@@ -415,6 +415,32 @@ namespace EclipsVault.Migrations.Postgres.Migrations
                     b.ToTable("EmailLogs", (string)null);
                 });
 
+            modelBuilder.Entity("EclipsVault.Core.Domain.Entities.EmailVerificationSend", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("SentAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SourceHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId", "SentAtUtc");
+
+                    b.HasIndex("SourceHash", "SentAtUtc");
+
+                    b.ToTable("EmailVerificationSends");
+                });
+
             modelBuilder.Entity("EclipsVault.Core.Domain.Entities.FeatureEvaluation", b =>
                 {
                     b.Property<string>("FeatureKey")
@@ -535,6 +561,19 @@ namespace EclipsVault.Migrations.Postgres.Migrations
                     b.Property<int>("Kind")
                         .HasColumnType("integer");
 
+                    b.Property<byte[]>("MailboxCodeHash")
+                        .HasMaxLength(32)
+                        .HasColumnType("bytea");
+
+                    b.Property<bool>("MailboxDelivered")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("MailboxExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("MailboxFailures")
+                        .HasColumnType("integer");
+
                     b.Property<string>("PasskeyNickname")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
@@ -550,6 +589,10 @@ namespace EclipsVault.Migrations.Postgres.Migrations
                     b.Property<Guid>("SessionId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("TargetEmail")
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)");
+
                     b.Property<Guid?>("TargetPasskeyId")
                         .HasColumnType("uuid");
 
@@ -560,6 +603,10 @@ namespace EclipsVault.Migrations.Postgres.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasFilter("\"Kind\" = 6");
 
                     b.HasIndex("UserId", "SessionId")
                         .IsUnique();

@@ -32,7 +32,7 @@ public sealed class VerifiedProfileChanges(
         account.PasswordSalt = operation.CandidatePasswordSalt!;
         account.CredentialGeneration++;
         await CommitAsync(account, operation, AuditAction.PasswordChanged, "Password changed by owner after account verification; sessions revoked", ct);
-        await notifications.NotifyPasswordChangedAsync(account.Id, ct);
+
         return account.CredentialGeneration;
     }
 
@@ -197,6 +197,7 @@ public sealed class VerifiedProfileChanges(
     private async Task CommitAsync(User account, ProfileOperation operation, AuditAction action, string details,
         Func<CancellationToken, Task> recheck, CancellationToken ct)
     {
+        var trustedAddress = account.Email;
         await changes.CommitAsync(account, action, details, async token =>
         {
             // Hashing or another account operation may have delayed this request after its first check.
@@ -212,10 +213,7 @@ public sealed class VerifiedProfileChanges(
 
             await recheck(token);
         }, ct);
-        if (operation.Kind != ProfileOperationKind.ChangePassword)
-        {
-            await notifications.NotifyCredentialChangedAsync(account.Id, operation.Kind, ct);
-        }
+        await notifications.NotifySensitiveChangeAsync(trustedAddress, operation.Kind, CancellationToken.None);
     }
 
     private static void RequireAuthenticator(User account)

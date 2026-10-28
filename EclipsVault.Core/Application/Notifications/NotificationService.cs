@@ -56,6 +56,12 @@ public sealed class NotificationService : INotificationService
                 body, approved ? "AccessRequestApproved" : "AccessRequestRejected");
         }, ct);
 
+    public Task NotifySensitiveChangeAsync(string trustedAddress, ProfileOperationKind kind, CancellationToken ct)
+        => SafeSendAsync(() => Task.FromResult<Draft?>(new Draft(trustedAddress,
+            "Your EclipsVault security settings changed",
+            "A sensitive change was completed on your EclipsVault account. If this wasn't you, contact an administrator immediately.",
+            kind == ProfileOperationKind.ChangePassword ? "PasswordChanged" : kind.ToString())), ct);
+
     public Task NotifyPasswordChangedAsync(Guid userId, CancellationToken ct)
         => SafeSendAsync(async () =>
         {
@@ -154,10 +160,10 @@ public sealed class NotificationService : INotificationService
                     await _sender.SendAsync(new EmailMessage(draft.To, draft.Subject, body), ct);
                     status = EmailDeliveryStatus.Sent;
                 }
-                catch (Exception ex)
+                catch
                 {
                     status = EmailDeliveryStatus.Failed;
-                    error = ex.Message;
+                    error = "Mail delivery failed.";
                 }
             }
 

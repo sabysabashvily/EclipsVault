@@ -13,4 +13,5 @@ public sealed record PrepareProfileOperationRequest(
     [property: UiEnum(typeof(ProfileOperationKind))] string Kind,
     string? NewPassword = null,
     string? PasskeyNickname = null,
-    Guid? PasskeyId = null);
+    Guid? PasskeyId = null,
+    string? NewEmail = null);

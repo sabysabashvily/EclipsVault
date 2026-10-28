@@ -20,4 +20,5 @@ public sealed record ProfileResponse(
     int RecoveryCodesRemaining,
     IReadOnlyList<ProfilePasskeyResponse> Passkeys,
     [property: UiEnum(typeof(AccountProofMethod))] IReadOnlyList<string> VerificationMethods,
-    ProfileChangesResponse Changes);
+    ProfileChangesResponse Changes,
+    PendingEmailResponse? PendingEmail);

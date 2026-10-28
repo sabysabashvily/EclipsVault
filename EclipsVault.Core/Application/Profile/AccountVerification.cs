@@ -170,7 +170,8 @@ public sealed class AccountVerification(
             throw new ProfileOperationRefusedException(ProfileRefusal.OperationNotFound);
         }
 
-        if (operation.VerifiedAtUtc is not null)
+        if (operation.VerifiedAtUtc is { } verifiedAt
+            && (operation.Kind != ProfileOperationKind.ChangeEmail || clock.GetUtcNow() < verifiedAt + ProfileOperationLimits.GrantLifetime))
         {
             throw new ProfileOperationRefusedException(ProfileRefusal.OperationChanged, message: "This change was already verified.");
         }
@@ -250,6 +251,7 @@ public sealed class AccountVerification(
 
     private static string Describe(ProfileOperationKind kind) => kind switch
     {
+        ProfileOperationKind.ChangeEmail => "change email",
         ProfileOperationKind.ChangePassword => "change the password",
         ProfileOperationKind.ResetAuthenticator => "reset the authenticator",
         ProfileOperationKind.ReplaceRecoveryCodes => "replace the recovery codes",

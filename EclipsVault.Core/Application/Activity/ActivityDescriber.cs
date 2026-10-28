@@ -58,6 +58,8 @@ public static class ActivityDescriber
         AuditAction.StepUpVerified => new(ActivityCategory.Security, "Passed step-up verification", ActivitySeverity.Routine),
         AuditAction.StepUpFailed => new(ActivityCategory.Security, "Step-up verification failed", ActivitySeverity.Notable),
         AuditAction.AccountVerified => new(ActivityCategory.Security, "Verified your account for a security change", ActivitySeverity.Routine),
+        AuditAction.EmailChangeRequested => new(ActivityCategory.Security, "Email confirmation requested", ActivitySeverity.Notable),
+        AuditAction.EmailChanged => new(ActivityCategory.Security, "Email changed", ActivitySeverity.Notable),
         AuditAction.AccountVerificationFailed => new(ActivityCategory.Security, "Account verification failed", ActivitySeverity.Notable),
         AuditAction.AccountUnlocked => new(ActivityCategory.Security, "Your account was unlocked", ActivitySeverity.Notable),
         AuditAction.AccountLockedOut => new(ActivityCategory.Security, "Your account was locked after failed sign-ins", ActivitySeverity.Critical),

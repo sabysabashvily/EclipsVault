@@ -4,4 +4,5 @@ public sealed record ProfileChangesResponse(
     ProfileActionResponse ChangePassword,
     ProfileActionResponse ResetAuthenticator,
     ProfileActionResponse ReplaceRecoveryCodes,
-    ProfileActionResponse AddPasskey);
+    ProfileActionResponse AddPasskey,
+    EmailChangeCapabilityResponse ChangeEmail);
