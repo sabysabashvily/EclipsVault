@@ -41,8 +41,16 @@ public enum ProfileRefusal
 
     /// <summary>The change needs an enrolled authenticator.</summary>
     AuthenticatorNotEnrolled,
+
+    /// <summary>Email changes need configured, enabled SMTP, or the delivery could not be confirmed.</summary>
     MailUnavailable,
+
+    /// <summary>The address is already this account's email or another account's, so it cannot be used.</summary>
     EmailConflict,
+
+    /// <summary>The mailbox code does not match the one delivered for this change.</summary>
     EmailCodeInvalid,
+
+    /// <summary>The mailbox code expired or was retired after too many mistakes; start the change again.</summary>
     EmailCodeExpired
 }

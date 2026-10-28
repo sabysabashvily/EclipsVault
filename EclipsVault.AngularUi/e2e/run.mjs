@@ -137,6 +137,7 @@ async function main() {
     E2E_IMAGE: image,
     // Lets a spec reach this run's own disposable database, for state no production screen can create.
     E2E_COMPOSE_PROJECT: project,
+    E2E_REDIS_PASSWORD: randomBytes(24).toString('hex'),
     E2E_SQL_PASSWORD: `Sa1!${randomBytes(24).toString('hex')}`,
     E2E_PROXY_IP: '127.0.0.1', // Replaced with the proxy's actual address before starting the vault.
     ECLIPSVAULT_AUDIT_SIGNING_KEY: privateKey
@@ -154,7 +155,7 @@ async function main() {
     }
     // Discover the address Docker assigned instead of trusting arbitrary forwarded headers or
     // reserving a fixed subnet that could collide with another developer's network.
-    await compose(['up', '-d', '--wait', '--wait-timeout', '180', 'sql', 'proxy', 'smtp']);
+    await compose(['up', '-d', '--wait', '--wait-timeout', '180', 'sql', 'proxy', 'smtp', 'redis']);
     const proxyId = await compose(['ps', '-q', 'proxy'], { capture: true });
     env.E2E_PROXY_IP = await checked(
       'docker',

@@ -4,9 +4,9 @@ import { TestBed } from '@angular/core/testing';
 import { appConfig } from '../app.config';
 import { CurrentAccount } from '../account/current-account';
 import { UiApiError } from '../ui-api/ui-api-errors';
-import { ProfileSession } from './profile-session';
+import { ProfileWrites } from './profile-writes';
 
-describe('ProfileSession', () => {
+describe('ProfileWrites', () => {
   let backend: HttpTestingController;
   const assign = vi.fn();
   beforeEach(() => {
@@ -15,7 +15,7 @@ describe('ProfileSession', () => {
       providers: [
         ...appConfig.providers,
         provideHttpClientTesting(),
-        ProfileSession,
+        ProfileWrites,
         { provide: CurrentAccount, useValue: { me: { reload: vi.fn() } } },
         {
           provide: DOCUMENT,
@@ -34,7 +34,7 @@ describe('ProfileSession', () => {
   });
   afterEach(() => backend.verify({ ignoreCancelled: true }));
   function session() {
-    const session = TestBed.inject(ProfileSession);
+    const session = TestBed.inject(ProfileWrites);
     return session;
   }
   it('blocks further writes after a known committed change needs sign-in', () => {
@@ -49,6 +49,19 @@ describe('ProfileSession', () => {
     expect(cleared).toHaveBeenCalledOnce();
     backend.expectNone('/api/ui/profile/password');
   });
+  it.each(['audit_unavailable', 'session_store_unavailable'])(
+    'reports a refused %s write as not saved and still allows a deliberate retry',
+    (code) => {
+      const state = session();
+      state.failed(new UiApiError(503, code, 'The vault refused the change. Nothing was saved.'));
+      expect(state.status()).toEqual({
+        message: 'The vault refused the change. Nothing was saved.',
+        error: true,
+      });
+      expect(state.blocked()).toBe(false);
+      expect(state.signInRequired()).toBe(false);
+    },
+  );
   it('clears sensitive state on pagehide and back-forward restoration', () => {
     const state = session();
     const cleared = vi.fn();

@@ -4,7 +4,7 @@ import { Observable, switchMap } from 'rxjs';
 import { UiApiError } from '../ui-api/ui-api-errors';
 import { CredentialChange } from './credential-change';
 import { PasskeyCreation } from './passkey-creation';
-import { ProfileSession } from './profile-session';
+import { ProfileWrites } from './profile-writes';
 import {
   PasskeyOptions,
   Profile,
@@ -22,7 +22,7 @@ export class PasskeysPanel {
   readonly profile = input.required<Profile>();
   readonly changes = input.required<CredentialChange>();
   readonly changed = output<void>();
-  private readonly session = inject(ProfileSession);
+  private readonly session = inject(ProfileWrites);
   protected readonly creation = inject(PasskeyCreation);
   protected readonly nickname = signal('');
   protected readonly prompting = signal(false);

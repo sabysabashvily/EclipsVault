@@ -11,11 +11,11 @@ import {
   throwError,
 } from 'rxjs';
 import { CurrentAccount } from '../account/current-account';
-import { UiApiError } from '../ui-api/ui-api-errors';
+import { UiApiError, parsedOrNull } from '../ui-api/ui-api-errors';
 
 /** Page-scoped writes never replay; leaving or losing the session disposes their callbacks. */
 @Injectable()
-export class ProfileSession {
+export class ProfileWrites {
   readonly http = inject(HttpClient);
   private readonly document = inject(DOCUMENT);
   private readonly account = inject(CurrentAccount);
@@ -101,6 +101,7 @@ export class ProfileSession {
       error.code === 'unknown' ||
       (error.status >= 500 &&
         error.code !== 'audit_unavailable' &&
+        error.code !== 'session_store_unavailable' &&
         error.code !== 'changed_sign_in_required');
     if (unknownOutcome || error.code === 'changed_sign_in_required') {
       this.blocked.set(true);
@@ -148,27 +149,9 @@ export class ProfileSession {
               responseType: 'text',
             })
             .pipe(
-              catchError((error: unknown) => {
-                if (
-                  error instanceof HttpErrorResponse &&
-                  error.status === 503 &&
-                  typeof error.error === 'string'
-                ) {
-                  try {
-                    const result: unknown = JSON.parse(error.error);
-                    if (
-                      result &&
-                      typeof result === 'object' &&
-                      'code' in result &&
-                      result.code === 'sign_out_incomplete'
-                    )
-                      return of('');
-                  } catch {
-                    /* A malformed reply cannot confirm local clearing. */
-                  }
-                }
-                return throwError(() => error);
-              }),
+              catchError((error: unknown) =>
+                isSignOutIncomplete(error) ? of('') : throwError(() => error),
+              ),
             ),
         ),
         takeUntil(this.ended),
@@ -184,4 +167,17 @@ export class ProfileSession {
     this.clear();
     this.document.location.assign('/Account/Login?signOut=sign_out_incomplete');
   }
+}
+
+/** The outage branch's 503 confirms the local cookie was cleared; a malformed reply cannot. */
+function isSignOutIncomplete(error: unknown): boolean {
+  if (!(error instanceof HttpErrorResponse) || error.status !== 503) return false;
+  if (typeof error.error !== 'string') return false;
+  const result = parsedOrNull(error.error);
+  return (
+    !!result &&
+    typeof result === 'object' &&
+    'code' in result &&
+    result.code === 'sign_out_incomplete'
+  );
 }

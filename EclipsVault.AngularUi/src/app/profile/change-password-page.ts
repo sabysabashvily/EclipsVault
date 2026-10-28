@@ -4,7 +4,7 @@ import { DestroyRef, Component, computed, inject, signal, viewChild } from '@ang
 import { Subscription, takeUntil } from 'rxjs';
 import { StatusLine } from '../shared/status-line';
 import { passwordStrength } from './password-strength';
-import { ProfileSession } from './profile-session';
+import { ProfileWrites } from './profile-writes';
 import type { components } from '../ui-api/schema.generated';
 import { PreparedOperation, Profile, VerifiedOperation, refusalReason } from './profile-types';
 import { VerificationDialog } from './verification-dialog';
@@ -12,11 +12,11 @@ import { VerificationDialog } from './verification-dialog';
 @Component({
   selector: 'app-change-password-page',
   imports: [RouterLink, StatusLine, VerificationDialog],
-  providers: [ProfileSession],
+  providers: [ProfileWrites],
   templateUrl: './change-password-page.html',
 })
 export class ChangePasswordPage {
-  protected readonly session = inject(ProfileSession);
+  protected readonly session = inject(ProfileWrites);
   protected readonly profile = httpResource<Profile>(() => '/api/ui/profile');
   private readonly verification = viewChild.required(VerificationDialog);
   protected readonly currentPassword = signal('');

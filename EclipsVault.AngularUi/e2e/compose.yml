@@ -16,6 +16,22 @@ services:
       timeout: 5s
       retries: 90
 
+  redis:
+    image: redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    environment:
+      REDISCLI_AUTH: ${E2E_REDIS_PASSWORD:?Set by run.mjs}
+    command:
+      [
+        'sh',
+        '-c',
+        'exec redis-server --requirepass "$$REDISCLI_AUTH" --maxmemory-policy noeviction',
+      ]
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli ping | grep -q PONG']
+      interval: 2s
+      timeout: 5s
+      retries: 90
+
   smtp:
     image: axllent/mailpit:v1.27.8@sha256:6abc8e633df15eaf785cfcf38bae48e66f64beecdc03121e249d0f9ec15f0707
     ports: ['127.0.0.1::8025']
@@ -24,6 +40,9 @@ services:
     image: ${E2E_IMAGE:?Set by run.mjs}
     environment:
       ASPNETCORE_ENVIRONMENT: Production
+      Redis__Enabled: 'true'
+      Redis__Configuration: redis:6379,password=${E2E_REDIS_PASSWORD:?Set by run.mjs}
+      Redis__SessionIncarnation: ${E2E_COMPOSE_PROJECT:?Set by run.mjs}
       AllowedHosts: localhost
       ForwardedHeaders__KnownProxies__0: ${E2E_PROXY_IP:?Set by run.mjs}
       ConnectionStrings__DefaultConnection: Server=sql;Database=EclipsVault;User Id=sa;Password=${E2E_SQL_PASSWORD};Encrypt=True;TrustServerCertificate=True
@@ -38,6 +57,8 @@ services:
       Email__Smtp__Port: '1025'
       WebAuthn__Origins__0: ${E2E_BASE_URL:-https://localhost}
     depends_on:
+      redis:
+        condition: service_healthy
       smtp:
         condition: service_started
       sql:

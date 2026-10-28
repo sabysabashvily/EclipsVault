@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
@@ -34,6 +35,8 @@ public sealed class AccountVerification(
         }
 
         var (account, operation) = await LoadAsync(session, operationId, ct);
+        // Returning a refusal keeps the failed proof's counter and audit event. Throwing aborts
+        // the transaction; the returned refusal is thrown only after those writes have committed.
         var refusal = await attempt.RunAsync(account, async token =>
         {
             await RequireVerifiableAsync(account, operation, method, token);
@@ -63,7 +66,8 @@ public sealed class AccountVerification(
                     : "Account verification failed: wrong or used recovery code", token);
             }
 
-            return await GrantAsync(account, operation, method, token);
+            await GrantAsync(account, operation, method, token);
+            return null;
         }, ct);
 
         return refusal is null ? Verified(operation) : throw refusal;
@@ -144,7 +148,8 @@ public sealed class AccountVerification(
                 return await WrongProofAsync(account, proof.Rejection!, token);
             }
 
-            return await GrantAsync(account, operation, AccountProofMethod.Passkey, token);
+            await GrantAsync(account, operation, AccountProofMethod.Passkey, token);
+            return null;
         }, ct);
 
         return refusal is null ? Verified(operation) : throw refusal;
@@ -223,14 +228,12 @@ public sealed class AccountVerification(
         return Invalid("newPassword", "Your new password must be different from the current one.");
     }
 
-    private async Task<ProfileOperationRefusedException?> GrantAsync(
-        User account, ProfileOperation operation, AccountProofMethod method, CancellationToken ct)
+    private async Task GrantAsync(User account, ProfileOperation operation, AccountProofMethod method, CancellationToken ct)
     {
         await failures.ResetAsync(account, ct);
         operation.VerifiedAtUtc = clock.GetUtcNow();
         operation.ProofMethod = method;
         attempt.RecordUserEvent(AuditAction.AccountVerified, account, $"Verified with {Describe(method)} to {Describe(operation.Kind)}");
-        return null;
     }
 
     private static VerifiedOperation Verified(ProfileOperation operation)
@@ -243,7 +246,8 @@ public sealed class AccountVerification(
     {
         AccountProofMethod.PasswordAndAuthenticatorCode => "password and authenticator code",
         AccountProofMethod.PasswordAndRecoveryCode => "password and recovery code",
-        _ => "a passkey"
+        AccountProofMethod.Passkey => "a passkey",
+        _ => throw new UnreachableException($"No description for {method}.")
     };
 
     private static string Describe(ProfileOperationKind kind) => kind switch
@@ -253,6 +257,7 @@ public sealed class AccountVerification(
         ProfileOperationKind.ResetAuthenticator => "reset the authenticator",
         ProfileOperationKind.ReplaceRecoveryCodes => "replace the recovery codes",
         ProfileOperationKind.AddPasskey => "add a passkey",
-        _ => "remove a passkey"
+        ProfileOperationKind.RemovePasskey => "remove a passkey",
+        _ => throw new UnreachableException($"No description for {kind}.")
     };
 }

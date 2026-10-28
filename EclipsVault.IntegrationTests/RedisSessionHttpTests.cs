@@ -23,6 +23,49 @@ namespace EclipsVault.IntegrationTests;
 public sealed class RedisSessionHttpTests(RedisVaultFixture fixture)
 {
     [Fact]
+    public async Task Store_failure_before_a_password_commit_refuses_the_change_and_keeps_every_session()
+    {
+        const string password = "It-store-uncommitted-password-2026!";
+        const string replacementPassword = "It-store-refused-password-2026!";
+        var owner = await fixture.Vault.SignInNewAccountAsync("it-redis-uncommitted", IPAddress.Parse("192.0.2.94"), password: password);
+        var original = SessionApi.PrincipalOf(fixture.Vault, owner);
+        var copied = fixture.Vault.CreateSession(owner.SessionCookie, IPAddress.Parse("192.0.2.95"));
+        var operationId = await ProfileApi.VerifiedWithAuthenticatorAsync(owner.ProfileOwner!,
+            new { kind = "ChangePassword", newPassword = replacementPassword });
+        using var blocker = fixture.Vault.Services.CreateScope();
+        var database = blocker.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+        await using var transaction = await database.Database.BeginTransactionAsync();
+        var connectionId = await database.Database.SqlQuery<int>($"SELECT CAST(@@SPID AS int) AS Value").SingleAsync();
+        // Holding the account lock stops the request before its locked recheck of the store.
+        await blocker.ServiceProvider.GetRequiredService<IAuditChainLocker>().AcquireAsync(database,
+            $"EclipsVault:Account:{original.GetUserId():D}", TimeSpan.FromSeconds(15), default);
+        var change = ProfileApi.SendAsync(owner, HttpMethod.Post, "/api/ui/profile/password", new { operationId });
+        try
+        {
+            await WaitForBlockedRequestAsync(database, connectionId);
+            await fixture.Redis.PauseAsync();
+            await transaction.RollbackAsync();
+
+            var response = await change;
+
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+            Assert.Equal("session_store_unavailable", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+        }
+        finally
+        {
+            await transaction.DisposeAsync();
+            await fixture.Redis.ResumeAsync();
+            await change;
+        }
+
+        Assert.Equal(HttpStatusCode.OK, (await owner.Client.GetAsync("/api/ui/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await copied.Client.GetAsync("/api/ui/me")).StatusCode);
+        var account = await ProfileHttp.AccountAsync(fixture.Vault, "it-redis-uncommitted");
+        Assert.Equal(0, account.CredentialGeneration);
+        Assert.True(fixture.Vault.Services.GetRequiredService<IPasswordHasher>().Verify(password, account.PasswordHash, account.PasswordSalt));
+    }
+
+    [Fact]
     public async Task Store_failure_after_a_password_commit_reports_sign_in_required_and_keeps_the_change()
     {
         const string password = "It-store-commit-password-2026!";
@@ -36,8 +79,9 @@ public sealed class RedisSessionHttpTests(RedisVaultFixture fixture)
         var database = blocker.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
         await using var transaction = await database.Database.BeginTransactionAsync();
         var connectionId = await database.Database.SqlQuery<int>($"SELECT CAST(@@SPID AS int) AS Value").SingleAsync();
-        await blocker.ServiceProvider.GetRequiredService<IAuditChainLocker>().AcquireAsync(database,
-            $"EclipsVault:Account:{original.GetUserId():D}", TimeSpan.FromSeconds(15), default);
+        // Holding the account's row, not its lock, lets the request pass its locked recheck of the
+        // store and stop at the write, so the store fails only after the change can commit.
+        await database.Database.ExecuteSqlAsync($"SELECT Id FROM Users WITH (UPDLOCK, ROWLOCK) WHERE Id = {original.GetUserId()}");
         var change = ProfileApi.SendAsync(owner, HttpMethod.Post, "/api/ui/profile/password", new { operationId });
         try
         {

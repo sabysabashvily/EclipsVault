@@ -1,5 +1,5 @@
 import { DestroyRef, Component, inject, input, output, signal, viewChild } from '@angular/core';
-import { ProfileSession } from './profile-session';
+import { ProfileWrites } from './profile-writes';
 import { VerificationDialog } from './verification-dialog';
 import type { PendingEmail, PreparedOperation, Profile, VerifiedOperation } from './profile-types';
 
@@ -11,7 +11,7 @@ import type { PendingEmail, PreparedOperation, Profile, VerifiedOperation } from
 export class EmailChange {
   readonly profile = input.required<Profile>();
   readonly changed = output<void>();
-  protected readonly session = inject(ProfileSession);
+  protected readonly session = inject(ProfileWrites);
   private readonly verification = viewChild.required(VerificationDialog);
   protected readonly address = signal('');
   protected readonly code = signal('');

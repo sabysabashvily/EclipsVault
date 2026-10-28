@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Web.Models.Ui;
@@ -50,7 +51,8 @@ public static class ProfileProblems
         ProfileRefusal.MethodUnavailable => Conflict("method_unavailable", "This account can't be verified that way."),
         ProfileRefusal.AlternateMethodRequired => Conflict("alternate_method_required",
             "Removing your last passkey needs another way to sign in that keeps working afterwards."),
-        _ => Conflict("authenticator_not_enrolled", "This needs an authenticator app set up first."),
+        ProfileRefusal.AuthenticatorNotEnrolled => Conflict("authenticator_not_enrolled", "This needs an authenticator app set up first."),
+        _ => throw new UnreachableException($"No Problem Details for {refused.Refusal}."),
     };
 
     /// <summary>The code the Profile page shows for a change that cannot be started, or null when it can.</summary>

@@ -6,7 +6,8 @@ import { AccountCreation } from './account-creation';
 import { AccountSignIn } from './account-sign-in';
 import { AuthenticatorEnrollment } from './authenticator-enrollment';
 import { MailboxProfile } from './mailbox';
-import { freshTotp } from './totp';
+import { mailboxCode } from './smtp-capture';
+import { currentTotpStep, freshTotp } from './totp';
 
 test('a real SMTP code activates only the frozen mailbox and retires a copied session', async ({
   page,
@@ -37,7 +38,7 @@ test('a real SMTP code activates only the frozen mailbox and retires a copied se
   const enrollment = new AuthenticatorEnrollment(owner);
   const secret = await enrollment.secret.innerText();
   const enrollmentCode = await freshTotp(secret);
-  const enrollmentStep = Math.floor(Date.now() / 30_000);
+  const enrollmentStep = currentTotpStep();
   await enrollment.confirm(enrollmentCode);
   await expect(owner).toHaveURL(/\/Secrets$/);
   const copied = await browserHealth.newContext();
@@ -56,7 +57,7 @@ test('a real SMTP code activates only the frozen mailbox and retires a copied se
   expect(verification.status()).toBe(200);
   expect((await profile.requestCode(operationId)).status()).toBe(200);
   expect((await (await profile.snapshot()).json()).email).toBe(original.email);
-  const code = await profile.mailboxCode('e2e-mailbox-confirmed@example.test');
+  const code = await mailboxCode('e2e-mailbox-confirmed@example.test');
 
   expect((await profile.confirmEmail(operationId, code)).status()).toBe(204);
 

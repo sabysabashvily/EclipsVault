@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { appConfig } from '../app.config';
 import { EmailChange } from './email-change';
 import type { Profile } from './profile-types';
-import { ProfileSession } from './profile-session';
+import { ProfileWrites } from './profile-writes';
 import { button, dialogs, fill, operation, profile } from './profile-test';
 
 const pending = {
@@ -15,7 +15,7 @@ describe('EmailChange', () => {
   let backend: HttpTestingController;
   async function render(pendingEmail: Profile['pendingEmail'] = pending) {
     TestBed.configureTestingModule({
-      providers: [...appConfig.providers, provideHttpClientTesting(), ProfileSession],
+      providers: [...appConfig.providers, provideHttpClientTesting(), ProfileWrites],
     });
     backend = TestBed.inject(HttpTestingController);
     const fixture = TestBed.createComponent(EmailChange);
@@ -46,7 +46,7 @@ describe('EmailChange', () => {
     backend.expectOne('/api/ui/me').flush({});
     await fixture.whenStable();
     expect(page.querySelector<HTMLInputElement>('#mailbox-code')?.value).toBe('');
-    expect(TestBed.inject(ProfileSession).status().message).toContain('Your email was changed.');
+    expect(TestBed.inject(ProfileWrites).status().message).toContain('Your email was changed.');
   });
   it('keeps the pending address after a wrong code and clears that code', async () => {
     const { fixture, page } = await render();
@@ -62,7 +62,7 @@ describe('EmailChange', () => {
     await fixture.whenStable();
     expect(page.textContent).toContain('pending@example.test');
     expect(page.querySelector<HTMLInputElement>('#mailbox-code')?.value).toBe('');
-    expect(TestBed.inject(ProfileSession).status().error).toBe(true);
+    expect(TestBed.inject(ProfileWrites).status().error).toBe(true);
   });
   it('cancels the pending email explicitly without activating it', async () => {
     const { page } = await render();
@@ -88,7 +88,7 @@ describe('EmailChange', () => {
       .flush({ operationId: operation.operationId, commitByUtc: '2099-01-01T00:00:00Z' });
     backend.expectOne('/api/ui/profile/email/resend').flush(pending);
     await fixture.whenStable();
-    expect(TestBed.inject(ProfileSession).status().message).toContain(
+    expect(TestBed.inject(ProfileWrites).status().message).toContain(
       'Your current email is still active.',
     );
   });
@@ -104,7 +104,7 @@ describe('EmailChange', () => {
       );
     await fixture.whenStable();
     expect(changed).toHaveBeenCalledOnce();
-    expect(TestBed.inject(ProfileSession).status().message).toBe('Verify your account again.');
+    expect(TestBed.inject(ProfileWrites).status().message).toBe('Verify your account again.');
     button(page, 'Verify account again').click();
     await fixture.whenStable();
     fill(page, 'verification-password', 'Current-Password');
@@ -175,7 +175,7 @@ describe('EmailChange', () => {
     expect(page.querySelector<HTMLInputElement>('#active-email')?.value).toBe(
       'morgan@example.test',
     );
-    expect(TestBed.inject(ProfileSession).status().message).toContain(
+    expect(TestBed.inject(ProfileWrites).status().message).toContain(
       'Verify again before resending.',
     );
     backend.expectNone('/api/ui/profile/email/request');
@@ -198,7 +198,7 @@ describe('EmailChange', () => {
       .flush({ code, title }, { status, statusText: 'Refused' });
     await fixture.whenStable();
     expect(changed).toHaveBeenCalledOnce();
-    expect(TestBed.inject(ProfileSession).status().message).toBe(title);
+    expect(TestBed.inject(ProfileWrites).status().message).toBe(title);
     backend.expectNone('/api/ui/profile/email/resend');
   });
   it('keeps the pending mailbox when re-verification is cancelled and restores focus', async () => {
@@ -244,6 +244,6 @@ describe('EmailChange', () => {
     await fixture.whenStable();
     expect(page.querySelector('dialog')?.open).toBe(false);
     expect(button(page, 'Verify account again').disabled).toBe(false);
-    expect(TestBed.inject(ProfileSession).status().message).toContain('Your verification expired.');
+    expect(TestBed.inject(ProfileWrites).status().message).toContain('Your verification expired.');
   });
 });

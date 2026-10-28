@@ -1,7 +1,7 @@
 import { DestroyRef, Component, inject, viewChild } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ConfirmationDialog } from '../shared/confirmation-dialog';
-import { ProfileSession } from './profile-session';
+import { ProfileWrites } from './profile-writes';
 import type { PrepareChange, PreparedOperation, VerifiedOperation } from './profile-types';
 import { VerificationDialog } from './verification-dialog';
 
@@ -37,7 +37,7 @@ export interface CredentialChangeFlow<T> {
   `,
 })
 export class CredentialChange {
-  private readonly session = inject(ProfileSession);
+  private readonly session = inject(ProfileWrites);
   private readonly confirmation = viewChild.required(ConfirmationDialog);
   private readonly verification = viewChild.required(VerificationDialog);
   private flow: CredentialChangeFlow<unknown> | null = null;

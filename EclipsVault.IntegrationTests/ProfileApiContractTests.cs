@@ -217,6 +217,45 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
     }
 
     [Fact]
+    public async Task An_avatar_file_over_four_MiB_is_refused_before_decoding_or_auditing()
+    {
+        var owner = await ProfileAccount.CreateAsync(vault, "it-avatar-file-limit", "100.91.3.1");
+        var before = await AuditTrail.HeadAsync(vault);
+        const int fourMiB = 4 * 1024 * 1024;
+        using var form = new MultipartFormDataContent
+        {
+            { new ByteArrayContent(new byte[fourMiB + 1]), "avatar", "oversized.png" }
+        };
+
+        var response = await UiApiRequest.WriteWithAntiforgeryAsync(owner.Browser, HttpMethod.Post,
+            "/api/ui/profile/avatar", form);
+
+        var problem = await ProfileApi.AssertProblemAsync(response, 400, "validation_failed");
+        Assert.Equal("Images must be 4 MB or smaller.", problem.GetProperty("title").GetString());
+        Assert.False(await ProfileHttp.HasAvatarAsync(vault, owner.Id));
+        Assert.Empty(await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
+    }
+
+    [Fact]
+    public async Task A_multipart_avatar_section_over_six_MiB_is_refused_before_a_mutation()
+    {
+        var owner = await ProfileAccount.CreateAsync(vault, "it-avatar-request-limit", "100.91.3.2");
+        var before = await AuditTrail.HeadAsync(vault);
+        const int sixMiB = 6 * 1024 * 1024;
+        using var form = new MultipartFormDataContent
+        {
+            { new ByteArrayContent(new byte[sixMiB + 1]), "avatar", "oversized.png" }
+        };
+
+        var response = await UiApiRequest.WriteWithAntiforgeryAsync(owner.Browser, HttpMethod.Post,
+            "/api/ui/profile/avatar", form);
+
+        await ProfileApi.AssertProblemAsync(response, 400, "validation_failed");
+        Assert.False(await ProfileHttp.HasAvatarAsync(vault, owner.Id));
+        Assert.Empty(await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
+    }
+
+    [Fact]
     public async Task Signing_out_everywhere_ends_every_session_records_it_and_leaves_the_message_for_sign_in()
     {
         var owner = await ProfileAccount.CreateAsync(vault, "it-ui87-profile-sign-out", "100.64.87.22");

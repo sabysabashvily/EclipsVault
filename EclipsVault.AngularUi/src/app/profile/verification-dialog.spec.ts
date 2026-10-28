@@ -2,7 +2,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { appConfig } from '../app.config';
 import { PasskeyProof } from './passkey-proof';
-import { ProfileSession } from './profile-session';
+import { ProfileWrites } from './profile-writes';
 import { button, dialogs, fill, operation } from './profile-test';
 import { VerificationDialog } from './verification-dialog';
 
@@ -14,7 +14,7 @@ describe('VerificationDialog', () => {
       providers: [
         ...appConfig.providers,
         provideHttpClientTesting(),
-        ProfileSession,
+        ProfileWrites,
         { provide: PasskeyProof, useValue: passkey },
       ],
     });

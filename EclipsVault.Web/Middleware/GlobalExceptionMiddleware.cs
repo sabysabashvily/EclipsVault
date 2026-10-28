@@ -50,6 +50,11 @@ public sealed class GlobalExceptionMiddleware
             _logger.LogCritical(ex, "Fail-closed: request to {Path} aborted because the audit trail is unavailable", context.Request.Path);
             await FailAsync(context, StatusCodes.Status503ServiceUnavailable, "audit_unavailable", "The audit trail is unavailable, so the vault refused the request.");
         }
+        catch (SessionStoreUnavailableException ex) when (!context.Response.HasStarted)
+        {
+            _logger.LogCritical(ex, "Fail-closed: request to {Path} aborted because the session store is unavailable", context.Request.Path);
+            await FailAsync(context, StatusCodes.Status503ServiceUnavailable, "session_store_unavailable", "The session store is unavailable, so the vault refused the change. Nothing was saved.");
+        }
         catch (SecretNotFoundException ex) when (!context.Response.HasStarted)
         {
             _logger.LogInformation("Secret {SecretId} not found for {Path}", ex.SecretId, context.Request.Path);

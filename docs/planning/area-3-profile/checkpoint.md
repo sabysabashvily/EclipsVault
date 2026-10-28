@@ -1000,3 +1000,36 @@ Run full integration and browser separately for Docker's 4 GB; retain explicit c
 All final gates, whole-Area security/Standards/Spec reviews and the owner PR body remain outstanding.
 Review the entire git diff c7b4b1bbfed73013a21c51bea90b4d2537bae83d...HEAD, including every new commit.
 Do not claim the Area shipped or push. Coordinator reporting is authorized only for the final report.
+
+## Ticket #91 continuation after Claude quota (2026-10-29, Codex)
+
+HEAD is the local cutover snapshot 3c163423a714390f94fca0693c2d526a9aaea069. Claude's subsequent
+edits were recovered in the same root checkout. All remain local; no push, PR or issue closure.
+Original whole-Area Opus 5.5 high reports are logs/ticket-91/reviews/{standards,spec,security}-r1.md.
+Their finding-by-finding ledger is logs/ticket-91/review-resolutions.md. All artifacts stay under
+logs/ticket-91; excluded directories remain untouched.
+
+Security F1 distinguished a real failed session-store recheck from auditing. Keep the commit
+fail-closed; session_store_unavailable means no change. Both RedisException and RedisTimeoutException
+are classified. The real Redis HTTP regression separates precommit refusal from postcommit renewal
+failure using different database gates. Angular now names its write coordinator ProfileWrites.
+No model change. API generation still produces the existing schema.
+
+Integration r6: 615/616; only the old outage phase failed. Backend r14 is now running with the two
+outage phases plus new avatar size/route/consumer coverage; build/format/698 units/six guardrails pass.
+Frontend r15: all gates pass, 282 Vitest tests, 15 build checks, six lint probes. Later source needs
+final reruns. Browser r7 failed 429 (25 passing); the fresh-window placement was corrected. Browser r8
+passed the corrected test and existing navigation (at least 44 passing), then was superseded for the
+expanded acceptance coverage. Its runner removed only its own stack/image.
+
+The expanded E2E stack includes authenticated, digest-pinned Redis under this run's incarnation;
+real SMTP and Redis failures, actual SQL audit rejection and postcommit notification gates are used
+without service replacement. Live Profile tests now cover mailbox/grant expiry, avatar rejection,
+all proof methods, UV cancellation, last-key guard after reset, recovery storage clearing, and
+truthful committed/unknown outcomes. Full browser and eight guard probes must run separately after
+integration. Keep source frozen while a runner executes; don't claim diagnostic runs as acceptance.
+
+Next: final source commit, complete all required checks, fresh whole-Area Standards/Spec/security
+rechecks against c7b4b1bbfed73013a21c51bea90b4d2537bae83d...HEAD including every #91 commit, fix/answer
+findings, prepare PR body via pr skill, final report with exact counts/subjects/excerpts, then send
+that same report to the authorized coordinator. Never mark the Area shipped or push.

@@ -78,8 +78,8 @@ npm run e2e:verify-guards
 unset Seed__AdminPassword ECLIPSVAULT_KEK
 ```
 
-`e2e` builds the root production Dockerfile, starts a fresh SQL Server and a TLS proxy on a random
-loopback port, bootstraps `vault-admin` through the normal Production startup, enrolls MFA through
+`e2e` builds the root production Dockerfile, starts fresh SQL Server, authenticated Redis, SMTP capture
+and a TLS proxy on a random loopback port, bootstraps `vault-admin` through the normal Production startup, enrolls MFA through
 the browser, then signs in with a real TOTP code. It removes its own containers and image on exit.
 The first run downloads SQL Server (~2.5 GB) and the build images. `E2E_IMAGE=<local-tag>` skips the
 build to test an already-built production image, as CI does.
@@ -103,8 +103,10 @@ a missing or extra violation fails.
 
 Failures retain traces/screenshots in `test-results/` and an HTML report in `playwright-report/`;
 open with `npx playwright show-report`. Guard evidence is in `guard-results/`. Both runs also save
-`docker.log`. These ignored artifacts can contain disposable passwords, MFA enrollment material and
-session cookies; use only throwaway test credentials. CI uploads them on failure with short retention.
+`docker.log`. `E2E_EVIDENCE_DIR=<absolute dir>` puts those three folders under that directory instead,
+for a ticket's ignored `logs/ticket-<n>/`. These ignored artifacts can contain disposable passwords, MFA
+enrollment material and session cookies; use only throwaway test credentials. CI uploads them on
+failure with short retention.
 
 ## Known traps
 

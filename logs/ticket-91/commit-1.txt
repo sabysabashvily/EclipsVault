@@ -1,6 +1,0 @@
-Move Profile into Angular and retire unverified Legacy writes
-
-Keep the existing URLs while removing the unverified security-write surface.
-Move affected test setup to prepared, verified UI API operations.
-
-Whole-Area review and final browser verification remain in progress.

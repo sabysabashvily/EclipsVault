@@ -6,6 +6,7 @@ import { button, dialogs, fill, operation, profile, refreshed } from './profile-
 
 describe('ChangePasswordPage', () => {
   let backend: HttpTestingController;
+  let cancelPreview: (() => void) | undefined;
   async function render(value = profile) {
     TestBed.configureTestingModule({
       providers: [...appConfig.providers, provideHttpClientTesting()],
@@ -18,9 +19,16 @@ describe('ChangePasswordPage', () => {
     backend.expectOne('/api/ui/me').flush({});
     backend.expectOne('/api/ui/profile').flush(value);
     await fixture.whenStable();
+    cancelPreview = () => fill(page, 'new-password', '');
     return { fixture, page };
   }
-  afterEach(() => backend.verify({ ignoreCancelled: true }));
+  afterEach(() => {
+    // Wall-clock load may start the advisory preview during an unrelated form assertion.
+    // Cancel that preview alone; unexpected mutation requests must still fail verification.
+    cancelPreview?.();
+    backend.verify({ ignoreCancelled: true });
+    cancelPreview = undefined;
+  });
 
   function passwords(page: HTMLElement) {
     fill(page, 'current-password', 'Current-Password-123!');

@@ -70,7 +70,9 @@ every node has moved to a new session-store incarnation:**
 
 The vault cannot tell a restored copy from the live one, so it cannot do this for you: the
 guarantee holds only when the recovery follows these steps. Losing Redis entirely needs no action;
-the missing state already refuses the sessions it covered.
+the missing state already refuses the sessions it covered. An account change that loses Redis while
+it is in progress answers `503 session_store_unavailable` and saves nothing; that code points at
+Redis, not the audit trail.
 
 Redis must run with `maxmemory-policy noeviction`, which is Redis's own default but not every managed
 service's: many default to `volatile-lru`. Evicting an account's revocation version is safe, but the

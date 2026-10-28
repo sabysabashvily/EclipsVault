@@ -3,6 +3,7 @@ using EclipsVault.Infrastructure.Persistence.Locking;
 using EclipsVault.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using StackExchange.Redis;
 
 namespace EclipsVault.Infrastructure.Persistence;
 
@@ -10,8 +11,8 @@ namespace EclipsVault.Infrastructure.Persistence;
 /// Runs one account operation in a database transaction that holds the account's lock, so
 /// operations on the same account take effect one at a time. A failure leaves nothing staged and
 /// is reported as the domain outcome a caller can act on: the account changed, the email is taken,
-/// the proof predates the account's credentials, a Profile operation was refused, or the operation and
-/// its audit events could not be stored.
+/// the proof predates the account's credentials, a Profile operation was refused, the session store
+/// could not be read, or the operation and its audit events could not be stored.
 /// </summary>
 public sealed class AccountTransaction(EclipsVaultDbContext context, IAuditChainLocker locks)
 {
@@ -65,6 +66,13 @@ public sealed class AccountTransaction(EclipsVaultDbContext context, IAuditChain
                 or ProfileOperationRefusedException)
             {
                 throw;
+            }
+
+            // A store read inside the transaction (a revocation-version recheck) failed before anything
+            // was written. Naming it keeps an operator from hunting an audit fault that never happened.
+            if (failure is RedisException or RedisTimeoutException)
+            {
+                throw new SessionStoreUnavailableException(cause);
             }
 
             throw new AuditWriteFailedException("The account operation and its audit events could not be stored.", cause);

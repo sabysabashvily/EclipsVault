@@ -9,9 +9,12 @@ import { UiApiError } from '../ui-api/ui-api-errors';
 import { CredentialChange } from './credential-change';
 import { EmailChange } from './email-change';
 import { PasskeysPanel } from './passkeys-panel';
-import { ProfileSession } from './profile-session';
+import { ProfileWrites } from './profile-writes';
 import { NewRecoveryCodes, Profile, refusalReason } from './profile-types';
 import { RecoveryCodes } from './recovery-codes';
+
+/** The server's upload limit, checked here so an oversized file is refused before it is sent. */
+const maxAvatarBytes = 4 * 1024 * 1024;
 
 @Component({
   selector: 'app-profile-page',
@@ -24,11 +27,11 @@ import { RecoveryCodes } from './recovery-codes';
     PasskeysPanel,
     RecoveryCodes,
   ],
-  providers: [ProfileSession],
+  providers: [ProfileWrites],
   templateUrl: './profile-page.html',
 })
 export class ProfilePage {
-  protected readonly session = inject(ProfileSession);
+  protected readonly session = inject(ProfileWrites);
   private readonly location = inject(PAGE_LOCATION);
   protected readonly profile = httpResource<Profile>(() => '/api/ui/profile');
   protected readonly refusalReason = refusalReason;
@@ -62,7 +65,7 @@ export class ProfilePage {
     const avatar = input.files?.[0];
     input.value = '';
     if (!avatar) return;
-    if (avatar.size > 4 * 1024 * 1024) {
+    if (avatar.size > maxAvatarBytes) {
       this.session.status.set({ message: 'Images must be 4 MB or smaller.', error: true });
       return;
     }

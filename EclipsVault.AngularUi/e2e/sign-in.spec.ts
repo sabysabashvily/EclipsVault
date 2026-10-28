@@ -1008,15 +1008,9 @@ test('the sidebar and palette open My activity in-app, and its Profile link open
   });
 
   await test.step('the Profile link stays inside Angular on the same session', async () => {
-    const legacyDocument = page.waitForResponse((response) =>
-      response.request().isNavigationRequest(),
-    );
     await page
       .getByRole('link', { name: 'Change your password or sign out everywhere', exact: true })
       .click();
-    expect((await legacyDocument).headers()['content-security-policy']).not.toContain(
-      'trusted-types',
-    );
     await expect(page).toHaveURL(/\/Profile$/);
     await expect(page.getByRole('heading', { name: 'Profile', exact: true })).toBeVisible();
     expect(documents).toEqual([]);
@@ -1406,7 +1400,7 @@ test("Sign-in history's empty state and an unfamiliar-location attempt match Leg
   await page.unrouteAll({ behavior: 'wait' });
 });
 
-test('the sidebar and palette open Sign-in history in-app, and its callout links load the Legacy UI on the same session', async ({
+test('the sidebar and palette open Sign-in history in-app, and its callout opens Profile on the same session', async ({
   page,
 }) => {
   await page.context().addCookies(administratorCookies);
@@ -1475,7 +1469,7 @@ test('the sidebar and palette open Sign-in history in-app, and its callout links
       },
     ],
   };
-  await test.step('Change password is a full load into the Legacy UI on the same session', async () => {
+  await test.step('Change password opens Profile inside Angular on the same session', async () => {
     await page.route(
       '**/api/ui/sign-ins',
       async (route) => {
@@ -1490,16 +1484,10 @@ test('the sidebar and palette open Sign-in history in-app, and its callout links
     await page.goto('/SignIns');
     await expect(page.locator('.callout-warn')).toBeVisible();
     documents.length = 0;
-    const legacyDocument = page.waitForResponse((response) =>
-      response.request().isNavigationRequest(),
-    );
     await page
       .locator('.callout-warn')
       .getByRole('link', { name: 'Change password', exact: true })
       .click();
-    expect((await legacyDocument).headers()['content-security-policy']).not.toContain(
-      'trusted-types',
-    );
     await expect(page).toHaveURL(/\/Profile$/);
     await expect(page.getByRole('heading', { name: 'Profile', exact: true })).toBeVisible();
     expect(documents).toEqual([]);
@@ -1711,7 +1699,7 @@ test('Security checkup shows all-clear and at-risk postures with only actionable
   await expect(page.locator('.feed-action a')).toHaveCount(0);
 });
 
-test('the sidebar and palette open Security checkup in-app, and fixes load Legacy on the same session', async ({
+test('the sidebar and palette open Security checkup in-app, and its fixes open Profile on the same session', async ({
   page,
 }) => {
   await page.context().addCookies(administratorCookies);
@@ -1756,7 +1744,7 @@ test('the sidebar and palette open Security checkup in-app, and fixes load Legac
     ['Generate codes', '/Profile', 'Profile'],
     ['Add a passkey', '/Profile', 'Profile'],
   ] as const) {
-    await test.step(`${name} is a full load into Legacy on the same session`, async () => {
+    await test.step(`${name} opens Profile inside Angular on the same session`, async () => {
       await page.route(
         '**/api/ui/security',
         async (route) => {
@@ -1771,16 +1759,10 @@ test('the sidebar and palette open Security checkup in-app, and fixes load Legac
       await page.goto('/Security');
       await expect(page.locator('.feed-action a')).toHaveCount(4);
       documents.length = 0;
-      const legacyDocument = page.waitForResponse((response) =>
-        response.request().isNavigationRequest(),
-      );
       await page.locator('.feed-action').getByRole('link', { name, exact: true }).click();
-      expect((await legacyDocument).headers()['content-security-policy']).not.toContain(
-        'trusted-types',
-      );
       await expect(page).toHaveURL(new RegExp(`${path}$`));
       await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
-      expect(documents).toEqual([path]);
+      expect(documents).toEqual([]);
       expect(signInRequests).toEqual([]);
       expect(
         (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')
@@ -1992,6 +1974,7 @@ test('a real passkey follows the server redirect for local and external return t
   });
   try {
     await page.goto('/Profile');
+    await freshThrottleWindow(page);
     await page.getByLabel('New passkey name').fill('issue53-browser');
     await page.getByRole('button', { name: 'Add a passkey', exact: true }).click();
     const verification = page.getByRole('dialog', { name: 'Verify your account' });
@@ -2009,8 +1992,8 @@ test('a real passkey follows the server redirect for local and external return t
       path: `${process.env['E2E_TEST_RESULTS'] || 'test-results'}/sessions-administrator.json`,
     });
 
-    // Each passkey attempt below consumes its ordinary two credential POSTs.
-    await freshThrottleWindow(page);
+    // Preparation and verification spend two requests; the four sign-ins spend eight more.
+    // All ten fit this window's eleven-request budget.
     for (const [returnUrl, expected] of [
       ['/Access?view=mine#matrix', '/Access?view=mine#matrix'],
       ['https://outside.example/', '/Secrets'],

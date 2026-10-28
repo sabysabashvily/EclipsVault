@@ -16,7 +16,7 @@ import { Subscription, firstValueFrom } from 'rxjs';
 import { StatusLine } from '../shared/status-line';
 import { UiApiError } from '../ui-api/ui-api-errors';
 import { PasskeyProof } from './passkey-proof';
-import { ProfileSession } from './profile-session';
+import { ProfileWrites } from './profile-writes';
 import type { PreparedOperation, ProofMethod, VerifiedOperation } from './profile-types';
 
 @Component({
@@ -30,7 +30,7 @@ export class VerificationDialog {
   readonly verified = output<VerifiedOperation>();
   readonly cancelled = output<void>();
   private readonly http = inject(HttpClient);
-  private readonly session = inject(ProfileSession);
+  private readonly session = inject(ProfileWrites);
   private readonly passkey = inject(PasskeyProof);
   private readonly document = inject(DOCUMENT);
   private readonly injector = inject(Injector);

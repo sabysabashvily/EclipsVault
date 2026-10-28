@@ -51,7 +51,7 @@ function toUiApiError(response: HttpErrorResponse): UiApiError {
   );
 }
 
-function parsedOrNull(text: string): unknown {
+export function parsedOrNull(text: string): unknown {
   try {
     return JSON.parse(text);
   } catch {
