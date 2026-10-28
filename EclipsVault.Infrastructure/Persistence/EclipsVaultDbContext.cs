@@ -48,9 +48,9 @@ public sealed class EclipsVaultDbContext : DbContext
     /// <summary>Issued dynamic credentials, tracked so they can be destroyed when their lease ends.</summary>
     public DbSet<DynamicSecretLease> DynamicSecretLeases => Set<DynamicSecretLease>();
 
-    /// <summary>Profile security changes prepared for account verification, until they are committed or expire.</summary>
     public DbSet<EmailVerificationSend> EmailVerificationSends => Set<EmailVerificationSend>();
 
+    /// <summary>Profile security changes prepared for account verification, until they are committed or expire.</summary>
     public DbSet<ProfileOperation> ProfileOperations => Set<ProfileOperation>();
 
     /// <summary>When each Licensed Capability was first exercised, which opens its evaluation period.</summary>
@@ -71,12 +71,12 @@ public sealed class EclipsVaultDbContext : DbContext
             .IsUnique()
             .HasFilter($"{sequence} <> 0");
 
-        // A normalized email is already folded, so it compares ordinally, never by a collation that
-        // ignores accents or width and would make two addresses one. The collation's name is the
-        // provider's; SQLite compares ordinally anyway.
         var kind = Database.IsNpgsql() ? "\"Kind\"" : "[Kind]";
         modelBuilder.Entity<ProfileOperation>().HasIndex(o => o.UserId).IsUnique().HasFilter($"{kind} = {(int)ProfileOperationKind.ChangeEmail}");
 
+        // A normalized email is already folded, so it compares ordinally, never by a collation that
+        // ignores accents or width and would make two addresses one. The collation's name is the
+        // provider's; SQLite compares ordinally anyway.
         var ordinal = Database.IsNpgsql() ? "C" : Database.IsSqlServer() ? "Latin1_General_100_BIN2" : null;
         modelBuilder.Entity<User>()
             .Property(u => u.NormalizedEmail)

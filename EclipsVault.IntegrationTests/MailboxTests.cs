@@ -58,6 +58,7 @@ public sealed class MailboxTests(MailboxFixture fixture)
         Assert.Equal(HttpStatusCode.Unauthorized, (await copied.Client.GetAsync("/api/ui/me")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await owner.Browser.Client.GetAsync("/api/ui/me")).StatusCode);
         await ProfileApi.AssertNoticeAsync(Vault, owner, "ChangeEmail");
+        await ProofDisclosure.AssertMailNotRecordedAsync(Vault, owner.Stored.Email, code);
         Assert.Equal([AuditAction.EmailChangeRequested, AuditAction.EmailChanged], await LegacyProfile.EventsAfterAsync(Vault, head, owner.Id));
         await ProfileApi.AssertProblemAsync(await ConfirmAsync(owner, operation, code), 404, "operation_not_found");
         await ProofDisclosure.AssertNotDisclosedAsync(Vault, head, owner.Id, "/api/ui/profile/email/confirm", code, owner.Password);
@@ -219,11 +220,11 @@ public sealed class MailboxTests(MailboxFixture fixture)
     }
 
     [Theory]
-    [InlineData(false, "Smtp")]
-    [InlineData(true, "Log")]
-    public async Task A_disabled_or_log_transport_makes_email_read_only_with_an_explanation(bool enabled, string sender)
+    [InlineData(false, "Smtp", "100.68.88.12")]
+    [InlineData(true, "Log", "100.68.88.11")]
+    public async Task A_disabled_or_log_transport_makes_email_read_only_with_an_explanation(bool enabled, string sender, string source)
     {
-        var owner = await ProfileAccount.CreateAsync(Vault, "it-mailbox-readonly-" + sender, "100.68.88." + (enabled ? "11" : "12"));
+        var owner = await ProfileAccount.CreateAsync(Vault, "it-mailbox-readonly-" + sender, source);
         var options = Vault.Services.GetRequiredService<IOptions<EmailOptions>>().Value;
         options.Enabled = enabled;
         options.Sender = sender;
@@ -371,6 +372,8 @@ public sealed class MailboxTests(MailboxFixture fixture)
         }
 
         await ProofDisclosure.AssertNotDisclosedAsync(Vault, head, owner.Id, "/api/ui/profile/email/request",
+            "Failed-Mailbox-Code-Disclosure-Sentinel", "Enter this code on the Profile page where you requested the change:");
+        await ProofDisclosure.AssertMailNotRecordedAsync(Vault, "mailbox.diagnostics@example.test",
             "Failed-Mailbox-Code-Disclosure-Sentinel", "Enter this code on the Profile page where you requested the change:");
     }
 

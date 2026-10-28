@@ -2,8 +2,10 @@ using System.Security.Cryptography;
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Authentication;
 using EclipsVault.Core.Application.Mfa;
+using EclipsVault.Core.Application.Notifications;
 using EclipsVault.Core.Application.Profile;
 using EclipsVault.Core.Domain.Entities;
+using EclipsVault.Infrastructure.Notifications;
 using EclipsVault.Infrastructure.Persistence;
 using EclipsVault.Infrastructure.Persistence.Interceptors;
 using EclipsVault.Infrastructure.Persistence.Locking;
@@ -130,10 +132,12 @@ public sealed class AccountRequest : IAsyncDisposable
         EmailLimits = new EmailVerificationSendLimits(context, locks);
         Attempt = new AuthenticationAttempt(context, transaction, interceptor, chain);
         SecondFactors = new SecondFactorVerifier(Users, RecoveryCodes, new TotpService(TimeProvider.System), hasher, TimeProvider.System);
-        Recovery = new MfaRecoveryService(Users, RecoveryCodes, hasher, Changes, TimeProvider.System);
+        var notices = new NotificationService(new LoggingEmailSender(NullLogger<LoggingEmailSender>.Instance),
+            new EmailLogRepository(context), Users, new NotificationOptions(false), TimeProvider.System);
+        Recovery = new MfaRecoveryService(Users, RecoveryCodes, hasher, Changes, TimeProvider.System, notices);
         // Reset uses only the account, recovery and commit ports; the other Profile operations
         // need host services that this focused persistence fixture deliberately does not create.
-        Profile = new ProfileService(Users, hasher, null!, RecoveryCodes, null!, null!, Changes, null!, null!);
+        Profile = new ProfileService(Users, hasher, null!, RecoveryCodes, null!, notices, Changes, null!, null!);
     }
 
     public EclipsVaultDbContext Context { get; }

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using EclipsVault.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,14 +34,31 @@ internal static class ProofDisclosure
         Assert.Contains(loggedPath, logs, StringComparison.Ordinal);
         Assert.All(secrets, secret =>
         {
-            Assert.DoesNotContain(rows, row => $"{row.Details} {row.ResourceName} {row.Username}".Contains(secret, StringComparison.Ordinal));
-            Assert.DoesNotContain(emails, email => $"{email.Subject} {email.Body} {email.Error}".Contains(secret, StringComparison.Ordinal));
-            Assert.DoesNotContain(secret, logs, StringComparison.Ordinal);
+            Assert.DoesNotContain(rows, row => ContainsSecret($"{row.Details} {row.ResourceName} {row.Username}", secret));
+            Assert.DoesNotContain(emails, email => ContainsSecret($"{email.Subject} {email.Body} {email.Error}", secret));
+            Assert.False(ContainsSecret(logs, secret), "A credential value appeared in application diagnostics.");
         });
+    }
+
+    public static async Task AssertMailNotRecordedAsync(VaultFixture vault, string address, params string[] secrets)
+    {
+        using var scope = vault.Services.CreateScope();
+        var emails = await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().EmailLogs.AsNoTracking()
+            .Where(email => email.ToAddress == address).ToArrayAsync();
+        Assert.All(secrets, secret => Assert.DoesNotContain(emails,
+            email => ContainsSecret($"{email.Subject} {email.Body} {email.Error}", secret)));
     }
 
     public static string[] CredentialComponents(object credential)
         => JsonSerializer.SerializeToElement(credential).EnumerateObject().Select(field => field.Value.GetString()!).ToArray();
+
+    internal static bool ContainsSecret(string text, string secret)
+    {
+        // A short numeric code can occur by chance inside an opaque trace or session identifier.
+        return secret.Length == 6 && secret.All(char.IsAsciiDigit)
+            ? Regex.IsMatch(text, $"(?<![A-Za-z0-9]){Regex.Escape(secret)}(?![A-Za-z0-9])")
+            : text.Contains(secret, StringComparison.Ordinal);
+    }
 
     private static async Task<string> ReadLogsAsync()
     {

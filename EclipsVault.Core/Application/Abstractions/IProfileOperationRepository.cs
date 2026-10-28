@@ -10,9 +10,9 @@ namespace EclipsVault.Core.Application.Abstractions;
 /// </summary>
 public interface IProfileOperationRepository
 {
-    /// <summary>The operation, tracked, when it belongs to this account and session.</summary>
     Task<Profile.PendingEmail?> FindPendingEmailAsync(Guid accountId, Guid sessionId, CancellationToken ct);
 
+    /// <summary>The operation, tracked, when it belongs to this account and session.</summary>
     Task<ProfileOperation?> FindAsync(Guid operationId, Guid accountId, Guid sessionId, CancellationToken ct);
 
     /// <summary>

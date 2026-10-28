@@ -1,5 +1,7 @@
 using EclipsVault.Core.Domain.Entities;
+using EclipsVault.Infrastructure.Persistence.Configurations;
 using EclipsVault.Infrastructure.Persistence.Interceptors;
+using Microsoft.EntityFrameworkCore;
 
 namespace EclipsVault.Infrastructure.Persistence;
 
@@ -19,6 +21,12 @@ public sealed class AuthenticationAttempt(
             try
             {
                 var result = await attempt(token);
+                var accountEntry = context.Entry(account);
+                if (accountEntry.State == EntityState.Modified)
+                {
+                    accountEntry.Property(UserConfiguration.ConcurrencyStamp).CurrentValue = Guid.NewGuid();
+                }
+
                 await audit.SaveOperationAsync(context, _events, token);
                 return result;
             }

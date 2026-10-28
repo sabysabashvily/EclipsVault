@@ -72,8 +72,9 @@ public abstract class MailboxPersistenceTests(AccountChangeDatabases databases)
         await using var read = databases.NewRequest();
         var account = await read.LoadAsync(pending.UserId);
         var remains = await read.Context.ProfileOperations.AsNoTracking().SingleOrDefaultAsync(row => row.Id == pending.Id);
-        Assert.True((account.CredentialGeneration == 1 && remains is null)
-            || (account.CredentialGeneration == 0 && remains!.MailboxCodeHash is null && remains.VerifiedAtUtc is null));
+        (long Generation, bool Pending, bool Code, bool Grant)[] expectedStates =
+            [(1, false, false, false), (0, true, false, false)];
+        Assert.Contains((account.CredentialGeneration, remains is not null, remains?.MailboxCodeHash is not null, remains?.VerifiedAtUtc is not null), expectedStates);
         Assert.Equal(0, account.FailedAccessCount);
     }
 
@@ -214,9 +215,10 @@ public abstract class MailboxPersistenceTests(AccountChangeDatabases databases)
         await using var read = databases.NewRequest();
         var account = await read.LoadAsync(pending.UserId);
         var remaining = await read.Context.ProfileOperations.AsNoTracking().SingleOrDefaultAsync(row => row.Id == pending.Id);
-        Assert.True((account.CredentialGeneration == 1 && remaining is null)
-            || (account.CredentialGeneration == 0 && remaining!.MailboxDelivered
-                && !remaining.MailboxCodeHash!.SequenceEqual(pending.MailboxCodeHash!)));
+        (long Generation, bool Pending, bool? Delivered, bool? OriginalCode)[] expectedStates =
+            [(1, false, null, null), (0, true, true, false)];
+        Assert.Contains((account.CredentialGeneration, remaining is not null, remaining?.MailboxDelivered,
+            remaining?.MailboxCodeHash?.SequenceEqual(pending.MailboxCodeHash!)), expectedStates);
     }
 
     private async Task<string> ResendAsync(ProfileOperation operation, IEmailVerificationDelivery delivery)
@@ -274,6 +276,39 @@ public abstract class MailboxPersistenceTests(AccountChangeDatabases databases)
         }
     }
 
+    [Fact]
+    public async Task Mailbox_activation_refuses_a_credential_write_loaded_before_the_email_changed()
+    {
+        var pending = await PendingAsync("it-mailbox-stale-credential-write");
+        await using var stale = databases.NewRequest();
+        var account = await stale.LoadAsync(pending.UserId);
+        Assert.Equal("committed", await ConfirmAsync(pending, Code));
+        account.PasswordHash = [1, 2, 3];
+        account.CredentialGeneration++;
+
+        await Assert.ThrowsAsync<AccountChangedException>(() => stale.Changes.CommitAsync(account,
+            AuditAction.PasswordChanged, "Password changed", default));
+
+        await using var read = databases.NewRequest();
+        Assert.Equal(1, (await read.LoadAsync(pending.UserId)).CredentialGeneration);
+        Assert.Equal(pending.TargetEmail, (await read.LoadAsync(pending.UserId)).Email);
+        Assert.Equal(new byte[32], (await read.LoadAsync(pending.UserId)).PasswordHash);
+    }
+
+    [Fact]
+    public async Task A_pending_mailbox_cannot_cross_a_session_store_lifetime()
+    {
+        var pending = await PendingAsync("it-mailbox-store-lifetime");
+        var replacementStore = new InMemorySessionRevocationService(NullLogger<InMemorySessionRevocationService>.Instance);
+        await replacementStore.CaptureAsync(pending.UserId);
+
+        Assert.Equal("OperationChanged", await ConfirmAsync(pending, Code, sessionStore: replacementStore));
+
+        await using var read = databases.NewRequest();
+        Assert.Equal(0, (await read.LoadAsync(pending.UserId)).CredentialGeneration);
+        Assert.NotNull((await read.Context.ProfileOperations.SingleAsync(row => row.Id == pending.Id)).MailboxCodeHash);
+    }
+
     private async Task<ProfileOperation> PendingAsync(string username, string? target = null)
     {
         var account = await databases.CreateEnrolledAccountAsync(username);
@@ -298,13 +333,13 @@ public abstract class MailboxPersistenceTests(AccountChangeDatabases databases)
         return operation;
     }
 
-    private async Task<string> ConfirmAsync(ProfileOperation operation, string code, IInterceptor? fault = null)
+    private async Task<string> ConfirmAsync(ProfileOperation operation, string code, IInterceptor? fault = null, ISessionRevocationService? sessionStore = null)
     {
         await using var request = databases.NewRequest(fault);
         var notices = new NotificationService(new LoggingEmailSender(NullLogger<LoggingEmailSender>.Instance),
             new EmailLogRepository(request.Context), request.Users, new NotificationOptions(false), TimeProvider.System);
         var changes = new ProfileEmailChanges(request.Users, request.ProfileOperations, request.Attempt,
-            null!, null!, _revocation, notices, TimeProvider.System);
+            null!, null!, sessionStore ?? _revocation, notices, TimeProvider.System);
         try
         {
             await changes.ConfirmAsync(new ProfileSession(operation.UserId, operation.SessionId,

@@ -131,7 +131,7 @@ public class ExpiringSecretNotificationTests
         Assert.True(recorded);
         var row = Assert.Single(outbox.Rows);
         Assert.Equal(EmailDeliveryStatus.Failed, row.Status);
-        Assert.Contains("smtp is down", row.Error);
+        Assert.Equal("Mail delivery failed.", row.Error);
     }
 
     [Fact]

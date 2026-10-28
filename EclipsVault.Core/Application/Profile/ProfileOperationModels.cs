@@ -2,11 +2,7 @@ using EclipsVault.Core.Domain.Enums;
 
 namespace EclipsVault.Core.Application.Profile;
 
-/// <summary>
-/// The intended change, as the owner asked for it. Only the fields of its <see cref="Kind"/> may be
-/// set: <see cref="NewPassword"/> for a password change, <see cref="PasskeyNickname"/> for adding a
-/// passkey, <see cref="PasskeyId"/> for removing one.
-/// </summary>
+/// <summary>Only the intended kind's fields may be set.</summary>
 public sealed record ProfileChangeRequest(ProfileOperationKind Kind, string? NewPassword, string? PasskeyNickname, Guid? PasskeyId, string? NewEmail = null);
 
 /// <summary>A prepared change and the methods that can verify it.</summary>

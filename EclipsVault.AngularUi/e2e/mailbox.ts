@@ -4,7 +4,35 @@ import type { Page } from '@playwright/test';
 export class MailboxProfile {
   constructor(private readonly page: Page) {}
 
-  async post(path: string, data: object) {
+  async open(): Promise<void> {
+    await this.page.goto('/Profile');
+  }
+
+  snapshot() {
+    return this.page.request.get('/api/ui/profile');
+  }
+
+  prepareEmailChange(address: string) {
+    return this.post('operations', { kind: 'ChangeEmail', newEmail: address });
+  }
+
+  verifyWithAuthenticator(operationId: string, currentPassword: string, code: string) {
+    return this.post(`operations/${operationId}/verify`, {
+      method: 'PasswordAndAuthenticatorCode',
+      currentPassword,
+      code,
+    });
+  }
+
+  requestCode(operationId: string) {
+    return this.post('email/request', { operationId });
+  }
+
+  confirmEmail(operationId: string, code: string) {
+    return this.post('email/confirm', { operationId, code });
+  }
+
+  private async post(path: string, data: object) {
     await this.page.request.get('/api/ui/me');
     const cookies = await this.page.context().cookies();
     const token = cookies.find((cookie) => cookie.name === 'XSRF-TOKEN');

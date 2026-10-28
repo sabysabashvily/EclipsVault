@@ -36,6 +36,7 @@ public sealed class ProfileEmailController(ProfileEmailChanges changes, SessionI
 
     [HttpPost("confirm")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ProfileProblemResponse>(StatusCodes.Status404NotFound, "application/problem+json")]
     public async Task<IActionResult> Confirm([FromBody] ConfirmEmailRequest request, CancellationToken ct)
     {
         if (User.GetProfileSessionOrNull() is not { } session)
@@ -55,6 +56,7 @@ public sealed class ProfileEmailController(ProfileEmailChanges changes, SessionI
 
     [HttpDelete("pending")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ProfileProblemResponse>(StatusCodes.Status404NotFound, "application/problem+json")]
     public async Task<IActionResult> Cancel([FromBody] VerifiedOperationRequest request, CancellationToken ct)
     {
         if (User.GetProfileSessionOrNull() is not { } session)

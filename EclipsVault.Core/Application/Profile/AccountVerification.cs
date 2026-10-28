@@ -159,10 +159,6 @@ public sealed class AccountVerification(
             : (account, operation);
     }
 
-    /// <summary>
-    /// Refuses an operation that is gone, already verified, out of time or prepared under credentials
-    /// or a sign-out state the account has moved on from, and a method that cannot verify it.
-    /// </summary>
     private async Task RequireVerifiableAsync(User account, ProfileOperation operation, AccountProofMethod method, CancellationToken ct)
     {
         if (!await operations.RefreshAsync(operation, ct))
@@ -170,6 +166,7 @@ public sealed class AccountVerification(
             throw new ProfileOperationRefusedException(ProfileRefusal.OperationNotFound);
         }
 
+        // The mailbox deadline outlives its first account grant, so the same target can be verified again.
         if (operation.VerifiedAtUtc is { } verifiedAt
             && (operation.Kind != ProfileOperationKind.ChangeEmail || clock.GetUtcNow() < verifiedAt + ProfileOperationLimits.GrantLifetime))
         {

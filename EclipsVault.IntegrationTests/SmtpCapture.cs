@@ -22,6 +22,14 @@ public sealed class SmtpCapture : IAsyncDisposable
     public Task StartAsync() => _container.StartAsync();
     public ValueTask DisposeAsync() => _container.DisposeAsync();
 
+    public async Task<bool> HasMessageForAsync(string address)
+    {
+        using var client = new HttpClient { BaseAddress = new Uri($"http://{Host}:{_container.GetMappedPublicPort(8025)}") };
+        var result = await client.GetFromJsonAsync<JsonElement>("/api/v1/messages");
+        return result.GetProperty("messages").EnumerateArray().Any(message =>
+            message.GetProperty("To").EnumerateArray().Any(to => to.GetProperty("Address").GetString() == address));
+    }
+
     public async Task<string> CodeForAsync(string address)
     {
         using var client = new HttpClient { BaseAddress = new Uri($"http://{Host}:{_container.GetMappedPublicPort(8025)}") };

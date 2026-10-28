@@ -802,3 +802,21 @@ local E2E/guard gates are in progress. Angular lint with six guard probes, 162 V
 checks, six agent guardrails and npm audit at high threshold have passed; the existing moderate
 fast-uri advisory remains visible. Full final integration, final model checks and complete-diff
 Standards/Spec/security reviews remain required. Do not report completion from this checkpoint.
+
+The first #88 implementation commit is `237c00dfc3ab0242a6024f08515aca8e0e96b752` (subject 64
+characters). Initial independent reviews used fresh Sol 6.1 xhigh after all three attempted Opus
+5.5 high reviews failed API rate limits. Standards r1's three groups (stale comments, conditional
+test expectations, missing page objects/named browser actions) are corrected locally. Spec and
+security each found the same P1: email activation also needed to advance Users.ConcurrencyStamp.
+A two-provider regression demonstrated the stale credential write before the fix; AuthenticationAttempt
+now rotates the stamp on tracked account changes. Both regressions passed in full integration r13/r14.
+
+r13 full integration: 591/593 passed, two fixture-null notice failures corrected by wiring a real
+fail-soft notification composer into AccountRequest. r14: 594/595 passed, one false-positive short
+TOTP disclosure match inside a random trace ID. The assertion now matches short numeric values
+with alphanumeric boundaries, without excluding log fields/files; four literal matcher cases pin
+actual disclosures and the trace nonmatch. These final helper/tests and readability fixes still
+need a fresh build/full run. Unit r12/r14 passed 700/700. Source model checks passed both providers.
+The first E2E run was deliberately superseded for the concurrency fix and cleaned up its own stack
+and image; it is not final passing evidence. Full final gates and fresh complete-diff rechecks are
+still required. Reviews and their resolution ledger are under logs/ticket-88/.

@@ -62,6 +62,7 @@ public sealed class MailboxAuditFailureTests(AuditFailureFixture failure)
             var pending = await ProfileApi.OperationAsync(Vault, operation);
             Assert.Null(pending.MailboxCodeHash);
             Assert.Equal(grant, pending.VerifiedAtUtc);
+            Assert.False(await Vault.Mailbox!.HasMessageForAsync("mailbox.audit.request@example.test"));
             using var scope = Vault.Services.CreateScope();
             Assert.False(await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().EmailVerificationSends.AnyAsync(send => send.AccountId == owner.Id));
         }
