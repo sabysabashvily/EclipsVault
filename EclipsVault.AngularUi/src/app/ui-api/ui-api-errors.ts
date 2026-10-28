@@ -124,9 +124,16 @@ export const uiApiErrors: HttpInterceptorFn = (request, next) => {
       return withReadableBody(error).pipe(
         switchMap((response) => {
           if (response.status === 401) {
-            document.dispatchEvent(new Event('vault-session-ended'));
-            if (toUiApiError(response).code === 'stale_session') return staleSession.end();
+            if (toUiApiError(response).code === 'stale_session') {
+              return new Observable<never>((subscriber) => {
+                // Start the shared sign-out before page disposal can unsubscribe this failed write.
+                const signOut = staleSession.end().subscribe(subscriber);
+                document.dispatchEvent(new Event('vault-session-ended'));
+                return signOut;
+              });
+            }
             document.location.assign(signInUrl(document.location));
+            document.dispatchEvent(new Event('vault-session-ended'));
             // The page is being left: nothing more for it to show.
             return NEVER;
           }

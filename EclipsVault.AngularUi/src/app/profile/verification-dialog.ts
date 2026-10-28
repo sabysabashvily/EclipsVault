@@ -56,10 +56,15 @@ export class VerificationDialog {
   open(
     operation: PreparedOperation,
     intent: string,
-    options: { currentPassword?: string; needsPassword?: boolean; cancelOperation?: boolean } = {},
+    options: {
+      currentPassword?: string;
+      needsPassword?: boolean;
+      cancelOperation?: boolean;
+      opener?: Element | null;
+    } = {},
   ): void {
     this.close();
-    this.opener = this.document.activeElement;
+    this.opener = options.opener ?? this.document.activeElement;
     this.operation = operation;
     this.intent.set(intent);
     this.methods.set(operation.methods);
@@ -89,7 +94,7 @@ export class VerificationDialog {
     );
   }
 
-  close(): void {
+  close(restoreFocus = false): void {
     this.stopProof();
     clearTimeout(this.timer);
     this.operation = null;
@@ -97,14 +102,21 @@ export class VerificationDialog {
     this.code.set('');
     const dialog = this.dialog().nativeElement;
     if (dialog.open) dialog.close();
-    if (this.opener instanceof HTMLElement && this.opener.isConnected) this.opener.focus();
+    const opener = this.opener;
     this.opener = null;
+    if (!restoreFocus || !opener) return;
+    afterNextRender(
+      () => {
+        if (!this.operation && opener instanceof HTMLElement && opener.isConnected) opener.focus();
+      },
+      { injector: this.injector },
+    );
   }
 
   protected cancel(event?: Event): void {
     event?.preventDefault();
     const operation = this.operation;
-    this.close();
+    this.close(true);
     if (operation && this.cancelOperation)
       this.http
         .delete(`/api/ui/profile/operations/${operation.operationId}`)
@@ -183,7 +195,7 @@ export class VerificationDialog {
   }
 
   private finish(result: VerifiedOperation): void {
-    this.close();
+    this.close(true);
     if (Date.parse(result.commitByUtc) <= Date.now()) {
       this.session.failed(
         new UiApiError(

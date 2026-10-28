@@ -37,16 +37,25 @@ describe('VerificationDialog', () => {
     vi.restoreAllMocks();
   });
 
-  it('announces frozen intent, offers only accepted methods and focuses Cancel', async () => {
+  it('announces the dialog name and frozen intent', async () => {
     const { page } = await render();
-    expect(page.querySelector('dialog')?.getAttribute('aria-labelledby')).toBe(
-      'verification-title',
-    );
-    expect(page.textContent).toContain('Change email to frozen@example.test.');
+    const dialog = page.querySelector('dialog')!;
+    expect(
+      page.querySelector(`[id="${dialog.getAttribute('aria-labelledby')}"]`)?.textContent,
+    ).toBe('Verify your account');
+    expect(
+      page.querySelector(`[id="${dialog.getAttribute('aria-describedby')}"]`)?.textContent,
+    ).toBe('Change email to frozen@example.test.');
+  });
+  it('offers only the methods accepted for this operation', async () => {
+    const { page } = await render();
     expect(
       [...page.querySelectorAll('option')].map((option) => option.textContent?.trim()),
     ).toEqual(['Password and authenticator code', 'Password and recovery code', 'Passkey']);
-    expect(document.activeElement?.textContent).toBe('Cancel');
+  });
+  it('focuses Cancel by default', async () => {
+    const { page } = await render();
+    expect(document.activeElement).toBe(button(page, 'Cancel'));
   });
   it('Escape cancels the operation, clears proof and returns focus', async () => {
     const { fixture, page, opener } = await render();
@@ -143,7 +152,7 @@ describe('VerificationDialog', () => {
     const forward = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
     page.querySelector('dialog')!.dispatchEvent(forward);
     expect(forward.defaultPrevented).toBe(true);
-    expect(document.activeElement?.id).toBe('verification-method');
+    expect(document.activeElement).toBe(page.querySelector('select'));
     const backward = new KeyboardEvent('keydown', {
       key: 'Tab',
       shiftKey: true,

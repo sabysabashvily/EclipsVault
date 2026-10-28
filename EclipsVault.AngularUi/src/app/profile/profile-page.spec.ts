@@ -19,7 +19,7 @@ describe('ProfilePage', () => {
     return { fixture, page };
   }
   afterEach(() => backend.verify({ ignoreCancelled: true }));
-  it('loads the cards in Legacy order with immutable identity and access', async () => {
+  it('loads the cards in Legacy order', async () => {
     const { fixture, page } = render();
     expect(page.textContent).toContain('Loading your profile…');
     backend.expectOne('/api/ui/profile').flush(profile);
@@ -29,9 +29,24 @@ describe('ProfilePage', () => {
         (heading) => heading.textContent,
       ),
     ).toEqual(['Profile picture', 'Details', 'Access', 'Security', 'Passkeys']);
+  });
+  it('keeps username and access labels immutable', async () => {
+    const { fixture, page } = render();
+    backend.expectOne('/api/ui/profile').flush(profile);
+    await fixture.whenStable();
     expect(page.querySelector<HTMLInputElement>('#profile-username')?.disabled).toBe(true);
     expect(page.textContent).toContain('GLOBAL');
+  });
+  it('advises changing a password on suspected compromise', async () => {
+    const { fixture, page } = render();
+    backend.expectOne('/api/ui/profile').flush(profile);
+    await fixture.whenStable();
     expect(page.textContent).toContain('Change it if you suspect it has been compromised.');
+  });
+  it('offers no Remove action for a generated avatar', async () => {
+    const { fixture, page } = render();
+    backend.expectOne('/api/ui/profile').flush(profile);
+    await fixture.whenStable();
     expect(button(page, 'Remove')).toBeUndefined();
   });
   it('retries only the snapshot after a failed fetch', async () => {

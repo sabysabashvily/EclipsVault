@@ -25,6 +25,7 @@ export class EmailChange {
   protected start(event: Event): void {
     event.preventDefault();
     if (!this.profile().changes.changeEmail.available || this.awaitingProof()) return;
+    const opener = (event as SubmitEvent).submitter;
     const address = this.address().trim();
     this.session.write(
       this.session.http.post<PreparedOperation>('/api/ui/profile/operations', {
@@ -37,6 +38,7 @@ export class EmailChange {
         this.verification().open(
           operation,
           `Change email to ${address}. Your current email stays active until you confirm the new mailbox.`,
+          { opener },
         );
       },
     );

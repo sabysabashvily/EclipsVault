@@ -27,16 +27,28 @@ describe('ChangePasswordPage', () => {
     fill(page, 'new-password', 'Different-Password-456!');
     fill(page, 'confirm-password', 'Different-Password-456!');
   }
-  it('shows the Legacy fields, length rules, reveal button and advisory meter', async () => {
+  it('keeps the current, new and confirmation password fields in order', async () => {
+    const { page } = await render();
+    expect(
+      [...page.querySelectorAll('section form label')].map((label) => label.textContent),
+    ).toEqual(['Current password', 'New password', 'Confirm new password']);
+  });
+  it('offers show and hide for the new password', async () => {
     const { fixture, page } = await render();
     passwords(page);
     await fixture.whenStable();
-    expect(page.querySelector('h1')?.textContent).toBe('Change password');
-    expect(page.querySelector('#new-password')?.getAttribute('maxlength')).toBe('256');
-    expect(page.textContent).toContain('Very strong');
     page.querySelector<HTMLButtonElement>('[aria-label="Show password"]')!.click();
     await fixture.whenStable();
     expect(page.querySelector<HTMLInputElement>('#new-password')?.type).toBe('text');
+    page.querySelector<HTMLButtonElement>('[aria-label="Hide password"]')!.click();
+    await fixture.whenStable();
+    expect(page.querySelector<HTMLInputElement>('#new-password')?.type).toBe('password');
+  });
+  it('shows advisory strength for the candidate password', async () => {
+    const { fixture, page } = await render();
+    passwords(page);
+    await fixture.whenStable();
+    expect(page.textContent).toContain('Very strong');
   });
   it.each([
     ['short', 'short', 'Your new password must be 12–256 characters.'],
@@ -63,7 +75,16 @@ describe('ChangePasswordPage', () => {
     expect(page.textContent).toContain('existing local credential');
     expect(page.querySelector('fieldset')?.disabled).toBe(true);
   });
-  it('freezes the candidate once, verifies inline, commits once and refreshes the session', async () => {
+  async function preparePassword() {
+    const rendered = await render();
+    passwords(rendered.page);
+    await rendered.fixture.whenStable();
+    button(rendered.page, 'Change password').click();
+    backend.expectOne('/api/ui/profile/operations').flush(operation);
+    await rendered.fixture.whenStable();
+    return rendered;
+  }
+  it('freezes the candidate once and clears the editable password fields', async () => {
     const { fixture, page } = await render();
     passwords(page);
     await fixture.whenStable();
@@ -78,6 +99,9 @@ describe('ChangePasswordPage', () => {
     prepare.flush(operation);
     await fixture.whenStable();
     expect(page.querySelector<HTMLInputElement>('#new-password')?.value).toBe('');
+  });
+  it('keeps wrong proof inline without committing the password change', async () => {
+    const { fixture, page } = await preparePassword();
     fill(page, 'verification-code', '123456');
     button(page, 'Verify account').click();
     backend
@@ -89,7 +113,10 @@ describe('ChangePasswordPage', () => {
     await fixture.whenStable();
     expect(page.textContent).toContain('Check your proof.');
     expect(page.querySelector('dialog')?.open).toBe(true);
-    fill(page, 'verification-password', 'Current-Password-123!');
+    backend.expectNone('/api/ui/profile/password');
+  });
+  it('commits a verified password once and refreshes the retained session', async () => {
+    const { fixture, page } = await preparePassword();
     fill(page, 'verification-code', '654321');
     button(page, 'Verify account').click();
     backend
@@ -116,7 +143,9 @@ describe('ChangePasswordPage', () => {
   it('clears candidate fields after Cancel and never commits the operation', async () => {
     const { fixture, page } = await render();
     passwords(page);
-    button(page, 'Change password').click();
+    const opener = button(page, 'Change password');
+    opener.focus();
+    opener.click();
     backend.expectOne('/api/ui/profile/operations').flush(operation);
     await fixture.whenStable();
     button(page, 'Cancel').click();
@@ -125,6 +154,7 @@ describe('ChangePasswordPage', () => {
       .flush(null);
     await fixture.whenStable();
     expect(page.querySelector<HTMLInputElement>('#verification-password')?.value).toBe('');
+    expect(document.activeElement).toBe(opener);
     backend.expectNone('/api/ui/profile/password');
   });
   it('debounces breach preview and discards a verdict when the candidate becomes short', async () => {

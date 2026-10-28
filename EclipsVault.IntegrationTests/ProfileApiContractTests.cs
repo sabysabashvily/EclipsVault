@@ -54,7 +54,7 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
     }
 
     [Theory]
-    [InlineData("POST", "/api/ui/passwords/check-breached", "100.64.89.1")]
+    [InlineData("POST", "/api/ui/passwords/check-breached", "100.64.89.31")]
     [InlineData("PATCH", "/api/ui/profile/details", "100.64.87.1")]
     [InlineData("DELETE", "/api/ui/profile/avatar", "100.64.87.3")]
     [InlineData("POST", "/api/ui/profile/sign-out-everywhere", "100.64.87.4")]

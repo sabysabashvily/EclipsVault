@@ -60,6 +60,7 @@ export class ChangePasswordPage {
       !this.profile.value().changes.changePassword.available
     )
       return;
+    const opener = (event as SubmitEvent).submitter;
     const candidate = this.newPassword();
     let message = '';
     if (candidate.length < 12 || candidate.length > 256)
@@ -85,7 +86,7 @@ export class ChangePasswordPage {
         this.verification().open(
           operation,
           'Change your password. Any other signed-in devices will be signed out.',
-          { currentPassword: current, needsPassword: true },
+          { currentPassword: current, needsPassword: true, opener },
         );
       },
     );

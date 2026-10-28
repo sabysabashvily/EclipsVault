@@ -59,14 +59,18 @@ describe('uiApiErrors', () => {
     const error = vi.fn();
     http.get('/api/ui/me').subscribe({ next, error });
     http.get('/api/ui/access').subscribe({ next, error });
-    for (const path of ['/api/ui/me', '/api/ui/access']) {
-      backend
-        .expectOne(path)
-        .flush(
-          { status: 401, code: 'stale_session', title: 'Sign out and sign in again.' },
-          { status: 401, statusText: 'Unauthorized' },
-        );
-    }
+    backend
+      .expectOne('/api/ui/me')
+      .flush(
+        { status: 401, code: 'stale_session', title: 'Sign out and sign in again.' },
+        { status: 401, statusText: 'Unauthorized' },
+      );
+    backend
+      .expectOne('/api/ui/access')
+      .flush(
+        { status: 401, code: 'stale_session', title: 'Sign out and sign in again.' },
+        { status: 401, statusText: 'Unauthorized' },
+      );
 
     expect(assign).not.toHaveBeenCalled();
     const logout = backend.expectOne('/Account/Logout');

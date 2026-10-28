@@ -1,5 +1,4 @@
-/* Ported from EclipsVault.Web/wwwroot/css/site.css for the shell and both themes.
-   This is the only stylesheet: components declare no styles (ADR-0013). */
+/* Components share one stylesheet to avoid runtime style injection under the CSP (ADR-0013). */
 /* ================================================================
    EclipsVault design system
    Layers: fonts → tokens → base → shell → components → pages → overlays → legacy
@@ -179,9 +178,7 @@ body {
   font-family: var(--font);
   font-size: 15px;
   line-height: 1.5;
-  /* No tracking at body size. The -0.01em here was compensating for SF Pro's looser
-       metrics; Geist is drawn tight already, and carrying the compensation over would
-       close up running text that people have to read carefully. */
+  /* Geist has tight metrics, so extra tracking would reduce readability at body size. */
   letter-spacing: 0;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -1181,7 +1178,6 @@ kbd {
   margin-right: 0.15rem;
 }
 
-/* Not in the Legacy UI, which dropped a failed search silently: here the page says so. */
 .palette-error {
   margin: 0;
   padding: 0.6rem 1rem;
@@ -1711,10 +1707,6 @@ app-command-palette {
   flex-basis: 100%;
   margin: 0.2rem 0 0;
 }
-/* A <label> styled as a button to trigger the hidden file input. */
-label.button {
-  cursor: pointer;
-}
 
 .settings-row {
   display: flex;
@@ -1771,9 +1763,6 @@ label.button {
   height: 17px;
 }
 
-.panel.narrow-left {
-  max-width: 660px;
-}
 fieldset {
   border: 0;
   padding: 0;

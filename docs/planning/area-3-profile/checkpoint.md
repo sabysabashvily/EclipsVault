@@ -855,3 +855,18 @@ production build and high-threshold audit passed before reviews; the existing mo
 advisory remains visible. Initial Release build had zero warnings/errors. Final bounded backend
 restore/build/format/unit/full integration and production E2E/guard runs are in progress. Independent
 complete-diff Standards/Spec/security reviews remain pending. Do not report completion yet.
+
+## Ticket #89 reconnection and review corrections
+
+Initial implementation commit: `f09e1ef` (subject 62 characters). Opus Standards, Spec and security
+reviews all failed API rate limits. Fresh Sol xhigh fallback sessions were then interrupted by the
+connection loss. Standards saved five documented finding groups plus one duplication judgment;
+corrections and the one justified HTTP wire-contract assertion are in
+`logs/ticket-89/review-resolutions.md`. The Spec/security preliminary observations led to deferred
+opener focus restoration and a stale-401 logout-order correction, each with regression coverage.
+
+The initial integration run passed 601/605: three SQL connection failures during the outage and one
+new test-data collision, corrected with a unique account suffix. Browser failure was explicitly
+ERR_NETWORK_CHANGED: 6 passed, 1 failed, 68 not run. Both full runs are restarted; original output
+is retained. Corrected components pass 210 Vitest tests. Latest Release build remains zero warnings.
+All final gates and fresh complete-diff reviews still need confirmed results before completion.

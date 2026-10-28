@@ -25,6 +25,7 @@ describe('ProfileSession', () => {
             removeEventListener: document.removeEventListener.bind(document),
             location: { assign },
             cookie: '',
+            dispatchEvent: document.dispatchEvent.bind(document),
           },
         },
       ],
@@ -95,5 +96,22 @@ describe('ProfileSession', () => {
       .flush('Failure', { status: 500, statusText: 'Error' });
     expect(assign).not.toHaveBeenCalled();
     expect(state.status().error).toBe(true);
+  });
+  it('starts shared logout even when session loss disposes the Profile write', () => {
+    const state = session();
+    const cleared = vi.fn();
+    state.onClear(cleared);
+    state.write(state.http.patch('/api/ui/profile/details', { displayName: 'Renamed' }), vi.fn());
+    backend
+      .expectOne('/api/ui/profile/details')
+      .flush(
+        { code: 'stale_session', title: 'Sign out and sign in again.' },
+        { status: 401, statusText: 'Unauthorized' },
+      );
+    const logout = backend.expectOne('/Account/Logout');
+    expect(logout.cancelled).toBe(false);
+    expect(cleared).toHaveBeenCalledOnce();
+    logout.flush('');
+    expect(assign).toHaveBeenCalledExactlyOnceWith('/Account/Login');
   });
 });
