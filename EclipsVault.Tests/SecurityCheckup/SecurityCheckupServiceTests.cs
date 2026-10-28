@@ -29,7 +29,6 @@ public class SecurityCheckupServiceTests
             return Task.FromResult(userId == User ? _dto : null);
         }
 
-        public Task<ProfileUpdate> UpdateAsync(Guid userId, long credentialGeneration, string displayName, string email, CancellationToken ct) => throw new NotSupportedException();
         public Task<string> UpdateDisplayNameAsync(Guid userId, string displayName, CancellationToken ct) => throw new NotSupportedException();
         public Task<long> ChangePasswordAsync(Guid userId, long credentialGeneration, string currentPassword, string newPassword, CancellationToken ct) => throw new NotSupportedException();
         public Task<byte[]?> GetAvatarPngAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();

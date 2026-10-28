@@ -16,6 +16,10 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
         "; require-trusted-types-for 'script'; trusted-types angular angular#bundler";
 
     [Theory]
+    [InlineData("/Profile")]
+    [InlineData("/pRoFiLe/InDeX")]
+    [InlineData("/profile/changepassword")]
+    [InlineData("/PROFILE/RECOVERYCODES")]
     [InlineData("/Access")]
     [InlineData("/Access/Index")]
     [InlineData("/access?from=bookmark")]
@@ -76,6 +80,10 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
     }
 
     [Theory]
+    [InlineData("/Profile")]
+    [InlineData("/pRoFiLe/InDeX")]
+    [InlineData("/profile/changepassword")]
+    [InlineData("/PROFILE/RECOVERYCODES")]
     [InlineData("/Access")]
     [InlineData("/Access/Index")]
     public async Task Anonymous_Angular_requests_keep_the_legacy_policy_on_the_sign_in_redirect(string path)

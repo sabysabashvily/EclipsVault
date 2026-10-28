@@ -23,44 +23,6 @@ namespace EclipsVault.IntegrationTests;
 public sealed class RedisSessionHttpTests(RedisVaultFixture fixture)
 {
     [Fact]
-    public async Task Store_failure_after_authentication_reports_incomplete_sign_out_and_clears_the_cookie()
-    {
-        var owner = await fixture.Vault.SignInNewAccountAsync("it-redis-sign-out-failure", IPAddress.Parse("192.0.2.83"));
-        var token = VaultFixture.FormTokenOf(await owner.Client.GetStringAsync("/Profile"), "/Profile");
-        await using var body = new GatedRequestBody("__RequestVerificationToken=" + Uri.EscapeDataString(token));
-        var request = fixture.Vault.SendAsync(context =>
-        {
-            context.Request.Scheme = "https";
-            context.Request.Host = new HostString("localhost");
-            context.Request.Path = "/Profile/SignOutEverywhere";
-            context.Request.Method = "POST";
-            context.Request.Headers.Cookie = owner.Cookies.GetCookieHeader(owner.Client.BaseAddress!);
-            context.Request.ContentType = "application/x-www-form-urlencoded";
-            context.Request.ContentLength = body.Length;
-            context.Request.Body = body;
-            context.Connection.RemoteIpAddress = IPAddress.Parse("192.0.2.83");
-        });
-        try
-        {
-            await body.ReadStarted.WaitAsync(TimeSpan.FromSeconds(30));
-            await fixture.Redis.PauseAsync();
-            body.Release();
-
-            var response = await request;
-
-            Assert.Equal(StatusCodes.Status503ServiceUnavailable, response.Response.StatusCode);
-            Assert.Contains(response.Response.Headers.SetCookie, cookie => cookie!.StartsWith("EclipsVault.Session=;", StringComparison.Ordinal));
-            Assert.Contains("sign_out_incomplete", await new StreamReader(response.Response.Body).ReadToEndAsync(), StringComparison.Ordinal);
-        }
-        finally
-        {
-            body.Release();
-            await fixture.Redis.ResumeAsync();
-            await request;
-        }
-    }
-
-    [Fact]
     public async Task Store_failure_after_a_password_commit_reports_sign_in_required_and_keeps_the_change()
     {
         const string password = "It-store-commit-password-2026!";
@@ -68,13 +30,15 @@ public sealed class RedisSessionHttpTests(RedisVaultFixture fixture)
         var owner = await fixture.Vault.SignInNewAccountAsync("it-redis-committed", IPAddress.Parse("192.0.2.84"), password: password);
         var original = SessionApi.PrincipalOf(fixture.Vault, owner);
         var copied = fixture.Vault.CreateSession(owner.SessionCookie, IPAddress.Parse("192.0.2.85"));
+        var operationId = await ProfileApi.VerifiedWithAuthenticatorAsync(owner.ProfileOwner!,
+            new { kind = "ChangePassword", newPassword = replacementPassword });
         using var blocker = fixture.Vault.Services.CreateScope();
         var database = blocker.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
         await using var transaction = await database.Database.BeginTransactionAsync();
         var connectionId = await database.Database.SqlQuery<int>($"SELECT CAST(@@SPID AS int) AS Value").SingleAsync();
         await blocker.ServiceProvider.GetRequiredService<IAuditChainLocker>().AcquireAsync(database,
             $"EclipsVault:Account:{original.GetUserId():D}", TimeSpan.FromSeconds(15), default);
-        var change = LegacyProfile.ChangePasswordAsync(owner.Client, password, replacementPassword);
+        var change = ProfileApi.SendAsync(owner, HttpMethod.Post, "/api/ui/profile/password", new { operationId });
         try
         {
             await WaitForBlockedRequestAsync(database, connectionId);
@@ -86,7 +50,7 @@ public sealed class RedisSessionHttpTests(RedisVaultFixture fixture)
             Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
             Assert.Equal("changed_sign_in_required", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
             Assert.Null(owner.SessionCookie);
-            Assert.Equal(1, (await LegacyProfile.AccountAsync(fixture.Vault, "it-redis-committed")).CredentialGeneration);
+            Assert.Equal(1, (await ProfileHttp.AccountAsync(fixture.Vault, "it-redis-committed")).CredentialGeneration);
         }
         finally
         {
@@ -96,7 +60,7 @@ public sealed class RedisSessionHttpTests(RedisVaultFixture fixture)
         }
 
         Assert.Equal(HttpStatusCode.Unauthorized, (await copied.Client.GetAsync("/api/ui/me")).StatusCode);
-        var account = await LegacyProfile.AccountAsync(fixture.Vault, "it-redis-committed");
+        var account = await ProfileHttp.AccountAsync(fixture.Vault, "it-redis-committed");
         Assert.True(fixture.Vault.Services.GetRequiredService<IPasswordHasher>().Verify(replacementPassword, account.PasswordHash, account.PasswordSalt));
     }
 

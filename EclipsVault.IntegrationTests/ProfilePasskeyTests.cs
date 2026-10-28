@@ -33,8 +33,8 @@ public sealed class ProfilePasskeyTests(VaultFixture vault)
         var registered = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(["createdAtUtc", "id", "nickname"], ProfileApi.NamesOf(registered));
         Assert.Equal("Second key", registered.GetProperty("nickname").GetString());
-        Assert.Equal(2, (await LegacyProfile.PasskeysAsync(vault, owner.Id)).Length);
-        Assert.Equal([AuditAction.AccountVerified, AuditAction.PasskeyRegistered], await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
+        Assert.Equal(2, (await ProfileHttp.PasskeysAsync(vault, owner.Id)).Length);
+        Assert.Equal([AuditAction.AccountVerified, AuditAction.PasskeyRegistered], await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
         await ProfileApi.AssertNoticeAsync(vault, owner, "AddPasskey", expectedCount: 2);
         await ProofDisclosure.AssertNotDisclosedAsync(vault, before, owner.Id, $"/api/ui/profile/operations/{operationId}/passkey/complete",
             JsonSerializer.SerializeToElement(credential).GetProperty("signature").GetString()!);
@@ -45,9 +45,8 @@ public sealed class ProfilePasskeyTests(VaultFixture vault)
     {
         var owner = await ProfileAccount.CreateAsync(vault, "it-ui87-key-delete", "100.69.87.2");
         using var key = new PasskeyAuthenticator();
-        // Legacy registration leaves the next authenticator step available to verify the deletion.
-        Assert.Equal(HttpStatusCode.OK, (await LegacyProfile.RegisterPasskeyAsync(owner.Browser.Client, key, "Remove")).StatusCode);
-        var id = Assert.Single(await LegacyProfile.PasskeysAsync(vault, owner.Id)).Id;
+        Assert.Equal(HttpStatusCode.OK, (await ProfileHttp.RegisterPasskeyAsync(owner.Browser, key, "Remove")).StatusCode);
+        var id = Assert.Single(await ProfileHttp.PasskeysAsync(vault, owner.Id)).Id;
         var operationId = await ProfileApi.VerifiedWithAuthenticatorAsync(owner, new { kind = "RemovePasskey", passkeyId = id });
         var original = owner.Browser.SessionCookie!.Value;
         var before = await AuditTrail.HeadAsync(vault);
@@ -55,9 +54,9 @@ public sealed class ProfilePasskeyTests(VaultFixture vault)
         var response = await ProfileApi.SendAsync(owner.Browser, HttpMethod.Delete, $"/api/ui/profile/passkeys/{id}", new { operationId });
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
-        Assert.Empty(await LegacyProfile.PasskeysAsync(vault, owner.Id));
+        Assert.Empty(await ProfileHttp.PasskeysAsync(vault, owner.Id));
         Assert.NotEqual(original, owner.Browser.SessionCookie!.Value);
-        Assert.Equal([AuditAction.PasskeyRemoved], await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
+        Assert.Equal([AuditAction.PasskeyRemoved], await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
         await ProfileApi.AssertNoticeAsync(vault, owner, "RemovePasskey");
     }
 
@@ -75,7 +74,7 @@ public sealed class ProfilePasskeyTests(VaultFixture vault)
         await ProfileApi.AssertProblemAsync(await ProfileApi.SendAsync(owner.Browser, HttpMethod.Post,
             "/api/ui/profile/passkeys/registration/complete", new { operationId, credential = key.Register(prompt) }), 409, "ceremony_expired");
 
-        Assert.Empty(await LegacyProfile.PasskeysAsync(vault, owner.Id));
+        Assert.Empty(await ProfileHttp.PasskeysAsync(vault, owner.Id));
     }
 
     [Fact]
@@ -85,10 +84,10 @@ public sealed class ProfilePasskeyTests(VaultFixture vault)
         var other = await ProfileAccount.CreateAsync(vault, "it-ui87-key-target-other", "100.69.87.5");
         using var key = new PasskeyAuthenticator();
         using var foreign = new PasskeyAuthenticator();
-        await LegacyProfile.RegisterPasskeyAsync(owner.Browser.Client, key, "Owner");
-        await LegacyProfile.RegisterPasskeyAsync(other.Browser.Client, foreign, "Other");
-        var id = Assert.Single(await LegacyProfile.PasskeysAsync(vault, owner.Id)).Id;
-        var foreignId = Assert.Single(await LegacyProfile.PasskeysAsync(vault, other.Id)).Id;
+        await ProfileHttp.RegisterPasskeyAsync(owner.Browser, key, "Owner");
+        await ProfileHttp.RegisterPasskeyAsync(other.Browser, foreign, "Other");
+        var id = Assert.Single(await ProfileHttp.PasskeysAsync(vault, owner.Id)).Id;
+        var foreignId = Assert.Single(await ProfileHttp.PasskeysAsync(vault, other.Id)).Id;
         var operationId = await ProfileApi.VerifiedWithAuthenticatorAsync(owner, new { kind = "RemovePasskey", passkeyId = id });
 
         await ProfileApi.AssertProblemAsync(await ProfileApi.SendAsync(owner.Browser, HttpMethod.Delete,
@@ -96,8 +95,8 @@ public sealed class ProfilePasskeyTests(VaultFixture vault)
         await ProfileApi.AssertProblemAsync(await ProfileApi.SendAsync(owner.Browser, HttpMethod.Delete,
             $"/api/ui/profile/passkeys/{foreignId}", new { operationId }), 404, "passkey_not_found");
 
-        Assert.Equal(id, Assert.Single(await LegacyProfile.PasskeysAsync(vault, owner.Id)).Id);
-        Assert.Equal(foreignId, Assert.Single(await LegacyProfile.PasskeysAsync(vault, other.Id)).Id);
+        Assert.Equal(id, Assert.Single(await ProfileHttp.PasskeysAsync(vault, owner.Id)).Id);
+        Assert.Equal(foreignId, Assert.Single(await ProfileHttp.PasskeysAsync(vault, other.Id)).Id);
     }
 
     [Theory]

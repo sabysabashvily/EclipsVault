@@ -968,3 +968,35 @@ The completion commit follows 1778ee2 and uses the counted 64-character behavior
 above. Source remains frozen; only this checkpoint changed after the checks. The commit SHA and
 three required code excerpts will be in logs/ticket-90/final-report.md and the coordinator report.
 No push, PR, issue closure, branch/worktree or excluded-directory access.
+
+## Ticket #91 cutover in progress (2026-10-28, Codex)
+
+Started on area-3-profile at exactly 2f2b1ea723d217c338e032f95d94b94eeaf1f764, with only the
+pre-existing excluded untracked directory entry. Validated c7b4b1bbfed73013a21c51bea90b4d2537bae83d
+as an ancestor. Neither excluded directory was accessed. No branch/worktree, push, PR or closure.
+Authoritative #83/#91 bodies/comments are saved under logs/ticket-91/.
+
+Profile now owns the four case-insensitive Angular routes. Menus, palette and self-service links
+stay inside Angular. Removed the Legacy Profile controller/views/models and registration JavaScript;
+Avatar has a separate explicit session-only/no-store handler. Removed the obsolete Core direct-email
+helper. HTTP retirement tests exercise valid sessions and antiforgery, including Update and aliases.
+Shared integration setup now uses real prepared/verified operations rather than deleted forms.
+Redundant unverified credential audit tests were removed in favor of the existing correctly phased
+VerifiedProfileAuditFailureTests and exact UI API success-event tests; cosmetic/admin/no-rescue tests
+remain. No model changes.
+
+Current checks are preliminary: Release build r4 passed with zero warnings/errors; units 698/698;
+frontend r4 passed 280 Vitest tests, 15 build checks, lint/six lint probes, format, generated types,
+production build and high-threshold npm audit. Later source changes still need reruns. Initial full
+integration r1 is running on earlier binaries; it found deleted-HTML-token setup, an added verification
+activity event and a repeated TOTP proof in second-session setup. Fixes are in current source; r1 is
+not passing evidence. Its real Redis password-outage case originally paused during verification;
+current setup prepares/verifies before taking its mutation-phase blocker.
+
+New Profile browser specs/page objects cover live details/avatar/password/SMTP/recovery/passkey/reset,
+copied-cookie refusal, Cancel/Escape and actual server operation expiry. They have not yet run.
+Browser evidence now supports E2E_EVIDENCE_DIR so new artifacts stay inside logs/ticket-91/.
+Run full integration and browser separately for Docker's 4 GB; retain explicit concurrency tests.
+All final gates, whole-Area security/Standards/Spec reviews and the owner PR body remain outstanding.
+Review the entire git diff c7b4b1bbfed73013a21c51bea90b4d2537bae83d...HEAD, including every new commit.
+Do not claim the Area shipped or push. Coordinator reporting is authorized only for the final report.

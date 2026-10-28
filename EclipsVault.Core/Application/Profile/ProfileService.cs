@@ -1,5 +1,3 @@
-using System.Text.RegularExpressions;
-using EclipsVault.Core.Domain;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
 
@@ -9,7 +7,7 @@ namespace EclipsVault.Core.Application.Profile;
 /// Self-service profile management for the signed-in user. Cannot touch clearance or
 /// project (those are administrative); every change commits together with its audit event.
 /// </summary>
-public sealed partial class ProfileService : IProfileService
+public sealed class ProfileService : IProfileService
 {
     private readonly IUserRepository _users;
     private readonly IPasswordHasher _hasher;
@@ -53,41 +51,6 @@ public sealed partial class ProfileService : IProfileService
             ? null
             : new ProfileDto(user.Id, user.Username, user.DisplayName, user.Email,
                 user.Clearance, user.ProjectKey, user.TotpEnabled, user.AvatarUpdatedAtUtc is not null);
-    }
-
-    public async Task<ProfileUpdate> UpdateAsync(Guid userId, long credentialGeneration, string displayName, string email, CancellationToken ct)
-    {
-        var user = await _users.FindByIdAsync(userId, ct)
-                   ?? throw new ProfileException("Your account could not be loaded.");
-        user.RequireCredentialGeneration(credentialGeneration);
-
-        displayName = ValidDisplayName(displayName);
-        email = email.Trim();
-
-        if (!EmailPattern().IsMatch(email))
-        {
-            throw new ProfileException("Enter a valid email address.");
-        }
-
-        if (await _users.IsEmailTakenAsync(email, user.Id, ct))
-        {
-            throw new EmailAddressTakenException();
-        }
-
-        // Email is a sign-in identity; a new spelling of the same address is not a new one.
-        var emailChanged = user.NormalizedEmail != EmailIdentity.Normalize(email);
-        user.DisplayName = displayName;
-        user.Email = email;
-        if (emailChanged)
-        {
-            user.CredentialGeneration++;
-        }
-
-        await _changes.CommitAsync(user, AuditAction.ProfileUpdated, "Display name / email updated", ct);
-
-        var profile = new ProfileDto(user.Id, user.Username, user.DisplayName, user.Email,
-            user.Clearance, user.ProjectKey, user.TotpEnabled, user.AvatarUpdatedAtUtc is not null);
-        return new ProfileUpdate(profile, emailChanged, user.CredentialGeneration);
     }
 
     public async Task<string> UpdateDisplayNameAsync(Guid userId, string displayName, CancellationToken ct)
@@ -187,6 +150,4 @@ public sealed partial class ProfileService : IProfileService
             : displayName;
     }
 
-    [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$")]
-    private static partial Regex EmailPattern();
 }

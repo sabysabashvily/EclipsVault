@@ -25,7 +25,7 @@ internal sealed record ProfileAccount(VaultSession Browser, User Stored, string 
     {
         var password = "It-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
         var browser = await vault.SignInNewAccountAsync(username, IPAddress.Parse(address), password: password);
-        return new ProfileAccount(browser, await LegacyProfile.AccountAsync(vault, username), password);
+        return new ProfileAccount(browser, await ProfileHttp.AccountAsync(vault, username), password);
     }
 }
 
@@ -48,10 +48,10 @@ internal static class ProfileApi
 
     public static async Task<string[]> RecoverySetAsync(ProfileAccount account)
     {
-        Assert.Equal(HttpStatusCode.Redirect, (await LegacyProfile.GenerateRecoveryCodesAsync(account.Browser.Client)).StatusCode);
-        var page = await account.Browser.Client.GetStringAsync("/Profile/RecoveryCodes");
-        var codes = System.Text.RegularExpressions.Regex.Matches(page, "<li class=\"mono\">([^<]+)</li>")
-            .Select(match => WebUtility.HtmlDecode(match.Groups[1].Value)).ToArray();
+        var response = await ProfileHttp.GenerateRecoveryCodesAsync(account.Browser);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var codes = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("codes")
+            .EnumerateArray().Select(code => code.GetString()!).ToArray();
         Assert.Equal(10, codes.Length);
         return codes;
     }
@@ -91,7 +91,7 @@ internal static class ProfileApi
         var verified = await session.Client.PostAsync("/Account/Totp", new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(page, "/Account/Totp"),
-            ["Code"] = Totp.NextCode(owner.TotpSecret),
+            ["Code"] = await FreshAuthenticatorCodeAsync(owner),
         }));
         Assert.Equal(HttpStatusCode.Redirect, verified.StatusCode);
         Assert.NotNull(session.SessionCookie);
@@ -114,16 +114,37 @@ internal static class ProfileApi
         return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("operationId").GetGuid();
     }
 
-    public static Task<HttpResponseMessage> VerifyAsync(VaultSession browser, Guid operationId, string method, string currentPassword, string code)
-        => SendAsync(browser, HttpMethod.Post, $"/api/ui/profile/operations/{operationId}/verify",
+    public static async Task<HttpResponseMessage> VerifyAsync(VaultSession browser, Guid operationId, string method, string currentPassword, string code)
+    {
+        var response = await SendAsync(browser, HttpMethod.Post, $"/api/ui/profile/operations/{operationId}/verify",
             new { method, currentPassword, code });
+        if (response.IsSuccessStatusCode && method == "PasswordAndAuthenticatorCode" && browser.ProfileOwner is { } owner)
+        {
+            var current = Totp.CurrentStep();
+            browser.LastProfileProofStep = new[] { current - 1, current, current + 1 }
+                .Single(step => Totp.Code(owner.TotpSecret, step) == code);
+        }
+        return response;
+    }
+
+    private static async Task<string> FreshAuthenticatorCodeAsync(ProfileAccount account)
+    {
+        var step = Totp.CurrentStep() + 1;
+        while (step <= account.Browser.LastProfileProofStep)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1));
+            step = Totp.CurrentStep() + 1;
+        }
+        account.Browser.LastProfileProofStep = step;
+        return Totp.Code(account.TotpSecret, step);
+    }
 
     /// <summary>Prepares a change and verifies it with the account's password and its next authenticator code.</summary>
     public static async Task<Guid> VerifiedWithAuthenticatorAsync(ProfileAccount account, object change)
     {
         var operationId = await PreparedAsync(account.Browser, change);
         var verified = await VerifyAsync(account.Browser, operationId, "PasswordAndAuthenticatorCode", account.Password,
-            Totp.NextCode(account.TotpSecret));
+            await FreshAuthenticatorCodeAsync(account));
         Assert.Equal(HttpStatusCode.OK, verified.StatusCode);
         return operationId;
     }

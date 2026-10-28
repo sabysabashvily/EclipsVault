@@ -62,7 +62,7 @@ public sealed class ProfileSessionOutcomeTests(RedisVaultFixture fixture)
             using var problem = await JsonDocument.ParseAsync(response.Response.Body);
             Assert.Equal("changed_sign_in_required", problem.RootElement.GetProperty("code").GetString());
             Assert.Contains(response.Response.Headers.SetCookie, cookie => cookie!.StartsWith("EclipsVault.Session=;", StringComparison.Ordinal));
-            var stored = await LegacyProfile.AccountAsync(fixture.Vault, owner.Stored.Username);
+            var stored = await ProfileHttp.AccountAsync(fixture.Vault, owner.Stored.Username);
             Assert.Equal(owner.Stored.CredentialGeneration + 1, stored.CredentialGeneration);
             Assert.True(fixture.Vault.Services.GetRequiredService<IPasswordHasher>().Verify("Committed-New-Password-87!", stored.PasswordHash, stored.PasswordSalt));
         }

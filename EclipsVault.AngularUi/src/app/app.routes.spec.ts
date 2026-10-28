@@ -1,4 +1,6 @@
 import { Route, UrlSegment, UrlSegmentGroup } from '@angular/router';
+import { ProfilePage } from './profile/profile-page';
+import { ChangePasswordPage } from './profile/change-password-page';
 import { AccessPage } from './access/access-page';
 import { ActivityPage } from './activity/activity-page';
 import { routes } from './app.routes';
@@ -19,6 +21,28 @@ function routeFor(url: string): Route | undefined {
 }
 
 describe('routes', () => {
+  it.each(['/Profile', '/Profile/Index', '/pRoFiLe', '/PROFILE/index'])(
+    'opens Profile at %s',
+    async (url) => {
+      const route = routeFor(url);
+      expect(route?.title).toBe('Profile — EclipsVault');
+      expect(await route?.loadComponent?.()).toBe(ProfilePage);
+    },
+  );
+  it.each(['/Profile/ChangePassword', '/pRoFiLe/cHaNgEpAsSwOrD'])(
+    'opens Change password at %s',
+    async (url) => {
+      const route = routeFor(url);
+      expect(route?.title).toBe('Change password — EclipsVault');
+      expect(await route?.loadComponent?.()).toBe(ChangePasswordPage);
+    },
+  );
+  it.each(['/Profile/RecoveryCodes', '/PROFILE/recoverycodes'])(
+    'returns a direct recovery-code visit at %s to Profile without plaintext',
+    (url) => {
+      expect(routeFor(url)?.redirectTo).toBe('/Profile?recoveryCodes=display-once');
+    },
+  );
   it.each(['/Secrets/SharedByMe', '/secrets/sharedbyme', '/sEcReTs/sHaReDbYmE'])(
     'opens Shared by me at %s',
     async (url) => {

@@ -42,8 +42,8 @@ public sealed class MailboxTests(MailboxFixture fixture)
         var pending = await sent.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(["address", "expiresAtUtc", "operationId"], ProfileApi.NamesOf(pending));
         Assert.Equal("Mailbox.Activate@Example.Test", pending.GetProperty("address").GetString());
-        Assert.Equal(owner.Stored.Email, (await LegacyProfile.AccountAsync(Vault, owner.Stored.Username)).Email);
-        Assert.Equal(owner.Stored.CredentialGeneration, (await LegacyProfile.AccountAsync(Vault, owner.Stored.Username)).CredentialGeneration);
+        Assert.Equal(owner.Stored.Email, (await ProfileHttp.AccountAsync(Vault, owner.Stored.Username)).Email);
+        Assert.Equal(owner.Stored.CredentialGeneration, (await ProfileHttp.AccountAsync(Vault, owner.Stored.Username)).CredentialGeneration);
         Assert.NotNull((await ProfileApi.OperationAsync(Vault, operation)).VerifiedAtUtc);
         var code = await Vault.Mailbox!.CodeForAsync("Mailbox.Activate@Example.Test");
         Assert.Equal(32, code.Length);
@@ -51,7 +51,7 @@ public sealed class MailboxTests(MailboxFixture fixture)
 
         Assert.Equal(HttpStatusCode.NoContent, (await ConfirmAsync(owner, operation, code)).StatusCode);
 
-        var active = await LegacyProfile.AccountAsync(Vault, owner.Stored.Username);
+        var active = await ProfileHttp.AccountAsync(Vault, owner.Stored.Username);
         Assert.Equal("Mailbox.Activate@Example.Test", active.Email);
         Assert.Equal(owner.Stored.CredentialGeneration + 1, active.CredentialGeneration);
         Assert.NotEqual(copied.SessionCookie, owner.Browser.SessionCookie);
@@ -59,7 +59,7 @@ public sealed class MailboxTests(MailboxFixture fixture)
         Assert.Equal(HttpStatusCode.OK, (await owner.Browser.Client.GetAsync("/api/ui/me")).StatusCode);
         await ProfileApi.AssertNoticeAsync(Vault, owner, "ChangeEmail");
         await ProofDisclosure.AssertMailNotRecordedAsync(Vault, owner.Stored.Email, code);
-        Assert.Equal([AuditAction.EmailChangeRequested, AuditAction.EmailChanged], await LegacyProfile.EventsAfterAsync(Vault, head, owner.Id));
+        Assert.Equal([AuditAction.EmailChangeRequested, AuditAction.EmailChanged], await ProfileHttp.EventsAfterAsync(Vault, head, owner.Id));
         await ProfileApi.AssertProblemAsync(await ConfirmAsync(owner, operation, code), 404, "operation_not_found");
         await ProofDisclosure.AssertNotDisclosedAsync(Vault, head, owner.Id, "/api/ui/profile/email/confirm", code, owner.Password);
     }
@@ -78,7 +78,7 @@ public sealed class MailboxTests(MailboxFixture fixture)
         Assert.Equal(HttpStatusCode.OK, (await ProfileApi.VerifyAsync(owner.Browser, operation,
             "PasswordAndRecoveryCode", owner.Password, recovery[0])).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await ConfirmAsync(owner, operation, code)).StatusCode);
-        Assert.Equal("mailbox.reverify@example.test", (await LegacyProfile.AccountAsync(Vault, owner.Stored.Username)).Email);
+        Assert.Equal("mailbox.reverify@example.test", (await ProfileHttp.AccountAsync(Vault, owner.Stored.Username)).Email);
     }
 
     [Fact]
@@ -97,7 +97,7 @@ public sealed class MailboxTests(MailboxFixture fixture)
         var pending = await ProfileApi.OperationAsync(Vault, operation);
         Assert.Null(pending.MailboxCodeHash);
         Assert.Null(pending.VerifiedAtUtc);
-        var account = await LegacyProfile.AccountAsync(Vault, owner.Stored.Username);
+        var account = await ProfileHttp.AccountAsync(Vault, owner.Stored.Username);
         Assert.Equal(0, account.FailedAccessCount);
         Assert.Null(account.LockedUntilUtc);
         Assert.Equal(owner.Stored.Email, account.Email);
@@ -117,7 +117,7 @@ public sealed class MailboxTests(MailboxFixture fixture)
         await ProfileApi.AssertProblemAsync(await ConfirmAsync(owner, operation, code), 409, "email_code_expired");
 
         Assert.Null((await ProfileApi.OperationAsync(Vault, operation)).VerifiedAtUtc);
-        Assert.Equal(owner.Stored.Email, (await LegacyProfile.AccountAsync(Vault, owner.Stored.Username)).Email);
+        Assert.Equal(owner.Stored.Email, (await ProfileHttp.AccountAsync(Vault, owner.Stored.Username)).Email);
     }
 
     [Fact]
@@ -132,7 +132,7 @@ public sealed class MailboxTests(MailboxFixture fixture)
             "/api/ui/profile/email/pending", new { operationId = operation })).StatusCode);
 
         await ProfileApi.AssertProblemAsync(await ConfirmAsync(owner, operation, code), 404, "operation_not_found");
-        Assert.Equal(owner.Stored.Email, (await LegacyProfile.AccountAsync(Vault, owner.Stored.Username)).Email);
+        Assert.Equal(owner.Stored.Email, (await ProfileHttp.AccountAsync(Vault, owner.Stored.Username)).Email);
     }
 
     [Fact]
@@ -171,7 +171,7 @@ public sealed class MailboxTests(MailboxFixture fixture)
         var problem = await ProfileApi.AssertProblemAsync(await ConfirmAsync(owner, operation, code), 409, "email_conflict");
 
         Assert.DoesNotContain("taker", problem.ToString(), StringComparison.Ordinal);
-        Assert.Equal(owner.Stored.Email, (await LegacyProfile.AccountAsync(Vault, owner.Stored.Username)).Email);
+        Assert.Equal(owner.Stored.Email, (await ProfileHttp.AccountAsync(Vault, owner.Stored.Username)).Email);
         Assert.NotNull((await ProfileApi.OperationAsync(Vault, operation)).VerifiedAtUtc);
     }
 
@@ -212,7 +212,7 @@ public sealed class MailboxTests(MailboxFixture fixture)
         var pending = await ProfileApi.OperationAsync(Vault, operation);
         Assert.False(pending.MailboxDelivered);
         Assert.Null(pending.VerifiedAtUtc);
-        Assert.Equal(owner.Stored.Email, (await LegacyProfile.AccountAsync(Vault, owner.Stored.Username)).Email);
+        Assert.Equal(owner.Stored.Email, (await ProfileHttp.AccountAsync(Vault, owner.Stored.Username)).Email);
         await ProofDisclosure.AssertNotDisclosedAsync(Vault, head, owner.Id, "/api/ui/profile/email/request", owner.Password);
         using var scope = Vault.Services.CreateScope();
         Assert.Empty(await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().EmailLogs
@@ -261,7 +261,7 @@ public sealed class MailboxTests(MailboxFixture fixture)
         Assert.NotEqual(oldCode, newCode);
         await ProfileApi.AssertProblemAsync(await ConfirmAsync(owner, operation, oldCode), 400, "email_code_invalid");
         Assert.Equal(HttpStatusCode.NoContent, (await ConfirmAsync(owner, operation, newCode)).StatusCode);
-        Assert.Equal("mailbox.resend@example.test", (await LegacyProfile.AccountAsync(Vault, owner.Stored.Username)).Email);
+        Assert.Equal("mailbox.resend@example.test", (await ProfileHttp.AccountAsync(Vault, owner.Stored.Username)).Email);
     }
 
     [Fact]
@@ -340,7 +340,7 @@ public sealed class MailboxTests(MailboxFixture fixture)
             options.Smtp.Port = originalPort;
         }
 
-        Assert.Equal("mailbox.notice.failure@example.test", (await LegacyProfile.AccountAsync(Vault, owner.Stored.Username)).Email);
+        Assert.Equal("mailbox.notice.failure@example.test", (await ProfileHttp.AccountAsync(Vault, owner.Stored.Username)).Email);
         Assert.Equal(HttpStatusCode.Unauthorized, (await copied.Client.GetAsync("/api/ui/me")).StatusCode);
         using var scope = Vault.Services.CreateScope();
         var notice = await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().EmailLogs

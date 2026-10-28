@@ -1,3 +1,4 @@
+import { RouterLink } from '@angular/router';
 import { HttpClient, httpResource } from '@angular/common/http';
 import { Component, DestroyRef, computed, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -28,7 +29,7 @@ function signedOutMessage(count: number): string {
 
 @Component({
   selector: 'app-sessions-page',
-  imports: [ConfirmationDialog, EmptyState, StatusLine],
+  imports: [RouterLink, ConfirmationDialog, EmptyState, StatusLine],
   templateUrl: './sessions-page.html',
 })
 export class SessionsPage {

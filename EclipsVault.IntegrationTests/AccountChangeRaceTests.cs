@@ -112,7 +112,7 @@ public abstract class AccountChangeRaceTests(AccountChangeDatabases databases)
             await reset.Changes.CommitAsync(current, AuditAction.SelfMfaReset, "Authenticator reset by owner", default);
         }
 
-        await stale.Users.StageAvatarAsync(staleCopy, LegacyProfile.TinyPng, default);
+        await stale.Users.StageAvatarAsync(staleCopy, ProfileHttp.TinyPng, default);
 
         await Assert.ThrowsAsync<AccountChangedException>(
             () => stale.Changes.CommitAsync(staleCopy, AuditAction.AvatarUpdated, "Profile picture updated", default));

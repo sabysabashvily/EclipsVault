@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const evidence = process.env['E2E_EVIDENCE_DIR'] || '.';
 const probes = process.env['E2E_VERIFY_GUARDS'] === '1';
 
 export default defineConfig({
@@ -10,10 +11,10 @@ export default defineConfig({
   retries: 0,
   timeout: 90_000,
   expect: { timeout: 10_000 },
-  outputDir: probes ? 'guard-results/artifacts' : 'test-results',
+  outputDir: `${evidence}/${probes ? 'guard-results' : 'test-results'}/artifacts`,
   reporter: probes
-    ? [['list'], ['json', { outputFile: 'guard-results/results.json' }]]
-    : [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
+    ? [['list'], ['json', { outputFile: `${evidence}/guard-results/results.json` }]]
+    : [['list'], ['html', { outputFolder: `${evidence}/playwright-report`, open: 'never' }]],
   use: {
     baseURL: process.env['E2E_BASE_URL'],
     // Only the disposable proxy's locally issued certificate is untrusted. HTTPS and the vault's
@@ -34,7 +35,14 @@ export default defineConfig({
             '**/data.spec.ts',
             '**/shared-by-me.spec.ts',
             '**/mailbox.spec.ts',
+            '**/profile.spec.ts',
           ],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          name: 'profile',
+          testMatch: '**/profile.spec.ts',
+          dependencies: ['mailbox'],
           use: { ...devices['Desktop Chrome'] },
         },
         {

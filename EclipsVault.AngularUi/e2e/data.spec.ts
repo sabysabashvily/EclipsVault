@@ -28,7 +28,12 @@ const summary: YourDataSummary = {
 
 /** Opens a page as the administrator the sign-in suite enrolled, on its disposable session. */
 async function openAsAdministrator(page: Page, path = '/Data'): Promise<YourData> {
-  const state = JSON.parse(await readFile('test-results/sessions-administrator.json', 'utf8')) as {
+  const state = JSON.parse(
+    await readFile(
+      `${process.env['E2E_TEST_RESULTS'] || 'test-results'}/sessions-administrator.json`,
+      'utf8',
+    ),
+  ) as {
     cookies: Awaited<ReturnType<BrowserContext['cookies']>>;
   };
   await page.context().addCookies(state.cookies);

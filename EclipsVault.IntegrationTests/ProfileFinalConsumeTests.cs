@@ -35,8 +35,8 @@ public sealed class ProfileFinalConsumeTests(VaultFixture vault)
 
         Assert.Single(responses, response => response.Response.StatusCode == 204);
         Assert.Single(responses, response => response.Response.StatusCode is 404 or 409);
-        Assert.Equal(owner.Stored.CredentialGeneration + 1, (await LegacyProfile.AccountAsync(vault, owner.Stored.Username)).CredentialGeneration);
-        Assert.Equal([AuditAction.PasswordChanged], await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
+        Assert.Equal(owner.Stored.CredentialGeneration + 1, (await ProfileHttp.AccountAsync(vault, owner.Stored.Username)).CredentialGeneration);
+        Assert.Equal([AuditAction.PasswordChanged], await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
     }
 
     private Task<HttpContext> FinalRequestAsync(VaultSession browser, GatedRequestBody body)

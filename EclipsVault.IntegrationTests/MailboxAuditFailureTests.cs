@@ -27,7 +27,7 @@ public sealed class MailboxAuditFailureTests(AuditFailureFixture failure)
         {
             await ProfileApi.AssertProblemAsync(await ProfileApi.SendAsync(owner.Browser, HttpMethod.Post,
                 "/api/ui/profile/email/confirm", new { operationId = operation, code }), 503, "audit_unavailable");
-            var account = await LegacyProfile.AccountAsync(Vault, owner.Stored.Username);
+            var account = await ProfileHttp.AccountAsync(Vault, owner.Stored.Username);
             Assert.Equal(owner.Stored.Email, account.Email);
             Assert.Equal(owner.Stored.CredentialGeneration, account.CredentialGeneration);
             var unchanged = await ProfileApi.OperationAsync(Vault, operation);
@@ -35,7 +35,7 @@ public sealed class MailboxAuditFailureTests(AuditFailureFixture failure)
             Assert.Equal(pending.VerifiedAtUtc, unchanged.VerifiedAtUtc);
             using var scope = Vault.Services.CreateScope();
             await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().SaveChangesAsync();
-            Assert.Empty(await LegacyProfile.EventsAfterAsync(Vault, head, owner.Id));
+            Assert.Empty(await ProfileHttp.EventsAfterAsync(Vault, head, owner.Id));
             await ProofDisclosure.AssertNotDisclosedAsync(Vault, head, owner.Id, "/api/ui/profile/email/confirm", code, owner.Password);
         }
         finally
@@ -84,7 +84,7 @@ public sealed class MailboxAuditFailureTests(AuditFailureFixture failure)
             await ProfileApi.AssertProblemAsync(await ProfileApi.VerifyAsync(owner.Browser, operation,
                 "PasswordAndAuthenticatorCode", owner.Password, Totp.NextCode(owner.TotpSecret)), 503, "audit_unavailable");
             Assert.Null((await ProfileApi.OperationAsync(Vault, operation)).VerifiedAtUtc);
-            Assert.Equal(owner.Stored.LastTotpStep, (await LegacyProfile.AccountAsync(Vault, owner.Stored.Username)).LastTotpStep);
+            Assert.Equal(owner.Stored.LastTotpStep, (await ProfileHttp.AccountAsync(Vault, owner.Stored.Username)).LastTotpStep);
         }
         finally
         {

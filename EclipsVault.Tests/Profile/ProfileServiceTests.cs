@@ -12,12 +12,6 @@ using Xunit;
 
 namespace EclipsVault.Tests.Profile;
 
-/// <summary>
-/// Changing how an account signs in must end every session the old credentials opened, so the change
-/// advances the credential generation in the same commit. These pin that it does on success, only on
-/// success, and only for a real sign-in change: a rejected change or a new display name leaves every
-/// live session alone.
-/// </summary>
 public class ProfileServiceTests
 {
     private const string CurrentPassword = "current-password-value";
@@ -193,48 +187,25 @@ public class ProfileServiceTests
     }
 
     [Fact]
-    public async Task Changing_the_email_advances_the_credential_generation()
+    public async Task Saving_a_display_name_preserves_the_email_and_credential_generation()
     {
         var (service, changes) = NewService();
 
-        var update = await service.UpdateAsync(UserId, 0, "Owner", "new-owner@example.test", CancellationToken.None);
+        Assert.Equal("New Owner", await service.UpdateDisplayNameAsync(UserId, "  New Owner  ", default));
 
-        Assert.True(update.EmailChanged);
-        Assert.Equal(1, update.CredentialGeneration);
-        Assert.Equal([(AuditAction.ProfileUpdated, 1L)], changes.Committed);
-    }
-
-    [Fact]
-    public async Task Changing_only_the_display_name_keeps_the_credential_generation()
-    {
-        var (service, changes) = NewService();
-
-        var update = await service.UpdateAsync(UserId, 0, "A new display name", "owner@example.test", CancellationToken.None);
-
-        Assert.False(update.EmailChanged);
+        var profile = await service.GetAsync(UserId, default);
+        Assert.Equal("owner@example.test", profile!.Email);
         Assert.Equal([(AuditAction.ProfileUpdated, 0L)], changes.Committed);
     }
 
     [Fact]
-    public async Task Respelling_the_email_in_other_letter_case_keeps_the_credential_generation()
+    public async Task An_empty_display_name_commits_nothing()
     {
         var (service, changes) = NewService();
 
-        var update = await service.UpdateAsync(UserId, 0, "Owner", "Owner@Example.TEST", CancellationToken.None);
+        await Assert.ThrowsAsync<ProfileException>(() => service.UpdateDisplayNameAsync(UserId, "  ", default));
 
-        Assert.False(update.EmailChanged);
-        Assert.Equal([(AuditAction.ProfileUpdated, 0L)], changes.Committed);
-    }
-
-    [Fact]
-    public async Task An_email_another_account_signs_in_with_is_refused_without_naming_it_or_saving()
-    {
-        var (service, changes) = NewService(emailTaken: true);
-
-        var refused = await Assert.ThrowsAsync<EmailAddressTakenException>(() =>
-            service.UpdateAsync(UserId, 0, "Owner", "taken@example.test", CancellationToken.None));
-
-        Assert.Equal("That email address is already used by another account.", refused.Message);
         Assert.Empty(changes.Committed);
     }
+
 }

@@ -14,7 +14,7 @@ public sealed class LegacyPasskeyCeremonyTests(VaultFixture vault)
     {
         var owner = await ProfileAccount.CreateAsync(vault, "it-ui87-legacy-key-once", "100.72.87.1");
         using var key = new PasskeyAuthenticator();
-        await LegacyProfile.RegisterPasskeyAsync(owner.Browser.Client, key, "Counterless");
+        await ProfileHttp.RegisterPasskeyAsync(owner.Browser, key, "Counterless");
         var browser = vault.CreateSession(source: IPAddress.Parse("100.72.87.2"));
         var options = await SignInProof.PostPasskeyAsync(browser.Client, "/Account/PasskeyLoginBegin", new { username = owner.Stored.Username });
         var credential = key.Assert(options, advanceCounter: false);
@@ -28,7 +28,7 @@ public sealed class LegacyPasskeyCeremonyTests(VaultFixture vault)
 
         Assert.Single(bodies, body => body.GetProperty("success").GetBoolean());
         Assert.Single(bodies, body => !body.GetProperty("success").GetBoolean());
-        Assert.Equal([AuditAction.PasskeyLogin], await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
+        Assert.Equal([AuditAction.PasskeyLogin], await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
     }
 
     private static HttpRequestMessage AssertionRequest(string token, object credential)

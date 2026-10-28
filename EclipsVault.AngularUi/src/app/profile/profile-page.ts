@@ -1,3 +1,4 @@
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { httpResource } from '@angular/common/http';
 import { DestroyRef, Component, inject, signal, viewChild } from '@angular/core';
 import { catchError, throwError } from 'rxjs';
@@ -15,6 +16,7 @@ import { RecoveryCodes } from './recovery-codes';
 @Component({
   selector: 'app-profile-page',
   imports: [
+    RouterLink,
     ConfirmationDialog,
     StatusLine,
     EmailChange,
@@ -38,6 +40,12 @@ export class ProfilePage {
   protected readonly recoveryCodes = signal<readonly string[] | null>(null);
 
   constructor() {
+    if (inject(ActivatedRoute).snapshot.queryParamMap.get('recoveryCodes') === 'display-once') {
+      this.session.status.set({
+        message: 'Recovery codes are shown only once, right after you generate them.',
+        error: false,
+      });
+    }
     this.session.onClear(() => this.recoveryCodes.set(null), inject(DestroyRef));
   }
 

@@ -68,9 +68,9 @@ public sealed class LocalSignOutTests(VaultFixture vault)
     public async Task An_authenticated_pages_token_cannot_authorize_the_anonymous_local_branch()
     {
         var owner = await vault.SignInNewAccountAsync("it-local-bound-token", IPAddress.Parse("192.0.2.91"));
-        var page = await owner.Client.GetStringAsync("/Profile");
+        await owner.Client.GetAsync("/api/ui/me");
         using var clear = new HttpRequestMessage(HttpMethod.Post, LocalSignOut.Path);
-        clear.Headers.Add("RequestVerificationToken", VaultFixture.FormTokenOf(page, "/Profile"));
+        clear.Headers.Add("RequestVerificationToken", owner.Cookies.GetCookies(owner.Client.BaseAddress!)["XSRF-TOKEN"]!.Value);
 
         Assert.Equal(HttpStatusCode.BadRequest, (await owner.Client.SendAsync(clear)).StatusCode);
         Assert.NotNull(owner.SessionCookie);

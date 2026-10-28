@@ -962,7 +962,7 @@ test("My activity's empty state and pager match Legacy, and paging is in-app wit
   await page.unrouteAll({ behavior: 'wait' });
 });
 
-test('the sidebar and palette open My activity in-app, and its Profile link loads the Legacy UI on the same session', async ({
+test('the sidebar and palette open My activity in-app, and its Profile link opens Angular on the same session', async ({
   page,
 }) => {
   await page.context().addCookies(administratorCookies);
@@ -1007,7 +1007,7 @@ test('the sidebar and palette open My activity in-app, and its Profile link load
     expect(documents).toEqual([]);
   });
 
-  await test.step('the Profile link is a full load into the Legacy UI on the same session', async () => {
+  await test.step('the Profile link stays inside Angular on the same session', async () => {
     const legacyDocument = page.waitForResponse((response) =>
       response.request().isNavigationRequest(),
     );
@@ -1019,7 +1019,7 @@ test('the sidebar and palette open My activity in-app, and its Profile link load
     );
     await expect(page).toHaveURL(/\/Profile$/);
     await expect(page.getByRole('heading', { name: 'Profile', exact: true })).toBeVisible();
-    expect(documents).toEqual(['/Profile']);
+    expect(documents).toEqual([]);
     expect(signInRequests).toEqual([]);
     expect(
       (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')
@@ -1502,7 +1502,7 @@ test('the sidebar and palette open Sign-in history in-app, and its callout links
     );
     await expect(page).toHaveURL(/\/Profile$/);
     await expect(page.getByRole('heading', { name: 'Profile', exact: true })).toBeVisible();
-    expect(documents).toEqual(['/Profile']);
+    expect(documents).toEqual([]);
     expect(signInRequests).toEqual([]);
     expect(
       (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')
@@ -1994,11 +1994,20 @@ test('a real passkey follows the server redirect for local and external return t
     await page.goto('/Profile');
     await page.getByLabel('New passkey name').fill('issue53-browser');
     await page.getByRole('button', { name: 'Add a passkey', exact: true }).click();
+    const verification = page.getByRole('dialog', { name: 'Verify your account' });
+    await verification.getByLabel('Current password').fill(adminPassword());
+    await verification
+      .getByLabel('Authenticator code')
+      .fill(await freshTotp(authenticatorSecret, lastSignInStep));
+    lastSignInStep = Math.floor(Date.now() / 30_000);
+    await verification.getByRole('button', { name: 'Verify account', exact: true }).click();
     await expect(page.getByText('Passkey added. You can now sign in with it.')).toBeVisible();
     // Adding a passkey ends the account's earlier sessions and gives this browser a fresh one. The
     // dependent suites reuse it: Signed-in devices provisions its own account with it, and Your data
     // downloads the administrator's own file.
-    await context.storageState({ path: 'test-results/sessions-administrator.json' });
+    await context.storageState({
+      path: `${process.env['E2E_TEST_RESULTS'] || 'test-results'}/sessions-administrator.json`,
+    });
 
     // Each passkey attempt below consumes its ordinary two credential POSTs.
     await freshThrottleWindow(page);

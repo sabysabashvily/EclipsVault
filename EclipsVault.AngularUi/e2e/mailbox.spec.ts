@@ -14,7 +14,10 @@ test('a real SMTP code activates only the frozen mailbox and retires a copied se
 }) => {
   test.setTimeout(240_000);
   const administrator = JSON.parse(
-    await readFile('test-results/sessions-administrator.json', 'utf8'),
+    await readFile(
+      `${process.env['E2E_TEST_RESULTS'] || 'test-results'}/sessions-administrator.json`,
+      'utf8',
+    ),
   ) as { cookies: Awaited<ReturnType<BrowserContext['cookies']>> };
   await page.context().addCookies(administrator.cookies);
   const creation = new AccountCreation(page);

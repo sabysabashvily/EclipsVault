@@ -30,7 +30,7 @@ public sealed class PreparedProfileTests(VaultFixture vault)
         Assert.Equal(TimeSpan.FromMinutes(10), operation.ExpiresAtUtc - operation.CreatedAtUtc);
         Assert.Equal(owner.Stored.CredentialGeneration, operation.CredentialGeneration);
         Assert.Null(operation.VerifiedAtUtc);
-        Assert.Empty(await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
+        Assert.Empty(await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
 
     }
 
@@ -91,7 +91,7 @@ public sealed class PreparedProfileTests(VaultFixture vault)
             "/api/ui/profile/password", new { operationId }), 409, "verification_required");
         await ProfileApi.AssertProblemAsync(await ProfileApi.SendAsync(owner.Browser, HttpMethod.Post,
             "/api/ui/profile/authenticator/reset", new { operationId }), 409, "operation_changed");
-        Assert.Equal(owner.Stored.PasswordHash, (await LegacyProfile.AccountAsync(vault, owner.Stored.Username)).PasswordHash);
+        Assert.Equal(owner.Stored.PasswordHash, (await ProfileHttp.AccountAsync(vault, owner.Stored.Username)).PasswordHash);
     }
 
     [Fact]
@@ -106,8 +106,8 @@ public sealed class PreparedProfileTests(VaultFixture vault)
         await ProfileApi.AssertProblemAsync(await ProfileApi.VerifyAsync(owner.Browser, operation,
             "PasswordAndAuthenticatorCode", owner.Password, code), 409, "operation_expired");
 
-        Assert.Equal(owner.Stored.LastTotpStep, (await LegacyProfile.AccountAsync(vault, owner.Stored.Username)).LastTotpStep);
-        Assert.Empty(await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
+        Assert.Equal(owner.Stored.LastTotpStep, (await ProfileHttp.AccountAsync(vault, owner.Stored.Username)).LastTotpStep);
+        Assert.Empty(await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
         await ProofDisclosure.AssertNotDisclosedAsync(vault, before, owner.Id, $"/api/ui/profile/operations/{operation}/verify", owner.Password, code);
     }
 
@@ -125,10 +125,10 @@ public sealed class PreparedProfileTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         Assert.Equal("", await response.Content.ReadAsStringAsync());
         Assert.NotEqual(old.SessionCookie!.Value, owner.Browser.SessionCookie!.Value);
-        Assert.Equal(owner.Stored.CredentialGeneration + 1, (await LegacyProfile.AccountAsync(vault, owner.Stored.Username)).CredentialGeneration);
+        Assert.Equal(owner.Stored.CredentialGeneration + 1, (await ProfileHttp.AccountAsync(vault, owner.Stored.Username)).CredentialGeneration);
         Assert.Equal(HttpStatusCode.Unauthorized, (await old.Client.GetAsync("/api/ui/me")).StatusCode);
         Assert.NotNull(verified.VerifiedAtUtc);
-        Assert.Equal([AuditAction.AccountVerified, AuditAction.PasswordChanged], await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
+        Assert.Equal([AuditAction.AccountVerified, AuditAction.PasswordChanged], await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
         await ProfileApi.AssertProblemAsync(await ProfileApi.SendAsync(owner.Browser, HttpMethod.Post,
             "/api/ui/profile/password", new { operationId }), 404, "operation_not_found");
         await ProofDisclosure.AssertNotDisclosedAsync(vault, before, owner.Id, "/api/ui/profile/password", owner.Password, "Prepared-New-Password-87!");
@@ -144,15 +144,14 @@ public sealed class PreparedProfileTests(VaultFixture vault)
         await ProfileApi.AssertProblemAsync(await ProfileApi.SendAsync(owner.Browser, HttpMethod.Post,
             "/api/ui/profile/authenticator/reset", new { operationId }), 409, "verification_expired");
 
-        Assert.True((await LegacyProfile.AccountAsync(vault, owner.Stored.Username)).TotpEnabled);
+        Assert.True((await ProfileHttp.AccountAsync(vault, owner.Stored.Username)).TotpEnabled);
     }
 
     [Fact]
     public async Task Resetting_the_authenticator_ends_all_sessions_and_retires_the_recovery_set()
     {
         var owner = await ProfileAccount.CreateAsync(vault, "it-ui87-prepared-reset", "100.65.87.10");
-        await LegacyProfile.GenerateRecoveryCodesAsync(owner.Browser.Client);
-        // Legacy generation rotates this browser; its Profile operation still starts under the new session.
+        await ProfileHttp.GenerateRecoveryCodesAsync(owner.Browser);
         var operationId = await ProfileApi.VerifiedWithAuthenticatorAsync(owner, new { kind = "ResetAuthenticator" });
         var copied = vault.CreateSession(owner.Browser.SessionCookie, IPAddress.Parse("100.65.87.11"));
         var before = await AuditTrail.HeadAsync(vault);
@@ -161,13 +160,13 @@ public sealed class PreparedProfileTests(VaultFixture vault)
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         Assert.Null(owner.Browser.SessionCookie);
-        var account = await LegacyProfile.AccountAsync(vault, owner.Stored.Username);
+        var account = await ProfileHttp.AccountAsync(vault, owner.Stored.Username);
         Assert.False(account.TotpEnabled);
         Assert.Null(account.TotpSecret);
         Assert.Null(account.LastTotpStep);
-        Assert.Empty(await LegacyProfile.RecoveryCodesAsync(vault, owner.Id));
+        Assert.Empty(await ProfileHttp.RecoveryCodesAsync(vault, owner.Id));
         Assert.Equal(HttpStatusCode.Unauthorized, (await copied.Client.GetAsync("/api/ui/me")).StatusCode);
-        Assert.Equal([AuditAction.SelfMfaReset], await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
+        Assert.Equal([AuditAction.SelfMfaReset], await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
         await ProfileApi.AssertNoticeAsync(vault, owner, "ResetAuthenticator");
     }
 

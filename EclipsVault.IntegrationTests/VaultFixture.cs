@@ -221,6 +221,7 @@ public sealed partial class VaultFixture : IAsyncLifetime
 
         var session = CreateSession(source: source);
         await SignInFirstTimeAsync(session.Client, username, password);
+        session.ProfileOwner = new ProfileAccount(session, await ProfileHttp.AccountAsync(this, username), password);
         return session;
     }
 
@@ -377,6 +378,9 @@ public sealed partial class VaultFixture : IAsyncLifetime
 /// <summary>A client and the cookies it holds, so a test can inspect or copy its session cookie.</summary>
 public sealed record VaultSession(HttpClient Client, CookieContainer Cookies)
 {
+    internal ProfileAccount? ProfileOwner { get; set; }
+    internal long LastProfileProofStep { get; set; }
+
     public Cookie? SessionCookie => Cookies.GetCookies(Client.BaseAddress!)[VaultFixture.SessionCookie];
 }
 

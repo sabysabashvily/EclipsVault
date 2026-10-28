@@ -23,8 +23,8 @@ public sealed class ProfileRecoveryTests(VaultFixture vault)
         var verified = await ProfileApi.VerifyAsync(owner.Browser, operation, "PasswordAndRecoveryCode", owner.Password, codes[0]);
 
         Assert.Equal(HttpStatusCode.OK, verified.StatusCode);
-        Assert.Equal(9, (await LegacyProfile.RecoveryCodesAsync(vault, owner.Id)).Count(code => code.UsedAtUtc is null));
-        Assert.Equal([AuditAction.AccountVerified], await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
+        Assert.Equal(9, (await ProfileHttp.RecoveryCodesAsync(vault, owner.Id)).Count(code => code.UsedAtUtc is null));
+        Assert.Equal([AuditAction.AccountVerified], await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
         var next = await ProfileApi.PreparedAsync(owner.Browser, new { kind = "ResetAuthenticator" });
         await ProfileApi.AssertProblemAsync(await ProfileApi.VerifyAsync(owner.Browser, next,
             "PasswordAndRecoveryCode", owner.Password, codes[0]), 400, "verification_failed");
@@ -47,8 +47,8 @@ public sealed class ProfileRecoveryTests(VaultFixture vault)
         var codes = body.GetProperty("codes").EnumerateArray().Select(code => code.GetString()!).ToArray();
         Assert.Equal(10, codes.Distinct().Count());
         Assert.NotEqual(cookie, owner.Browser.SessionCookie!.Value);
-        Assert.Equal(10, (await LegacyProfile.RecoveryCodesAsync(vault, owner.Id)).Length);
-        Assert.Equal([AuditAction.RecoveryCodesGenerated], await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
+        Assert.Equal(10, (await ProfileHttp.RecoveryCodesAsync(vault, owner.Id)).Length);
+        Assert.Equal([AuditAction.RecoveryCodesGenerated], await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
         await ProfileApi.AssertNoticeAsync(vault, owner, "ReplaceRecoveryCodes");
         await ProfileApi.AssertProblemAsync(await ProfileApi.SendAsync(owner.Browser, HttpMethod.Post,
             "/api/ui/profile/recovery-codes", new { operationId }), 404, "operation_not_found");
@@ -82,7 +82,7 @@ public sealed class ProfileRecoveryTests(VaultFixture vault)
         await ProfileApi.AssertProblemAsync(await ProfileApi.SendAsync(owner.Browser, HttpMethod.Delete,
             $"/api/ui/profile/passkeys/{passkeyId}", new { operationId }), 409, "alternate_method_required");
 
-        Assert.Equal(passkeyId, Assert.Single(await LegacyProfile.PasskeysAsync(vault, owner.Id)).Id);
+        Assert.Equal(passkeyId, Assert.Single(await ProfileHttp.PasskeysAsync(vault, owner.Id)).Id);
         Assert.NotNull((await ProfileApi.OperationAsync(vault, operationId)).VerifiedAtUtc);
     }
 }

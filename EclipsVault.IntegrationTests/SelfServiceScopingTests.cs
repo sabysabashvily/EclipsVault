@@ -95,7 +95,7 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         var password = "It-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
         var b = await vault.SignInNewAccountAsync(bUsername, IPAddress.Parse(bAddress), password: password);
         await FailSignInAsync(bUsername, bFailedAddress);
-        var codes = await GenerateRecoveryCodesAsync(b.Client);
+        var codes = await ProfileApi.RecoverySetAsync(b.ProfileOwner!);
         for (var i = 0; i < 3; i++)
         {
             // Three fresh sessions, all from B's second successful address. Six Account POSTs,
@@ -115,10 +115,10 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         {
             AssertActivity(activity.RootElement, 6,
                 ["Signed in", "Signed in with a recovery code", "Signed in", "Signed in with a recovery code",
-                 "Signed in", "Signed in with a recovery code", "Generated new recovery codes", "A sign-in attempt failed",
+                 "Signed in", "Signed in with a recovery code", "Generated new recovery codes", "Verified your account for a security change", "A sign-in attempt failed",
                  "Signed in", "Set up your authenticator"],
                 [bOtherAddress, bOtherAddress, bOtherAddress, bOtherAddress, bOtherAddress, bOtherAddress,
-                 bAddress, bFailedAddress, bAddress, bAddress]);
+                 bAddress, bAddress, bFailedAddress, bAddress, bAddress]);
         }
         using (var history = JsonDocument.Parse(aResponses[1]))
         {
@@ -198,12 +198,8 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         const string newAddress = "198.51.100.87";
         var old = await vault.SignInNewAccountAsync(username, IPAddress.Parse(oldAddress));
         await FailSignInAsync(username, oldFailedAddress);
-        var updated = await PostFormAsync(old.Client, "/Profile/Update", new()
-        {
-            ["DisplayName"] = "Former account",
-            ["Email"] = "former@example.test",
-        }, "/Profile");
-        Assert.Equal(HttpStatusCode.Redirect, updated.StatusCode);
+        var updated = await ProfileHttp.UpdateDisplayNameAsync(old, "Former account");
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
         var oldResponses = await ReadEndpointsAsync(old.Client);
         Assert.Contains("Updated your profile", oldResponses[0]);
         Assert.Contains(oldFailedAddress, oldResponses[1]);
@@ -276,13 +272,13 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         const string unknown = "it-scope-authenticated-does-not-exist";
         const string source = "198.51.100.97";
         var signedIn = vault.CreateSession(Assert.IsType<Cookie>(a.SessionCookie), IPAddress.Parse(source));
-        // Login's GET redirects a signed-in caller. A token from Profile is valid for their
+        // Login's GET redirects a signed-in caller. A token from Secrets is valid for their
         // current identity and proves this unsafe request genuinely carries A's session.
         var response = await PostFormAsync(signedIn.Client, "/Account/Login", new()
         {
             ["Username"] = unknown,
             ["Password"] = "An-intentionally-incorrect-password-57!",
-        }, "/Profile");
+        }, "/Secrets");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("Invalid username or password.", await response.Content.ReadAsStringAsync());
         Assert.NotNull(signedIn.SessionCookie);
@@ -447,17 +443,6 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("Invalid username or password.", await response.Content.ReadAsStringAsync());
         Assert.Null(anonymous.SessionCookie);
-    }
-
-    private static async Task<string[]> GenerateRecoveryCodesAsync(HttpClient client)
-    {
-        var response = await PostFormAsync(client, "/Profile/GenerateRecoveryCodes", new(), "/Profile");
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/Profile/RecoveryCodes", response.Headers.Location?.OriginalString);
-        var page = await client.GetStringAsync("/Profile/RecoveryCodes");
-        var codes = RecoveryCode().Matches(page).Select(m => WebUtility.HtmlDecode(m.Groups[1].Value)).ToArray();
-        Assert.Equal(10, codes.Length);
-        return codes;
     }
 
     private async Task<VaultSession> SignInWithRecoveryCodeAsync(string username, string password, string code, string source)

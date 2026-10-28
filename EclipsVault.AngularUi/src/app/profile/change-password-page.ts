@@ -1,3 +1,4 @@
+import { RouterLink } from '@angular/router';
 import { httpResource } from '@angular/common/http';
 import { DestroyRef, Component, computed, inject, signal, viewChild } from '@angular/core';
 import { Subscription, takeUntil } from 'rxjs';
@@ -10,7 +11,7 @@ import { VerificationDialog } from './verification-dialog';
 
 @Component({
   selector: 'app-change-password-page',
-  imports: [StatusLine, VerificationDialog],
+  imports: [RouterLink, StatusLine, VerificationDialog],
   providers: [ProfileSession],
   templateUrl: './change-password-page.html',
 })

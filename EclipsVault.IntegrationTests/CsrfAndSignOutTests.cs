@@ -157,10 +157,10 @@ public sealed class CsrfAndSignOutTests(VaultFixture vault)
     public async Task The_legacy_passkey_calls_still_send_the_page_token_in_the_same_header()
     {
         var admin = await vault.AdminClientAsync();
-        var token = VaultFixture.FormTokenOf(await admin.GetStringAsync("/Profile"), "/Profile");
+        var token = XsrfCookieOf(await admin.GetAsync("/api/ui/me")).Value.ToString();
 
-        var refused = await admin.PostAsync("/Profile/PasskeyRegisterBegin", content: null);
-        var accepted = await admin.SendAsync(PostWithToken("/Profile/PasskeyRegisterBegin", token));
+        var refused = await admin.PostAsync("/Account/PasskeyLoginBegin", content: null);
+        var accepted = await admin.SendAsync(PostWithToken("/Account/PasskeyLoginBegin", token));
 
         Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
         Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);

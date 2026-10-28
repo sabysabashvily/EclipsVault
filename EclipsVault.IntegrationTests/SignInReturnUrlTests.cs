@@ -148,13 +148,12 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
     [InlineData("https://outside.example/", "/Secrets")]
     public async Task Recovery_code_completion_checks_the_target_and_creates_a_real_session(string returnUrl, string expected)
     {
-        var (username, password, _, enrolled) = await EnrollAccountAsync();
+        var (username, password, secret, enrolled) = await EnrollAccountAsync();
         using (enrolled)
         {
-            var generated = await PostFormAsync(enrolled, "/Profile/GenerateRecoveryCodes", await enrolled.GetStringAsync("/Profile"), new());
-            Assert.Equal(HttpStatusCode.Redirect, generated.StatusCode);
-            var codes = await enrolled.GetStringAsync(generated.Headers.Location);
-            var code = RecoveryCode().Match(codes).Groups[1].Value;
+            var operationId = await VerifyProfileChangeAsync(enrolled, password, secret, new { kind = "ReplaceRecoveryCodes" });
+            var generated = await ProfileRequestAsync(enrolled, "/api/ui/profile/recovery-codes", new { operationId });
+            var code = generated.GetProperty("codes")[0].GetString()!;
             Assert.NotEmpty(code);
 
             using var client = NewClient();
@@ -291,18 +290,16 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
     [Fact]
     public async Task Passkey_sign_in_uses_the_server_checked_target_only_after_a_valid_assertion()
     {
-        var (username, _, _, enrolled) = await EnrollAccountAsync();
+        var (username, password, secret, enrolled) = await EnrollAccountAsync();
         using var authenticator = new PasskeyAuthenticator();
         using (enrolled)
         {
-            var profile = await enrolled.GetStringAsync("/Profile");
-            var options = await PostJsonAsync(enrolled, "/Profile/PasskeyRegisterBegin", profile, new { });
-            var registration = await PostJsonAsync(enrolled, "/Profile/PasskeyRegisterComplete", profile, new
-            {
-                credential = authenticator.Register(options),
-                nickname = "Return URL test"
-            });
-            Assert.True(registration.GetProperty("success").GetBoolean());
+            var operationId = await VerifyProfileChangeAsync(enrolled, password, secret,
+                new { kind = "AddPasskey", passkeyNickname = "Return URL test" });
+            var options = await ProfileRequestAsync(enrolled, "/api/ui/profile/passkeys/registration/begin", new { operationId });
+            var registration = await ProfileRequestAsync(enrolled, "/api/ui/profile/passkeys/registration/complete",
+                new { operationId, credential = authenticator.Register(options.GetProperty("publicKey")) });
+            Assert.NotEqual(Guid.Empty, registration.GetProperty("id").GetGuid());
         }
 
         using (var failedClient = NewClient())
@@ -353,10 +350,31 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
             Assert.Equal(expected, final.Headers.Location?.OriginalString);
             Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/ui/me")).StatusCode);
             // Consuming the challenge prevents a replay from issuing another redirect/session.
-            var replay = await PostJsonAsync(client, "/Account/PasskeyLoginComplete", await client.GetStringAsync("/Profile"), new { credential = new { } });
+            var replay = await PostJsonAsync(client, "/Account/PasskeyLoginComplete", await client.GetStringAsync("/Secrets"), new { credential = new { } });
             Assert.False(replay.GetProperty("success").GetBoolean());
             Assert.False(replay.TryGetProperty("redirect", out _));
         }
+    }
+
+    private static async Task<Guid> VerifyProfileChangeAsync(HttpClient client, string password, string secret, object change)
+    {
+        var prepared = await ProfileRequestAsync(client, "/api/ui/profile/operations", change);
+        var operationId = prepared.GetProperty("operationId").GetGuid();
+        await ProfileRequestAsync(client, $"/api/ui/profile/operations/{operationId}/verify",
+            new { method = "PasswordAndAuthenticatorCode", currentPassword = password, code = Totp.NextCode(secret) });
+        return operationId;
+    }
+
+    private static async Task<JsonElement> ProfileRequestAsync(HttpClient client, string path, object body)
+    {
+        var me = await client.GetAsync("/api/ui/me");
+        var token = Microsoft.Net.Http.Headers.SetCookieHeaderValue.ParseList(me.Headers.GetValues("Set-Cookie").ToList())
+            .Single(cookie => cookie.Name == "XSRF-TOKEN").Value.ToString();
+        using var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(body) };
+        request.Headers.Add("RequestVerificationToken", token);
+        var response = await client.SendAsync(request);
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
     private async Task<(string Username, string Password, string Secret, HttpClient Client)> EnrollAccountAsync()

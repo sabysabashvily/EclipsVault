@@ -24,7 +24,21 @@ const sessions = () => import('./sessions/sessions-page').then((m) => m.Sessions
 const data = () => import('./data/data-page').then((m) => m.DataPage);
 const sharedByMe = () => import('./shared-by-me/shared-by-me-page').then((m) => m.SharedByMePage);
 
+const profile = () => import('./profile/profile-page').then((m) => m.ProfilePage);
+const password = () => import('./profile/change-password-page').then((m) => m.ChangePasswordPage);
+
 export const routes: Routes = [
+  { matcher: legacyPath('Profile'), loadComponent: profile, title: 'Profile — EclipsVault' },
+  { matcher: legacyPath('Profile/Index'), loadComponent: profile, title: 'Profile — EclipsVault' },
+  {
+    matcher: legacyPath('Profile/ChangePassword'),
+    loadComponent: password,
+    title: 'Change password — EclipsVault',
+  },
+  {
+    matcher: legacyPath('Profile/RecoveryCodes'),
+    redirectTo: '/Profile?recoveryCodes=display-once',
+  },
   {
     matcher: legacyPath('Secrets/SharedByMe'),
     loadComponent: sharedByMe,

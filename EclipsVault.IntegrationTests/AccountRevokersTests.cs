@@ -43,18 +43,19 @@ public abstract class AccountRevokersTests(VaultFixture vault)
     {
         var owner = await vault.SignInNewAccountAsync("it-version-late-renewal", IPAddress.Parse("198.18.240.9"));
         var original = SessionApi.PrincipalOf(vault, owner);
-        var account = await LegacyProfile.AccountAsync(vault, "it-version-late-renewal");
-        var token = VaultFixture.FormTokenOf(await owner.Client.GetStringAsync("/Profile"), "/Profile");
-        await using var body = new GatedRequestBody("__RequestVerificationToken=" + Uri.EscapeDataString(token)
-            + "&DisplayName=Renamed%20Owner&Email=" + Uri.EscapeDataString(account.Email));
+        var account = await ProfileHttp.AccountAsync(vault, "it-version-late-renewal");
+        await owner.Client.GetAsync("/api/ui/me");
+        var token = owner.Cookies.GetCookies(owner.Client.BaseAddress!)["XSRF-TOKEN"]!.Value;
+        await using var body = new GatedRequestBody("{\"displayName\":\"Renamed Owner\"}");
         var request = vault.SendAsync(context =>
         {
             context.Request.Scheme = "https";
             context.Request.Host = new HostString("localhost");
-            context.Request.Path = "/Profile/Update";
-            context.Request.Method = "POST";
+            context.Request.Path = "/api/ui/profile/details";
+            context.Request.Method = "PATCH";
             context.Request.Headers.Cookie = owner.Cookies.GetCookieHeader(owner.Client.BaseAddress!);
-            context.Request.ContentType = "application/x-www-form-urlencoded";
+            context.Request.Headers["RequestVerificationToken"] = token;
+            context.Request.ContentType = "application/json";
             context.Request.ContentLength = body.Length;
             context.Request.Body = body;
             context.Connection.RemoteIpAddress = IPAddress.Parse("198.18.240.9");
@@ -69,7 +70,7 @@ public abstract class AccountRevokersTests(VaultFixture vault)
             body.Release();
         }
         var response = await request;
-        Assert.Equal(StatusCodes.Status302Found, response.Response.StatusCode);
+        Assert.Equal(StatusCodes.Status200OK, response.Response.StatusCode);
         var cookie = SetCookieHeaderValue.Parse(response.Response.Headers.SetCookie
             .Single(value => value!.StartsWith(VaultFixture.SessionCookie + "=", StringComparison.Ordinal))!);
         var renewed = vault.CreateSession(new Cookie(cookie.Name.ToString(), cookie.Value.ToString()), IPAddress.Parse("198.18.240.10"));
@@ -87,7 +88,7 @@ public abstract class AccountRevokersTests(VaultFixture vault)
         var owner = await vault.SignInNewAccountAsync(username, IPAddress.Parse("10.52.0.73"));
         var original = SessionApi.PrincipalOf(vault, owner);
         var originalCookie = owner.SessionCookie!.Value;
-        var account = await LegacyProfile.AccountAsync(vault, username);
+        var account = await ProfileHttp.AccountAsync(vault, username);
         var token = VaultFixture.FormTokenOf(await owner.Client.GetStringAsync(details), details);
 
         var response = await owner.Client.PostAsync(details.Replace("/Details/", "/StepUpReveal/", StringComparison.Ordinal),
@@ -202,7 +203,7 @@ public abstract class AccountRevokersTests(VaultFixture vault)
     {
         const string password = "It-role-issuance-password-2026!";
         await vault.SignInNewAccountAsync("it-version-issuance", IPAddress.Parse("198.18.240.6"), password: password);
-        var account = await LegacyProfile.AccountAsync(vault, "it-version-issuance");
+        var account = await ProfileHttp.AccountAsync(vault, "it-version-issuance");
         using var proofRequest = vault.Services.CreateScope();
         var authentication = proofRequest.ServiceProvider.GetRequiredService<IVaultAuthenticationService>();
         var passwordStage = await authentication.ValidateCredentialsAsync(account.Username, password, default);

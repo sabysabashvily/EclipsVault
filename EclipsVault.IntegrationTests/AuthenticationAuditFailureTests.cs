@@ -24,7 +24,7 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         var vault = failure.Vault;
         await vault.SignInNewAccountAsync("it-ledger-totp", IPAddress.Parse("203.0.113.170"));
         await SetFailuresAsync("it-ledger-totp", 2);
-        var account = await LegacyProfile.AccountAsync(vault, "it-ledger-totp");
+        var account = await ProfileHttp.AccountAsync(vault, "it-ledger-totp");
         var before = await AuditTrail.HeadAsync(vault);
         using var request = vault.Services.CreateScope();
         var auth = request.ServiceProvider.GetRequiredService<IVaultAuthenticationService>();
@@ -42,7 +42,7 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         }
 
         await request.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().SaveChangesAsync();
-        var stored = await LegacyProfile.AccountAsync(vault, "it-ledger-totp");
+        var stored = await ProfileHttp.AccountAsync(vault, "it-ledger-totp");
         Assert.Equal(account.LastTotpStep, stored.LastTotpStep);
         Assert.Equal(2, stored.FailedAccessCount);
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
@@ -54,7 +54,7 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
     {
         var vault = failure.Vault;
         await vault.SignInNewAccountAsync("it-ledger-recovery", IPAddress.Parse("203.0.113.171"));
-        var account = await LegacyProfile.AccountAsync(vault, "it-ledger-recovery");
+        var account = await ProfileHttp.AccountAsync(vault, "it-ledger-recovery");
         using var request = vault.Services.CreateScope();
         var recovery = await request.ServiceProvider.GetRequiredService<IMfaRecoveryService>()
             .GenerateAsync(account.Id, account.CredentialGeneration, default);
@@ -75,8 +75,8 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         }
 
         await request.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().SaveChangesAsync();
-        Assert.All(await LegacyProfile.RecoveryCodesAsync(vault, account.Id), code => Assert.Null(code.UsedAtUtc));
-        Assert.Equal(2, (await LegacyProfile.AccountAsync(vault, "it-ledger-recovery")).FailedAccessCount);
+        Assert.All(await ProfileHttp.RecoveryCodesAsync(vault, account.Id), code => Assert.Null(code.UsedAtUtc));
+        Assert.Equal(2, (await ProfileHttp.AccountAsync(vault, "it-ledger-recovery")).FailedAccessCount);
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         Assert.NotNull(await auth.VerifyRecoveryCodeAsync(account.Id, stamp, codes[0], default));
     }
@@ -96,7 +96,7 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
             await db.SaveChangesAsync();
         }
 
-        var account = await LegacyProfile.AccountAsync(vault, "it-ledger-enroll");
+        var account = await ProfileHttp.AccountAsync(vault, "it-ledger-enroll");
         var before = await AuditTrail.HeadAsync(vault);
         using var request = vault.Services.CreateScope();
         var auth = request.ServiceProvider.GetRequiredService<IVaultAuthenticationService>();
@@ -114,7 +114,7 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         }
 
         await request.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().SaveChangesAsync();
-        var stored = await LegacyProfile.AccountAsync(vault, "it-ledger-enroll");
+        var stored = await ProfileHttp.AccountAsync(vault, "it-ledger-enroll");
         Assert.False(stored.TotpEnabled);
         Assert.Null(stored.LastTotpStep);
         Assert.Equal(account.TotpSecret, stored.TotpSecret);
@@ -128,7 +128,7 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         var vault = failure.Vault;
         await vault.SignInNewAccountAsync("it-ledger-failure", IPAddress.Parse("203.0.113.173"));
         await SetFailuresAsync("it-ledger-failure", LockoutPolicy.Default.MaxFailedAttempts - 1);
-        var account = await LegacyProfile.AccountAsync(vault, "it-ledger-failure");
+        var account = await ProfileHttp.AccountAsync(vault, "it-ledger-failure");
         var before = await AuditTrail.HeadAsync(vault);
         using var request = vault.Services.CreateScope();
         var auth = request.ServiceProvider.GetRequiredService<IVaultAuthenticationService>();
@@ -145,7 +145,7 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         }
 
         await request.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().SaveChangesAsync();
-        var stored = await LegacyProfile.AccountAsync(vault, "it-ledger-failure");
+        var stored = await ProfileHttp.AccountAsync(vault, "it-ledger-failure");
         Assert.Equal(account.FailedAccessCount, stored.FailedAccessCount);
         Assert.Null(stored.LockedUntilUtc);
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
@@ -156,7 +156,7 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
     {
         var vault = failure.Vault;
         await vault.SignInNewAccountAsync("it-ledger-step-up", IPAddress.Parse("203.0.113.174"));
-        var account = await LegacyProfile.AccountAsync(vault, "it-ledger-step-up");
+        var account = await ProfileHttp.AccountAsync(vault, "it-ledger-step-up");
         var before = await AuditTrail.HeadAsync(vault);
         using var request = vault.Services.CreateScope();
         var stepUp = request.ServiceProvider.GetRequiredService<IStepUpService>();
@@ -174,7 +174,7 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         }
 
         await request.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().SaveChangesAsync();
-        Assert.Equal(account.LastTotpStep, (await LegacyProfile.AccountAsync(vault, "it-ledger-step-up")).LastTotpStep);
+        Assert.Equal(account.LastTotpStep, (await ProfileHttp.AccountAsync(vault, "it-ledger-step-up")).LastTotpStep);
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         Assert.True(await stepUp.VerifyAsync(account.Id, stamp, code, default));
     }
@@ -184,10 +184,10 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
     {
         var vault = failure.Vault;
         var owner = await vault.SignInNewAccountAsync("it-ledger-passkey", IPAddress.Parse("203.0.113.175"));
-        var account = await LegacyProfile.AccountAsync(vault, "it-ledger-passkey");
+        var account = await ProfileHttp.AccountAsync(vault, "it-ledger-passkey");
         using var authenticator = new PasskeyAuthenticator();
-        await LegacyProfile.RegisterPasskeyAsync(owner.Client, authenticator, "Rollback key");
-        var key = Assert.Single(await LegacyProfile.PasskeysAsync(vault, account.Id));
+        await ProfileHttp.RegisterPasskeyAsync(owner, authenticator, "Rollback key");
+        var key = Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id));
         await SetFailuresAsync("it-ledger-passkey", 2);
         using var request = vault.Services.CreateScope();
         var passkeys = request.ServiceProvider.GetRequiredService<IPasskeyService>();
@@ -206,8 +206,8 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         }
 
         await request.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().SaveChangesAsync();
-        Assert.Equal(key.SignCount, Assert.Single(await LegacyProfile.PasskeysAsync(vault, account.Id)).SignCount);
-        Assert.Equal(2, (await LegacyProfile.AccountAsync(vault, "it-ledger-passkey")).FailedAccessCount);
+        Assert.Equal(key.SignCount, Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id)).SignCount);
+        Assert.Equal(2, (await ProfileHttp.AccountAsync(vault, "it-ledger-passkey")).FailedAccessCount);
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
@@ -216,9 +216,9 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
     {
         var vault = failure.Vault;
         var owner = await vault.SignInNewAccountAsync("it-ledger-passkey-failure", IPAddress.Parse("203.0.113.176"));
-        var account = await LegacyProfile.AccountAsync(vault, "it-ledger-passkey-failure");
+        var account = await ProfileHttp.AccountAsync(vault, "it-ledger-passkey-failure");
         using var authenticator = new PasskeyAuthenticator();
-        await LegacyProfile.RegisterPasskeyAsync(owner.Client, authenticator, "Failed proof key");
+        await ProfileHttp.RegisterPasskeyAsync(owner, authenticator, "Failed proof key");
         await SetFailuresAsync(account.Username, 4);
         using var request = vault.Services.CreateScope();
         var passkeys = request.ServiceProvider.GetRequiredService<IPasskeyService>();
@@ -237,10 +237,10 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         }
 
         await request.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().SaveChangesAsync();
-        var stored = await LegacyProfile.AccountAsync(vault, account.Username);
+        var stored = await ProfileHttp.AccountAsync(vault, account.Username);
         Assert.Equal(4, stored.FailedAccessCount);
         Assert.Null(stored.LockedUntilUtc);
-        Assert.Equal(0, Assert.Single(await LegacyProfile.PasskeysAsync(vault, account.Id)).SignCount);
+        Assert.Equal(0, Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id)).SignCount);
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
@@ -253,7 +253,7 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         await db.SaveChangesAsync();
     }
     private static async Task<SessionStamp> CurrentStampAsync(VaultFixture vault, User account)
-        => new((await LegacyProfile.AccountAsync(vault, account.Username)).CredentialGeneration,
+        => new((await ProfileHttp.AccountAsync(vault, account.Username)).CredentialGeneration,
             await vault.Services.GetRequiredService<ISessionRevocationService>().CaptureAsync(account.Id));
 
 }

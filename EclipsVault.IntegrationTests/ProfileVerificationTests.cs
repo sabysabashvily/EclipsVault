@@ -23,15 +23,15 @@ public sealed class ProfileVerificationTests(VaultFixture vault)
         await ProfileApi.AssertProblemAsync(await ProfileApi.VerifyAsync(owner.Browser, operation,
             "PasswordAndAuthenticatorCode", "wrong-current-87!", code), 400, "verification_failed");
 
-        var failed = await LegacyProfile.AccountAsync(vault, owner.Stored.Username);
+        var failed = await ProfileHttp.AccountAsync(vault, owner.Stored.Username);
         Assert.Equal(1, failed.FailedAccessCount);
         Assert.Equal(owner.Stored.LastTotpStep, failed.LastTotpStep);
         Assert.Equal(HttpStatusCode.OK, (await owner.Browser.Client.GetAsync("/api/ui/me")).StatusCode);
         var verified = await ProfileApi.VerifyAsync(owner.Browser, operation, "PasswordAndAuthenticatorCode", owner.Password, code);
         Assert.Equal(HttpStatusCode.OK, verified.StatusCode);
         Assert.Equal(["commitByUtc", "operationId"], ProfileApi.NamesOf(await verified.Content.ReadFromJsonAsync<JsonElement>()));
-        Assert.Equal(0, (await LegacyProfile.AccountAsync(vault, owner.Stored.Username)).FailedAccessCount);
-        Assert.Equal([AuditAction.AccountVerificationFailed, AuditAction.AccountVerified], await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
+        Assert.Equal(0, (await ProfileHttp.AccountAsync(vault, owner.Stored.Username)).FailedAccessCount);
+        Assert.Equal([AuditAction.AccountVerificationFailed, AuditAction.AccountVerified], await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
         await ProofDisclosure.AssertNotDisclosedAsync(vault, before, owner.Id, $"/api/ui/profile/operations/{operation}/verify", owner.Password, code, "wrong-current-87!");
     }
 
@@ -48,7 +48,7 @@ public sealed class ProfileVerificationTests(VaultFixture vault)
             ProfileApi.VerifyAsync(owner.Browser, operation, "PasswordAndAuthenticatorCode", owner.Password, code));
 
         Assert.Equal([HttpStatusCode.OK, HttpStatusCode.Conflict], results.Select(response => response.StatusCode).OrderBy(status => status));
-        Assert.Equal([AuditAction.AccountVerified], await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
+        Assert.Equal([AuditAction.AccountVerified], await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
     }
 
     [Fact]
@@ -66,7 +66,7 @@ public sealed class ProfileVerificationTests(VaultFixture vault)
         await ProfileApi.AssertProblemAsync(await ProfileApi.VerifyAsync(owner.Browser, operation,
             "PasswordAndAuthenticatorCode", owner.Password, code), 429, "throttled");
 
-        var stored = await LegacyProfile.AccountAsync(vault, owner.Stored.Username);
+        var stored = await ProfileHttp.AccountAsync(vault, owner.Stored.Username);
         Assert.Equal(0, stored.FailedAccessCount);
         Assert.True(stored.LockedUntilUtc > DateTimeOffset.UtcNow);
         Assert.Null((await ProfileApi.OperationAsync(vault, operation)).VerifiedAtUtc);
@@ -86,9 +86,9 @@ public sealed class ProfileVerificationTests(VaultFixture vault)
 
         await ProfileApi.AssertProblemAsync(await ProfileApi.CompletePasskeyAsync(owner.Browser, operation, credential, "wrong-required-password-87!"), 400, "verification_failed");
 
-        Assert.Equal(2, (await LegacyProfile.AccountAsync(vault, owner.Stored.Username)).FailedAccessCount);
+        Assert.Equal(2, (await ProfileHttp.AccountAsync(vault, owner.Stored.Username)).FailedAccessCount);
         Assert.Null((await ProfileApi.OperationAsync(vault, operation)).VerifiedAtUtc);
-        Assert.Equal([AuditAction.AccountVerificationFailed], await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
+        Assert.Equal([AuditAction.AccountVerificationFailed], await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
         await ProofDisclosure.AssertNotDisclosedAsync(vault, before, owner.Id, $"/api/ui/profile/operations/{operation}/passkey/complete",
             ProofDisclosure.CredentialComponents(credential).Append(owner.Password).Append("wrong-required-password-87!").ToArray());
     }
@@ -98,7 +98,7 @@ public sealed class ProfileVerificationTests(VaultFixture vault)
     {
         var owner = await ProfileAccount.CreateAsync(vault, "it-ui87-proof-truthful-failure", "100.66.87.11");
         using var key = new PasskeyAuthenticator();
-        await LegacyProfile.RegisterPasskeyAsync(owner.Browser.Client, key, "Existing key");
+        await ProfileHttp.RegisterPasskeyAsync(owner.Browser, key, "Existing key");
         var operation = await ProfileApi.PreparedAsync(owner.Browser, new { kind = "ChangePassword", newPassword = "Truthful-New-Password-87!" });
         await ProfileApi.PasskeyPromptAsync(owner.Browser, $"/api/ui/profile/operations/{operation}/passkey/begin");
         var before = await AuditTrail.HeadAsync(vault);
@@ -109,7 +109,7 @@ public sealed class ProfileVerificationTests(VaultFixture vault)
         var failure = Assert.Single((await AuditTrail.RowsAfterAsync(vault, before)), row => row.ResourceId == owner.Id);
         Assert.Equal(AuditAction.AccountVerificationFailed, failure.Action);
         Assert.Equal("Account verification failed: wrong password", failure.Details);
-        Assert.Equal(1, (await LegacyProfile.AccountAsync(vault, owner.Stored.Username)).FailedAccessCount);
+        Assert.Equal(1, (await ProfileHttp.AccountAsync(vault, owner.Stored.Username)).FailedAccessCount);
     }
 
     [Fact]
@@ -127,8 +127,8 @@ public sealed class ProfileVerificationTests(VaultFixture vault)
         await ProfileApi.AssertProblemAsync(await ProfileApi.CompletePasskeyAsync(owner.Browser, operation, foreignKey.Assert(options)), 400, "verification_failed");
 
         Assert.Null((await ProfileApi.OperationAsync(vault, operation)).VerifiedAtUtc);
-        Assert.Equal(1, (await LegacyProfile.AccountAsync(vault, owner.Stored.Username)).FailedAccessCount);
-        Assert.Equal(0, (await LegacyProfile.AccountAsync(vault, other.Stored.Username)).FailedAccessCount);
+        Assert.Equal(1, (await ProfileHttp.AccountAsync(vault, owner.Stored.Username)).FailedAccessCount);
+        Assert.Equal(0, (await ProfileHttp.AccountAsync(vault, other.Stored.Username)).FailedAccessCount);
     }
 
     [Fact]
@@ -142,7 +142,7 @@ public sealed class ProfileVerificationTests(VaultFixture vault)
         var replaced = await ProfileApi.PasskeyPromptAsync(owner.Browser, $"/api/ui/profile/operations/{operation}/passkey/begin");
         await ProfileApi.AssertProblemAsync(await ProfileApi.CompletePasskeyAsync(owner.Browser, operation, key.Assert(first)), 400, "verification_failed");
         Assert.NotEqual(first.GetProperty("challenge").GetString(), replaced.GetProperty("challenge").GetString());
-        Assert.Equal(1, (await LegacyProfile.AccountAsync(vault, owner.Stored.Username)).FailedAccessCount);
+        Assert.Equal(1, (await ProfileHttp.AccountAsync(vault, owner.Stored.Username)).FailedAccessCount);
     }
 
     [Fact]
@@ -160,8 +160,8 @@ public sealed class ProfileVerificationTests(VaultFixture vault)
 
         await ProfileApi.AssertProblemAsync(await ProfileApi.CompletePasskeyAsync(owner.Browser, operation, key.Assert(prompt)), 409, "ceremony_expired");
 
-        Assert.Empty(await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
-        Assert.Equal(0, (await LegacyProfile.AccountAsync(vault, owner.Stored.Username)).FailedAccessCount);
+        Assert.Empty(await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
+        Assert.Equal(0, (await ProfileHttp.AccountAsync(vault, owner.Stored.Username)).FailedAccessCount);
     }
 
     [Fact]
@@ -176,8 +176,8 @@ public sealed class ProfileVerificationTests(VaultFixture vault)
 
         await ProfileApi.AssertProblemAsync(await ProfileApi.CompletePasskeyAsync(owner.Browser, operation, new { id = "Malformed-Proof-87!" }), 400, "validation_failed");
 
-        Assert.Equal(0, (await LegacyProfile.AccountAsync(vault, owner.Stored.Username)).FailedAccessCount);
-        Assert.Empty(await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
+        Assert.Equal(0, (await ProfileHttp.AccountAsync(vault, owner.Stored.Username)).FailedAccessCount);
+        Assert.Empty(await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
         await ProofDisclosure.AssertNotDisclosedAsync(vault, before, owner.Id, $"/api/ui/profile/operations/{operation}/passkey/complete", "Malformed-Proof-87!");
     }
     [Fact]
@@ -193,8 +193,8 @@ public sealed class ProfileVerificationTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.NoContent, (await ProfileApi.SendAsync(owner.Browser, HttpMethod.Delete,
             $"/api/ui/profile/operations/{operation}")).StatusCode);
 
-        Assert.Equal(0, (await LegacyProfile.AccountAsync(vault, owner.Stored.Username)).FailedAccessCount);
-        Assert.Empty(await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
+        Assert.Equal(0, (await ProfileHttp.AccountAsync(vault, owner.Stored.Username)).FailedAccessCount);
+        Assert.Empty(await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
     }
 
 }

@@ -8,7 +8,9 @@ import { setTimeout } from 'node:timers/promises';
 const ui = fileURLToPath(new URL('../', import.meta.url));
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const probes = process.argv.includes('--verify-guards');
-const output = probes ? 'guard-results' : 'test-results';
+const evidence = process.env.E2E_EVIDENCE_DIR || ui;
+const output = new URL(probes ? 'guard-results/' : 'test-results/', `file://${evidence}/`);
+const testResults = new URL('test-results/', `file://${evidence}/`);
 // Cleanup removes this project's containers and volumes, so the runner always names a project of its
 // own: a prefix may be chosen, the random suffix may not, and an existing project is never adopted.
 // Specs still receive the name as E2E_COMPOSE_PROJECT.
@@ -131,6 +133,7 @@ async function main() {
   const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
   const env = {
     ...process.env,
+    E2E_TEST_RESULTS: fileURLToPath(testResults),
     E2E_IMAGE: image,
     // Lets a spec reach this run's own disposable database, for state no production screen can create.
     E2E_COMPOSE_PROJECT: project,
@@ -142,7 +145,7 @@ async function main() {
   };
   const composeArgs = ['compose', '--project-name', project, '--file', 'e2e/compose.yml'];
   const compose = (args, options) => checked('docker', [...composeArgs, ...args], env, options);
-  await mkdir(new URL(`../${output}/`, import.meta.url), { recursive: true });
+  await mkdir(output, { recursive: true });
   let builtImage = false;
   try {
     if (!process.env.E2E_IMAGE) {
@@ -167,17 +170,14 @@ async function main() {
     await waitForVault(env.E2E_BASE_URL);
 
     // A failed runner must never be mistaken for the previous invocation's expected failures.
-    if (probes)
-      await rm(new URL('../guard-results/results.json', import.meta.url), { force: true });
+    if (probes) await rm(new URL('results.json', output), { force: true });
     const result = await run(process.execPath, ['node_modules/@playwright/test/cli.js', 'test'], {
       ...env,
       E2E_VERIFY_GUARDS: probes ? '1' : '0',
     });
     if (probes) {
       verifyGuardFailures(
-        JSON.parse(
-          await readFile(new URL('../guard-results/results.json', import.meta.url), 'utf8'),
-        ),
+        JSON.parse(await readFile(new URL('results.json', output), 'utf8')),
         result.code,
       );
     } else if (result.code !== 0) {
@@ -188,7 +188,7 @@ async function main() {
   } finally {
     try {
       const logs = await compose(['logs', '--no-color'], { capture: true, cleanup: true });
-      await writeFile(new URL(`../${output}/docker.log`, import.meta.url), logs);
+      await writeFile(new URL('docker.log', output), logs);
     } finally {
       // These containers belong to this run's unique project. Capture their anonymous image
       // volumes explicitly so cleanup never asks Compose to remove an unbounded set of volumes.

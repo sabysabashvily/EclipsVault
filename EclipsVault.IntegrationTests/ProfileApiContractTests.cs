@@ -84,7 +84,7 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
         });
 
         await UiApiFailureContractTests.AssertProblemAsync(response, 400, "antiforgery_rejected");
-        Assert.Empty(await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
+        Assert.Empty(await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
         Assert.Equal(HttpStatusCode.OK, (await owner.Browser.Client.GetAsync("/api/ui/me")).StatusCode);
     }
 
@@ -92,11 +92,11 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
     public async Task Avatar_upload_refuses_a_session_without_its_antiforgery_token()
     {
         var owner = await ProfileAccount.CreateAsync(vault, "it-ui87-profile-avatar-csrf", "100.64.87.2");
-        using var image = new MultipartFormDataContent { { new ByteArrayContent(LegacyProfile.TinyPng), "avatar", "avatar.png" } };
+        using var image = new MultipartFormDataContent { { new ByteArrayContent(ProfileHttp.TinyPng), "avatar", "avatar.png" } };
 
         await UiApiFailureContractTests.AssertProblemAsync(await owner.Browser.Client.PostAsync("/api/ui/profile/avatar", image), 400, "antiforgery_rejected");
 
-        Assert.False(await LegacyProfile.HasAvatarAsync(vault, owner.Id));
+        Assert.False(await ProfileHttp.HasAvatarAsync(vault, owner.Id));
     }
 
     [Fact]
@@ -150,7 +150,7 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
         Assert.True(response.Headers.CacheControl?.NoStore);
         Assert.Equal("""{"displayName":"Renamed Person"}""", await response.Content.ReadAsStringAsync());
         Assert.Equal("Renamed Person", (await owner.Browser.Client.GetFromJsonAsync<JsonElement>("/api/ui/me")).GetProperty("displayName").GetString());
-        Assert.Equal([AuditAction.ProfileUpdated], await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
+        Assert.Equal([AuditAction.ProfileUpdated], await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
         Assert.Equal(HttpStatusCode.OK, (await vault.CreateSession(new System.Net.Cookie(VaultFixture.SessionCookie, sessionCookie)).Client.GetAsync("/api/ui/me")).StatusCode);
     }
 
@@ -166,10 +166,10 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
 
         var problem = await ProfileApi.AssertProblemAsync(response, 400, "validation_failed");
         Assert.DoesNotContain("taken@example.test", problem.GetRawText());
-        var stored = await LegacyProfile.AccountAsync(vault, "it-ui87-profile-details-overpost");
+        var stored = await ProfileHttp.AccountAsync(vault, "it-ui87-profile-details-overpost");
         Assert.Equal("Integration Test", stored.DisplayName);
         Assert.Equal(owner.Stored.Email, stored.Email);
-        Assert.Equal("Integration Test", (await LegacyProfile.AccountAsync(vault, "it-ui87-profile-details-overpost-b")).DisplayName);
+        Assert.Equal("Integration Test", (await ProfileHttp.AccountAsync(vault, "it-ui87-profile-details-overpost-b")).DisplayName);
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
@@ -178,30 +178,30 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
     {
         var owner = await ProfileAccount.CreateAsync(vault, "it-ui87-profile-avatar", "100.64.87.20");
         var before = await AuditTrail.HeadAsync(vault);
-        using var image = new MultipartFormDataContent { { new ByteArrayContent(LegacyProfile.TinyPng), "avatar", "avatar.png" } };
+        using var image = new MultipartFormDataContent { { new ByteArrayContent(ProfileHttp.TinyPng), "avatar", "avatar.png" } };
 
         var uploaded = await UiApiRequest.WriteWithAntiforgeryAsync(owner.Browser, HttpMethod.Post, "/api/ui/profile/avatar", image);
 
         Assert.Equal(HttpStatusCode.NoContent, uploaded.StatusCode);
         Assert.True(uploaded.Headers.CacheControl?.NoStore);
-        Assert.True(await LegacyProfile.HasAvatarAsync(vault, owner.Id));
+        Assert.True(await ProfileHttp.HasAvatarAsync(vault, owner.Id));
         Assert.True((await owner.Browser.Client.GetFromJsonAsync<JsonElement>("/api/ui/profile")).GetProperty("hasCustomAvatar").GetBoolean());
-        Assert.Equal([AuditAction.AvatarUpdated], await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
+        Assert.Equal([AuditAction.AvatarUpdated], await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
     }
 
     [Fact]
     public async Task Removing_the_avatar_records_one_event_and_answers_no_content()
     {
         var owner = await ProfileAccount.CreateAsync(vault, "it-ui87-profile-avatar-remove", "100.64.87.27");
-        await LegacyProfile.UploadAvatarAsync(owner.Browser.Client, LegacyProfile.TinyPng);
+        await ProfileHttp.UploadAvatarAsync(owner.Browser, ProfileHttp.TinyPng);
         var before = await AuditTrail.HeadAsync(vault);
 
         var removed = await ProfileApi.SendAsync(owner.Browser, HttpMethod.Delete, "/api/ui/profile/avatar");
 
         Assert.Equal(HttpStatusCode.NoContent, removed.StatusCode);
         Assert.True(removed.Headers.CacheControl?.NoStore);
-        Assert.False(await LegacyProfile.HasAvatarAsync(vault, owner.Id));
-        Assert.Equal([AuditAction.AvatarRemoved], await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
+        Assert.False(await ProfileHttp.HasAvatarAsync(vault, owner.Id));
+        Assert.Equal([AuditAction.AvatarRemoved], await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
     }
 
     [Fact]
@@ -213,7 +213,7 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
         var response = await UiApiRequest.WriteWithAntiforgeryAsync(owner.Browser, HttpMethod.Post, "/api/ui/profile/avatar", notImage);
 
         await ProfileApi.AssertProblemAsync(response, 400, "validation_failed");
-        Assert.False(await LegacyProfile.HasAvatarAsync(vault, owner.Id));
+        Assert.False(await ProfileHttp.HasAvatarAsync(vault, owner.Id));
     }
 
     [Fact]
@@ -228,7 +228,7 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         Assert.Null(owner.Browser.SessionCookie);
         await UiApiFailureContractTests.AssertProblemAsync(await copied.Client.GetAsync("/api/ui/me"), 401, "unauthenticated");
-        Assert.Equal([AuditAction.SessionsRevokedSelf], await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
+        Assert.Equal([AuditAction.SessionsRevokedSelf], await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
         Assert.Contains("You have been signed out of all sessions.", WebUtility.HtmlDecode(await owner.Browser.Client.GetStringAsync("/Account/Login")), StringComparison.Ordinal);
     }
 
@@ -241,7 +241,7 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
 
         var adminProfile = await adminClient.GetFromJsonAsync<JsonElement>($"/api/ui/profile?userId={owner.Id}&accountId={owner.Id}");
         using var cancelRequest = new HttpRequestMessage(HttpMethod.Delete, $"/api/ui/profile/operations/{ownerOperation}");
-        cancelRequest.Headers.Add("RequestVerificationToken", VaultFixture.FormTokenOf(await adminClient.GetStringAsync("/Profile"), "/Profile"));
+        cancelRequest.Headers.Add("RequestVerificationToken", Microsoft.Net.Http.Headers.SetCookieHeaderValue.ParseList((await adminClient.GetAsync("/api/ui/me")).Headers.GetValues("Set-Cookie").ToList()).Single(cookie => cookie.Name == "XSRF-TOKEN").Value.ToString());
         var cancel = await adminClient.SendAsync(cancelRequest);
 
         Assert.Equal(VaultFixture.AdminUsername, adminProfile.GetProperty("username").GetString());

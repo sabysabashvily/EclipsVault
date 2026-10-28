@@ -17,9 +17,9 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
     public async Task An_unverified_passkey_response_does_not_disclose_that_its_account_is_locked()
     {
         var owner = await vault.SignInNewAccountAsync("it-passkey-locked-error", IPAddress.Parse("203.0.113.184"));
-        var account = await LegacyProfile.AccountAsync(vault, "it-passkey-locked-error");
+        var account = await ProfileHttp.AccountAsync(vault, "it-passkey-locked-error");
         using var authenticator = new PasskeyAuthenticator();
-        await LegacyProfile.RegisterPasskeyAsync(owner.Client, authenticator, "Locked account key");
+        await ProfileHttp.RegisterPasskeyAsync(owner, authenticator, "Locked account key");
         using (var setup = vault.Services.CreateScope())
         {
             var db = setup.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
@@ -40,18 +40,18 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
         Assert.False(result.GetProperty("success").GetBoolean());
         Assert.Equal("This passkey could not be verified.", result.GetProperty("error").GetString());
         Assert.False(result.TryGetProperty("redirect", out _));
-        Assert.Equal(2, (await LegacyProfile.AccountAsync(vault, account.Username)).FailedAccessCount);
-        Assert.Equal(0, Assert.Single(await LegacyProfile.PasskeysAsync(vault, account.Id)).SignCount);
-        Assert.Equal([AuditAction.LoginFailed], await LegacyProfile.EventsAfterAsync(vault, before, account.Id));
+        Assert.Equal(2, (await ProfileHttp.AccountAsync(vault, account.Username)).FailedAccessCount);
+        Assert.Equal(0, Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id)).SignCount);
+        Assert.Equal([AuditAction.LoginFailed], await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
     }
 
     [Fact]
     public async Task An_unverified_passkey_response_does_not_disclose_that_its_account_is_disabled()
     {
         var owner = await vault.SignInNewAccountAsync("it-passkey-disabled-error", IPAddress.Parse("203.0.113.186"));
-        var account = await LegacyProfile.AccountAsync(vault, "it-passkey-disabled-error");
+        var account = await ProfileHttp.AccountAsync(vault, "it-passkey-disabled-error");
         using var authenticator = new PasskeyAuthenticator();
-        await LegacyProfile.RegisterPasskeyAsync(owner.Client, authenticator, "Disabled account key");
+        await ProfileHttp.RegisterPasskeyAsync(owner, authenticator, "Disabled account key");
         using (var setup = vault.Services.CreateScope())
         {
             var db = setup.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
@@ -72,19 +72,19 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
         Assert.False(result.GetProperty("success").GetBoolean());
         Assert.Equal("This passkey could not be verified.", result.GetProperty("error").GetString());
         Assert.False(result.TryGetProperty("redirect", out _));
-        Assert.Equal(2, (await LegacyProfile.AccountAsync(vault, account.Username)).FailedAccessCount);
-        Assert.Equal(0, Assert.Single(await LegacyProfile.PasskeysAsync(vault, account.Id)).SignCount);
-        Assert.Equal([AuditAction.LoginFailed], await LegacyProfile.EventsAfterAsync(vault, before, account.Id));
+        Assert.Equal(2, (await ProfileHttp.AccountAsync(vault, account.Username)).FailedAccessCount);
+        Assert.Equal(0, Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id)).SignCount);
+        Assert.Equal([AuditAction.LoginFailed], await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
     }
 
     [Fact]
     public async Task A_passkey_read_before_another_sign_in_advanced_its_counter_signs_in_without_counting_a_failure()
     {
         var owner = await vault.SignInNewAccountAsync("it-passkey-overlap", IPAddress.Parse("203.0.113.183"));
-        var account = await LegacyProfile.AccountAsync(vault, "it-passkey-overlap");
+        var account = await ProfileHttp.AccountAsync(vault, "it-passkey-overlap");
         using var authenticator = new PasskeyAuthenticator();
-        await LegacyProfile.RegisterPasskeyAsync(owner.Client, authenticator, "Overlapping key");
-        var key = Assert.Single(await LegacyProfile.PasskeysAsync(vault, account.Id));
+        await ProfileHttp.RegisterPasskeyAsync(owner, authenticator, "Overlapping key");
+        var key = Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id));
         using var first = vault.Services.CreateScope();
         using var second = vault.Services.CreateScope();
         var firstPasskeys = first.ServiceProvider.GetRequiredService<IPasskeyService>();
@@ -104,20 +104,20 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
 
         Assert.True(firstOutcome.Success);
         Assert.True(secondOutcome.Success);
-        var stored = await LegacyProfile.AccountAsync(vault, account.Username);
+        var stored = await ProfileHttp.AccountAsync(vault, account.Username);
         Assert.Equal(0, stored.FailedAccessCount);
         Assert.Null(stored.LockedUntilUtc);
-        Assert.Equal(2, Assert.Single(await LegacyProfile.PasskeysAsync(vault, account.Id)).SignCount);
-        Assert.Equal([AuditAction.PasskeyLogin, AuditAction.PasskeyLogin], await LegacyProfile.EventsAfterAsync(vault, before, account.Id));
+        Assert.Equal(2, Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id)).SignCount);
+        Assert.Equal([AuditAction.PasskeyLogin, AuditAction.PasskeyLogin], await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
     }
 
     [Fact]
     public async Task Incorrect_passkey_signatures_presented_concurrently_reach_account_lockout()
     {
         var owner = await vault.SignInNewAccountAsync("it-passkey-wrong-signature", IPAddress.Parse("203.0.113.180"));
-        var account = await LegacyProfile.AccountAsync(vault, "it-passkey-wrong-signature");
+        var account = await ProfileHttp.AccountAsync(vault, "it-passkey-wrong-signature");
         using var authenticator = new PasskeyAuthenticator();
-        await LegacyProfile.RegisterPasskeyAsync(owner.Client, authenticator, "Known key");
+        await ProfileHttp.RegisterPasskeyAsync(owner, authenticator, "Known key");
         using (var setup = vault.Services.CreateScope())
         {
             var db = setup.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
@@ -140,21 +140,21 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
             secondPasskeys.CompleteAssertionAsync(secondCeremony.Challenge, secondCeremony.NamedAccount, secondResponse, default));
 
         Assert.All(outcomes, outcome => Assert.False(outcome.Success));
-        var stored = await LegacyProfile.AccountAsync(vault, account.Username);
+        var stored = await ProfileHttp.AccountAsync(vault, account.Username);
         Assert.Equal(0, stored.FailedAccessCount);
         Assert.NotNull(stored.LockedUntilUtc);
-        Assert.Equal(0, Assert.Single(await LegacyProfile.PasskeysAsync(vault, account.Id)).SignCount);
+        Assert.Equal(0, Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id)).SignCount);
         Assert.Equal([AuditAction.LoginFailed, AuditAction.LoginFailed, AuditAction.AccountLockedOut],
-            await LegacyProfile.EventsAfterAsync(vault, before, account.Id));
+            await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
     }
 
     [Fact]
     public async Task A_nonadvancing_passkey_counter_counts_a_failure_and_locks_at_the_threshold()
     {
         var owner = await vault.SignInNewAccountAsync("it-passkey-clone", IPAddress.Parse("203.0.113.181"));
-        var account = await LegacyProfile.AccountAsync(vault, "it-passkey-clone");
+        var account = await ProfileHttp.AccountAsync(vault, "it-passkey-clone");
         using var authenticator = new PasskeyAuthenticator();
-        await LegacyProfile.RegisterPasskeyAsync(owner.Client, authenticator, "Clone check key");
+        await ProfileHttp.RegisterPasskeyAsync(owner, authenticator, "Clone check key");
         using (var setup = vault.Services.CreateScope())
         {
             var db = setup.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
@@ -172,18 +172,18 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
         var outcome = await passkeys.CompleteAssertionAsync(ceremony.Challenge, ceremony.NamedAccount, response, default);
 
         Assert.False(outcome.Success);
-        Assert.NotNull((await LegacyProfile.AccountAsync(vault, account.Username)).LockedUntilUtc);
-        Assert.Equal(2, Assert.Single(await LegacyProfile.PasskeysAsync(vault, account.Id)).SignCount);
-        Assert.Equal([AuditAction.LoginFailed, AuditAction.AccountLockedOut], await LegacyProfile.EventsAfterAsync(vault, before, account.Id));
+        Assert.NotNull((await ProfileHttp.AccountAsync(vault, account.Username)).LockedUntilUtc);
+        Assert.Equal(2, Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id)).SignCount);
+        Assert.Equal([AuditAction.LoginFailed, AuditAction.AccountLockedOut], await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
     }
 
     [Fact]
     public async Task A_successful_passkey_assertion_clears_failures_with_only_its_sign_in_event()
     {
         var owner = await vault.SignInNewAccountAsync("it-passkey-clear-failures", IPAddress.Parse("203.0.113.182"));
-        var account = await LegacyProfile.AccountAsync(vault, "it-passkey-clear-failures");
+        var account = await ProfileHttp.AccountAsync(vault, "it-passkey-clear-failures");
         using var authenticator = new PasskeyAuthenticator();
-        await LegacyProfile.RegisterPasskeyAsync(owner.Client, authenticator, "Successful key");
+        await ProfileHttp.RegisterPasskeyAsync(owner, authenticator, "Successful key");
         using (var setup = vault.Services.CreateScope())
         {
             var db = setup.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
@@ -200,9 +200,9 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
         var outcome = await passkeys.CompleteAssertionAsync(ceremony.Challenge, ceremony.NamedAccount, response, default);
 
         Assert.True(outcome.Success);
-        Assert.Equal(0, (await LegacyProfile.AccountAsync(vault, account.Username)).FailedAccessCount);
-        Assert.Equal(1, Assert.Single(await LegacyProfile.PasskeysAsync(vault, account.Id)).SignCount);
-        Assert.Equal([AuditAction.PasskeyLogin], await LegacyProfile.EventsAfterAsync(vault, before, account.Id));
+        Assert.Equal(0, (await ProfileHttp.AccountAsync(vault, account.Username)).FailedAccessCount);
+        Assert.Equal(1, Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id)).SignCount);
+        Assert.Equal([AuditAction.PasskeyLogin], await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
     }
 
     private static async Task<JsonElement> PostSignInJsonAsync(HttpClient client, string path, string page, object body)
