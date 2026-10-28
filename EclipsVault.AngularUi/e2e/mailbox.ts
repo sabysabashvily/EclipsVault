@@ -39,7 +39,7 @@ export class MailboxProfile {
     if (!token) throw new Error('The signed-in browser has no antiforgery token');
     return this.page.request.post(`/api/ui/profile/${path}`, {
       data,
-      headers: { 'X-XSRF-TOKEN': decodeURIComponent(token.value) },
+      headers: { RequestVerificationToken: decodeURIComponent(token.value) },
     });
   }
 

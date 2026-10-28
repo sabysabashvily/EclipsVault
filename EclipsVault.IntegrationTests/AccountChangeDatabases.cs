@@ -135,8 +135,8 @@ public sealed class AccountRequest : IAsyncDisposable
         var notices = new NotificationService(new LoggingEmailSender(NullLogger<LoggingEmailSender>.Instance),
             new EmailLogRepository(context), Users, new NotificationOptions(false), TimeProvider.System);
         Recovery = new MfaRecoveryService(Users, RecoveryCodes, hasher, Changes, TimeProvider.System, notices);
-        // Reset uses only the account, recovery and commit ports; the other Profile operations
-        // need host services that this focused persistence fixture deliberately does not create.
+        // Reset uses only the account, recovery, notification and commit ports; the other Profile
+        // operations need host services that this focused persistence fixture deliberately does not create.
         Profile = new ProfileService(Users, hasher, null!, RecoveryCodes, null!, notices, Changes, null!, null!);
     }
 

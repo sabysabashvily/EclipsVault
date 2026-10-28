@@ -6,7 +6,7 @@ namespace EclipsVault.Core.Application.Abstractions;
 /// <summary>
 /// Persistence for prepared Profile operations. Preparing, cancelling and challenge changes are saved
 /// immediately; they change no credential and record no event. Consuming an operation is staged, so
-/// it is saved with the change it authorizes, through <see cref="IAccountChangeCommitter"/>.
+/// it is saved atomically with the change it authorizes.
 /// </summary>
 public interface IProfileOperationRepository
 {

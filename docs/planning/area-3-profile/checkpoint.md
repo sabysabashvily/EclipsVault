@@ -820,3 +820,14 @@ need a fresh build/full run. Unit r12/r14 passed 700/700. Source model checks pa
 The first E2E run was deliberately superseded for the concurrency fix and cleaned up its own stack
 and image; it is not final passing evidence. Full final gates and fresh complete-diff rechecks are
 still required. Reviews and their resolution ledger are under logs/ticket-88/.
+
+## Ticket #88 final gates (2026-10-28, Claude Opus 5.5 resumed after the Codex usage limit)
+
+Full integration on `82d28ef` passed 599/599. Standards r2 found three stale comments (corrected);
+Spec r2 found nothing unresolved. The Sol security r2 attempt hit the Codex usage limit, so a fresh
+Opus 5.5 high security-reviewer session rechecked the complete diff: r1's concurrency-stamp P1 is
+fixed, with no new findings. Its one carried observation: Legacy `POST /Profile/Update` still
+changes email without mailbox proof until the #91 cutover retires it. The e2e mailbox helper now
+sends `RequestVerificationToken`, the header Program configures. Final local browser suite: 75/75
+including the real-SMTP mailbox spec. Guard verification confirmed all eight deliberate failures.
+Full evidence, the ledger and the final report are in logs/ticket-88/. No push, PR or #88 closure.

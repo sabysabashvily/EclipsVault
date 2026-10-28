@@ -89,7 +89,10 @@ public sealed class ProfileOperationRepository(EclipsVaultDbContext context, Acc
 
     public void StageConsumption(ProfileOperation operation) => context.ProfileOperations.Remove(operation);
 
-    /// <summary>Unverified and still within its verification window, or verified and still within its grant.</summary>
+    /// <summary>
+    /// An email change until its mailbox deadline; any other operation while unverified within its
+    /// verification window, or verified within its grant.
+    /// </summary>
     private static Expression<Func<ProfileOperation, bool>> IsLive(DateTimeOffset nowUtc)
     {
         var grantedSince = nowUtc - ProfileOperationLimits.GrantLifetime;
