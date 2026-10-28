@@ -243,9 +243,6 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
     (await context.cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')?.value,
   ).toBe(session?.value);
   administratorCookies = await context.cookies();
-  // The dependent suites reuse this disposable session: Signed-in devices provisions its own
-  // account with it, and Your data downloads the administrator's own file.
-  await context.storageState({ path: 'test-results/sessions-administrator.json' });
 });
 
 test("My activity shows the administrator's own rows in both themes, and nothing past the end", async ({
@@ -1998,6 +1995,10 @@ test('a real passkey follows the server redirect for local and external return t
     await page.getByLabel('New passkey name').fill('issue53-browser');
     await page.getByRole('button', { name: 'Add a passkey', exact: true }).click();
     await expect(page.getByText('Passkey added. You can now sign in with it.')).toBeVisible();
+    // Adding a passkey ends the account's earlier sessions and gives this browser a fresh one. The
+    // dependent suites reuse it: Signed-in devices provisions its own account with it, and Your data
+    // downloads the administrator's own file.
+    await context.storageState({ path: 'test-results/sessions-administrator.json' });
 
     // Each passkey attempt below consumes its ordinary two credential POSTs.
     await freshThrottleWindow(page);
