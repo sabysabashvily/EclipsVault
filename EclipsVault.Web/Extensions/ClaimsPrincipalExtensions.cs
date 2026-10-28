@@ -59,6 +59,13 @@ public static class ClaimsPrincipalExtensions
             ? new SessionStamp(generation, version)
             : null;
 
+    /// <summary>The session a Profile operation belongs to, or null when the principal lacks part of it.</summary>
+    public static ProfileSession? GetProfileSessionOrNull(this ClaimsPrincipal principal)
+        => principal.GetUserIdOrNull() is { } accountId && principal.GetSessionId() is { } sessionId
+           && principal.GetSessionStampOrNull() is { } stamp
+            ? new ProfileSession(accountId, sessionId, stamp)
+            : null;
+
     /// <summary>The project the principal is scoped to, or empty when none is present.</summary>
     public static string GetProject(this ClaimsPrincipal principal)
         => principal.FindFirstValue(VaultClaimTypes.Project) ?? string.Empty;

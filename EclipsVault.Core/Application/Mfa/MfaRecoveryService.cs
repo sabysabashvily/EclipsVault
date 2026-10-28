@@ -42,6 +42,19 @@ public sealed class MfaRecoveryService : IMfaRecoveryService
                    ?? throw new InvalidOperationException($"User '{userId}' was not found.");
         user.RequireCredentialGeneration(credentialGeneration);
 
+        // Committed against the account as loaded above, so a replacement saved by another request in
+        // the meantime refuses this one rather than leaving both new sets valid.
+        var display = await StageNewSetAsync(userId, ct);
+        user.CredentialGeneration++;
+        await _changes.CommitAsync(
+            user, AuditAction.RecoveryCodesGenerated,
+            $"{CodesPerSet} single-use MFA recovery codes generated; any previous codes invalidated", ct);
+
+        return new RecoveryCodeSet(display, user.CredentialGeneration);
+    }
+
+    public async Task<IReadOnlyList<string>> StageNewSetAsync(Guid userId, CancellationToken ct)
+    {
         var now = _clock.GetUtcNow();
         var display = new List<string>(CodesPerSet);
         var entities = new List<MfaRecoveryCode>(CodesPerSet);
@@ -62,14 +75,7 @@ public sealed class MfaRecoveryService : IMfaRecoveryService
             });
         }
 
-        // Committed against the account as loaded above, so a replacement saved by another request in
-        // the meantime refuses this one rather than leaving both new sets valid.
         await _codes.StageReplacementAsync(userId, entities, ct);
-        user.CredentialGeneration++;
-        await _changes.CommitAsync(
-            user, AuditAction.RecoveryCodesGenerated,
-            $"{CodesPerSet} single-use MFA recovery codes generated; any previous codes invalidated", ct);
-
-        return new RecoveryCodeSet(display, user.CredentialGeneration);
+        return display;
     }
 }

@@ -51,9 +51,12 @@ internal sealed class PasskeyAuthenticator : IDisposable
         };
     }
 
-    public object Assert(JsonElement options)
+    public object Assert(JsonElement options, bool advanceCounter = true)
     {
-        _counter++;
+        if (advanceCounter)
+        {
+            _counter++;
+        }
         var authData = AuthenticatorData(options.GetProperty("rpId").GetString()!, 0x05);
         var clientData = ClientData(options, "webauthn.get");
         byte[] signedData = [.. authData, .. SHA256.HashData(clientData)];

@@ -499,6 +499,74 @@ namespace EclipsVault.Migrations.Postgres.Migrations
                     b.ToTable("PasskeyCredentials", (string)null);
                 });
 
+            modelBuilder.Entity("EclipsVault.Core.Domain.Entities.ProfileOperation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("CandidatePasswordHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("bytea");
+
+                    b.Property<byte[]>("CandidatePasswordSalt")
+                        .HasMaxLength(32)
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("Challenge")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset?>("ChallengeExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("ChallengePurpose")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("CredentialGeneration")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("PasskeyNickname")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int?>("ProofMethod")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RevocationVersion")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("TargetPasskeyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("VerifiedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "SessionId")
+                        .IsUnique();
+
+                    b.ToTable("ProfileOperations", (string)null);
+                });
+
             modelBuilder.Entity("EclipsVault.Core.Domain.Entities.Secret", b =>
                 {
                     b.Property<Guid>("Id")
@@ -883,6 +951,17 @@ namespace EclipsVault.Migrations.Postgres.Migrations
                 {
                     b.HasOne("EclipsVault.Core.Domain.Entities.User", "User")
                         .WithMany("Passkeys")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("EclipsVault.Core.Domain.Entities.ProfileOperation", b =>
+                {
+                    b.HasOne("EclipsVault.Core.Domain.Entities.User", "User")
+                        .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

@@ -11,8 +11,6 @@ namespace EclipsVault.Core.Application.Profile;
 /// </summary>
 public sealed partial class ProfileService : IProfileService
 {
-    private const int MinimumPasswordLength = 12;
-
     private readonly IUserRepository _users;
     private readonly IPasswordHasher _hasher;
     private readonly IAvatarProcessor _avatar;
@@ -63,13 +61,8 @@ public sealed partial class ProfileService : IProfileService
                    ?? throw new ProfileException("Your account could not be loaded.");
         user.RequireCredentialGeneration(credentialGeneration);
 
-        displayName = displayName.Trim();
+        displayName = ValidDisplayName(displayName);
         email = email.Trim();
-
-        if (displayName.Length is < 1 or > 64)
-        {
-            throw new ProfileException("Display name must be between 1 and 64 characters.");
-        }
 
         if (!EmailPattern().IsMatch(email))
         {
@@ -97,6 +90,16 @@ public sealed partial class ProfileService : IProfileService
         return new ProfileUpdate(profile, emailChanged, user.CredentialGeneration);
     }
 
+    public async Task<string> UpdateDisplayNameAsync(Guid userId, string displayName, CancellationToken ct)
+    {
+        var user = await _users.FindByIdAsync(userId, ct)
+                   ?? throw new ProfileException("Your account could not be loaded.");
+
+        user.DisplayName = ValidDisplayName(displayName);
+        await _changes.CommitAsync(user, AuditAction.ProfileUpdated, "Display name updated", ct);
+        return user.DisplayName;
+    }
+
     public async Task<long> ChangePasswordAsync(
         Guid userId, long credentialGeneration, string currentPassword, string newPassword, CancellationToken ct)
     {
@@ -111,9 +114,9 @@ public sealed partial class ProfileService : IProfileService
             throw new ProfileException("Your current password is incorrect.");
         }
 
-        if (newPassword.Length < MinimumPasswordLength)
+        if (newPassword.Length < PasswordRules.MinimumLength)
         {
-            throw new ProfileException($"Your new password must be at least {MinimumPasswordLength} characters long.");
+            throw new ProfileException($"Your new password must be at least {PasswordRules.MinimumLength} characters long.");
         }
 
         if (newPassword == currentPassword)
@@ -173,6 +176,14 @@ public sealed partial class ProfileService : IProfileService
         user.LastTotpStep = null;
         user.CredentialGeneration++;
         await _changes.CommitAsync(user, AuditAction.SelfMfaReset, "Authenticator reset by owner; re-enrollment required", ct);
+    }
+
+    private static string ValidDisplayName(string displayName)
+    {
+        displayName = displayName.Trim();
+        return displayName.Length is < 1 or > 64
+            ? throw new ProfileException("Display name must be between 1 and 64 characters.")
+            : displayName;
     }
 
     [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$")]

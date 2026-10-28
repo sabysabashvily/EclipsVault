@@ -18,6 +18,12 @@ public interface IMfaRecoveryService
     /// </summary>
     /// <exception cref="Domain.Exceptions.StaleProofException">The account's credentials changed after the session was issued.</exception>
     Task<RecoveryCodeSet> GenerateAsync(Guid userId, long credentialGeneration, CancellationToken ct);
+
+    /// <summary>
+    /// Stages replacing the account's codes with a fresh set, to be saved with the caller's change
+    /// through <see cref="IAccountChangeCommitter"/>, and returns their plaintext.
+    /// </summary>
+    Task<IReadOnlyList<string>> StageNewSetAsync(Guid userId, CancellationToken ct);
 }
 
 /// <summary>A newly generated set, shown once, and the credential generation it committed.</summary>

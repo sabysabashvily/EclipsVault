@@ -109,6 +109,15 @@ public enum AuditAction
     SsoSignInRefused = 141,
 
     /// <summary>
+    /// The account's owner proved an existing credential for one prepared Profile change. Not a sign-in:
+    /// it is kept out of sign-in history, so it never makes a source address look familiar.
+    /// </summary>
+    AccountVerified = 150,
+
+    /// <summary>A wrong proof for a prepared Profile change. It counts towards the account's lockout.</summary>
+    AccountVerificationFailed = 151,
+
+    /// <summary>
     /// The vault started without a valid license outside Development — a soft, one-per-startup marker
     /// so an operator has a dated record. It never restricts the vault and is not a security event.
     /// </summary>

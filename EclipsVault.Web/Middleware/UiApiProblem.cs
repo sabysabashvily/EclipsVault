@@ -52,6 +52,30 @@ public static class UiApiProblem
     /// <summary><see cref="AntiforgeryRejectedAsync"/> as an action result, for the filter that replaces MVC's bare 400.</summary>
     public static ActionResult AntiforgeryRejected() => new Result(AntiforgeryRejectedAsync);
 
+    /// <summary>Over the shared source-address budget for proving credentials. Retrying later is the only fix.</summary>
+    public static ActionResult Throttled() => new Result(context =>
+        WriteAsync(context, StatusCodes.Status429TooManyRequests, "throttled", "Too many attempts. Wait a few minutes and try again."));
+
+    /// <summary>
+    /// A body MVC could not bind. It names the fields, never what was sent: a password or code could be
+    /// part of the value that failed to parse.
+    /// </summary>
+    public static ActionResult ValidationFailed(IEnumerable<string> fields) => new Result(context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        var errors = fields
+            .Select(field => field.StartsWith("$.", StringComparison.Ordinal) ? field[2..] : field)
+            .Distinct(StringComparer.Ordinal)
+            .ToDictionary(field => field, _ => new[] { "This field is missing or invalid." });
+        var problem = new ProblemDetails
+        {
+            Status = StatusCodes.Status400BadRequest,
+            Title = "The request could not be read.",
+            Extensions = { ["code"] = "validation_failed", ["errors"] = errors }
+        };
+        return context.Response.WriteAsJsonAsync(problem, options: null, contentType: "application/problem+json");
+    });
+
     private sealed class Result(Func<HttpContext, Task> write) : ActionResult
     {
         public override Task ExecuteResultAsync(ActionContext context) => write(context.HttpContext);

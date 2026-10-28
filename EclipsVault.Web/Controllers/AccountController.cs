@@ -32,6 +32,7 @@ public sealed class AccountController : Controller
 
     private readonly IVaultAuthenticationService _auth;
     private readonly IPasskeyService _passkeys;
+    private readonly IPasskeyCeremonyStore _passkeyCeremonies;
     private readonly IIpBlacklist _blacklist;
     private readonly ISessionRegistry _sessions;
     private readonly IAuditSink _audit;
@@ -43,6 +44,7 @@ public sealed class AccountController : Controller
     public AccountController(
         IVaultAuthenticationService auth,
         IPasskeyService passkeys,
+        IPasskeyCeremonyStore passkeyCeremonies,
         IIpBlacklist blacklist,
         ISessionRegistry sessions,
         IAuditSink audit,
@@ -53,6 +55,7 @@ public sealed class AccountController : Controller
     {
         _auth = auth;
         _passkeys = passkeys;
+        _passkeyCeremonies = passkeyCeremonies;
         _blacklist = blacklist;
         _sessions = sessions;
         _audit = audit;
@@ -302,7 +305,9 @@ public sealed class AccountController : Controller
     {
         var options = await _passkeys.BeginAssertionAsync(model?.Username, ct);
         var ceremony = new PasskeySignInState(options.Challenge, model?.ReturnUrl, options.NamedAccount);
-        HttpContext.Session.SetString(PasskeyAssertionKey, JsonSerializer.Serialize(ceremony));
+        // A session value makes ASP.NET issue its opaque browser-session cookie.
+        HttpContext.Session.SetString(PasskeyAssertionKey, "pending");
+        await _passkeyCeremonies.ReplaceAsync(HttpContext.Session.Id, PasskeyCeremonyPurpose.SignIn, JsonSerializer.Serialize(ceremony), ct);
 
         return Content(options.OptionsJson, "application/json");
     }
@@ -312,8 +317,7 @@ public sealed class AccountController : Controller
     [HttpPost]
     public async Task<IActionResult> PasskeyLoginComplete([FromBody] PasskeyAssertionCompletion request, CancellationToken ct)
     {
-        var ceremony = PasskeySignInState.Read(HttpContext.Session.GetString(PasskeyAssertionKey));
-        HttpContext.Session.Remove(PasskeyAssertionKey);
+        var ceremony = PasskeySignInState.Read(await _passkeyCeremonies.TakeAsync(HttpContext.Session.Id, PasskeyCeremonyPurpose.SignIn, ct));
         if (ceremony is null || string.IsNullOrEmpty(ceremony.Challenge))
         {
             return Json(new { success = false, error = "Sign-in timed out. Try again." });

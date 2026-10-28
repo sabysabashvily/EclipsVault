@@ -666,3 +666,108 @@ revoke-before-audit ordering (pre-existing). Committed as one commit; not pushed
   on every server at startup (a short-lived admin connection; the vault's own connection stays
   non-admin) and refuses to start unless it is `noeviction`. Second commit on `area-3-profile` after
   `f12ba30`; logs under `logs/ticket-86/` (`*-r13.txt`).
+
+## Ticket #87 implementation (started 2026-10-28, Claude Opus 5.5)
+
+Root checkout, branch `area-3-profile` from `6dc23c7`; logs and reviews in `logs/ticket-87/`.
+Design, to resume from if interrupted:
+
+- New table `ProfileOperations` (entity `ProfileOperation`, both providers, migration
+  `AddProfileOperations`): account, session id, kind (ChangePassword, ResetAuthenticator,
+  ReplaceRecoveryCodes, AddPasskey, RemovePasskey), frozen target (candidate password hash/salt,
+  passkey nickname, target passkey id), the session stamp it was prepared under, created/expires
+  (10 minutes unverified), verified-at (grant lasts 5 minutes), proof method plus the proving passkey,
+  and one passkey challenge (purpose, value, 120-second deadline). Cascade-deleted with the account.
+- Preparation: one operation per session (preparing replaces the session's previous one and its
+  challenge), at most five unexpired per account, shared IP throttle (AuthThrottleFilter) before any
+  work, size/format/breach checks, then a bounded candidate-hash gate. No audit event.
+- Verification runs in IAuthenticationAttempt: refresh the operation under the account lock, fence
+  its stamp, check the method is offered, current password, then (password change) the unchanged
+  check, then TOTP/recovery through SecondFactorVerifier or the passkey assertion (challenge consumed
+  first by a conditional update). Failures count through AuthenticationFailures and record
+  AccountVerificationFailed; success resets failures, marks the grant and records AccountVerified.
+  Neither event is in sign-in history.
+- Final endpoints take only the operation id. The grant is consumed by deleting the row in the same
+  IAccountChangeCommitter transaction as the mutation, generation and event. Last-passkey removal
+  rechecks the surviving method under the account lock (new committer overload with a check run
+  after the lock), so it serializes with recovery redemption.
+- Web: Ui/ProfileDetailsController (snapshot, details, avatar, sign-out everywhere),
+  Ui/ProfileOperationsController (prepare/cancel/verify/passkey), Ui/ProfileCredentialsController
+  (password, reset, recovery codes, passkey registration/removal). Problem Details via
+  ProfileProblemResponse; UI API invalid model state becomes validation_failed with field names only.
+
+## Ticket #87 resumed in Codex (2026-10-28)
+
+Root checkout remains `area-3-profile` at `6dc23c7`; all work is uncommitted. No restricted folders
+read or changed, no worktree, push or PR. Logs/reports are under `logs/ticket-87/`.
+
+Completed Production HTTP coverage for route authorization/antiforgery/shapes/scoping, prepared
+operation replacement/expiry/binding, verification/lockout/foreign and malformed passkeys, recovery
+proof/replacement, session rotation/reset, and all five credential audit-failure paths. Added real
+SQL Server/PostgreSQL operation persistence/concurrent admission/challenge/final-consume tests,
+last-key removal serialized with final recovery redemption, and delayed final-consumption expiry
+and revocation regressions. The focused r7 run passed 89/89 before the final review fixes.
+
+Security r1 (fresh Sol 6.1 xhigh after attempted Opus high hit API quota) found delayed final grant
+revocation/expiry gaps and missing non-password change notices. Fixed all: locked final rechecks,
+atomic challenge consumption with audited changes, and fail-soft secret-free notices. Security r2
+is reviewing the whole final diff. Standards r1 found test branching/composite scenarios, a narrative
+comment, and two passkey naming/duplicate-parser smells; corrected each. Spec r1 is running.
+
+Latest `build-final.txt`: Release zero warnings/errors. Locked restore, generated-type checks,
+Angular prerequisite production build and six guardrails passed. Full integration, unit/format
+verification and local Docker E2E are running; their final logs are `integration-final.txt`,
+`unit-final.txt`, `format-verify-final.txt`, `e2e.txt`. Do not claim completion before reading results.
+Final report must list counts/reviews, commit SHA/subject length and three code excerpts, and be
+sent to coordinator e877e718-6881-4791-bde5-e2c932ae4461 if tool available. Commit with message file,
+explicit paths only; do not push or close issue.
+
+Final-source verification restarted as r12 after Spec review added the shared Legacy ceremony
+store and new HTTP 503/final-consume/disclosure tests. Security r2 inspected those late additions
+and has no unresolved findings. Standards r2's four remaining test-readability findings were fixed
+locally (literal request transport, explicit nine-code setup, isolated Redis/provider scenarios).
+Spec r2 remains pending. Focused r11 passed 20/20 before fixture-name/outbox-expectation corrections;
+r12 unit passed 698/698, Release build has zero warnings/errors, both provider model checks match.
+Full r12 integration is running. The earlier integration/E2E runs were superseded, cancelled with
+SIGINT, and retained only as diagnostic logs. The E2E runner removed its own containers/image.
+The final E2E/guard run is `e2e-final.txt` / `e2e-guards-final.txt` on the frozen production source.
+Commit message is prepared at `logs/ticket-87/commit-message.txt`, subject length 66. Still no commit.
+
+Spec r2 closed its four original findings and found one inaccurate audit phrase after a
+password-first check. Removed the claim of a valid passkey and added a Production HTTP regression
+with an unchecked assertion. Build/locked restore/unit/format r13 pass (zero warnings, 698 units).
+All findings now have fixes recorded in logs/ticket-87/review-resolutions.md; no owner decision remains.
+Full r12 integration was cancelled after SQL fixture startup/login timeouts under Docker-heavy
+parallel gates. Run the full r13 suite after E2E with `--settings logs/ticket-87/serial.runsettings`
+(collection serialization only; race tests retain their explicit concurrent requests). Current final
+E2E session is running `npm run e2e`, followed on success by `npm run e2e:verify-guards`; both logs use
+`*-final.txt`. All intended source paths are staged via the explicit manifest in logs/ticket-87/.
+Restage this checkpoint before commit. The final audit-wording correction is covered by r13 and the
+new HTTP test; it does not change the browser authentication/session behavior exercised in E2E.
+
+Browser gates completed: final E2E 74/74 passed (8.8 minutes); guard verification correctly detected
+all eight intentional failures and exited zero. Each runner removed its own disposable stack/image.
+Full integration r13 is now running with collection serialization, log `integration-r13.txt` (native
+exec session 40529). Final source is frozen; only report/checkpoint updates remain. npm audit exited
+zero at the required high threshold (one existing moderate fast-uri advisory remains visible).
+
+## Ticket #87 complete (2026-10-28, Codex)
+
+Final full integration r13 passed 533/533, zero skipped, in 4m16s with collection serialization;
+explicit race tests still run their concurrent requests. Final Release build: zero warnings/errors;
+locked restore, format verification, 698/698 units, SQL Server/PostgreSQL pending-model checks,
+generated-type check, Angular build/lint (six lint guard tests), 162 Vitest tests, 15 build-check
+tests, six agent guardrails and npm audit at high threshold passed. Local browser suite: 74/74;
+guard harness verified all eight deliberate failures. npm audit retains one existing moderate
+fast-uri finding, no high/critical. Logs and complete review resolutions: logs/ticket-87/.
+
+Security r2 has no unresolved findings. All Standards r1/r2 and Spec r1/r2 findings are corrected,
+including the final audit wording pinned by a real HTTP test. Reviews used fresh Sol 6.1 xhigh
+sessions after an attempted Opus 5.5 high security review failed quota; Claude authored the initial
+production implementation and Codex completed it. No remaining owner decision. The final audit
+wording correction was validated by the full final HTTP suite; it changes no browser/session flow.
+
+Commit follows `6dc23c7`, subject "Verify one frozen Profile change with existing account credentials"
+(66 characters), using the message file and explicit staged paths. No push, PR or issue closure.
+The root checkout remains on area-3-profile. Legacy unsafe handlers remain for the planned #91
+cutover; this ticket does not claim those routes require the new Profile verification workflow.

@@ -67,6 +67,7 @@ public class ProfileServiceTests
 
     private sealed class NoopNotifications : INotificationService
     {
+        public Task NotifyCredentialChangedAsync(Guid userId, ProfileOperationKind kind, CancellationToken ct) => Task.CompletedTask;
         public Task NotifyPasswordChangedAsync(Guid userId, CancellationToken ct) => Task.CompletedTask;
         public Task NotifyAccessRequestDecidedAsync(Guid requesterUserId, string secretName, bool approved, string reviewer, string? note, CancellationToken ct) => throw new NotSupportedException();
         public Task NotifyUserProvisionedAsync(string email, string displayName, string username, CancellationToken ct) => throw new NotSupportedException();
@@ -86,6 +87,9 @@ public class ProfileServiceTests
             Committed.Add((action, account.CredentialGeneration));
             return Task.FromResult(true);
         }
+
+        public Task<bool> CommitAsync(User account, AuditAction action, string details, Func<CancellationToken, Task> recheck, CancellationToken ct)
+            => throw new NotSupportedException();
     }
 
     private sealed class NoopSink : IAuditSink

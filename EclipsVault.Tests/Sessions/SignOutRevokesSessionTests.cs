@@ -65,7 +65,7 @@ public class SignOutRevokesSessionTests
 
         // Logout touches only the session registry and the authentication service; the other
         // collaborators belong to the sign-in flows and are never reached here.
-        var controller = new AccountController(null!, null!, null!, sessions, null!, null!, null!, null!,
+        var controller = new AccountController(null!, null!, null!, null!, sessions, null!, null!, null!, null!,
             NullLogger<AccountController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = http }

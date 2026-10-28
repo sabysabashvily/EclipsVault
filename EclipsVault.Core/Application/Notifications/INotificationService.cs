@@ -1,3 +1,5 @@
+using EclipsVault.Core.Domain.Enums;
+
 namespace EclipsVault.Core.Application.Notifications;
 
 /// <summary>
@@ -10,6 +12,8 @@ public interface INotificationService
         Guid requesterUserId, string secretName, bool approved, string reviewer, string? note, CancellationToken ct);
 
     Task NotifyPasswordChangedAsync(Guid userId, CancellationToken ct);
+
+    Task NotifyCredentialChangedAsync(Guid userId, ProfileOperationKind kind, CancellationToken ct);
 
     Task NotifyUserProvisionedAsync(string email, string displayName, string username, CancellationToken ct);
 

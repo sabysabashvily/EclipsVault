@@ -3,17 +3,13 @@ using EclipsVault.Core.Domain;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Infrastructure.Persistence.Configurations;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 
 namespace EclipsVault.Infrastructure.Persistence.Repositories;
 
 public sealed class UserRepository : IUserRepository
 {
     private const string UniqueEmailIndex = "IX_Users_NormalizedEmail";
-    private const int DuplicateKeyInUniqueIndex = 2601;
-    private const int DuplicateKeyInUniqueConstraint = 2627;
 
     private readonly EclipsVaultDbContext _context;
     private readonly TimeProvider _clock;
@@ -278,13 +274,5 @@ public sealed class UserRepository : IUserRepository
         }
     }
 
-    // SQL Server names the violated index only in its message; PostgreSQL reports it as the constraint.
-    internal static bool ViolatesUniqueEmail(DbUpdateException failure) => failure.InnerException switch
-    {
-        SqlException sql => sql.Number is DuplicateKeyInUniqueIndex or DuplicateKeyInUniqueConstraint
-                            && sql.Message.Contains(UniqueEmailIndex, StringComparison.Ordinal),
-        PostgresException postgres => postgres.SqlState == PostgresErrorCodes.UniqueViolation
-                                      && postgres.ConstraintName == UniqueEmailIndex,
-        _ => false,
-    };
+    internal static bool ViolatesUniqueEmail(DbUpdateException failure) => UniqueIndex.IsViolatedBy(failure, UniqueEmailIndex);
 }

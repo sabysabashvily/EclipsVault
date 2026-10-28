@@ -1,3 +1,5 @@
+using EclipsVault.Core.Domain.Entities;
+
 namespace EclipsVault.Core.Application.Abstractions;
 
 /// <summary>
@@ -19,6 +21,28 @@ public interface IPasskeyService
     /// </summary>
     Task<PasskeyRegistrationResult> CompleteRegistrationAsync(
         Guid userId, long credentialGeneration, string expectedChallenge, string responseJson, string? nickname, CancellationToken ct);
+
+    /// <summary>
+    /// Checks a registration response against <paramref name="expectedChallenge"/> and returns the
+    /// account's new credential, named <paramref name="nickname"/> and not yet saved.
+    /// </summary>
+    Task<PasskeyAttestation> VerifyRegistrationAsync(
+        Guid userId, string expectedChallenge, string responseJson, string nickname, CancellationToken ct);
+
+    /// <summary>
+    /// Issues assertion options for the signed-in account to verify itself, allowing only its own
+    /// passkeys other than <paramref name="excludedPasskeyId"/>.
+    /// </summary>
+    Task<PasskeyCeremonyOptions> BeginAccountVerificationAsync(Guid userId, Guid? excludedPasskeyId, CancellationToken ct);
+
+    /// <summary>
+    /// Checks that the response answers <paramref name="expectedChallenge"/>, with user verification,
+    /// from one of <paramref name="account"/>'s own passkeys other than <paramref name="excludedPasskeyId"/>,
+    /// and advances that passkey's counter. Call it inside the account's running
+    /// <see cref="IAuthenticationAttempt"/>, which saves the counter with the attempt's events.
+    /// </summary>
+    Task<PasskeyProof> VerifyAccountAssertionAsync(
+        User account, string expectedChallenge, string responseJson, Guid? excludedPasskeyId, CancellationToken ct);
 
     /// <summary>Issues assertion options for a passwordless sign-in. A username scopes the allowed credentials; null enables discoverable credentials.</summary>
     Task<PasskeyCeremonyOptions> BeginAssertionAsync(string? usernameOrEmail, CancellationToken ct);

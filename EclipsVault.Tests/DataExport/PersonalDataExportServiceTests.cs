@@ -30,6 +30,7 @@ public class PersonalDataExportServiceTests
             return Task.FromResult(userId == User ? dto : null);
         }
         public Task<ProfileUpdate> UpdateAsync(Guid userId, long credentialGeneration, string displayName, string email, CancellationToken ct) => throw new NotSupportedException();
+        public Task<string> UpdateDisplayNameAsync(Guid userId, string displayName, CancellationToken ct) => throw new NotSupportedException();
         public Task<long> ChangePasswordAsync(Guid userId, long credentialGeneration, string currentPassword, string newPassword, CancellationToken ct) => throw new NotSupportedException();
         public Task<byte[]?> GetAvatarPngAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
         public Task SetAvatarAsync(Guid userId, byte[] uploadedBytes, CancellationToken ct) => throw new NotSupportedException();
@@ -48,6 +49,9 @@ public class PersonalDataExportServiceTests
         }
         public Task<PasskeyCeremonyOptions> BeginRegistrationAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
         public Task<PasskeyRegistrationResult> CompleteRegistrationAsync(Guid userId, long credentialGeneration, string expectedChallenge, string responseJson, string? nickname, CancellationToken ct) => throw new NotSupportedException();
+        public Task<PasskeyAttestation> VerifyRegistrationAsync(Guid userId, string expectedChallenge, string responseJson, string nickname, CancellationToken ct) => throw new NotSupportedException();
+        public Task<PasskeyCeremonyOptions> BeginAccountVerificationAsync(Guid userId, Guid? excludedPasskeyId, CancellationToken ct) => throw new NotSupportedException();
+        public Task<PasskeyProof> VerifyAccountAssertionAsync(EclipsVault.Core.Domain.Entities.User account, string expectedChallenge, string responseJson, Guid? excludedPasskeyId, CancellationToken ct) => throw new NotSupportedException();
         public Task<PasskeyCeremonyOptions> BeginAssertionAsync(string? usernameOrEmail, CancellationToken ct) => throw new NotSupportedException();
         public Task<PasskeyAssertionResult> CompleteAssertionAsync(string expectedChallenge, PasskeyNamedAccount? namedAccount, string responseJson, CancellationToken ct) => throw new NotSupportedException();
         public Task<long?> RemoveAsync(Guid userId, long credentialGeneration, Guid passkeyId, CancellationToken ct) => throw new NotSupportedException();
@@ -57,6 +61,7 @@ public class PersonalDataExportServiceTests
     {
         public Task<int> CountRemainingAsync(Guid userId, CancellationToken ct) => Task.FromResult(userId == User ? remaining : 0);
         public Task<RecoveryCodeSet> GenerateAsync(Guid userId, long credentialGeneration, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyList<string>> StageNewSetAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
     }
 
     private sealed class FakeSessions(int count) : ISignedInDevices

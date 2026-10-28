@@ -71,6 +71,29 @@ public sealed class NotificationService : INotificationService
             return new Draft(user.Email, "Your EclipsVault password was changed", body, "PasswordChanged");
         }, ct);
 
+    public Task NotifyCredentialChangedAsync(Guid userId, ProfileOperationKind kind, CancellationToken ct)
+        => SafeSendAsync(async () =>
+        {
+            var user = await _users.FindByIdAsync(userId, ct);
+            if (user is null)
+            {
+                return null;
+            }
+
+            var change = kind switch
+            {
+                ProfileOperationKind.ResetAuthenticator => "authenticator was reset",
+                ProfileOperationKind.ReplaceRecoveryCodes => "recovery codes were replaced",
+                ProfileOperationKind.AddPasskey => "passkey was added",
+                ProfileOperationKind.RemovePasskey => "passkey was removed",
+                _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+            };
+            var subject = $"Your EclipsVault {change}";
+            var body = $"Hello {DisplayName(user)},\n\nYour EclipsVault {change}. " +
+                "If this wasn't you, contact an administrator immediately and reset your credentials.\n\n— EclipsVault";
+            return new Draft(user.Email, subject, body, kind.ToString());
+        }, ct);
+
     public Task NotifyUserProvisionedAsync(string email, string displayName, string username, CancellationToken ct)
         => SafeSendAsync(() =>
         {

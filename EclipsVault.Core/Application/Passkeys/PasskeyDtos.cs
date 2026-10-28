@@ -1,3 +1,5 @@
+using EclipsVault.Core.Domain.Entities;
+
 namespace EclipsVault.Core.Application.Passkeys;
 
 /// <summary>
@@ -37,3 +39,19 @@ public sealed record PasskeyAssertionResult(bool Success, string? Error, UserDto
 
 /// <summary>A registered passkey as shown in the self-service profile list.</summary>
 public sealed record PasskeySummary(Guid Id, string Nickname, DateTimeOffset CreatedAtUtc);
+
+/// <summary>How a passkey answered an account-verification challenge. <see cref="Rejection"/> is safe to audit.</summary>
+public sealed record PasskeyProof(PasskeyProofOutcome Outcome, string? Rejection = null)
+{
+    public static readonly PasskeyProof Verified = new(PasskeyProofOutcome.Verified);
+
+    public static readonly PasskeyProof Malformed = new(PasskeyProofOutcome.Malformed);
+
+    public static PasskeyProof Rejected(string reason) => new(PasskeyProofOutcome.Rejected, reason);
+}
+
+/// <summary>A verified registration response: the credential to store, not yet saved, or why it was refused.</summary>
+public sealed record PasskeyAttestation(PasskeyCredential? Credential, string? Error)
+{
+    public static PasskeyAttestation Failed(string error) => new(null, error);
+}

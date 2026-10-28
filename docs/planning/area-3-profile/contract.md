@@ -164,3 +164,19 @@ durable credential generation and session-store revocation versions; account-ver
 email verification/delivery; Angular Profile/details/avatar/password; authenticator/recovery/passkey
 flows; Legacy retirement and complete verification. Keep one branch; exact split/dependencies will
 be reviewed after the remaining policies are accepted.
+
+## Prepared-operation limits
+
+Unverified operations expire ten minutes after preparation; verified grants expire five minutes
+from verification. Each session holds one operation, and each account holds at most five live
+operations across sessions. Preparing a replacement cancels that session's earlier operation and
+passkey prompt. Admission is serialized by the database account lock on both providers.
+Preparation and proof submissions share the configured sign-in IP budget (by default eleven
+requests per 120 seconds). Candidate password hashing is limited to two simultaneous hashes per
+node, with at most two seconds waiting for a slot. Password size/breach and action-field checks
+precede hashing. Proof bodies are limited to 64 KiB; passkey prompts expire after 120 seconds.
+
+Legacy passkey sign-in/registration callers retain their pages but share a server ceremony store:
+absolute 120-second lifetime, one state per browser session and purpose, replacement cancellation,
+and atomic take. Single-node memory uses one lock around cache access; multi-node Redis uses GETDEL
+and keys under the current session-store incarnation. Reading a ceremony never extends its deadline.

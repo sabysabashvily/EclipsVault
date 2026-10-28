@@ -74,7 +74,7 @@ public class SsoSignInRedirectTests
         var revocation = new InMemorySessionRevocationService(NullLogger<InMemorySessionRevocationService>.Instance);
         var sessions = new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance, TimeProvider.System);
         var issuer = new SessionIssuer(new SessionAccountStore(new User { Id = accountId }), revocation, sessions, NullLogger<SessionIssuer>.Instance);
-        var controller = new AccountController(null!, null!, null!, sessions, null!,
+        var controller = new AccountController(null!, null!, null!, null!, sessions, null!,
             new BothFactorsAtTheIdp(accountId, await revocation.CaptureAsync(accountId)), null!, issuer,
             NullLogger<AccountController>.Instance)
         {

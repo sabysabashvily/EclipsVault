@@ -1,6 +1,6 @@
-using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
+using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Web.Authentication;
 using EclipsVault.Web.Authorization;
@@ -29,6 +29,7 @@ public sealed class ProfileController : VaultController
     private readonly IProfileService _profile;
     private readonly IAvatarProcessor _avatarProcessor;
     private readonly IPasskeyService _passkeys;
+    private readonly IPasskeyCeremonyStore _passkeyCeremonies;
     private readonly IMfaRecoveryService _recovery;
     private readonly IBreachedPasswordScreen _breachScreen;
     private readonly SessionIssuer _issuer;
@@ -38,6 +39,7 @@ public sealed class ProfileController : VaultController
         IProfileService profile,
         IAvatarProcessor avatarProcessor,
         IPasskeyService passkeys,
+        IPasskeyCeremonyStore passkeyCeremonies,
         IMfaRecoveryService recovery,
         IBreachedPasswordScreen breachScreen,
         SessionIssuer issuer,
@@ -46,6 +48,7 @@ public sealed class ProfileController : VaultController
         _profile = profile;
         _avatarProcessor = avatarProcessor;
         _passkeys = passkeys;
+        _passkeyCeremonies = passkeyCeremonies;
         _recovery = recovery;
         _breachScreen = breachScreen;
         _issuer = issuer;
@@ -91,7 +94,7 @@ public sealed class ProfileController : VaultController
 
         if (!update.EmailChanged)
         {
-            await ReissueReplacingClaimsAsync((VaultClaimTypes.Display, update.Profile.DisplayName));
+            await SessionClaims.RenewReplacingAsync(HttpContext, (VaultClaimTypes.Display, update.Profile.DisplayName));
             this.FlashSuccess("Your profile was updated.");
             return RedirectToAction(nameof(Index));
         }
@@ -121,7 +124,7 @@ public sealed class ProfileController : VaultController
             using var stream = new MemoryStream();
             await avatar.CopyToAsync(stream, ct);
             await _profile.SetAvatarAsync(CurrentUserId(), stream.ToArray(), ct);
-            await ReissueReplacingClaimsAsync((VaultClaimTypes.AvatarVersion, DateTimeOffset.UtcNow.Ticks.ToString()));
+            await SessionClaims.RenewReplacingAsync(HttpContext, (VaultClaimTypes.AvatarVersion, DateTimeOffset.UtcNow.Ticks.ToString()));
             this.FlashSuccess("Your profile picture was updated.");
         }
         catch (ProfileException ex)
@@ -136,7 +139,7 @@ public sealed class ProfileController : VaultController
     public async Task<IActionResult> RemoveAvatar(CancellationToken ct)
     {
         await _profile.RemoveAvatarAsync(CurrentUserId(), ct);
-        await ReissueReplacingClaimsAsync((VaultClaimTypes.AvatarVersion, DateTimeOffset.UtcNow.Ticks.ToString()));
+        await SessionClaims.RenewReplacingAsync(HttpContext, (VaultClaimTypes.AvatarVersion, DateTimeOffset.UtcNow.Ticks.ToString()));
         this.FlashSuccess("Your profile picture was removed.");
         return RedirectToAction(nameof(Index));
     }
@@ -254,16 +257,17 @@ public sealed class ProfileController : VaultController
         {
             await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         }
+        var message = SignOutEverywhereMessages.For(outcome);
         switch (outcome)
         {
             case SignOutEverywhereOutcome.SignedOut:
-                this.FlashInfo("You have been signed out of all sessions. Sign in again to continue.");
+                this.FlashInfo(message);
                 break;
             case SignOutEverywhereOutcome.RevokedUnrecorded:
-                this.FlashError("You have been signed out of all sessions, but the vault couldn't record it in the audit trail. Tell your administrator.");
+                this.FlashError(message);
                 return StatusCode(StatusCodes.Status503ServiceUnavailable, new { code = "revoked_unrecorded" });
             default:
-                this.FlashError("This browser was signed out, but the vault couldn't confirm that your other devices were. Sign in and try again.");
+                this.FlashError(message);
                 return StatusCode(StatusCodes.Status503ServiceUnavailable, new { code = "sign_out_incomplete" });
         }
 
@@ -276,7 +280,8 @@ public sealed class ProfileController : VaultController
     {
         var options = await _passkeys.BeginRegistrationAsync(CurrentUserId(), ct);
         var ceremony = new PasskeyRegistrationState(options.Challenge, CurrentUserId(), User.GetSessionId()!.Value, User.GetSessionStampOrNull()!);
-        HttpContext.Session.SetString(PasskeyRegistrationKey, JsonSerializer.Serialize(ceremony));
+        HttpContext.Session.SetString(PasskeyRegistrationKey, "pending");
+        await _passkeyCeremonies.ReplaceAsync(HttpContext.Session.Id, PasskeyCeremonyPurpose.Registration, JsonSerializer.Serialize(ceremony), ct);
         return Content(options.OptionsJson, "application/json");
     }
 
@@ -284,8 +289,7 @@ public sealed class ProfileController : VaultController
     [HttpPost]
     public async Task<IActionResult> PasskeyRegisterComplete([FromBody] PasskeyRegistrationCompletion request, CancellationToken ct)
     {
-        var ceremony = PasskeyRegistrationState.Read(HttpContext.Session.GetString(PasskeyRegistrationKey));
-        HttpContext.Session.Remove(PasskeyRegistrationKey);
+        var ceremony = PasskeyRegistrationState.Read(await _passkeyCeremonies.TakeAsync(HttpContext.Session.Id, PasskeyCeremonyPurpose.Registration, ct));
         // The ceremony is bound to the credential generation it began under, not the session's current one.
         if (ceremony is null || !ceremony.BelongsTo(User))
         {
@@ -338,7 +342,7 @@ public sealed class ProfileController : VaultController
 
         if (updates.Length > 0)
         {
-            await ReissueReplacingClaimsAsync(updates);
+            await SessionClaims.RenewReplacingAsync(HttpContext, updates);
         }
 
         this.FlashSuccess(changedMessage);
@@ -347,22 +351,4 @@ public sealed class ProfileController : VaultController
 
     private ObjectResult ChangedSignInRequired(string message)
         => StatusCode(StatusCodes.Status503ServiceUnavailable, new { code = "changed_sign_in_required", message });
-
-    /// <summary>
-    /// Re-issues the auth cookie with the given claim(s) replaced, preserving every claim not named
-    /// in the update. It renews the same session, so the session keeps the stamp it was issued under.
-    /// </summary>
-    private async Task ReissueReplacingClaimsAsync(params (string Type, string Value)[] updates)
-    {
-        var replaced = updates.Select(u => u.Type).ToHashSet();
-        var claims = User.Claims.Where(c => !replaced.Contains(c.Type)).ToList();
-        claims.AddRange(updates.Select(u => new Claim(u.Type, u.Value)));
-
-        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));
-        await HttpContext.SignInAsync(
-            CookieAuthenticationDefaults.AuthenticationScheme,
-            principal,
-            new AuthenticationProperties { IsPersistent = false });
-    }
-
 }

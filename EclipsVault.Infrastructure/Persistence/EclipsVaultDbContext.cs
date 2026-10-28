@@ -47,6 +47,9 @@ public sealed class EclipsVaultDbContext : DbContext
     /// <summary>Issued dynamic credentials, tracked so they can be destroyed when their lease ends.</summary>
     public DbSet<DynamicSecretLease> DynamicSecretLeases => Set<DynamicSecretLease>();
 
+    /// <summary>Profile security changes prepared for account verification, until they are committed or expire.</summary>
+    public DbSet<ProfileOperation> ProfileOperations => Set<ProfileOperation>();
+
     /// <summary>When each Licensed Capability was first exercised, which opens its evaluation period.</summary>
     public DbSet<FeatureEvaluation> FeatureEvaluations => Set<FeatureEvaluation>();
 

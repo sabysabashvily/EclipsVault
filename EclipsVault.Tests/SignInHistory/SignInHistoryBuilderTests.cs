@@ -43,6 +43,22 @@ public class SignInHistoryBuilderTests
     }
 
     [Fact]
+    public void Profile_account_verification_is_not_a_sign_in_and_never_makes_an_address_familiar()
+    {
+        var history = SignInHistoryBuilder.Build(
+        [
+            Row(0, AuditAction.AccountVerified, Attacker),
+            Row(1, AuditAction.AccountVerificationFailed, Attacker),
+            Row(2, AuditAction.LoginSucceeded, Attacker)
+        ]);
+
+        Assert.DoesNotContain(AuditAction.AccountVerified, SignInEventClassifier.RelevantActions);
+        Assert.DoesNotContain(AuditAction.AccountVerificationFailed, SignInEventClassifier.RelevantActions);
+        var signIn = Assert.Single(history.Events);
+        Assert.Equal(SignInLocationFlag.FirstSeen, signIn.LocationFlag);
+    }
+
+    [Fact]
     public void Non_signin_rows_are_excluded_from_the_timeline()
     {
         var history = SignInHistoryBuilder.Build(

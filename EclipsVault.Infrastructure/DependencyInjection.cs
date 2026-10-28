@@ -113,6 +113,7 @@ public static class DependencyInjection
         services.AddScoped<IEmailLogRepository, EmailLogRepository>();
         services.AddScoped<ITrustedNetworkRepository, TrustedNetworkRepository>();
         services.AddScoped<IDynamicSecretRepository, DynamicSecretRepository>();
+        services.AddScoped<IProfileOperationRepository, ProfileOperationRepository>();
 
         // Security primitives.
         services.AddSingleton<IPasswordHasher, Argon2idPasswordHasher>();
@@ -146,6 +147,7 @@ public static class DependencyInjection
             services.AddSingleton<ISessionRevocationService, RedisSessionRevocationService>();
             services.AddSingleton<ISessionRegistry, RedisSessionRegistry>();
             services.AddSingleton<IAuthThrottle, RedisAuthThrottle>();
+            services.AddSingleton<IPasskeyCeremonyStore, RedisPasskeyCeremonyStore>();
         }
         else
         {
@@ -154,6 +156,7 @@ public static class DependencyInjection
             services.AddSingleton<ISessionRevocationService, InMemorySessionRevocationService>();
             services.AddSingleton<ISessionRegistry, InMemorySessionRegistry>();
             services.AddSingleton<IAuthThrottle, InMemoryAuthThrottle>();
+            services.AddSingleton<IPasskeyCeremonyStore, MemoryPasskeyCeremonyStore>();
         }
         services.AddScoped<IIntrusionResponseService, IntrusionResponseService>();
 
@@ -208,6 +211,10 @@ public static class DependencyInjection
         services.AddScoped<IUserAdminService, UserAdminService>();
         services.AddScoped<IProfileService, ProfileService>();
         services.AddScoped<IMfaRecoveryService, MfaRecoveryService>();
+        services.AddSingleton<CandidatePasswordHashing>();
+        services.AddScoped<ProfileOperationPreparation>();
+        services.AddScoped<AccountVerification>();
+        services.AddScoped<VerifiedProfileChanges>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IActivityService, ActivityService>();
         services.AddScoped<ISignInHistoryService, SignInHistoryService>();

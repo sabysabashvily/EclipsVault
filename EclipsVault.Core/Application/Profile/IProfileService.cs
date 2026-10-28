@@ -35,6 +35,10 @@ public interface IProfileService
     /// <summary>Updates display name and email. Throws ProfileException on invalid input.</summary>
     Task<ProfileUpdate> UpdateAsync(Guid userId, long credentialGeneration, string displayName, string email, CancellationToken ct);
 
+    /// <summary>Changes the display name alone. Throws ProfileException on invalid input.</summary>
+    /// <returns>The display name as saved.</returns>
+    Task<string> UpdateDisplayNameAsync(Guid userId, string displayName, CancellationToken ct);
+
     /// <summary>Verifies the current password before setting a new one. Throws ProfileException on mismatch or a weak password.</summary>
     /// <returns>The credential generation the change committed.</returns>
     Task<long> ChangePasswordAsync(Guid userId, long credentialGeneration, string currentPassword, string newPassword, CancellationToken ct);

@@ -499,6 +499,74 @@ namespace EclipsVault.Infrastructure.Migrations
                     b.ToTable("PasskeyCredentials", (string)null);
                 });
 
+            modelBuilder.Entity("EclipsVault.Core.Domain.Entities.ProfileOperation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("CandidatePasswordHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("varbinary(64)");
+
+                    b.Property<byte[]>("CandidatePasswordSalt")
+                        .HasMaxLength(32)
+                        .HasColumnType("varbinary(32)");
+
+                    b.Property<string>("Challenge")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTimeOffset?>("ChallengeExpiresAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("ChallengePurpose")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("CredentialGeneration")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("ExpiresAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PasskeyNickname")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int?>("ProofMethod")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RevocationVersion")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("TargetPasskeyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("VerifiedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "SessionId")
+                        .IsUnique();
+
+                    b.ToTable("ProfileOperations", (string)null);
+                });
+
             modelBuilder.Entity("EclipsVault.Core.Domain.Entities.Secret", b =>
                 {
                     b.Property<Guid>("Id")
@@ -883,6 +951,17 @@ namespace EclipsVault.Infrastructure.Migrations
                 {
                     b.HasOne("EclipsVault.Core.Domain.Entities.User", "User")
                         .WithMany("Passkeys")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("EclipsVault.Core.Domain.Entities.ProfileOperation", b =>
+                {
+                    b.HasOne("EclipsVault.Core.Domain.Entities.User", "User")
+                        .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

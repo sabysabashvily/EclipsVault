@@ -21,6 +21,14 @@ public interface IAccountChangeCommitter
     /// <exception cref="AuditWriteFailedException">The change and its event could not be stored; neither was.</exception>
     Task<bool> CommitAsync(User account, AuditAction action, string details, CancellationToken ct);
 
+    /// <summary>
+    /// Like <see cref="CommitAsync(User, AuditAction, string, CancellationToken)"/>, but first runs
+    /// <paramref name="recheck"/> while the account's lock is held, so no other operation on the account,
+    /// such as spending one of its recovery codes, can change what it reads before the change is saved.
+    /// A refusal it throws saves nothing.
+    /// </summary>
+    Task<bool> CommitAsync(User account, AuditAction action, string details, Func<CancellationToken, Task> recheck, CancellationToken ct);
+
     /// <summary>Preserves explicit event attribution for an administrator changing another account.</summary>
     Task<bool> CommitAsync(User account, AuditEntry entry, CancellationToken ct);
 }

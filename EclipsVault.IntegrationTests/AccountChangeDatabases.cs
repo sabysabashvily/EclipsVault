@@ -126,6 +126,7 @@ public sealed class AccountRequest : IAsyncDisposable
         RecoveryCodes = new MfaRecoveryCodeRepository(context);
         var transaction = new AccountTransaction(context, locks);
         Changes = new AccountChangeCommitter(context, interceptor, transaction);
+        ProfileOperations = new ProfileOperationRepository(context, transaction);
         Attempt = new AuthenticationAttempt(context, transaction, interceptor, chain);
         SecondFactors = new SecondFactorVerifier(Users, RecoveryCodes, new TotpService(TimeProvider.System), hasher, TimeProvider.System);
         Recovery = new MfaRecoveryService(Users, RecoveryCodes, hasher, Changes, TimeProvider.System);
@@ -141,6 +142,8 @@ public sealed class AccountRequest : IAsyncDisposable
     public MfaRecoveryCodeRepository RecoveryCodes { get; }
 
     public AccountChangeCommitter Changes { get; }
+
+    public ProfileOperationRepository ProfileOperations { get; }
 
     public IAuthenticationAttempt Attempt { get; }
 

@@ -217,6 +217,16 @@ try
         options.Filters.Add(new UiApiAntiforgeryFilter());
     });
 
+    // [ApiController] answers an unreadable body with its own problem, whose messages can quote the
+    // value that failed to parse. On the UI API that value can be a password or a code.
+    builder.Services.Configure<ApiBehaviorOptions>(options =>
+    {
+        var standard = options.InvalidModelStateResponseFactory;
+        options.InvalidModelStateResponseFactory = context => UiApiProblem.IsUiApi(context.HttpContext.Request)
+            ? UiApiProblem.ValidationFailed(context.ModelState.Where(entry => entry.Value?.Errors.Count > 0).Select(entry => entry.Key))
+            : standard(context);
+    });
+
     builder.Services.AddAntiforgery(options =>
     {
         options.Cookie.Name = "EclipsVault.Csrf";
