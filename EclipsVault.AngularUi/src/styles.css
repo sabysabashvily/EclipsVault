@@ -1628,3 +1628,186 @@ app-command-palette {
   -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
 }
+
+/* ---- Password strength ------------------------------------------- */
+/* Advisory, not a gate: the two rules the vault actually enforces (length, breach corpus) are
+   reported as text by the field's own validation and the live breach check. This says how
+   expensive the password would be to guess, which no pass/fail can express.
+
+   The top margin keeps the bar clear of the input. Butted right up under the field it reads as
+   a green bottom border on the input — a statement about the field — rather than a separate
+   verdict about the password. */
+.strength {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.55rem;
+}
+/* `display` here outranks the user agent's [hidden] rule, so the meter needs to opt back out
+   explicitly — without this it shows an empty track before a single character is typed. */
+.strength[hidden] {
+  display: none;
+}
+
+.strength-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-inset);
+  overflow: hidden;
+}
+
+.strength-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: var(--radius-pill);
+  background: var(--text-faint);
+  transition:
+    width var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.strength-label {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.strength[data-score='0'] .strength-fill,
+.strength[data-score='1'] .strength-fill {
+  background: var(--danger);
+}
+.strength[data-score='2'] .strength-fill {
+  background: var(--warn);
+}
+.strength[data-score='3'] .strength-fill {
+  background: var(--accent);
+}
+.strength[data-score='4'] .strength-fill {
+  background: var(--ok);
+}
+
+.strength[data-score='0'] .strength-label,
+.strength[data-score='1'] .strength-label {
+  color: var(--danger);
+}
+.strength[data-score='4'] .strength-label {
+  color: var(--ok);
+}
+
+.avatar-editor {
+  display: flex;
+  align-items: center;
+  gap: 1.3rem;
+  flex-wrap: wrap;
+}
+.avatar-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.avatar-editor-actions .hint {
+  flex-basis: 100%;
+  margin: 0.2rem 0 0;
+}
+/* A <label> styled as a button to trigger the hidden file input. */
+label.button {
+  cursor: pointer;
+}
+
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.settings-row:last-child {
+  border-bottom: none;
+}
+.settings-row p {
+  margin: 0.15rem 0 0;
+  font-size: 0.83rem;
+}
+.settings-row > div:first-child {
+  min-width: 0;
+}
+
+.input-affix {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.input-affix > input {
+  padding-right: 2.6rem;
+}
+
+.affix-button {
+  position: absolute;
+  right: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+.affix-button:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.affix-button svg {
+  width: 17px;
+  height: 17px;
+}
+
+.panel.narrow-left {
+  max-width: 660px;
+}
+fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.strength[data-score='0'] .strength-fill {
+  width: 20%;
+}
+.strength[data-score='1'] .strength-fill {
+  width: 40%;
+}
+.strength[data-score='2'] .strength-fill {
+  width: 60%;
+}
+.strength[data-score='3'] .strength-fill {
+  width: 80%;
+}
+.strength[data-score='4'] .strength-fill {
+  width: 100%;
+}
+.verification-dialog {
+  width: min(100% - 2rem, 480px);
+}
+
+.field-note {
+  min-height: 1.15rem;
+  margin: -0.4rem 0 0.6rem;
+  font-size: 0.83rem;
+  color: var(--text-muted);
+}
+.field-note.status-error {
+  color: var(--danger);
+}
+.field-note.status-ok {
+  color: var(--ok);
+}

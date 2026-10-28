@@ -124,6 +124,7 @@ export const uiApiErrors: HttpInterceptorFn = (request, next) => {
       return withReadableBody(error).pipe(
         switchMap((response) => {
           if (response.status === 401) {
+            document.dispatchEvent(new Event('vault-session-ended'));
             if (toUiApiError(response).code === 'stale_session') return staleSession.end();
             document.location.assign(signInUrl(document.location));
             // The page is being left: nothing more for it to show.

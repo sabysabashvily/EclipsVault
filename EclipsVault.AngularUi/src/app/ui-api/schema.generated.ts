@@ -181,6 +181,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ui/passwords/check-breached": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PasswordCheckRequest"];
+                    "text/json": components["schemas"]["PasswordCheckRequest"];
+                    "application/*+json": components["schemas"]["PasswordCheckRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PasswordCheckResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ui/profile/password": {
         parameters: {
             query?: never;
@@ -1876,6 +1917,12 @@ export interface components {
             operationId: string;
             credential: components["schemas"]["JsonElement"];
         };
+        PasswordCheckRequest: {
+            password: null | string;
+        };
+        PasswordCheckResponse: {
+            compromised: boolean;
+        };
         PendingEmailResponse: {
             /** Format: uuid */
             operationId: string;
@@ -1945,6 +1992,7 @@ export interface components {
             clearance: string;
             project: string;
             avatarUrl: string;
+            hasCustomAvatar: boolean;
             authenticatorEnrolled: boolean;
             /** Format: int32 */
             recoveryCodesRemaining: number | string;

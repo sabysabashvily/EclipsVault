@@ -1,0 +1,77 @@
+<dialog
+  role="dialog"
+  #dialog
+  class="modal verification-dialog"
+  aria-labelledby="verification-title"
+  aria-describedby="verification-intent"
+  (cancel)="cancel($event)"
+  (keydown)="trapFocus($event)"
+>
+  <h2 id="verification-title">Verify your account</h2>
+  <p id="verification-intent">{{ intent() }}</p>
+  <app-status-line [message]="message()" [error]="true" />
+  <form (submit)="submit($event)">
+    <div class="field">
+      <label for="verification-method">Verify with</label>
+      <select
+        id="verification-method"
+        [value]="method()"
+        (change)="selectMethod($any($event.target).value)"
+        [disabled]="busy() || expired()"
+      >
+        @for (choice of methods(); track choice) {
+          <option [value]="choice">
+            {{
+              choice === 'Passkey'
+                ? 'Passkey'
+                : choice === 'PasswordAndRecoveryCode'
+                  ? 'Password and recovery code'
+                  : 'Password and authenticator code'
+            }}
+          </option>
+        }
+      </select>
+    </div>
+    @if (method() !== 'Passkey' || needsPassword()) {
+      <div class="field">
+        <label for="verification-password">Current password</label>
+        <input
+          id="verification-password"
+          type="password"
+          autocomplete="current-password"
+          maxlength="1024"
+          required
+          [value]="password()"
+          (input)="password.set($any($event.target).value)"
+          [disabled]="busy() || expired()"
+        />
+      </div>
+    }
+    @if (method() !== 'Passkey') {
+      <div class="field">
+        <label for="verification-code">{{
+          method() === 'PasswordAndRecoveryCode' ? 'Recovery code' : 'Authenticator code'
+        }}</label>
+        <input
+          id="verification-code"
+          autocomplete="one-time-code"
+          maxlength="64"
+          required
+          [value]="code()"
+          (input)="code.set($any($event.target).value)"
+          [disabled]="busy() || expired()"
+        />
+      </div>
+    }
+    <div class="button-row">
+      <button #cancelButton class="button" type="button" (click)="cancel()">Cancel</button>
+      <button
+        class="button primary"
+        type="submit"
+        [disabled]="busy() || expired() || methods().length === 0"
+      >
+        {{ busy() ? 'Verifying…' : 'Verify account' }}
+      </button>
+    </div>
+  </form>
+</dialog>

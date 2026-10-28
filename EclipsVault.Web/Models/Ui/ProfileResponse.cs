@@ -16,6 +16,7 @@ public sealed record ProfileResponse(
     string Clearance,
     string Project,
     string AvatarUrl,
+    bool HasCustomAvatar,
     bool AuthenticatorEnrolled,
     int RecoveryCodesRemaining,
     IReadOnlyList<ProfilePasskeyResponse> Passkeys,

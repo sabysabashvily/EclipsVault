@@ -831,3 +831,27 @@ changes email without mailbox proof until the #91 cutover retires it. The e2e ma
 sends `RequestVerificationToken`, the header Program configures. Final local browser suite: 75/75
 including the real-SMTP mailbox spec. Guard verification confirmed all eight deliberate failures.
 Full evidence, the ledger and the final report are in logs/ticket-88/. No push, PR or #88 closure.
+
+## Ticket #89 staged implementation (2026-10-28, Codex)
+
+Resumed Claude's read-only start on exactly `d5b1565`, root checkout `area-3-profile`; only the
+excluded untracked research directory existed. Neither excluded directory was accessed. No new
+branch, worktree, push, PR or issue closure. Evidence and bounded check runner: `logs/ticket-89/`.
+
+Staged Profile/details, email and Change password components use the existing typed APIs, shared
+StatusLine/ConfirmationDialog and a reusable native account-verification dialog. Profile ownership
+and Angular routes remain Legacy until #91. The security cards hand back to Legacy Profile until
+#90 supplies their complete controls. The cutover acceptance inventory is `browser-acceptance.md`.
+
+The snapshot adds only HasCustomAvatar; the shared breach preview now has an explicit session-only,
+no-store UI API endpoint used by both Legacy password fields. TypeScript was regenerated. No model
+or mutation persistence changes. Existing AuditFailureFixture coverage must pass in the full suite.
+A fixed local-cookie warning renders at Legacy sign-in after anonymous fallback, without accepting
+arbitrary warning text. Page-scoped requests never replay, clear sensitive state on departure/session
+loss, and handle known commits separately from unknown replies.
+
+Angular lint (six lint guards), formatting, 200 Vitest tests, 15 build checks, generated-type check,
+production build and high-threshold audit passed before reviews; the existing moderate fast-uri
+advisory remains visible. Initial Release build had zero warnings/errors. Final bounded backend
+restore/build/format/unit/full integration and production E2E/guard runs are in progress. Independent
+complete-diff Standards/Spec/security reviews remain pending. Do not report completion yet.

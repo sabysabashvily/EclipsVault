@@ -26,6 +26,7 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
     [InlineData("POST", "/api/ui/profile/avatar")]
     [InlineData("DELETE", "/api/ui/profile/avatar")]
     [InlineData("POST", "/api/ui/profile/sign-out-everywhere")]
+    [InlineData("POST", "/api/ui/passwords/check-breached")]
     [InlineData("POST", "/api/ui/profile/operations")]
     [InlineData("DELETE", "/api/ui/profile/operations/" + AnyId)]
     [InlineData("POST", "/api/ui/profile/operations/" + AnyId + "/verify")]
@@ -53,6 +54,7 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
     }
 
     [Theory]
+    [InlineData("POST", "/api/ui/passwords/check-breached", "100.64.89.1")]
     [InlineData("PATCH", "/api/ui/profile/details", "100.64.87.1")]
     [InlineData("DELETE", "/api/ui/profile/avatar", "100.64.87.3")]
     [InlineData("POST", "/api/ui/profile/sign-out-everywhere", "100.64.87.4")]
@@ -110,7 +112,7 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
         Assert.True(response.Headers.CacheControl?.NoStore);
         var profile = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(
-            ["authenticatorEnrolled", "avatarUrl", "changes", "clearance", "displayName", "email", "passkeys", "pendingEmail", "project",
+            ["authenticatorEnrolled", "avatarUrl", "changes", "clearance", "displayName", "email", "hasCustomAvatar", "passkeys", "pendingEmail", "project",
                 "recoveryCodesRemaining", "username", "verificationMethods"],
             ProfileApi.NamesOf(profile));
         Assert.Equal("it-ui87-profile-snapshot", profile.GetProperty("username").GetString());
@@ -119,6 +121,7 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
         Assert.Equal("Standard", profile.GetProperty("clearance").GetString());
         Assert.Equal("GLOBAL", profile.GetProperty("project").GetString());
         Assert.StartsWith("/Profile/Avatar?v=", profile.GetProperty("avatarUrl").GetString());
+        Assert.False(profile.GetProperty("hasCustomAvatar").GetBoolean());
         Assert.True(profile.GetProperty("authenticatorEnrolled").GetBoolean());
         Assert.Equal(0, profile.GetProperty("recoveryCodesRemaining").GetInt32());
         Assert.Equal(["PasswordAndAuthenticatorCode", "Passkey"],
@@ -182,6 +185,7 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.NoContent, uploaded.StatusCode);
         Assert.True(uploaded.Headers.CacheControl?.NoStore);
         Assert.True(await LegacyProfile.HasAvatarAsync(vault, owner.Id));
+        Assert.True((await owner.Browser.Client.GetFromJsonAsync<JsonElement>("/api/ui/profile")).GetProperty("hasCustomAvatar").GetBoolean());
         Assert.Equal([AuditAction.AvatarUpdated], await LegacyProfile.EventsAfterAsync(vault, before, owner.Id));
     }
 

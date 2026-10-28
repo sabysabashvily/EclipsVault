@@ -22,7 +22,10 @@ describe('uiApiErrors', () => {
         provideHttpClientTesting(),
         {
           provide: DOCUMENT,
-          useValue: { location: { pathname: '/Access', search: '?tab=grid', assign } },
+          useValue: {
+            dispatchEvent: vi.fn(),
+            location: { pathname: '/Access', search: '?tab=grid', assign },
+          },
         },
       ],
     });

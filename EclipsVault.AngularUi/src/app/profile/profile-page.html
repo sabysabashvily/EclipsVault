@@ -1,0 +1,210 @@
+<div class="page-header">
+  <div>
+    <h1>Profile</h1>
+    <p class="page-sub">Manage how you appear and how you sign in. Every change is audited.</p>
+  </div>
+</div>
+<app-status-line [message]="session.status().message" [error]="session.status().error" />
+@if (session.signInRequired()) {
+  <a class="button" href="/Account/Login">Sign in again</a>
+}
+@if (session.localSignOutAvailable()) {
+  <button
+    class="button"
+    type="button"
+    (click)="session.clearLocalCookie()"
+    [disabled]="session.busy()"
+  >
+    Clear this browser's cookie and sign in
+  </button>
+}
+@if (profile.isLoading() && !profile.hasValue()) {
+  <p role="status">Loading your profile…</p>
+} @else if (profile.error()) {
+  <p role="alert">Could not load your profile. Try again.</p>
+  <button class="button" type="button" (click)="profile.reload()">Try again</button>
+} @else if (profile.hasValue()) {
+  @let account = profile.value();
+  <div class="two-col">
+    <div class="stack">
+      <section class="panel">
+        <div class="panel-header"><h2>Profile picture</h2></div>
+        <div class="avatar-editor">
+          <img
+            class="avatar-lg"
+            [src]="account.avatarUrl"
+            alt="Your avatar"
+            width="96"
+            height="96"
+          />
+          <div class="avatar-editor-actions">
+            <input
+              #avatarFile
+              type="file"
+              id="avatar-file"
+              accept="image/png,image/jpeg"
+              class="visually-hidden"
+              (change)="upload(avatarFile)"
+              [disabled]="session.busy() || session.blocked() || confirming()"
+            />
+            <button
+              type="button"
+              class="button"
+              (click)="avatarFile.click()"
+              [disabled]="session.busy() || session.blocked() || confirming()"
+            >
+              Upload image
+            </button>
+            @if (account.hasCustomAvatar) {
+              <button
+                type="button"
+                class="button danger"
+                (click)="ask('avatar')"
+                [disabled]="session.busy() || session.blocked() || confirming()"
+              >
+                Remove
+              </button>
+            }
+            <p class="hint muted">
+              JPEG or PNG, up to 4 MB. Images are cropped to a square, resized, and stripped of
+              metadata.
+            </p>
+          </div>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-header"><h2>Details</h2></div>
+        <form (submit)="saveName($event, displayName.value)">
+          <div class="field">
+            <label for="profile-username">Username</label
+            ><input id="profile-username" [value]="account.username" disabled /><span
+              class="hint muted"
+              >Your login identity and audit anchor — fixed for accountability.</span
+            >
+          </div>
+          <div class="field">
+            <label for="display-name">Display name</label
+            ><input
+              #displayName
+              id="display-name"
+              autocomplete="name"
+              maxlength="64"
+              required
+              [value]="account.displayName"
+              [disabled]="session.busy() || session.blocked()"
+            />
+          </div>
+          <button
+            type="submit"
+            class="button primary"
+            [disabled]="session.busy() || session.blocked()"
+          >
+            Save changes
+          </button>
+        </form>
+        <app-email-change [profile]="account" (changed)="profile.reload()" />
+      </section>
+    </div>
+    <div class="stack">
+      <section class="panel">
+        <div class="panel-header"><h2>Access</h2></div>
+        <dl class="detail-grid">
+          <dt>Clearance</dt>
+          <dd>
+            <span
+              class="badge"
+              [class.sens-1]="account.clearance === 'Standard'"
+              [class.sens-2]="account.clearance === 'Elevated'"
+              [class.sens-3]="account.clearance === 'Secret'"
+              [class.sens-4]="account.clearance === 'Top Secret'"
+              >{{ account.clearance }}</span
+            >
+          </dd>
+          <dt>Project</dt>
+          <dd>{{ account.project }}</dd>
+        </dl>
+        <p class="hint muted">
+          Clearance and project are set by an administrator. Ask one if these need to change.
+        </p>
+      </section>
+      <section class="panel">
+        <div class="panel-header"><h2>Security</h2></div>
+        <div class="settings-row">
+          <div>
+            <strong>Password</strong>
+            <p class="muted">Argon2id-hashed. Change it if you suspect it has been compromised.</p>
+            @if (!account.changes.changePassword.available) {
+              <p class="hint muted">
+                {{ refusalReason(account.changes.changePassword.unavailableReason) }}
+              </p>
+            }
+          </div>
+          <a class="button" href="/Profile/ChangePassword">Change password</a>
+        </div>
+        <div class="settings-row">
+          <div>
+            <strong>Authenticator (2FA)</strong>
+            <p class="muted">
+              {{ account.authenticatorEnrolled ? 'Enrolled.' : 'Not yet enrolled.' }} Reset if you
+              switched phones or lost access.
+            </p>
+          </div>
+          <a class="button" href="/Profile">Reset authenticator</a>
+        </div>
+        <div class="settings-row">
+          <div>
+            <strong>Recovery codes</strong>
+            <p class="muted">
+              Single-use codes to sign in if you lose your authenticator.
+              @if (+account.recoveryCodesRemaining > 0) {
+                <strong>{{ account.recoveryCodesRemaining }}</strong> unused code{{
+                  +account.recoveryCodesRemaining === 1 ? '' : 's'
+                }}
+                left.
+              } @else {
+                None generated yet.
+              }
+            </p>
+          </div>
+          <a class="button" href="/Profile">{{
+            +account.recoveryCodesRemaining > 0 ? 'Regenerate' : 'Generate codes'
+          }}</a>
+        </div>
+        <div class="settings-row">
+          <div>
+            <strong>Sessions</strong>
+            <p class="muted">Sign out of every device, including this one.</p>
+          </div>
+          <button
+            type="button"
+            class="button danger"
+            (click)="ask('sessions')"
+            [disabled]="session.busy() || session.blocked() || confirming()"
+          >
+            Sign out everywhere
+          </button>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-header"><h2>Passkeys</h2></div>
+        <p class="hint muted">
+          Sign in without a password using Touch ID, Windows Hello, or a security key. A passkey
+          verifies you on your device, so it stands in for both your password and your
+          authenticator.
+        </p>
+        @for (key of account.passkeys; track key.id) {
+          <div class="settings-row">
+            <div>
+              <strong>{{ key.nickname }}</strong>
+              <p class="muted">Added {{ key.createdAtUtc | date: 'd MMM yyyy' : 'UTC' }} UTC</p>
+            </div>
+          </div>
+        } @empty {
+          <p class="hint muted">No passkeys registered yet.</p>
+        }
+        <a class="button" href="/Profile">Manage passkeys</a>
+      </section>
+    </div>
+  </div>
+}
+<app-confirmation-dialog (decision)="decide($event)" />

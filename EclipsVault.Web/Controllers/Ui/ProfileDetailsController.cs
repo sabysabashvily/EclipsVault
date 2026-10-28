@@ -56,6 +56,7 @@ public sealed class ProfileDetailsController(
             profile.Clearance.ToDisplayName(),
             profile.ProjectKey,
             Url.Action("Avatar", "Profile", new { v = User.GetAvatarVersion() })!,
+            profile.HasCustomAvatar,
             profile.TotpEnabled,
             await recovery.CountRemainingAsync(profile.Id, ct),
             keys.Select(key => new ProfilePasskeyResponse(
