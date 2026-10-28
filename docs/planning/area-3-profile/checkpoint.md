@@ -889,3 +889,20 @@ file disabling collection parallelism (tests' own explicit concurrency remains a
 and guard verification separately after that suite; do not count startup-failed runs as passing.
 No product code or fixture was weakened for resource limits. Latest restore/build/format/unit and
 agent guardrails passed again; Release build has zero warnings/errors and unit tests remain 700/700.
+
+## Ticket #89 runtime gates completed; final guard run
+
+The final runtime source is `e725f9d`, following `f09e1ef` and `213c3a4`. Commit subjects are 62,
+63 and 68 characters. All changes stay local on area-3-profile. Latest checks: locked restore,
+Release build (zero warnings/errors), dotnet format verification, 700/700 unit tests, 605/605 full
+integration tests with collection parallelism disabled locally, 6/6 agent guardrails, Angular lint
+with six lint guards, formatting, 226/226 Vitest tests, 15/15 build checks, generated-type check,
+production build and npm audit at high (the existing moderate fast-uri advisory remains visible).
+
+Running the Docker-heavy suites separately avoided the earlier startup failure. The final full
+production E2E passed 75/75 in 9.4 minutes, including real SMTP activation and copied-session refusal.
+These are regression checks of existing production routes and the mailbox API flow, not a claim
+that staged Angular Profile pages have browser parity before #91 activates them. Final guard
+verification passed: all eight intentional failures were confirmed. Both final browser runners
+removed their own containers, networks and temporary images. All required gates are complete.
+The final report and review ledgers are under logs/ticket-89/. No push, PR or issue closure.
