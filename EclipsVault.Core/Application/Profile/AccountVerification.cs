@@ -171,9 +171,8 @@ public sealed class AccountVerification(
             throw new ProfileOperationRefusedException(ProfileRefusal.OperationNotFound);
         }
 
-        // The mailbox deadline outlives its first account grant, so the same target can be verified again.
-        if (operation.VerifiedAtUtc is { } verifiedAt
-            && (operation.Kind != ProfileOperationKind.ChangeEmail || clock.GetUtcNow() < verifiedAt + ProfileOperationLimits.GrantLifetime))
+        // A deliberate mailbox resend asks for fresh proof even while its previous grant is fresh.
+        if (operation.VerifiedAtUtc is not null && operation.Kind != ProfileOperationKind.ChangeEmail)
         {
             throw new ProfileOperationRefusedException(ProfileRefusal.OperationChanged, message: "This change was already verified.");
         }

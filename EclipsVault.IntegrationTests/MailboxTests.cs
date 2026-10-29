@@ -252,6 +252,8 @@ public sealed class MailboxTests(MailboxFixture fixture)
         await RequestAsync(owner, operation);
         var oldCode = await Vault.Mailbox!.CodeForAsync("mailbox.resend@example.test");
         await AgeSendsAsync(owner.Id);
+        Assert.True((await ProfileApi.OperationAsync(Vault, operation)).VerifiedAtUtc > DateTimeOffset.UtcNow.AddMinutes(-5));
+        await ProfileApi.VerifyWithAuthenticatorAsync(owner, operation);
 
         var resent = await ProfileApi.SendAsync(owner.Browser, HttpMethod.Post,
             "/api/ui/profile/email/resend", new { operationId = operation });

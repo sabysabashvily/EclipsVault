@@ -52,5 +52,8 @@ public enum ProfileRefusal
     EmailCodeInvalid,
 
     /// <summary>The mailbox code expired or was retired after too many mistakes; start the change again.</summary>
-    EmailCodeExpired
+    EmailCodeExpired,
+
+    /// <summary>The code was sent, but its delivery could not be committed after the session-store recheck.</summary>
+    EmailRequestIncomplete
 }

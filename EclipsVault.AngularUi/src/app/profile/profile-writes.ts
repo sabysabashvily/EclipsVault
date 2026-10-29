@@ -102,6 +102,7 @@ export class ProfileWrites {
       (error.status >= 500 &&
         error.code !== 'audit_unavailable' &&
         error.code !== 'session_store_unavailable' &&
+        error.code !== 'email_request_incomplete' &&
         error.code !== 'changed_sign_in_required');
     if (unknownOutcome || error.code === 'changed_sign_in_required') {
       this.blocked.set(true);

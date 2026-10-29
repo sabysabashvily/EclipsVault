@@ -30,7 +30,8 @@ import {
   twoStepIcon,
   verifySecurityCheckup,
 } from './security';
-import { freshTotp } from './totp';
+import { currentTotpStep, freshTotp } from './totp';
+import { ProfilePage } from './profile';
 import { SignedInDevices } from './sessions';
 
 // The tests share one vault: the first enrolls the administrator's authenticator, the next signs in with it.
@@ -56,7 +57,7 @@ async function signIn(page: Page): Promise<void> {
   await page
     .getByLabel('Authenticator code')
     .fill(await freshTotp(authenticatorSecret, lastSignInStep));
-  lastSignInStep = Math.floor(Date.now() / 30_000);
+  lastSignInStep = currentTotpStep();
   await page.getByRole('button', { name: 'Verify and sign in' }).click();
   await expect(page).toHaveURL(/\/Secrets$/);
 }
@@ -96,7 +97,7 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
 
   const secret = await page.locator('.secret-code').innerText();
   await page.getByLabel('Confirmation code').fill(await freshTotp(secret));
-  const enrollmentStep = Math.floor(Date.now() / 30_000);
+  const enrollmentStep = currentTotpStep();
   await page.getByRole('button', { name: 'Confirm enrollment' }).click();
   await expect(page).toHaveURL(/\/Secrets$/);
 
@@ -142,7 +143,7 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
   await expect(page).toHaveURL(/\/Account\/Totp$/);
   await page.getByLabel('Authenticator code').fill(await freshTotp(secret, enrollmentStep));
   authenticatorSecret = secret;
-  lastSignInStep = Math.floor(Date.now() / 30_000);
+  lastSignInStep = currentTotpStep();
   await page.getByRole('button', { name: 'Verify and sign in' }).click();
   await expect(page).toHaveURL(/\/Secrets$/);
 
@@ -1881,7 +1882,7 @@ test('a session revoked from another browser signs in again and returns to My ac
     await page
       .getByLabel('Authenticator code')
       .fill(await freshTotp(authenticatorSecret, lastSignInStep));
-    lastSignInStep = Math.floor(Date.now() / 30_000);
+    lastSignInStep = currentTotpStep();
     await page.getByRole('button', { name: 'Verify and sign in' }).click();
     await expect(page).toHaveURL(/\/Access$/);
     await expect(page.locator('.access-matrix tbody tr')).toHaveCount(4);
@@ -1977,13 +1978,8 @@ test('a real passkey follows the server redirect for local and external return t
     await freshThrottleWindow(page);
     await page.getByLabel('New passkey name').fill('issue53-browser');
     await page.getByRole('button', { name: 'Add a passkey', exact: true }).click();
-    const verification = page.getByRole('dialog', { name: 'Verify your account' });
-    await verification.getByLabel('Current password').fill(adminPassword());
-    await verification
-      .getByLabel('Authenticator code')
-      .fill(await freshTotp(authenticatorSecret, lastSignInStep));
-    lastSignInStep = Math.floor(Date.now() / 30_000);
-    await verification.getByRole('button', { name: 'Verify account', exact: true }).click();
+    const profile = new ProfilePage(page);
+    lastSignInStep = await profile.verify(adminPassword(), authenticatorSecret, lastSignInStep);
     await expect(page.getByText('Passkey added. You can now sign in with it.')).toBeVisible();
     // Adding a passkey ends the account's earlier sessions and gives this browser a fresh one. The
     // dependent suites reuse it: Signed-in devices provisions its own account with it, and Your data

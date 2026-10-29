@@ -70,18 +70,26 @@ public sealed class ProfileEmailChanges(
             throw Refused(ProfileRefusal.MailUnavailable);
         }
 
-        await attempt.RunAsync(account, async token =>
+        try
         {
-            await RequireBoundAsync(session, account, operation, token);
-            if (operation.MailboxCodeHash is null || !CryptographicOperations.FixedTimeEquals(hash, operation.MailboxCodeHash))
+            await attempt.RunAsync(account, async token =>
             {
-                throw Refused(ProfileRefusal.OperationChanged);
-            }
+                await RequireBoundAsync(session, account, operation, token);
+                if (operation.MailboxCodeHash is null || !CryptographicOperations.FixedTimeEquals(hash, operation.MailboxCodeHash))
+                {
+                    throw Refused(ProfileRefusal.OperationChanged);
+                }
 
-            operation.MailboxDelivered = true;
-            operation.VerifiedAtUtc ??= grant;
-            return true;
-        }, ct);
+                operation.MailboxDelivered = true;
+                operation.VerifiedAtUtc ??= grant;
+                return true;
+            }, ct);
+        }
+        catch (SessionStoreUnavailableException)
+        {
+            // The first transaction and SMTP acceptance cannot be rolled back by this recheck.
+            throw Refused(ProfileRefusal.EmailRequestIncomplete);
+        }
         return new PendingEmail(operation.Id, operation.TargetEmail!, operation.MailboxExpiresAtUtc!.Value);
     }
 

@@ -1676,6 +1676,73 @@ app-command-palette {
   backdrop-filter: blur(3px);
 }
 
+/* ---- Forms -------------------------------------------------------- */
+/* Copied from the Legacy site.css forms rules, so Profile's fields keep their Legacy look.
+   min-width:0 lets a field (and its width:100% control) shrink inside a flex row. */
+.field {
+  margin-bottom: 1.05rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.field label {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+input,
+textarea,
+select {
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 0.6rem 0.8rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+  width: 100%;
+  transition:
+    border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-faint);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.hint {
+  font-size: 0.83rem;
+  margin: -0.2rem 0 1.1rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* The avatar's file input is reached through its Upload image button. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ---- Password strength ------------------------------------------- */
 /* Advisory, not a gate: the two rules the vault actually enforces (length, breach corpus) are
    reported as text by the field's own validation and the live breach check. This says how

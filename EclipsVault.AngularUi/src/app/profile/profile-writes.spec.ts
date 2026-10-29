@@ -71,6 +71,22 @@ describe('ProfileWrites', () => {
     expect(cleared).toHaveBeenCalledTimes(2);
     expect(state.blocked()).toBe(true);
   });
+  it('preserves the partial mailbox outcome without blocking a deliberate resend', () => {
+    const state = session();
+    state.failed(
+      new UiApiError(
+        503,
+        'email_request_incomplete',
+        'The code was sent. Your current email is unchanged.',
+      ),
+    );
+    expect(state.status()).toEqual({
+      message: 'The code was sent. Your current email is unchanged.',
+      error: true,
+    });
+    expect(state.blocked()).toBe(false);
+    expect(state.signInRequired()).toBe(false);
+  });
   it.each(['revoked_unrecorded', 'sign_out_incomplete'])(
     'leaves for sign-in with the server warning after %s',
     (code) => {

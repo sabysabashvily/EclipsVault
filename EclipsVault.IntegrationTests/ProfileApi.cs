@@ -143,10 +143,15 @@ internal static class ProfileApi
     public static async Task<Guid> VerifiedWithAuthenticatorAsync(ProfileAccount account, object change)
     {
         var operationId = await PreparedAsync(account.Browser, change);
+        await VerifyWithAuthenticatorAsync(account, operationId);
+        return operationId;
+    }
+
+    public static async Task VerifyWithAuthenticatorAsync(ProfileAccount account, Guid operationId)
+    {
         var verified = await VerifyAsync(account.Browser, operationId, "PasswordAndAuthenticatorCode", account.Password,
             await FreshAuthenticatorCodeAsync(account));
         Assert.Equal(HttpStatusCode.OK, verified.StatusCode);
-        return operationId;
     }
 
     public static async Task<JsonElement> PasskeyPromptAsync(VaultSession browser, string path, object? body = null)

@@ -20,6 +20,8 @@ public sealed class SmtpCapture : IAsyncDisposable
     public string Host => _container.Hostname;
     public int Port => _container.GetMappedPublicPort(1025);
     public Task StartAsync() => _container.StartAsync();
+    public Task PauseAsync() => _container.PauseAsync();
+    public Task ResumeAsync() => _container.UnpauseAsync();
     public ValueTask DisposeAsync() => _container.DisposeAsync();
 
     public async Task<bool> HasMessageForAsync(string address)

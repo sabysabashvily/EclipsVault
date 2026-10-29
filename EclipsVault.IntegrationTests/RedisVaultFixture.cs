@@ -10,7 +10,7 @@ public sealed class RedisVaultFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await Redis.InitializeAsync();
-        Vault = new VaultFixture { RedisConfiguration = Redis.ConnectionString };
+        Vault = new VaultFixture { RedisConfiguration = Redis.ConnectionString, Mailbox = new SmtpCapture() };
         await Vault.InitializeAsync();
     }
 

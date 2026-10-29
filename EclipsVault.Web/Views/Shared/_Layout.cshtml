@@ -1,12 +1,11 @@
-@using System.Security.Claims
 @using EclipsVault.Web.Extensions
 @{
     var controller = ViewContext.RouteData.Values["controller"]?.ToString() ?? "";
     var action = ViewContext.RouteData.Values["action"]?.ToString() ?? "";
     var isAdmin = User.IsAdmin();
     var clearanceName = User.GetClearanceOrNull()?.ToDisplayName();
-    var displayName = User.FindFirstValue(VaultClaimTypes.Display) ?? User.Identity?.Name ?? "";
-    var avatarVersion = User.FindFirstValue(VaultClaimTypes.AvatarVersion) ?? "0";
+    var displayName = User.GetDisplayName();
+    var avatarVersion = User.GetAvatarVersion();
     var avatarUrl = Url.Content($"~/Profile/Avatar?v={avatarVersion}");
     var theme = Context.Request.Cookies["EclipsVault.Theme"] == "light" ? "light" : "dark";
 

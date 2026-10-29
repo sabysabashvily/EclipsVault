@@ -12,6 +12,8 @@ export class ProfilePage {
   readonly verification;
   readonly verificationPassword;
   readonly verificationCode;
+  readonly verificationMethod;
+  readonly recoveryCode;
   readonly verifyAccount;
   readonly cancelVerification;
   readonly confirmation;
@@ -34,6 +36,8 @@ export class ProfilePage {
     this.verification = page.getByRole('dialog', { name: 'Verify your account' });
     this.verificationPassword = this.verification.getByLabel('Current password', { exact: true });
     this.verificationCode = this.verification.getByLabel('Authenticator code', { exact: true });
+    this.verificationMethod = this.verification.getByLabel('Verify with', { exact: true });
+    this.recoveryCode = this.verification.getByLabel('Recovery code', { exact: true });
     this.verifyAccount = this.verification.getByRole('button', {
       name: 'Verify account',
       exact: true,
@@ -57,6 +61,30 @@ export class ProfilePage {
     await this.page.goto(path);
   }
 
+  async themeAppearance() {
+    return this.displayName.evaluate((input) => ({
+      background: getComputedStyle(document.body).backgroundColor,
+      text: getComputedStyle(document.body).color,
+      field: getComputedStyle(input).backgroundColor,
+    }));
+  }
+
+  async recoveryAppearance() {
+    return this.codes.first().evaluate((code) => {
+      const style = getComputedStyle(code);
+      const list = getComputedStyle(code.parentElement!);
+      return {
+        background: style.backgroundColor,
+        text: style.color,
+        fontSize: style.fontSize,
+        letterSpacing: style.letterSpacing,
+        radius: style.borderRadius,
+        columns: list.gridTemplateColumns.split(' ').length,
+        gap: list.gap,
+      };
+    });
+  }
+
   /** Fills the dialog with a fresh code and returns the TOTP step it used, which cannot be reused. */
   async fillVerification(password: string, secret: string, lastStep: number): Promise<number> {
     await this.verificationPassword.fill(password);
@@ -68,6 +96,14 @@ export class ProfilePage {
     const step = await this.fillVerification(password, secret, lastStep);
     await this.verifyAccount.click();
     return step;
+  }
+
+  /**
+   * The alert announcing `text`. Right after a proof is submitted the dialog's own, still empty
+   * alert region is in the page too, so a bare alert locator would match two.
+   */
+  alertSaying(text: string) {
+    return this.page.getByRole('alert').filter({ hasText: text });
   }
 
   async confirm(): Promise<void> {
@@ -106,9 +142,11 @@ export class ChangePasswordPage {
 
   constructor(readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Change password', exact: true });
-    this.currentPassword = page.getByLabel('Current password', { exact: true });
-    this.newPassword = page.getByLabel('New password', { exact: true });
-    this.confirmPassword = page.getByLabel('Confirm new password', { exact: true });
+    // By role, not label: the closed verification dialog also labels a hidden "Current password",
+    // and a label locator can settle on it before the form has loaded.
+    this.currentPassword = page.getByRole('textbox', { name: 'Current password', exact: true });
+    this.newPassword = page.getByRole('textbox', { name: 'New password', exact: true });
+    this.confirmPassword = page.getByRole('textbox', { name: 'Confirm new password', exact: true });
     this.strength = page.getByRole('img', { name: /^Password strength: / });
     this.showPassword = page.getByRole('button', { name: 'Show password', exact: true });
     this.hidePassword = page.getByRole('button', { name: 'Hide password', exact: true });
@@ -122,6 +160,30 @@ export class ChangePasswordPage {
     await this.newPassword.fill(candidate);
     await this.confirmPassword.fill(candidate);
     await this.submit.click();
+  }
+
+  async meterAppearance() {
+    return this.strength.evaluate((track) => ({
+      height: getComputedStyle(track).height,
+      background: getComputedStyle(track).backgroundColor,
+      fill: getComputedStyle(track.firstElementChild!).backgroundColor,
+      full:
+        track.firstElementChild!.getBoundingClientRect().width ===
+        track.getBoundingClientRect().width,
+    }));
+  }
+
+  async revealIcon(button: 'Show password' | 'Hide password') {
+    // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares Legacy's eye icon geometry.
+    return this.page
+      .getByRole('button', { name: button, exact: true })
+      .locator('svg')
+      .evaluate((svg) =>
+        [...svg.children].map(
+          (shape) =>
+            `${shape.tagName}:${[...shape.attributes].map((attribute) => `${attribute.name}=${attribute.value}`).join(',')}`,
+        ),
+      );
   }
 }
 

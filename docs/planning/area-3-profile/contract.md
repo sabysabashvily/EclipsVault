@@ -59,7 +59,9 @@ Problem outcomes: validation/malformed proof 400 with stable code and safe field
 unauthenticated or stale session 401; unknown/foreign operation or passkey 404 without enumeration;
 stale operation, expired authorization, unavailable alternate method and email conflict 409;
 throttled 429; failed audit transaction 503 audit_unavailable with no mutation; a session-store read
-that fails inside the account transaction 503 session_store_unavailable with no mutation; a known committed
+that fails inside the account transaction 503 session_store_unavailable with no mutation in that transaction;
+a failed delivery-completion recheck after SMTP acceptance 503 email_request_incomplete, with the request
+and send reservation already recorded but the active email unchanged; a known committed
 change whose replacement session failed 503 changed_sign_in_required; explicit revocation failures
 retain revoked_unrecorded/sign_out_incomplete. Proposed stable codes include validation_failed,
 verification_failed, operation_not_found, passkey_not_found, operation_expired, operation_changed,

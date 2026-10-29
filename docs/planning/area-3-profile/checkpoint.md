@@ -1033,3 +1033,14 @@ Next: final source commit, complete all required checks, fresh whole-Area Standa
 rechecks against c7b4b1bbfed73013a21c51bea90b4d2537bae83d...HEAD including every #91 commit, fix/answer
 findings, prepare PR body via pr skill, final report with exact counts/subjects/excerpts, then send
 that same report to the authorized coordinator. Never mark the Area shipped or push.
+
+## Ticket #91 final-source checks (2026-10-29, Claude Opus 5.5 continuation)
+
+The third #91 commit carries the r2 review fixes, the ported Legacy form styles and the browser-test
+corrections recorded in logs/ticket-91/review-resolutions.md. On that source: backend r19 (locked
+restore, zero-warning Release build, format, unit 698/698, integration 628/628, guardrails 6/6,
+both pending-model checks), frontend r37 (lint, format, Vitest 283/283, build checks, generated
+types unchanged, production build, npm audit) and browser r36 (e2e 106/106; e2e:verify-guards
+verified all eight deliberate failures) passed. Run browser suites under caffeinate: a sleeping Mac
+froze one run. Remaining: fresh whole-Area security/Standards/Spec rechecks on the final commit,
+the final report and the owner PR body. No push, PR or issue closure.

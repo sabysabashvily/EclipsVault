@@ -58,16 +58,16 @@ Browser, `e2e/profile.spec.ts` through production routes, the production image a
   My activity, Sign-in history, Signed-in devices and Security checkup links are in `sign-in.spec.ts`
   and `sessions.spec.ts`.
 - `visual parity:` card order, field states, Access terms, Security row titles and order, two-column
-  and narrow layout, the danger action in both themes, and the Change password fields, hint and meter.
+  and narrow layout, the danger action in both themes, and the Change password fields, hint, eye/hidden-eye icons and meter. Literal Legacy dark/light colours, four-pixel meter height/fill and recovery-code typography/grid are asserted in both themes.
   The Legacy views no longer exist, so the expectations come from their markup at `c7b4b1b`;
   screenshots are evidence, not baselines.
 - Display name and live shell; PNG upload, `no-store` read and Remove; a non-image refused.
 - Password mismatch, unchanged and breached refusals before any write, show/hide and meter; a real
   change that keeps the current browser and refuses its copied cookie.
-- Real SMTP request and confirm; a wrong mailbox code refused; cancel keeps the active email; one
+- Real SMTP request, rate-limited early resend, deliberate resend within the still-fresh grant, rejection of the retired code and confirm; a wrong mailbox code refused; cancel keeps the active email; one
   verification request however often Verify is clicked.
 - Ten recovery codes, Print, Done, refresh, back and forward, and the one-time explanation.
-- A UV virtual passkey added, used as proof and removed, with UTC dates and copied-cookie refusal.
+- A UV virtual passkey added, used as proof and removed, with UTC dates and copied-cookie refusal. A pending proof is aborted by actual departure/back navigation; a pending registration is aborted when a real protected response discovers account-wide revocation. Late virtual presence cannot send either completion; reopening shows cleared proof fields.
 - Authenticator reset ending current and copied sessions, the one-shot notice and Legacy reenrollment.
 - Cancel default, Escape, Tab/Shift+Tab inside the dialog, opener focus and cleared proof fields.
 - Wrong account proof and a server-expired operation, with no mutation request.
@@ -80,8 +80,7 @@ Real HTTP (`EclipsVault.IntegrationTests`), where the browser cannot honestly re
 - Avatar file/multipart section limits and cross-account reads: `ProfileApiContractTests`,
   `RetiredProfileRoutesTests`. The decoder boundary is also exercised by `SkiaAvatarProcessorTests`
   (unit tests), rather than being mislabelled as HTTP coverage.
-- Resend limits, expired and retired codes, SMTP unavailable and real SMTP failure: `MailboxTests`,
-  `MailboxAuditFailureTests`.
+- Resend limits and fresh-grant re-verification, expired and retired codes, SMTP unavailable and real SMTP failure: `MailboxTests`, `MailboxAuditFailureTests`. `RedisMailboxTests` pauses real SMTP after the recorded request, then Redis before delivery completion; the sent request stays recorded, activation is refused and the partial outcome is truthful.
 - Final-key and surviving-method refusal, the two-minute prompt expiry, replaced and late prompts:
   `ProfilePasskeyTests`, `ProfileFinalConsumeTests`, `PendingProofTests`.
 - `revoked_unrecorded`, `sign_out_incomplete` and the anonymous local-cookie branch during a real
@@ -90,7 +89,7 @@ Real HTTP (`EclipsVault.IntegrationTests`), where the browser cannot honestly re
 - Role and issuance races, concurrent proofs: `AccountChangeRaceTests`, `ProfileVerificationTests`.
 - Retired Legacy writes in any case and method: `RetiredProfileRoutesTests`.
 
-Vitest: `pagehide`, back-forward restoration and session-loss clearing (`profile-writes.spec.ts`),
+Vitest additionally checks `pagehide`, back-forward restoration and session-loss clearing (`profile-writes.spec.ts`),
 recovery codes kept out of storage, cookies and the URL (`recovery-codes.spec.ts`), passkey prompt
 dismissal and abort (`passkey-prompts.spec.ts`, `verification-dialog.spec.ts`), and refusal to
 generate codes without an authenticator.

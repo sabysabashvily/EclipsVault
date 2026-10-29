@@ -31,6 +31,8 @@ public static class ProfileProblems
     public static JsonResult For(ProfileOperationRefusedException refused) => refused.Refusal switch
     {
         ProfileRefusal.MailUnavailable => Conflict("mail_unavailable", "Email changes require configured, enabled SMTP. Delivery may be unavailable; verify again before deliberately resending."),
+        ProfileRefusal.EmailRequestIncomplete => Problem(StatusCodes.Status503ServiceUnavailable, "email_request_incomplete",
+            "The code was sent, but the request could not be completed. Your current email is unchanged. Verify again before deliberately resending."),
         ProfileRefusal.EmailConflict => Conflict("email_conflict", "That email address cannot be used."),
         ProfileRefusal.EmailCodeInvalid => Problem(StatusCodes.Status400BadRequest, "email_code_invalid", "That mailbox code is not valid."),
         ProfileRefusal.EmailCodeExpired => Conflict("email_code_expired", "The mailbox code expired. Start the change again."),
