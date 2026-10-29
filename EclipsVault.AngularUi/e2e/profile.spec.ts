@@ -514,14 +514,14 @@ test('a real SMTP mailbox code activates the address only after Profile confirma
     text: /status of 429/,
     url: /\/api\/ui\/profile\/email\/resend$/,
   });
-  await page.getByRole('button', { name: 'Resend code', exact: true }).click();
+  await profile.resendCode.click();
   lastStep = await profile.verify(password, secret, lastStep);
   const throttled = 'Too many attempts. Wait a few minutes and try again.';
   await expect(profile.alertSaying(throttled)).toHaveText(throttled);
   await expect(profile.email).toHaveValue(original);
   // SMTP's production send budget is a rolling minute; this exercises its real boundary.
   await page.waitForTimeout(61_000);
-  await page.getByRole('button', { name: 'Resend code', exact: true }).click();
+  await profile.resendCode.click();
   lastStep = await profile.verify(password, secret, lastStep);
   await expect(
     page.getByText('A confirmation code was sent. Your current email is still active.', {
@@ -535,10 +535,10 @@ test('a real SMTP mailbox code activates the address only after Profile confirma
     url: /\/api\/ui\/profile\/email\/confirm$/,
   });
   await profile.mailboxCode.fill(oldCode);
-  await page.getByRole('button', { name: 'Confirm email', exact: true }).click();
+  await profile.confirmEmail.click();
   await expect(page.getByRole('alert')).toHaveText('That mailbox code is not valid.');
   await profile.mailboxCode.fill(code);
-  await page.getByRole('button', { name: 'Confirm email', exact: true }).click();
+  await profile.confirmEmail.click();
   await expect(profile.email).toHaveValue('e2e-profile-confirmed@example.test');
   expect((await copied.request.get('/api/ui/me')).status()).toBe(401);
   ownerCookies = await page.context().cookies();
@@ -581,7 +581,7 @@ test('a wrong mailbox code is refused, then an expired code leaves the active ad
     url: /\/api\/ui\/profile\/email\/confirm$/,
   });
   await profile.mailboxCode.fill('000000');
-  await page.getByRole('button', { name: 'Confirm email', exact: true }).click();
+  await profile.confirmEmail.click();
   await expect(page.getByRole('alert')).toHaveText('That mailbox code is not valid.');
   await expect(profile.email).toHaveValue(active);
 
@@ -591,7 +591,7 @@ test('a wrong mailbox code is refused, then an expired code leaves the active ad
     url: /\/api\/ui\/profile\/email\/confirm$/,
   });
   await profile.mailboxCode.fill(code);
-  await page.getByRole('button', { name: 'Confirm email', exact: true }).click();
+  await profile.confirmEmail.click();
   await expect(page.getByRole('alert')).toHaveText(
     'The mailbox code expired. Start the change again.',
   );
@@ -626,7 +626,7 @@ test('an expired account grant requires fresh proof of the same pending mailbox'
     url: /\/api\/ui\/profile\/email\/confirm$/,
   });
   await profile.mailboxCode.fill(code);
-  await page.getByRole('button', { name: 'Confirm email', exact: true }).click();
+  await profile.confirmEmail.click();
   await expect(page.getByRole('alert')).toHaveText(
     'Your verification expired. Verify your account again.',
   );

@@ -8,6 +8,8 @@ export class ProfilePage {
   readonly email;
   readonly newEmail;
   readonly mailboxCode;
+  readonly resendCode;
+  readonly confirmEmail;
   readonly resetAuthenticator;
   readonly verification;
   readonly verificationPassword;
@@ -29,6 +31,8 @@ export class ProfilePage {
     this.email = page.getByLabel('Email', { exact: true });
     this.newEmail = page.getByLabel('New email', { exact: true });
     this.mailboxCode = page.getByLabel('Mailbox confirmation code', { exact: true });
+    this.resendCode = page.getByRole('button', { name: 'Resend code', exact: true });
+    this.confirmEmail = page.getByRole('button', { name: 'Confirm email', exact: true });
     this.resetAuthenticator = page.getByRole('button', {
       name: 'Reset authenticator',
       exact: true,

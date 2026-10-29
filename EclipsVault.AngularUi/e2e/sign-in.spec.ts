@@ -72,6 +72,19 @@ async function freshThrottleWindow(page: Page): Promise<void> {
   await page.waitForTimeout(windowMilliseconds - (Date.now() % windowMilliseconds) + 1_000);
 }
 
+/** Spend empty credential requests until the limiter answers or twelve ordinary replies exhaust its budget. */
+async function exhaustCredentialBudget(page: Page, token: string): Promise<number> {
+  let status = 0;
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const response = await page.request.post('/Account/Login', {
+      headers: { RequestVerificationToken: token },
+    });
+    status = response.status();
+    if (status !== 200) return status;
+  }
+  return status;
+}
+
 /** The ids of the sessions Signed-in devices offers to sign out: every session but the current one. */
 async function otherSessionIds(page: Page): Promise<string[]> {
   await page.goto('/Sessions');
@@ -246,7 +259,7 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
   administratorCookies = await context.cookies();
 });
 
-test("My activity shows the administrator's own rows in both themes, and nothing past the end", async ({
+test("visual parity: My activity shows the administrator's own rows in both themes, and nothing past the end", async ({
   page,
 }, info) => {
   await page.context().addCookies(administratorCookies);
@@ -259,11 +272,12 @@ test("My activity shows the administrator's own rows in both themes, and nothing
     { title: 'Signed in', category: 'Sign-in', accent: 'sev-muted' },
     { title: 'Set up your authenticator', category: 'Account', accent: 'sev-warn' },
   ];
-  for (const theme of ['dark', 'light']) {
-    await test.step(`${theme} theme`, async () => {
-      await verifyMyActivity(page, info, theme, rows);
-    });
-  }
+  await test.step(`dark theme`, async () => {
+    await verifyMyActivity(page, info, 'dark', rows);
+  });
+  await test.step(`light theme`, async () => {
+    await verifyMyActivity(page, info, 'light', rows);
+  });
 
   await test.step('a page past the end offers the way back to the latest page, in-app', async () => {
     await page.goto('/Activity?page=999');
@@ -284,33 +298,35 @@ test("My activity shows the administrator's own rows in both themes, and nothing
   });
 });
 
-test("Sign-in history shows the administrator's real sign-ins in both themes", async ({
+test("visual parity: Sign-in history shows the administrator's real sign-ins in both themes", async ({
   page,
 }, info) => {
   await page.context().addCookies(administratorCookies);
   await page.goto('/Access');
   await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
-  for (const theme of ['dark', 'light']) {
-    await test.step(`${theme} theme`, async () => {
-      await verifySignInHistory(page, info, theme);
-    });
-  }
+  await test.step(`dark theme`, async () => {
+    await verifySignInHistory(page, info, 'dark');
+  });
+  await test.step(`light theme`, async () => {
+    await verifySignInHistory(page, info, 'light');
+  });
 });
 
-test("Security checkup shows the administrator's real posture without a passkey in both themes", async ({
+test("visual parity: Security checkup shows the administrator's real posture without a passkey in both themes", async ({
   page,
 }, info) => {
   await page.context().addCookies(administratorCookies);
   await page.goto('/Access');
   await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
-  for (const theme of ['dark', 'light']) {
-    await test.step(`${theme} theme`, async () => {
-      await verifySecurityCheckup(page, info, theme);
-    });
-  }
+  await test.step(`dark theme`, async () => {
+    await verifySecurityCheckup(page, info, 'dark');
+  });
+  await test.step(`light theme`, async () => {
+    await verifySecurityCheckup(page, info, 'light');
+  });
 });
 
-test('the administrator and Standard sidebars match Legacy in both themes and navigate across UIs', async ({
+test('visual parity: the administrator and Standard sidebars match Legacy in both themes and navigate across UIs', async ({
   page,
   browserHealth,
 }, info) => {
@@ -410,52 +426,58 @@ test("the ⌘K palette offers exactly the sidebar's pages, as the Legacy palette
   page,
   browserHealth,
 }) => {
-  if (!standardCookies.length)
-    throw new Error('Runs after the sidebar test, which signs in the Standard account');
+  expect(standardCookies).not.toHaveLength(0);
   await page.context().addCookies(administratorCookies);
   const standard = await (await browserHealth.newContext()).newPage();
   await standard.context().addCookies(standardCookies);
 
-  for (const [account, browser, links] of [
-    ['administrator', page, 21],
-    ['standard', standard, 14],
-  ] as const) {
-    await test.step(`${account}: Legacy and Angular palettes list the same pages as the sidebar`, async () => {
-      await browser.goto('/Secrets');
-      const legacyChord = await browser.locator('.command-trigger kbd').textContent();
-      await openPalette(browser);
-      const legacy = await paletteEntries(browser);
-      await browser.keyboard.press('Escape');
-
-      await browser.goto('/Access');
-      await expect(browser.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
-      await expect(browser.locator('.sidebar > .command-trigger kbd')).toHaveText(
-        legacyChord ?? '',
-      );
-      expect(legacyChord).toMatch(/^(⌘K|Ctrl K)$/);
-      const sidebar = await sidebarPages(browser);
-      await openPalette(browser);
-      const angular = await paletteEntries(browser);
-
-      expect(angular).toEqual(sidebar.map((label) => ['Go to', label]));
-      expect(angular).toEqual(legacy);
-      expect(angular).toHaveLength(links);
-      if (account === 'standard') {
-        for (const admin of [
-          'Users',
-          'Networks',
-          'Service accounts',
-          'Audit log',
-          'Notifications',
-          'Encryption keys',
-          'License',
-        ]) {
-          expect(sidebar).not.toContain(admin);
-        }
-      }
-      await expect(browser.locator('style, [style]')).toHaveCount(0);
-    });
-  }
+  await test.step(`administrator: Legacy and Angular palettes list the same pages as the sidebar`, async () => {
+    await page.goto('/Secrets');
+    // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
+    const legacyChord = await page.locator('.command-trigger kbd').textContent();
+    await openPalette(page);
+    const legacy = await paletteEntries(page);
+    await page.keyboard.press('Escape');
+    await page.goto('/Access');
+    await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
+    // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
+    await expect(page.locator('.sidebar > .command-trigger kbd')).toHaveText(legacyChord ?? '');
+    expect(legacyChord).toMatch(/^(⌘K|Ctrl K)$/);
+    const sidebar = await sidebarPages(page);
+    await openPalette(page);
+    const angular = await paletteEntries(page);
+    expect(angular).toEqual(sidebar.map((label) => ['Go to', label]));
+    expect(angular).toEqual(legacy);
+    expect(angular).toHaveLength(21);
+    await expect(page.locator('style, [style]')).toHaveCount(0);
+  });
+  await test.step(`standard: Legacy and Angular palettes list the same pages as the sidebar`, async () => {
+    await standard.goto('/Secrets');
+    // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
+    const legacyChord = await standard.locator('.command-trigger kbd').textContent();
+    await openPalette(standard);
+    const legacy = await paletteEntries(standard);
+    await standard.keyboard.press('Escape');
+    await standard.goto('/Access');
+    await expect(standard.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
+    // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
+    await expect(standard.locator('.sidebar > .command-trigger kbd')).toHaveText(legacyChord ?? '');
+    expect(legacyChord).toMatch(/^(⌘K|Ctrl K)$/);
+    const sidebar = await sidebarPages(standard);
+    await openPalette(standard);
+    const angular = await paletteEntries(standard);
+    expect(angular).toEqual(sidebar.map((label) => ['Go to', label]));
+    expect(angular).toEqual(legacy);
+    expect(angular).toHaveLength(14);
+    expect(sidebar).not.toContain('Users');
+    expect(sidebar).not.toContain('Networks');
+    expect(sidebar).not.toContain('Service accounts');
+    expect(sidebar).not.toContain('Audit log');
+    expect(sidebar).not.toContain('Notifications');
+    expect(sidebar).not.toContain('Encryption keys');
+    expect(sidebar).not.toContain('License');
+    await expect(standard.locator('style, [style]')).toHaveCount(0);
+  });
 });
 
 test('palette search lists only secrets the account could already list, never a decoy, and nothing for one character', async ({
@@ -512,13 +534,34 @@ test('palette search lists only secrets the account could already list, never a 
     await standard.waitForTimeout(600);
     expect(searches).toEqual([]);
     expect((await paletteEntries(standard)).filter(([kind]) => kind === 'Secret')).toEqual([]);
-    for (const q of ['P', 'p', '_', ' P ']) {
-      const direct = await standard.request.get(`/Secrets/Search?q=${encodeURIComponent(q)}`, {
+    await test.step('an uppercase one-character query returns no secrets', async () => {
+      const direct = await standard.request.get(`/Secrets/Search?q=${encodeURIComponent('P')}`, {
         headers: { Accept: 'application/json' },
       });
       expect(direct.status()).toBe(200);
       expect(await direct.json()).toEqual([]);
-    }
+    });
+    await test.step('a lowercase one-character query returns no secrets', async () => {
+      const direct = await standard.request.get(`/Secrets/Search?q=${encodeURIComponent('p')}`, {
+        headers: { Accept: 'application/json' },
+      });
+      expect(direct.status()).toBe(200);
+      expect(await direct.json()).toEqual([]);
+    });
+    await test.step('a punctuation-only query returns no secrets', async () => {
+      const direct = await standard.request.get(`/Secrets/Search?q=${encodeURIComponent('_')}`, {
+        headers: { Accept: 'application/json' },
+      });
+      expect(direct.status()).toBe(200);
+      expect(await direct.json()).toEqual([]);
+    });
+    await test.step('a padded one-character query returns no secrets', async () => {
+      const direct = await standard.request.get(`/Secrets/Search?q=${encodeURIComponent(' P ')}`, {
+        headers: { Accept: 'application/json' },
+      });
+      expect(direct.status()).toBe(200);
+      expect(await direct.json()).toEqual([]);
+    });
   });
 
   await test.step('Enter opens the chosen secret in the Legacy UI', async () => {
@@ -549,6 +592,7 @@ test('the palette is driven from the keyboard, traps focus, and hands it back on
 
     const trigger = page.getByRole('button', { name: 'Search secrets or jump to a page' });
     await trigger.click();
+    // eslint-disable-next-line playwright/no-raw-locators -- The command-palette input is the keyboard focus-trap target.
     await expect(page.locator('.palette-input')).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(trigger).toBeFocused();
@@ -574,12 +618,18 @@ test('the palette is driven from the keyboard, traps focus, and hands it back on
     await page.keyboard.press('ArrowUp');
     await expect(options.nth(1)).toHaveAttribute('aria-selected', 'true');
 
-    for (const key of ['Tab', 'Shift+Tab', 'Tab']) {
-      await page.keyboard.press(key);
-      await expect(page.locator('.palette-input')).toBeFocused();
-    }
+    await page.keyboard.press('Tab');
+    // eslint-disable-next-line playwright/no-raw-locators -- The command-palette input is the keyboard focus-trap target.
+    await expect(page.locator('.palette-input')).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    // eslint-disable-next-line playwright/no-raw-locators -- The command-palette input is the keyboard focus-trap target.
+    await expect(page.locator('.palette-input')).toBeFocused();
+    await page.keyboard.press('Tab');
+    // eslint-disable-next-line playwright/no-raw-locators -- The command-palette input is the keyboard focus-trap target.
+    await expect(page.locator('.palette-input')).toBeFocused();
     // A press inside the panel keeps the field focused; one on the backdrop dismisses it.
     await page.locator('.palette-hint').click();
+    // eslint-disable-next-line playwright/no-raw-locators -- The command-palette input is the keyboard focus-trap target.
     await expect(page.locator('.palette-input')).toBeFocused();
     await page.locator('.palette-backdrop').click({ position: { x: 5, y: 5 } });
     await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -642,6 +692,7 @@ test('an ended session makes palette search report a failure, without a console 
   expect(answer.headers()['location']).toMatch(/\/Account\/Login\?ReturnUrl=/);
   await expect(page.getByRole('alert')).toHaveText(/Secret search failed/);
   await expect(page.locator('.palette-empty')).toHaveText('Nothing matches that.');
+  // eslint-disable-next-line playwright/no-raw-locators -- The command-palette input is the keyboard focus-trap target.
   await expect(page.locator('.palette-input')).toBeFocused();
 });
 
@@ -1054,14 +1105,16 @@ test('an activity failure shows a retry and the next request restores the feed',
 test('signed out, My activity sends the browser to sign-in with its return URL', async ({
   page,
 }) => {
-  for (const [path, returnUrl] of [
-    ['/Activity', '%2FActivity'],
-    ['/Activity/Index', '%2FActivity%2FIndex'],
-  ] as const) {
-    await page.goto(path);
-    await expect(page).toHaveURL(new RegExp(`/Account/Login\\?ReturnUrl=${returnUrl}$`));
+  await test.step('My activity retains its return URL', async () => {
+    await page.goto('/Activity');
+    await expect(page).toHaveURL(new RegExp(`/Account/Login\\?ReturnUrl=%2FActivity$`));
     await expect(page.getByLabel('Username')).toBeVisible();
-  }
+  });
+  await test.step('the My activity alias retains its return URL', async () => {
+    await page.goto('/Activity/Index');
+    await expect(page).toHaveURL(new RegExp(`/Account/Login\\?ReturnUrl=%2FActivity%2FIndex$`));
+    await expect(page.getByLabel('Username')).toBeVisible();
+  });
 });
 
 test("Sign-in history's empty state and an unfamiliar-location attempt match Legacy", async ({
@@ -1532,14 +1585,16 @@ test('a sign-in history failure shows a retry and the next request restores the 
 test('signed out, Sign-in history sends the browser to sign-in with its return URL', async ({
   page,
 }) => {
-  for (const [path, returnUrl] of [
-    ['/SignIns', '%2FSignIns'],
-    ['/SignIns/Index', '%2FSignIns%2FIndex'],
-  ] as const) {
-    await page.goto(path);
-    await expect(page).toHaveURL(new RegExp(`/Account/Login\\?ReturnUrl=${returnUrl}$`));
+  await test.step('Sign-in history retains its return URL', async () => {
+    await page.goto('/SignIns');
+    await expect(page).toHaveURL(new RegExp(`/Account/Login\\?ReturnUrl=%2FSignIns$`));
     await expect(page.getByLabel('Username')).toBeVisible();
-  }
+  });
+  await test.step('the Sign-in history alias retains its return URL', async () => {
+    await page.goto('/SignIns/Index');
+    await expect(page).toHaveURL(new RegExp(`/Account/Login\\?ReturnUrl=%2FSignIns%2FIndex$`));
+    await expect(page.getByLabel('Username')).toBeVisible();
+  });
 });
 
 test('Security checkup shows all-clear and at-risk postures with only actionable fixes', async ({
@@ -1697,6 +1752,7 @@ test('Security checkup shows all-clear and at-risk postures with only actionable
   );
   await page.goto('/Security');
   await expect(page.locator('.check-rec')).toHaveCount(4);
+  // eslint-disable-next-line playwright/no-raw-locators -- The feed action wrapper excludes navigation links from this remediation count.
   await expect(page.locator('.feed-action a')).toHaveCount(0);
 });
 
@@ -1740,37 +1796,96 @@ test('the sidebar and palette open Security checkup in-app, and its fixes open P
   await expect(page.locator('.activity-feed > li')).toHaveCount(4);
   expect(documents).toEqual([]);
 
-  for (const [name, path, heading] of [
-    ['Set up two-step', '/Profile', 'Profile'],
-    ['Generate codes', '/Profile', 'Profile'],
-    ['Add a passkey', '/Profile', 'Profile'],
-  ] as const) {
-    await test.step(`${name} opens Profile inside Angular on the same session`, async () => {
-      await page.route(
-        '**/api/ui/security',
-        async (route) => {
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify(atRisk),
-          });
-        },
-        { times: 1 },
-      );
-      await page.goto('/Security');
-      await expect(page.locator('.feed-action a')).toHaveCount(4);
-      documents.length = 0;
-      await page.locator('.feed-action').getByRole('link', { name, exact: true }).click();
-      await expect(page).toHaveURL(new RegExp(`${path}$`));
-      await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
-      expect(documents).toEqual([]);
-      expect(signInRequests).toEqual([]);
-      expect(
-        (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')
-          ?.value,
-      ).toBe(session?.value);
-    });
-  }
+  await test.step(`Set up two-step opens Profile inside Angular on the same session`, async () => {
+    await page.route(
+      '**/api/ui/security',
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(atRisk),
+        });
+      },
+      { times: 1 },
+    );
+    await page.goto('/Security');
+    // eslint-disable-next-line playwright/no-raw-locators -- The feed action wrapper excludes navigation links from this remediation count.
+    await expect(page.locator('.feed-action a')).toHaveCount(4);
+    documents.length = 0;
+    // eslint-disable-next-line playwright/no-raw-locators -- The feed action wrapper distinguishes remediation from the account-menu link.
+    await page
+      .locator('.feed-action')
+      .getByRole('link', { name: 'Set up two-step', exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/Profile$/);
+    await expect(page.getByRole('heading', { name: 'Profile', exact: true })).toBeVisible();
+    expect(documents).toEqual([]);
+    expect(signInRequests).toEqual([]);
+    expect(
+      (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')
+        ?.value,
+    ).toBe(session?.value);
+  });
+  await test.step(`Generate codes opens Profile inside Angular on the same session`, async () => {
+    await page.route(
+      '**/api/ui/security',
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(atRisk),
+        });
+      },
+      { times: 1 },
+    );
+    await page.goto('/Security');
+    // eslint-disable-next-line playwright/no-raw-locators -- The feed action wrapper excludes navigation links from this remediation count.
+    await expect(page.locator('.feed-action a')).toHaveCount(4);
+    documents.length = 0;
+    // eslint-disable-next-line playwright/no-raw-locators -- The feed action wrapper distinguishes remediation from the account-menu link.
+    await page
+      .locator('.feed-action')
+      .getByRole('link', { name: 'Generate codes', exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/Profile$/);
+    await expect(page.getByRole('heading', { name: 'Profile', exact: true })).toBeVisible();
+    expect(documents).toEqual([]);
+    expect(signInRequests).toEqual([]);
+    expect(
+      (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')
+        ?.value,
+    ).toBe(session?.value);
+  });
+  await test.step(`Add a passkey opens Profile inside Angular on the same session`, async () => {
+    await page.route(
+      '**/api/ui/security',
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(atRisk),
+        });
+      },
+      { times: 1 },
+    );
+    await page.goto('/Security');
+    // eslint-disable-next-line playwright/no-raw-locators -- The feed action wrapper excludes navigation links from this remediation count.
+    await expect(page.locator('.feed-action a')).toHaveCount(4);
+    documents.length = 0;
+    // eslint-disable-next-line playwright/no-raw-locators -- The feed action wrapper distinguishes remediation from the account-menu link.
+    await page
+      .locator('.feed-action')
+      .getByRole('link', { name: 'Add a passkey', exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/Profile$/);
+    await expect(page.getByRole('heading', { name: 'Profile', exact: true })).toBeVisible();
+    expect(documents).toEqual([]);
+    expect(signInRequests).toEqual([]);
+    expect(
+      (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')
+        ?.value,
+    ).toBe(session?.value);
+  });
 });
 
 test('Security checkup loads, reports a fetch failure, and retries in place', async ({
@@ -1820,14 +1935,16 @@ test('Security checkup loads, reports a fetch failure, and retries in place', as
 test('signed out, Security checkup sends the browser to sign-in with its return URL', async ({
   page,
 }) => {
-  for (const [path, returnUrl] of [
-    ['/Security', '%2FSecurity'],
-    ['/Security/Index', '%2FSecurity%2FIndex'],
-  ] as const) {
-    await page.goto(path);
-    await expect(page).toHaveURL(new RegExp(`/Account/Login\\?ReturnUrl=${returnUrl}$`));
+  await test.step('Security checkup retains its return URL', async () => {
+    await page.goto('/Security');
+    await expect(page).toHaveURL(new RegExp(`/Account/Login\\?ReturnUrl=%2FSecurity$`));
     await expect(page.getByLabel('Username')).toBeVisible();
-  }
+  });
+  await test.step('the Security checkup alias retains its return URL', async () => {
+    await page.goto('/Security/Index');
+    await expect(page).toHaveURL(new RegExp(`/Account/Login\\?ReturnUrl=%2FSecurity%2FIndex$`));
+    await expect(page.getByLabel('Username')).toBeVisible();
+  });
 });
 
 test('a session revoked from another browser signs in again and returns to My access', async ({
@@ -1836,8 +1953,7 @@ test('a session revoked from another browser signs in again and returns to My ac
 }) => {
   // A fresh throttle window, then three sign-ins, each of which may wait for a new authenticator step.
   test.setTimeout(330_000);
-  if (!authenticatorSecret)
-    throw new Error('Runs after the sign-in test, which enrolls the authenticator');
+  expect(authenticatorSecret).not.toBe('');
   // Its six credential POSTs, with the earlier tests' seven, would exceed one window's budget.
   await freshThrottleWindow(page);
 
@@ -1910,16 +2026,7 @@ test('a stale-session problem ends the real session through protected sign-out b
   // Exhaust the real credential budget deliberately, instead of depending on how many earlier
   // sign-ins happen to land in this rate window. Empty models cannot lock out an account.
   // API requests generate no browser console errors; the shared browser-health guard stays strict.
-  let credentialStatus = 0;
-  for (let attempt = 0; attempt < 12; attempt++) {
-    const response = await page.request.post('/Account/Login', {
-      headers: { RequestVerificationToken: xsrf!.value },
-    });
-    credentialStatus = response.status();
-    if (credentialStatus === 429) break;
-    expect(credentialStatus).toBe(200);
-  }
-  expect(credentialStatus).toBe(429);
+  expect(await exhaustCredentialBudget(page, xsrf!.value)).toBe(429);
   // Integration tests exercise real protected cookies with missing claims. Here the transport
   // supplies that contract so a production browser must perform the real CSRF-protected sign-out.
   browserHealth.expectConsoleError({ text: /status of 401/, url: /\/api\/ui\/access$/ });
@@ -1990,23 +2097,54 @@ test('a real passkey follows the server redirect for local and external return t
 
     // Preparation and verification spend two requests; the four sign-ins spend eight more.
     // All ten fit this window's eleven-request budget.
-    for (const [returnUrl, expected] of [
-      ['/Access?view=mine#matrix', '/Access?view=mine#matrix'],
-      ['https://outside.example/', '/Secrets'],
-      ['//outside.example/', '/Secrets'],
-      ['/\\outside.example/', '/Secrets'],
-    ]) {
+    await test.step('a local return target keeps its query and fragment', async () => {
       // The previous pass's page may still be loading. Leave it first: a request it sends after the
       // cookies are cleared gets a 401, which the browser logs, and its redirect to sign-in races ours.
       await page.goto('about:blank');
       await context.clearCookies();
-      await page.goto(`/Account/Login?ReturnUrl=${encodeURIComponent(returnUrl!)}`);
+      await page.goto(`/Account/Login?ReturnUrl=${encodeURIComponent('/Access?view=mine#matrix')}`);
       await page.getByRole('button', { name: 'Sign in with a passkey', exact: true }).click();
-      await expect(page).toHaveURL(new URL(expected!, page.url()).href);
+      await expect(page).toHaveURL(new URL('/Access?view=mine#matrix', page.url()).href);
       expect(
         (await context.cookies()).some((cookie) => cookie.name === 'EclipsVault.Session'),
       ).toBe(true);
-    }
+    });
+    await test.step('an absolute external return target falls back to Secrets', async () => {
+      // The previous pass's page may still be loading. Leave it first: a request it sends after the
+      // cookies are cleared gets a 401, which the browser logs, and its redirect to sign-in races ours.
+      await page.goto('about:blank');
+      await context.clearCookies();
+      await page.goto(`/Account/Login?ReturnUrl=${encodeURIComponent('https://outside.example/')}`);
+      await page.getByRole('button', { name: 'Sign in with a passkey', exact: true }).click();
+      await expect(page).toHaveURL(new URL('/Secrets', page.url()).href);
+      expect(
+        (await context.cookies()).some((cookie) => cookie.name === 'EclipsVault.Session'),
+      ).toBe(true);
+    });
+    await test.step('a scheme-relative return target falls back to Secrets', async () => {
+      // The previous pass's page may still be loading. Leave it first: a request it sends after the
+      // cookies are cleared gets a 401, which the browser logs, and its redirect to sign-in races ours.
+      await page.goto('about:blank');
+      await context.clearCookies();
+      await page.goto(`/Account/Login?ReturnUrl=${encodeURIComponent('//outside.example/')}`);
+      await page.getByRole('button', { name: 'Sign in with a passkey', exact: true }).click();
+      await expect(page).toHaveURL(new URL('/Secrets', page.url()).href);
+      expect(
+        (await context.cookies()).some((cookie) => cookie.name === 'EclipsVault.Session'),
+      ).toBe(true);
+    });
+    await test.step('a backslash return target falls back to Secrets', async () => {
+      // The previous pass's page may still be loading. Leave it first: a request it sends after the
+      // cookies are cleared gets a 401, which the browser logs, and its redirect to sign-in races ours.
+      await page.goto('about:blank');
+      await context.clearCookies();
+      await page.goto(`/Account/Login?ReturnUrl=${encodeURIComponent('/\\outside.example/')}`);
+      await page.getByRole('button', { name: 'Sign in with a passkey', exact: true }).click();
+      await expect(page).toHaveURL(new URL('/Secrets', page.url()).href);
+      expect(
+        (await context.cookies()).some((cookie) => cookie.name === 'EclipsVault.Session'),
+      ).toBe(true);
+    });
   } finally {
     await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId });
     await cdp.detach();

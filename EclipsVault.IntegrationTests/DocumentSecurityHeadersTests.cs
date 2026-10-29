@@ -47,19 +47,19 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
     public async Task Angular_documents_add_only_the_two_Trusted_Types_directives(string path)
     {
         var client = await vault.AdminClientAsync();
-        foreach (var method in new[] { HttpMethod.Get, HttpMethod.Head })
-        {
-            using var request = new HttpRequestMessage(method, path);
-            using var response = await client.SendAsync(request);
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
-            Assert.Equal(AngularPolicy, Assert.Single(response.Headers.GetValues("Content-Security-Policy")));
-            Assert.True(response.Headers.CacheControl?.NoStore);
-            if (method == HttpMethod.Get)
-            {
-                Assert.Contains("<app-root>", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
-            }
-        }
+        using var get = await client.GetAsync(path);
+        Assert.Equal(HttpStatusCode.OK, get.StatusCode);
+        Assert.Equal("text/html", get.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(AngularPolicy, Assert.Single(get.Headers.GetValues("Content-Security-Policy")));
+        Assert.True(get.Headers.CacheControl?.NoStore);
+        Assert.Contains("<app-root>", await get.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+
+        using var headRequest = new HttpRequestMessage(HttpMethod.Head, path);
+        using var head = await client.SendAsync(headRequest);
+        Assert.Equal(HttpStatusCode.OK, head.StatusCode);
+        Assert.Equal("text/html", head.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(AngularPolicy, Assert.Single(head.Headers.GetValues("Content-Security-Policy")));
+        Assert.True(head.Headers.CacheControl?.NoStore);
     }
 
     [Theory]

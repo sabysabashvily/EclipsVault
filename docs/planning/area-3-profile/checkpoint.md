@@ -1044,3 +1044,23 @@ types unchanged, production build, npm audit) and browser r36 (e2e 106/106; e2e:
 verified all eight deliberate failures) passed. Run browser suites under caffeinate: a sleeping Mac
 froze one run. Remaining: fresh whole-Area security/Standards/Spec rechecks on the final commit,
 the final report and the owner PR body. No push, PR or issue closure.
+
+
+## Ticket #91 final review corrections (2026-10-29, GPT Sol 6.1 xhigh)
+
+On frozen 7fbbca5, fresh whole-Area r4 security found no demonstrable defect; Spec supported
+functional/browser acceptance with P8 (incorrect coverage attribution). Standards found S18–S20:
+loop-driven assertions, unnamed mailbox controls and missing visual-parity title prefixes. Original
+reports are preserved under logs/ticket-91/reviews/. Opus r3 hit its provider quota without a final
+report; r4 used the explicitly permitted fresh GPT Sol 6.1 xhigh sessions.
+
+The follow-up changes only tests and documentation. Static assertion loops are explicit cases,
+GET/HEAD document assertions are separate, ProfilePage names resend/confirm controls, and visual
+helper tests use the required title prefix. The raw-locator suppression count falls from 137 to 129;
+it was not raised. The coverage inventory now names the actual HTTP, provider, service/issuance and
+Vitest seams. P8 and S18–S20 responses are in logs/ticket-91/review-resolutions.md.
+
+Next: final-source gates (r49 backend/frontend/models, r50 browser/guard probes), fresh whole-Area
+rechecks including this test/documentation commit, PR body and completion report under logs/ticket-91/.
+Production application source remains 7fbbca5. Do not reuse the r36 browser result as execution of
+later changed test source. No push, PR, issue closure, merge, tag, branch/worktree or shipped claim.

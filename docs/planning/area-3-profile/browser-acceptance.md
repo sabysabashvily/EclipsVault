@@ -82,14 +82,27 @@ Real HTTP (`EclipsVault.IntegrationTests`), where the browser cannot honestly re
   (unit tests), rather than being mislabelled as HTTP coverage.
 - Resend limits and fresh-grant re-verification, expired and retired codes, SMTP unavailable and real SMTP failure: `MailboxTests`, `MailboxAuditFailureTests`. `RedisMailboxTests` pauses real SMTP after the recorded request, then Redis before delivery completion; the sent request stays recorded, activation is refused and the partial outcome is truthful.
 - Final-key and surviving-method refusal, the two-minute prompt expiry, replaced and late prompts:
-  `ProfilePasskeyTests`, `ProfileFinalConsumeTests`, `PendingProofTests`.
+  `ProfilePasskeyTests`, `ProfileRecoveryTests`, `ProfileVerificationTests`.
+  `ProfileFinalConsumeTests` separately proves that competing final password requests commit once;
+  `PendingProofTests` proves retired authentication proofs cannot complete or spend factors.
 - `revoked_unrecorded`, `sign_out_incomplete` and the anonymous local-cookie branch during a real
-  Redis outage: `ProfileSessionOutcomeTests`, `LocalSignOutTests`, `RedisSessionHttpTests`.
+  Redis outage: `VerifiedProfileAuditFailureTests`, `ProfileSessionOutcomeTests`, `LocalSignOutTests`,
+  `RedisSessionHttpTests`.
 - Store failure before and after a password commit: `RedisSessionHttpTests`.
-- Role and issuance races, concurrent proofs: `AccountChangeRaceTests`, `ProfileVerificationTests`.
+- Concurrent account proofs: `ProfileVerificationTests`.
 - Retired Legacy writes in any case and method: `RetiredProfileRoutesTests`.
+
+Real-provider and service seams (`EclipsVault.IntegrationTests`), not HTTP executions:
+
+- `AccountChangeRaceTests` exercises SQL Server/PostgreSQL account persistence and concurrent factor
+  consumption directly against the providers.
+- `AccountRevokersTests.Demotion_between_verification_and_issuance_refuses_the_stale_role_snapshot`
+  uses real Production-fixture authentication/admin services and `SessionIssuer` with a response
+  context; it proves no cookie is issued from the stale role snapshot. Separate HTTP assertions in
+  `A_role_change_retires_the_original_version_and_refuses_the_old_cookie` prove old-cookie refusal.
 
 Vitest additionally checks `pagehide`, back-forward restoration and session-loss clearing (`profile-writes.spec.ts`),
 recovery codes kept out of storage, cookies and the URL (`recovery-codes.spec.ts`), passkey prompt
-dismissal and abort (`passkey-prompts.spec.ts`, `verification-dialog.spec.ts`), and refusal to
+dismissal and abort (`passkeys-panel.spec.ts`, `verification-dialog.spec.ts`),
+assertion/attestation serialization and abort-signal forwarding (`passkey-prompts.spec.ts`), and refusal to
 generate codes without an authenticator.
