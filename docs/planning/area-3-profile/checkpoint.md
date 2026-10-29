@@ -1117,3 +1117,29 @@ Next: commit the r6 test/doc changes, fresh whole-Area r7 reviews including ever
 #83/#91/CONTEXT/ADR sources, complete r50/guards, then full backend r54 with final frontend/models.
 All logs/reports/PR body remain under logs/ticket-91; send final coordinator report only when done.
 No push, PR, closure, shipped claim, excluded-directory access or broad Docker cleanup.
+
+
+## Ticket #91 final selector/documentation corrections (2026-10-29, GPT Sol 6.1 xhigh)
+
+Browser r50 passed106/106 in50.8minutes; all8 browser-health failures were deliberately detected and
+both owned stacks/images cleaned up. Backend r54 then ran separately:681/681 integration cases,
+zero failed/skipped (12minutes), plus698units,6guardrails,locked restore,0warning/errorReleasebuild
+and format. This proves both realHTTP role-race fixtures. Frontend/models r54 follow that backend.
+
+Security r7 (Opus5.5high) found no actionable defect with the full authority packet read. Opus r7
+Standards/Spec failed quota; fresh authorized Sol6.1xhigh r8 reviews read the complete packet. They
+found two low items: R8-1 duplicate raw avatar pickers despite the existing page-object field, and
+SP-3 recovery guidance that overstated precommit no-change as applying after commit. Both are
+corrected: the two scenarios reuse avatarFile, and guidance distinguishes session_store_unavailable,
+changed_sign_in_required and email_request_incomplete. Lint r55 passes. No C# or application source
+changed; the backend sources match the681-pass run exactly.
+
+The r8 reports disclose incomplete line-by-line coverage of remaining test/generated hunks. Final
+r9 whole-Area rechecks must close remaining non-generated source/test coverage, use prior frozen
+reviews for unchanged sections and review generated outputs against their semantic models, while
+including every new commit. No approval is claimed merely from the reported fixed point.
+
+Next: commit these three intended paths; final browser/guard run r56 on that snapshot after r54
+frontend/models; complete independent whole-Area r9 reviews, resolve findings, final command/count/
+subject/provenance manifests, concrete PR body and report under logs/ticket-91, then same coordinator
+report. Never push, open a PR, close91, mark shipped, change branches/worktrees, or touch exclusions.

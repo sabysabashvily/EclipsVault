@@ -333,8 +333,7 @@ test('display name and avatar update the live shell without changing the email',
   ).toBeVisible();
   await expect(page.getByText('Profile Browser Owner', { exact: true })).toBeVisible();
   await expect(profile.email).toHaveValue(email);
-  // eslint-disable-next-line playwright/no-raw-locators -- The hidden native file picker has no visible label.
-  await page.locator('input[type="file"]').setInputFiles({
+  await profile.avatarFile.setInputFiles({
     name: 'avatar.png',
     mimeType: 'image/png',
     buffer: Buffer.from(
@@ -359,12 +358,12 @@ test('a file that is not an image is refused and leaves the avatar unchanged', a
   browserHealth,
 }) => {
   await page.context().addCookies(ownerCookies);
-  await new ProfilePage(page).open();
+  const profile = new ProfilePage(page);
+  await profile.open();
   const avatar = page.getByRole('img', { name: 'Your avatar', exact: true });
   const before = await avatar.getAttribute('src');
   browserHealth.expectConsoleError({ text: /status of 400/, url: /\/api\/ui\/profile\/avatar$/ });
-  // eslint-disable-next-line playwright/no-raw-locators -- The hidden native file picker has no visible label.
-  await page.locator('input[type="file"]').setInputFiles({
+  await profile.avatarFile.setInputFiles({
     name: 'not-an-image.png',
     mimeType: 'image/png',
     buffer: Buffer.from('This is plain text, not a PNG.'),
