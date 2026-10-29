@@ -1064,3 +1064,29 @@ Next: final-source gates (r49 backend/frontend/models, r50 browser/guard probes)
 rechecks including this test/documentation commit, PR body and completion report under logs/ticket-91/.
 Production application source remains 7fbbca5. Do not reuse the r36 browser result as execution of
 later changed test source. No push, PR, issue closure, merge, tag, branch/worktree or shipped claim.
+
+
+## Ticket #91 C# readability follow-up (2026-10-29, GPT Sol 6.1 xhigh)
+
+On fe7abc6, r49 frontend/backend/models all passed: unit 698, integration 628 (14m12s), six guardrails,
+283 Vitest, 15 build checks, zero-warning/error Release build and both pending-model checks. Browser
+r50 is running on the unchanged production/browser source; its output is logs/ticket-91/e2e-r50.log.
+The runner's final command is e2e:verify-guards. Do not start Docker integration while it is active.
+
+Fresh whole-Area r5 security and Spec reported no remaining actionable finding. Standards confirmed
+S18–S20 but found S21 inherited assertion loops in SignInReturnUrlTests, SelfServiceScopingTests and
+CsrfAndSignOutTests. The parent fixed these: two target tables become 34/18 theory cases, malformed/
+expired cases are explicit, scoping reads/assertions name each account, and bounded redirect/budget
+transport loops return observed results for assertions. Expected statuses/counts remain. An unused
+Legacy recovery-display regex was removed. No production or browser source changed. The integration
+total should grow by 50 to 678; only execution can confirm it.
+
+Backend-fast r51b passes on this source: locked restore, zero-warning/error Release build, format,
+698 units, six guardrails. The earlier r51 build caught local names colliding after removing a loop
+scope; r51b fixes those names. All diagnostics remain in logs/ticket-91/.
+
+Next: commit this C# test/documentation follow-up; fresh whole-Area r6 reviews including it; finish
+r50 browser/guards; then run the full backend/provider suite separately (suggest r52) and final
+model/frontend gates. Record actual counts, all commit subject lengths, findings/resolutions and
+provenance, complete PR body/final report, send the same report to the authorized coordinator.
+No push, PR, closure, shipped claim, excluded-directory access or broad Docker cleanup.

@@ -101,10 +101,7 @@ public sealed class CsrfAndSignOutTests(VaultFixture vault)
         // Empty login models reach the throttle without guessing a password or tripping lockout.
         var guesser = vault.CreateSession(source: source.MapToIPv6()).Client;
         var guessToken = VaultFixture.FormTokenOf(await guesser.GetStringAsync("/Account/Login"), "/Account/Login");
-        for (var i = 0; i < PermitLimit; i++)
-        {
-            await guesser.SendAsync(PostWithToken("/Account/Login", guessToken));
-        }
+        await SpendCredentialAttemptsAsync(guesser, guessToken, PermitLimit);
         Assert.Equal(HttpStatusCode.TooManyRequests, (await guesser.SendAsync(PostWithToken("/Account/Login", guessToken))).StatusCode);
 
         Assert.Equal(HttpStatusCode.BadRequest, (await session.Client.PostAsync("/Account/Logout", null)).StatusCode);
@@ -129,10 +126,9 @@ public sealed class CsrfAndSignOutTests(VaultFixture vault)
         var session = vault.CreateSession(Assert.IsType<Cookie>(original.SessionCookie), IPAddress.Parse("198.51.100.93"));
         var guesser = vault.CreateSession(source: IPAddress.Parse("198.51.100.93")).Client;
         var guessToken = VaultFixture.FormTokenOf(await guesser.GetStringAsync("/Account/Login"), "/Account/Login");
-        for (var i = 0; i < PermitLimit - 1; i++)
-        {
-            Assert.Equal(HttpStatusCode.OK, (await guesser.SendAsync(PostWithToken("/Account/Login", guessToken))).StatusCode);
-        }
+        var statuses = await SpendCredentialAttemptsAsync(guesser, guessToken, PermitLimit - 1);
+        Assert.Equal(PermitLimit - 1, statuses.Length);
+        Assert.All(statuses, status => Assert.Equal(HttpStatusCode.OK, status));
         var token = XsrfCookieOf(await session.Client.GetAsync("/api/ui/me")).Value.ToString();
 
         Assert.Equal(HttpStatusCode.Redirect, (await session.Client.SendAsync(PostWithToken("/Account/Logout", token))).StatusCode);
@@ -149,6 +145,17 @@ public sealed class CsrfAndSignOutTests(VaultFixture vault)
         var session = await vault.SignInNewAccountAsync("it-sign-out-post", IPAddress.Parse("198.51.100.94"));
         Assert.Equal(HttpStatusCode.MethodNotAllowed, (await session.Client.GetAsync("/Account/Logout")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await session.Client.GetAsync("/api/ui/me")).StatusCode);
+    }
+
+    private static async Task<HttpStatusCode[]> SpendCredentialAttemptsAsync(HttpClient client, string token, int count)
+    {
+        var statuses = new List<HttpStatusCode>();
+        for (var attempt = 0; attempt < count; attempt++)
+        {
+            using var response = await client.SendAsync(PostWithToken("/Account/Login", token));
+            statuses.Add(response.StatusCode);
+        }
+        return statuses.ToArray();
     }
 
     private int PermitLimit => vault.Services.GetRequiredService<IOptions<AuthThrottleOptions>>().Value.PermitLimit;

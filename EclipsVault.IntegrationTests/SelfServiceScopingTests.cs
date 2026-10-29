@@ -2,7 +2,6 @@ using System.Net;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using EclipsVault.Core.Application.Activity;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Web.Authorization;
@@ -16,7 +15,7 @@ using Xunit;
 namespace EclipsVault.IntegrationTests;
 
 [Collection(VaultCollection.Name)]
-public sealed partial class SelfServiceScopingTests(VaultFixture vault)
+public sealed class SelfServiceScopingTests(VaultFixture vault)
 {
     private static readonly string[] Endpoints = ["/api/ui/activity", "/api/ui/sign-ins", "/api/ui/security"];
 
@@ -75,7 +74,7 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         // The global audit retains the actual source; self-service projections hide it.
         Assert.Contains("198.51.100.114", await admin.GetStringAsync("/Audit"));
         using var history = JsonDocument.Parse(historyBody);
-        AssertSummary(history.RootElement, 1, 1, 1, 2);
+        AssertSummary(history.RootElement, 1, 1, 1, 2, true, JsonValueKind.String);
         var unlocked = Assert.Single(history.RootElement.GetProperty("events").EnumerateArray(),
             item => item.GetProperty("title").GetString() == "Account unlocked");
         Assert.Equal("Info", unlocked.GetProperty("outcome").GetString());
@@ -96,13 +95,14 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         var b = await vault.SignInNewAccountAsync(bUsername, IPAddress.Parse(bAddress), password: password);
         await FailSignInAsync(bUsername, bFailedAddress);
         var codes = await ProfileApi.RecoverySetAsync(b.ProfileOwner!);
-        for (var i = 0; i < 3; i++)
-        {
-            // Three fresh sessions, all from B's second successful address. Six Account POSTs,
-            // below the source address's eleven-attempt budget; no TOTP step is replayed.
-            var device = await SignInWithRecoveryCodeAsync(bUsername, password, codes[i], bOtherAddress);
-            Assert.NotNull(device.SessionCookie);
-        }
+        // Three fresh sessions use B's second address. Six Account POSTs fit its credential budget;
+        // separate recovery codes prove each session without replaying an authenticator step.
+        var firstDevice = await SignInWithRecoveryCodeAsync(bUsername, password, codes[0], bOtherAddress);
+        Assert.NotNull(firstDevice.SessionCookie);
+        var secondDevice = await SignInWithRecoveryCodeAsync(bUsername, password, codes[1], bOtherAddress);
+        Assert.NotNull(secondDevice.SessionCookie);
+        var thirdDevice = await SignInWithRecoveryCodeAsync(bUsername, password, codes[2], bOtherAddress);
+        Assert.NotNull(thirdDevice.SessionCookie);
 
         var aResponses = await ReadEndpointsAsync(a.Client);
         var bResponses = await ReadEndpointsAsync(b.Client);
@@ -122,7 +122,7 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         }
         using (var history = JsonDocument.Parse(aResponses[1]))
         {
-            AssertSummary(history.RootElement, 1, 0, 0, 1);
+            AssertSummary(history.RootElement, 1, 0, 0, 1, false, JsonValueKind.Null);
             var signIn = Assert.Single(history.RootElement.GetProperty("events").EnumerateArray());
             Assert.Equal(aAddress, signIn.GetProperty("sourceIp").GetString());
             Assert.Equal("Signed in", signIn.GetProperty("title").GetString());
@@ -130,7 +130,7 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         }
         using (var history = JsonDocument.Parse(bResponses[1]))
         {
-            AssertSummary(history.RootElement, 7, 1, 1, 3);
+            AssertSummary(history.RootElement, 7, 1, 1, 3, true, JsonValueKind.String);
             var events = history.RootElement.GetProperty("events").EnumerateArray().ToArray();
             Assert.Equal(8, events.Length);
             Assert.Equal(3, events.Count(e => e.GetProperty("title").GetString() == "Signed in with a recovery code"));
@@ -155,18 +155,18 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
 
         var admin = await vault.AdminClientAsync();
         var adminResponses = await ReadEndpointsAsync(admin);
-        foreach (var body in adminResponses)
+        Assert.All(adminResponses, body =>
         {
-            foreach (var address in new[] { aAddress, bAddress, bOtherAddress, bFailedAddress })
-            {
-                Assert.DoesNotContain(address, body);
-            }
-        }
+            Assert.DoesNotContain(aAddress, body);
+            Assert.DoesNotContain(bAddress, body);
+            Assert.DoesNotContain(bOtherAddress, body);
+            Assert.DoesNotContain(bFailedAddress, body);
+        });
         // The bootstrap administrator has one enrolled authenticator and one session. Creating
         // other accounts and B using recovery codes must widen neither history nor posture.
         using (var history = JsonDocument.Parse(adminResponses[1]))
         {
-            AssertSummary(history.RootElement, 1, 0, 0, 1);
+            AssertSummary(history.RootElement, 1, 0, 0, 1, false, JsonValueKind.Null);
             Assert.Equal("internal", Assert.Single(history.RootElement.GetProperty("events").EnumerateArray())
                 .GetProperty("sourceIp").GetString());
         }
@@ -205,8 +205,8 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         Assert.Contains(oldFailedAddress, oldResponses[1]);
 
         await vault.DeleteAccountAsync(username);
-        // A fresh password and enrollment create a NEW session. The old session's revocation is
-        // intentionally irrelevant: the account-deletion fix on main is not on this branch.
+        // A fresh password and enrollment create a distinct account session. Its history must be
+        // scoped to its new account identifier, even though its username is reused.
         var replacement = await vault.SignInNewAccountAsync(username, IPAddress.Parse(newAddress));
         Assert.NotEqual(AccountIdOf(old), AccountIdOf(replacement));
         var newResponses = await ReadEndpointsAsync(replacement.Client);
@@ -217,17 +217,17 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         }
         using (var history = JsonDocument.Parse(newResponses[1]))
         {
-            AssertSummary(history.RootElement, 1, 0, 0, 1);
+            AssertSummary(history.RootElement, 1, 0, 0, 1, false, JsonValueKind.Null);
             Assert.Equal(newAddress, Assert.Single(history.RootElement.GetProperty("events").EnumerateArray())
                 .GetProperty("sourceIp").GetString());
         }
-        foreach (var body in newResponses)
+        Assert.All(newResponses, body =>
         {
             Assert.DoesNotContain(oldAddress, body);
             Assert.DoesNotContain(oldFailedAddress, body);
             Assert.DoesNotContain("Updated your profile", body);
             Assert.DoesNotContain("sign-in attempt failed", body, StringComparison.OrdinalIgnoreCase);
-        }
+        });
         await AssertInjectedParametersIgnoredAsync(replacement.Client, newResponses, AccountIdOf(old), username);
     }
 
@@ -237,8 +237,9 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         var a = await vault.SignInNewAccountAsync("it-scope-unknown-a", IPAddress.Parse("198.51.100.88"));
         var b = await vault.SignInNewAccountAsync("it-scope-unknown-b", IPAddress.Parse("198.51.100.89"));
         var clients = new[] { a.Client, b.Client, await vault.AdminClientAsync() };
-        var before = new List<string[]>();
-        foreach (var client in clients) before.Add(await ReadEndpointsAsync(client));
+        var beforeA = await ReadEndpointsAsync(clients[0]);
+        var beforeB = await ReadEndpointsAsync(clients[1]);
+        var beforeAdmin = await ReadEndpointsAsync(clients[2]);
 
         const string unknown = "it-scope-does-not-exist";
         const string source = "198.51.100.90";
@@ -248,16 +249,27 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         Assert.Contains(unknown, audit);
         Assert.Contains(source, audit);
 
-        for (var i = 0; i < clients.Length; i++)
+        var afterA = await ReadEndpointsAsync(clients[0]);
+        Assert.Equal(beforeA, afterA);
+        Assert.All(afterA, body =>
         {
-            var after = await ReadEndpointsAsync(clients[i]);
-            Assert.Equal(before[i], after);
-            Assert.All(after, body =>
-            {
-                Assert.DoesNotContain(unknown, body);
-                Assert.DoesNotContain(source, body);
-            });
-        }
+            Assert.DoesNotContain(unknown, body);
+            Assert.DoesNotContain(source, body);
+        });
+        var afterB = await ReadEndpointsAsync(clients[1]);
+        Assert.Equal(beforeB, afterB);
+        Assert.All(afterB, body =>
+        {
+            Assert.DoesNotContain(unknown, body);
+            Assert.DoesNotContain(source, body);
+        });
+        var afterAdmin = await ReadEndpointsAsync(clients[2]);
+        Assert.Equal(beforeAdmin, afterAdmin);
+        Assert.All(afterAdmin, body =>
+        {
+            Assert.DoesNotContain(unknown, body);
+            Assert.DoesNotContain(source, body);
+        });
     }
 
     [Fact]
@@ -266,8 +278,9 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         var a = await vault.SignInNewAccountAsync("it-scope-authenticated-unknown-a", IPAddress.Parse("198.51.100.96"));
         var b = await vault.SignInNewAccountAsync("it-scope-authenticated-unknown-b", IPAddress.Parse("198.51.100.98"));
         var clients = new[] { a.Client, b.Client, await vault.AdminClientAsync() };
-        var before = new List<string[]>();
-        foreach (var client in clients) before.Add(await ReadEndpointsAsync(client));
+        var beforeA = await ReadEndpointsAsync(clients[0]);
+        var beforeB = await ReadEndpointsAsync(clients[1]);
+        var beforeAdmin = await ReadEndpointsAsync(clients[2]);
 
         const string unknown = "it-scope-authenticated-does-not-exist";
         const string source = "198.51.100.97";
@@ -286,12 +299,15 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         Assert.Contains(unknown, audit);
         Assert.Contains(source, audit);
 
-        for (var i = 0; i < clients.Length; i++)
-        {
-            var after = await ReadEndpointsAsync(clients[i]);
-            Assert.All(after, body => Assert.DoesNotContain(source, body));
-            Assert.Equal(before[i], after);
-        }
+        var afterA = await ReadEndpointsAsync(clients[0]);
+        Assert.All(afterA, body => Assert.DoesNotContain(source, body));
+        Assert.Equal(beforeA, afterA);
+        var afterB = await ReadEndpointsAsync(clients[1]);
+        Assert.All(afterB, body => Assert.DoesNotContain(source, body));
+        Assert.Equal(beforeB, afterB);
+        var afterAdmin = await ReadEndpointsAsync(clients[2]);
+        Assert.All(afterAdmin, body => Assert.DoesNotContain(source, body));
+        Assert.Equal(beforeAdmin, afterAdmin);
     }
 
     [Fact]
@@ -300,8 +316,9 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         var a = await vault.SignInNewAccountAsync("it-scope-sso-unknown-a", IPAddress.Parse("198.51.100.99"));
         var b = await vault.SignInNewAccountAsync("it-scope-sso-unknown-b", IPAddress.Parse("198.51.100.100"));
         var clients = new[] { a.Client, b.Client, await vault.AdminClientAsync() };
-        var before = new List<string[]>();
-        foreach (var client in clients) before.Add(await ReadEndpointsAsync(client));
+        var beforeA = await ReadEndpointsAsync(clients[0]);
+        var beforeB = await ReadEndpointsAsync(clients[1]);
+        var beforeAdmin = await ReadEndpointsAsync(clients[2]);
 
         const string unknown = "it-scope-idp-only@example.test";
         const string source = "198.51.100.101";
@@ -339,16 +356,27 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         var audit = await clients[2].GetStringAsync("/Audit");
         Assert.Contains(unknown, audit);
         Assert.Contains(source, audit);
-        for (var i = 0; i < clients.Length; i++)
+        var afterA = await ReadEndpointsAsync(clients[0]);
+        Assert.All(afterA, body =>
         {
-            var after = await ReadEndpointsAsync(clients[i]);
-            Assert.All(after, body =>
-            {
-                Assert.DoesNotContain(unknown, body);
-                Assert.DoesNotContain(source, body);
-            });
-            Assert.Equal(before[i], after);
-        }
+            Assert.DoesNotContain(unknown, body);
+            Assert.DoesNotContain(source, body);
+        });
+        Assert.Equal(beforeA, afterA);
+        var afterB = await ReadEndpointsAsync(clients[1]);
+        Assert.All(afterB, body =>
+        {
+            Assert.DoesNotContain(unknown, body);
+            Assert.DoesNotContain(source, body);
+        });
+        Assert.Equal(beforeB, afterB);
+        var afterAdmin = await ReadEndpointsAsync(clients[2]);
+        Assert.All(afterAdmin, body =>
+        {
+            Assert.DoesNotContain(unknown, body);
+            Assert.DoesNotContain(source, body);
+        });
+        Assert.Equal(beforeAdmin, afterAdmin);
     }
 
     [Fact]
@@ -386,16 +414,16 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         Assert.Equal(sources, items.Select(item => item.GetProperty("sourceIp").GetString()));
     }
 
-    private static void AssertSummary(JsonElement history, int successes, int failures, int suspicious, int locations)
+    private static void AssertSummary(JsonElement history, int successes, int failures, int suspicious, int locations, bool needsAttention, JsonValueKind lastFailureKind)
     {
         var summary = history.GetProperty("summary");
         Assert.Equal(successes, summary.GetProperty("successCount").GetInt32());
         Assert.Equal(failures, summary.GetProperty("failedCount").GetInt32());
         Assert.Equal(suspicious, summary.GetProperty("suspiciousCount").GetInt32());
         Assert.Equal(locations, summary.GetProperty("distinctLocations").GetInt32());
-        Assert.Equal(suspicious > 0, summary.GetProperty("needsAttention").GetBoolean());
+        Assert.Equal(needsAttention, summary.GetProperty("needsAttention").GetBoolean());
         Assert.Equal(JsonValueKind.String, summary.GetProperty("lastSuccessUtc").ValueKind);
-        Assert.Equal(failures == 0 ? JsonValueKind.Null : JsonValueKind.String, summary.GetProperty("lastFailedUtc").ValueKind);
+        Assert.Equal(lastFailureKind, summary.GetProperty("lastFailedUtc").ValueKind);
     }
 
     private static void AssertCheckup(JsonElement checkup, int score, string grade, int needed, int recommended, int secured,
@@ -418,18 +446,15 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
 
     private static async Task<string[]> ReadEndpointsAsync(HttpClient client)
     {
-        var bodies = new List<string>();
-        foreach (var endpoint in Endpoints) bodies.Add(await client.GetStringAsync(endpoint));
-        return bodies.ToArray();
+        return [await client.GetStringAsync(Endpoints[0]), await client.GetStringAsync(Endpoints[1]), await client.GetStringAsync(Endpoints[2])];
     }
 
     private static async Task AssertInjectedParametersIgnoredAsync(HttpClient client, string[] expected, Guid otherId, string otherUsername)
     {
         var query = $"?userId={otherId:D}&username={Uri.EscapeDataString(otherUsername)}&pageSize=100&actorUserId={otherId:D}";
-        for (var i = 0; i < Endpoints.Length; i++)
-        {
-            Assert.Equal(expected[i], await client.GetStringAsync(Endpoints[i] + query));
-        }
+        Assert.Equal(expected[0], await client.GetStringAsync(Endpoints[0] + query));
+        Assert.Equal(expected[1], await client.GetStringAsync(Endpoints[1] + query));
+        Assert.Equal(expected[2], await client.GetStringAsync(Endpoints[2] + query));
     }
 
     private async Task FailSignInAsync(string username, string source)
@@ -474,6 +499,4 @@ public sealed partial class SelfServiceScopingTests(VaultFixture vault)
         return accountId;
     }
 
-    [GeneratedRegex("<li class=\"mono\">([^<]+)</li>")]
-    private static partial Regex RecoveryCode();
 }

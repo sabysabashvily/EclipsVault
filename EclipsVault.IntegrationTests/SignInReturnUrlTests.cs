@@ -61,18 +61,24 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         Assert.Equal(returnUrl, HiddenReturnUrl(enrollment));
         var secret = EnrollmentSecret().Match(enrollment).Groups[1].Value;
         Assert.NotEmpty(secret);
-        foreach (var invalidCode in new[] { "bad", Totp.Code(secret, Totp.CurrentStep() - 10) })
+        var malformed = await PostFormAsync(client, "/Account/EnrollTotp", enrollment, new()
         {
-            var invalid = await PostFormAsync(client, "/Account/EnrollTotp", enrollment, new()
-            {
-                ["Code"] = invalidCode,
-                ["ReturnUrl"] = HiddenReturnUrl(enrollment)
-            });
-            Assert.Equal(HttpStatusCode.OK, invalid.StatusCode);
-            enrollment = await invalid.Content.ReadAsStringAsync();
-            Assert.Equal(returnUrl, HiddenReturnUrl(enrollment));
-            Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/ui/me")).StatusCode);
-        }
+            ["Code"] = "bad",
+            ["ReturnUrl"] = HiddenReturnUrl(enrollment)
+        });
+        Assert.Equal(HttpStatusCode.OK, malformed.StatusCode);
+        enrollment = await malformed.Content.ReadAsStringAsync();
+        Assert.Equal(returnUrl, HiddenReturnUrl(enrollment));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/ui/me")).StatusCode);
+        var expired = await PostFormAsync(client, "/Account/EnrollTotp", enrollment, new()
+        {
+            ["Code"] = Totp.Code(secret, Totp.CurrentStep() - 10),
+            ["ReturnUrl"] = HiddenReturnUrl(enrollment)
+        });
+        Assert.Equal(HttpStatusCode.OK, expired.StatusCode);
+        enrollment = await expired.Content.ReadAsStringAsync();
+        Assert.Equal(returnUrl, HiddenReturnUrl(enrollment));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/ui/me")).StatusCode);
         var response = await PostFormAsync(client, "/Account/EnrollTotp", enrollment, new()
         {
             ["Code"] = Totp.Code(secret, Totp.CurrentStep()),
@@ -92,18 +98,24 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         enrolled.Dispose();
         using var client = NewClient();
         var login = await client.GetStringAsync(WithReturnUrl("/Account/Login", returnUrl));
-        foreach (var invalidPassword in new[] { "", "incorrect-password" })
+        var emptyPassword = await PostFormAsync(client, "/Account/Login", login, new()
         {
-            var invalid = await PostFormAsync(client, "/Account/Login", login, new()
-            {
-                ["Username"] = username,
-                ["Password"] = invalidPassword,
-                ["ReturnUrl"] = HiddenReturnUrl(login)
-            });
-            Assert.Equal(HttpStatusCode.OK, invalid.StatusCode);
-            login = await invalid.Content.ReadAsStringAsync();
-            Assert.Equal(returnUrl, HiddenReturnUrl(login));
-        }
+            ["Username"] = username,
+            ["Password"] = "",
+            ["ReturnUrl"] = HiddenReturnUrl(login)
+        });
+        Assert.Equal(HttpStatusCode.OK, emptyPassword.StatusCode);
+        login = await emptyPassword.Content.ReadAsStringAsync();
+        Assert.Equal(returnUrl, HiddenReturnUrl(login));
+        var incorrectPassword = await PostFormAsync(client, "/Account/Login", login, new()
+        {
+            ["Username"] = username,
+            ["Password"] = "incorrect-password",
+            ["ReturnUrl"] = HiddenReturnUrl(login)
+        });
+        Assert.Equal(HttpStatusCode.OK, incorrectPassword.StatusCode);
+        login = await incorrectPassword.Content.ReadAsStringAsync();
+        Assert.Equal(returnUrl, HiddenReturnUrl(login));
 
         var passwordResponse = await PostFormAsync(client, "/Account/Login", login, new()
         {
@@ -114,17 +126,22 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         Assert.Equal(WithReturnUrl("/Account/Totp", returnUrl), passwordResponse.Headers.Location?.OriginalString);
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/ui/me")).StatusCode);
         var totp = await client.GetStringAsync(passwordResponse.Headers.Location);
-        foreach (var invalidCode in new[] { "bad", Totp.Code(secret, Totp.CurrentStep() - 10) })
+        var malformed = await PostFormAsync(client, "/Account/Totp", totp, new()
         {
-            var invalid = await PostFormAsync(client, "/Account/Totp", totp, new()
-            {
-                ["Code"] = invalidCode,
-                ["ReturnUrl"] = HiddenReturnUrl(totp)
-            });
-            Assert.Equal(HttpStatusCode.OK, invalid.StatusCode);
-            totp = await invalid.Content.ReadAsStringAsync();
-            Assert.Equal(returnUrl, HiddenReturnUrl(totp));
-        }
+            ["Code"] = "bad",
+            ["ReturnUrl"] = HiddenReturnUrl(totp)
+        });
+        Assert.Equal(HttpStatusCode.OK, malformed.StatusCode);
+        totp = await malformed.Content.ReadAsStringAsync();
+        Assert.Equal(returnUrl, HiddenReturnUrl(totp));
+        var expired = await PostFormAsync(client, "/Account/Totp", totp, new()
+        {
+            ["Code"] = Totp.Code(secret, Totp.CurrentStep() - 10),
+            ["ReturnUrl"] = HiddenReturnUrl(totp)
+        });
+        Assert.Equal(HttpStatusCode.OK, expired.StatusCode);
+        totp = await expired.Content.ReadAsStringAsync();
+        Assert.Equal(returnUrl, HiddenReturnUrl(totp));
 
         var recoveryPath = LinkTo(totp, "RecoveryCode");
         Assert.Equal(WithReturnUrl("/Account/RecoveryCode", returnUrl), recoveryPath);
@@ -164,18 +181,24 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
                 ["ReturnUrl"] = returnUrl
             });
             var recovery = await client.GetStringAsync(LinkTo(await client.GetStringAsync(afterPassword.Headers.Location), "RecoveryCode"));
-            foreach (var invalidCode in new[] { "bad", "ZZZZZ-ZZZZZ" })
+            var malformed = await PostFormAsync(client, "/Account/RecoveryCode", recovery, new()
             {
-                var invalid = await PostFormAsync(client, "/Account/RecoveryCode", recovery, new()
-                {
-                    ["Code"] = invalidCode,
-                    ["ReturnUrl"] = HiddenReturnUrl(recovery)
-                });
-                Assert.Equal(HttpStatusCode.OK, invalid.StatusCode);
-                recovery = await invalid.Content.ReadAsStringAsync();
-                Assert.Equal(returnUrl, HiddenReturnUrl(recovery));
-                Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/ui/me")).StatusCode);
-            }
+                ["Code"] = "bad",
+                ["ReturnUrl"] = HiddenReturnUrl(recovery)
+            });
+            Assert.Equal(HttpStatusCode.OK, malformed.StatusCode);
+            recovery = await malformed.Content.ReadAsStringAsync();
+            Assert.Equal(returnUrl, HiddenReturnUrl(recovery));
+            Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/ui/me")).StatusCode);
+            var unknownCode = await PostFormAsync(client, "/Account/RecoveryCode", recovery, new()
+            {
+                ["Code"] = "ZZZZZ-ZZZZZ",
+                ["ReturnUrl"] = HiddenReturnUrl(recovery)
+            });
+            Assert.Equal(HttpStatusCode.OK, unknownCode.StatusCode);
+            recovery = await unknownCode.Content.ReadAsStringAsync();
+            Assert.Equal(returnUrl, HiddenReturnUrl(recovery));
+            Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/ui/me")).StatusCode);
             var signedIn = await PostFormAsync(client, "/Account/RecoveryCode", recovery, new()
             {
                 ["Code"] = code,
@@ -212,54 +235,56 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
             ["Code"] = Totp.Code(secret, Totp.CurrentStep()),
             ["ReturnUrl"] = HiddenReturnUrl(totp)
         });
-        for (var hops = 0; response.StatusCode == HttpStatusCode.Redirect; hops++)
-        {
-            Assert.True(hops < 5, "Sign-in redirects in a loop through " + response.Headers.Location);
-            response = await client.GetAsync(response.Headers.Location);
-        }
+        response = await FollowRedirectsAsync(client, response);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("/Secrets", response.RequestMessage?.RequestUri?.AbsolutePath);
     }
 
-    [Fact]
-    public async Task A_completed_sign_in_returns_neither_to_a_second_factor_page_nor_to_a_non_ascii_target()
+    [Theory]
+    [InlineData("/Account/Totp", "/Secrets")]
+    [InlineData("/Account/RecoveryCode", "/Secrets")]
+    [InlineData("/Account/EnrollTotp", "/Secrets")]
+    [InlineData("/account/TOTP/", "/Secrets")]
+    [InlineData("/Account/Totp?ReturnUrl=%2FAccess", "/Secrets")]
+    [InlineData("/Account/Totp/1#code", "/Secrets")]
+    [InlineData("/Account\\Totp", "/Secrets")]
+    [InlineData("~/Account/Totp", "/Secrets")]
+    [InlineData("/Account//Totp", "/Secrets")]
+    [InlineData("/Secrets/../Account/Totp", "/Secrets")]
+    [InlineData("/Secrets\\..\\Account\\Totp", "/Secrets")]
+    [InlineData("/Secrets/%2e%2e/Account/Totp", "/Secrets")]
+    [InlineData("/Account/Totp/%2F..", "/Secrets")]
+    [InlineData("/Account/Totp/..%2F", "/Secrets")]
+    [InlineData("/Account/Totp/x%2F..%2F..", "/Secrets")]
+    [InlineData("/Account/RecoveryCode/%2F..", "/Secrets")]
+    [InlineData("/Account/EnrollTotp/..%2F", "/Secrets")]
+    [InlineData("/Account/Totp/%252F..", "/Secrets")]
+    [InlineData("/%2541ccount/Totp", "/Secrets")]
+    [InlineData("/Account%252FTotp", "/Secrets")]
+    [InlineData("/%41ccount/Totp", "/Secrets")]
+    [InlineData("/%41ccount/%54otp", "/Secrets")]
+    [InlineData("/Account%2FTotp", "/Secrets")]
+    [InlineData("/Account", "/Secrets")]
+    [InlineData("/Account;x/Totp", "/Secrets")]
+    [InlineData("/Account/Totpx", "/Secrets")]
+    [InlineData("/Account/Recover", "/Secrets")]
+    [InlineData("/Account/Login?ReturnUrl=%2FAccess", "/Secrets")]
+    [InlineData("/Account/Denied", "/Account/Denied")]
+    [InlineData("/Account/Denied?x=1", "/Account/Denied?x=1")]
+    [InlineData("/Account/Denied#top", "/Account/Denied#top")]
+    [InlineData("/Access?view=mine", "/Access?view=mine")]
+    [InlineData("/Secrets?q=é", "/Secrets")]
+    [InlineData("/Secrets?q=%C3%A9", "/Secrets?q=%C3%A9")]
+    public async Task A_completed_sign_in_returns_neither_to_a_second_factor_page_nor_to_a_non_ascii_target(string target, string expected)
     {
         var (_, _, _, client) = await EnrollAccountAsync();
         using (client)
         {
             // Every Account page but Denied is refused as written, before any decoding, as is any path
             // that reads as something else once decoded or resolved. A second-factor page would loop.
-            (string Target, string Expected)[] targets =
-            [
-                ("/Account/Totp", "/Secrets"), ("/Account/RecoveryCode", "/Secrets"), ("/Account/EnrollTotp", "/Secrets"),
-                ("/account/TOTP/", "/Secrets"), ("/Account/Totp?ReturnUrl=%2FAccess", "/Secrets"),
-                ("/Account/Totp/1#code", "/Secrets"), ("/Account\\Totp", "/Secrets"), ("~/Account/Totp", "/Secrets"),
-                ("/Account//Totp", "/Secrets"), ("/Secrets/../Account/Totp", "/Secrets"), ("/Secrets\\..\\Account\\Totp", "/Secrets"),
-                ("/Secrets/%2e%2e/Account/Totp", "/Secrets"),
-                // Kestrel keeps %2F inside a segment and the default route binds it to {id}.
-                ("/Account/Totp/%2F..", "/Secrets"), ("/Account/Totp/..%2F", "/Secrets"),
-                ("/Account/Totp/x%2F..%2F..", "/Secrets"), ("/Account/RecoveryCode/%2F..", "/Secrets"),
-                ("/Account/EnrollTotp/..%2F", "/Secrets"),
-                ("/Account/Totp/%252F..", "/Secrets"), ("/%2541ccount/Totp", "/Secrets"), ("/Account%252FTotp", "/Secrets"),
-                ("/%41ccount/Totp", "/Secrets"), ("/%41ccount/%54otp", "/Secrets"), ("/Account%2FTotp", "/Secrets"),
-                ("/Account", "/Secrets"), ("/Account;x/Totp", "/Secrets"), ("/Account/Totpx", "/Secrets"),
-                ("/Account/Recover", "/Secrets"), ("/Account/Login?ReturnUrl=%2FAccess", "/Secrets"),
-                ("/Account/Denied", "/Account/Denied"), ("/Account/Denied?x=1", "/Account/Denied?x=1"),
-                ("/Account/Denied#top", "/Account/Denied#top"), ("/Access?view=mine", "/Access?view=mine"),
-                // Location carries only ASCII. Model binding decodes %C3%A9 to é, which must not
-                // reach LocalRedirect; the still-encoded query is an ordinary local target.
-                ("/Secrets?q=é", "/Secrets"), ("/Secrets?q=%C3%A9", "/Secrets?q=%C3%A9")
-            ];
-            var wrong = new List<string>();
-            foreach (var (target, expected) in targets)
-            {
-                var response = await client.GetAsync(WithReturnUrl("/Account/Login", target));
-                if (response.StatusCode != HttpStatusCode.Redirect || response.Headers.Location?.OriginalString != expected)
-                {
-                    wrong.Add($"{target} answered {(int)response.StatusCode} {response.Headers.Location}");
-                }
-            }
-            Assert.True(wrong.Count == 0, string.Join(Environment.NewLine, wrong));
+            var response = await client.GetAsync(WithReturnUrl("/Account/Login", target));
+            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+            Assert.Equal(expected, response.Headers.Location?.OriginalString);
         }
     }
 
@@ -287,8 +312,26 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/ui/me")).StatusCode);
     }
 
-    [Fact]
-    public async Task Passkey_sign_in_uses_the_server_checked_target_only_after_a_valid_assertion()
+    [Theory]
+    [InlineData("/Access?view=mine&sort=name#matrix", "/Access?view=mine&sort=name#matrix")]
+    [InlineData(null, "/Secrets")]
+    [InlineData("", "/Secrets")]
+    [InlineData("https://outside.example/", "/Secrets")]
+    [InlineData("//outside.example/", "/Secrets")]
+    [InlineData("/\\outside.example/", "/Secrets")]
+    [InlineData("\\\\outside.example/", "/Secrets")]
+    [InlineData("/\t/outside.example", "/Secrets")]
+    [InlineData("/\r\nLocation: https://outside.example", "/Secrets")]
+    [InlineData("/\0/outside.example", "/Secrets")]
+    [InlineData("https%3A%2F%2Foutside.example", "/Secrets")]
+    [InlineData("%2f%2foutside.example", "/Secrets")]
+    [InlineData("/%2foutside.example", "/Secrets")]
+    [InlineData("/%5coutside.example", "/Secrets")]
+    [InlineData("/folder\\child", "/folder\\child")]
+    [InlineData("~/Access", "/Access")]
+    [InlineData("/Account/Totp", "/Secrets")]
+    [InlineData("/Secrets?q=é", "/Secrets")]
+    public async Task Passkey_sign_in_uses_the_server_checked_target_only_after_a_valid_assertion(string? target, string expected)
     {
         var (username, password, secret, enrolled) = await EnrollAccountAsync();
         using var authenticator = new PasskeyAuthenticator();
@@ -323,37 +366,31 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
 
         // Model binding decodes the transport once. A path that is still percent-encoded after that is
         // refused rather than interpreted, so an encoded separator never becomes an authority.
-        (string? Target, string Expected)[] targets =
-        [
-            ("/Access?view=mine&sort=name#matrix", "/Access?view=mine&sort=name#matrix"),
-            (null, "/Secrets"), ("", "/Secrets"), ("https://outside.example/", "/Secrets"),
-            ("//outside.example/", "/Secrets"), ("/\\outside.example/", "/Secrets"),
-            ("\\\\outside.example/", "/Secrets"), ("/\t/outside.example", "/Secrets"),
-            ("/\r\nLocation: https://outside.example", "/Secrets"), ("/\0/outside.example", "/Secrets"),
-            ("https%3A%2F%2Foutside.example", "/Secrets"), ("%2f%2foutside.example", "/Secrets"),
-            ("/%2foutside.example", "/Secrets"), ("/%5coutside.example", "/Secrets"),
-            ("/folder\\child", "/folder\\child"), ("~/Access", "/Access"),
-            ("/Account/Totp", "/Secrets"), ("/Secrets?q=é", "/Secrets")
-        ];
-        foreach (var (target, expected) in targets)
+        using var client = NewClient();
+        var successfulLogin = await client.GetStringAsync(WithReturnUrl("/Account/Login", target));
+        var signInOptions = await PostJsonAsync(client, "/Account/PasskeyLoginBegin", successfulLogin, new { username, returnUrl = target });
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/ui/me")).StatusCode);
+        var result = await PostJsonAsync(client, "/Account/PasskeyLoginComplete", successfulLogin, new { credential = authenticator.Assert(signInOptions) });
+        Assert.True(result.GetProperty("success").GetBoolean());
+        var redirect = result.GetProperty("redirect").GetString();
+        Assert.StartsWith("/Account/Login?ReturnUrl=", redirect, StringComparison.Ordinal);
+        var completionRedirect = await client.GetAsync(redirect);
+        Assert.Equal(HttpStatusCode.Redirect, completionRedirect.StatusCode);
+        Assert.Equal(expected, completionRedirect.Headers.Location?.OriginalString);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/ui/me")).StatusCode);
+        // Consuming the challenge prevents a replay from issuing another redirect/session.
+        var replay = await PostJsonAsync(client, "/Account/PasskeyLoginComplete", await client.GetStringAsync("/Secrets"), new { credential = new { } });
+        Assert.False(replay.GetProperty("success").GetBoolean());
+        Assert.False(replay.TryGetProperty("redirect", out _));
+    }
+
+    private static async Task<HttpResponseMessage> FollowRedirectsAsync(HttpClient client, HttpResponseMessage response)
+    {
+        for (var hops = 0; hops < 5 && response.StatusCode == HttpStatusCode.Redirect; hops++)
         {
-            using var client = NewClient();
-            var login = await client.GetStringAsync(target is null ? "/Account/Login" : WithReturnUrl("/Account/Login", target));
-            var options = await PostJsonAsync(client, "/Account/PasskeyLoginBegin", login, new { username, returnUrl = target });
-            Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/ui/me")).StatusCode);
-            var result = await PostJsonAsync(client, "/Account/PasskeyLoginComplete", login, new { credential = authenticator.Assert(options) });
-            Assert.True(result.GetProperty("success").GetBoolean());
-            var redirect = result.GetProperty("redirect").GetString();
-            Assert.StartsWith("/Account/Login?ReturnUrl=", redirect, StringComparison.Ordinal);
-            var final = await client.GetAsync(redirect);
-            Assert.Equal(HttpStatusCode.Redirect, final.StatusCode);
-            Assert.Equal(expected, final.Headers.Location?.OriginalString);
-            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/ui/me")).StatusCode);
-            // Consuming the challenge prevents a replay from issuing another redirect/session.
-            var replay = await PostJsonAsync(client, "/Account/PasskeyLoginComplete", await client.GetStringAsync("/Secrets"), new { credential = new { } });
-            Assert.False(replay.GetProperty("success").GetBoolean());
-            Assert.False(replay.TryGetProperty("redirect", out _));
+            response = await client.GetAsync(response.Headers.Location);
         }
+        return response;
     }
 
     private static async Task<Guid> VerifyProfileChangeAsync(HttpClient client, string password, string secret, object change)
@@ -442,7 +479,8 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         return (username, password);
     }
 
-    private static string WithReturnUrl(string path, string returnUrl) => path + "?ReturnUrl=" + Uri.EscapeDataString(returnUrl);
+    private static string WithReturnUrl(string path, string? returnUrl) =>
+        returnUrl is null ? path : path + "?ReturnUrl=" + Uri.EscapeDataString(returnUrl);
 
     private static string HiddenReturnUrl(string page)
     {
@@ -463,6 +501,4 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
     [GeneratedRegex("<code class=\"secret-code\">([A-Z2-7=]+)</code>")]
     private static partial Regex EnrollmentSecret();
 
-    [GeneratedRegex("<li class=\"mono\">([A-Z0-9-]+)</li>")]
-    private static partial Regex RecoveryCode();
 }
