@@ -1090,3 +1090,30 @@ r50 browser/guards; then run the full backend/provider suite separately (suggest
 model/frontend gates. Record actual counts, all commit subject lengths, findings/resolutions and
 provenance, complete PR body/final report, send the same report to the authorized coordinator.
 No push, PR, closure, shipped claim, excluded-directory access or broad Docker cleanup.
+
+
+## Ticket #91 r6 corrections (2026-10-29, GPT Sol 6.1 xhigh)
+
+Fresh Claude Opus 5.5 high r6 reviews identify one reliability defect and one owner coverage gap,
+with no production security defect. Expanded return-target theories overlapped other classes' frozen
+credential budgets. Their clients now use the dedicated 2001:db8:91:: range; no limiter/fixture change.
+A separate Fact owns failed passkey/retry assertions instead of repeating them in all 18 cases.
+Comments accompany encoded-target data, names/summary arguments are clearer, and two inherited
+unit assertion loops use Assert.All. The three fixed endpoint helper reads remain explicit (H4
+judgment declined with the response in the ledger).
+
+AccountRevokersTests adds the requested genuine HTTP role race for memory and Redis: password POST,
+admin EditUser POST, factor POST refusal without session/cookie authority or factor spending, then
+fresh sign-in with the new role/project. No production route/service replacement. The service-level
+within-request issuance pin remains. Security r6 corrects Spec's suggested omission of LastTotpStep:
+SessionCookieValidation and RequireCurrentProofAsync refuse the retired version before spending it.
+
+Backend-fast r53 passes locked restore, zero-warning/error Release build, format, unit 698 and six
+guardrails. Expected integration discovery is now 681 (the added failure/retry Fact plus both real
+HTTP race variants); runtime proof is still pending. Browser r50 is at least 94/106 on unchanged
+production/browser sources, followed by all eight guard probes. Don't overlap integration Docker.
+
+Next: commit the r6 test/doc changes, fresh whole-Area r7 reviews including every commit and full
+#83/#91/CONTEXT/ADR sources, complete r50/guards, then full backend r54 with final frontend/models.
+All logs/reports/PR body remain under logs/ticket-91; send final coordinator report only when done.
+No push, PR, closure, shipped claim, excluded-directory access or broad Docker cleanup.

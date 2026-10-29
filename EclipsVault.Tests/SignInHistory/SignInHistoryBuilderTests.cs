@@ -32,10 +32,8 @@ public class SignInHistoryBuilderTests
     [Fact]
     public void Every_relevant_action_classifies_and_others_do_not()
     {
-        foreach (var action in SignInEventClassifier.RelevantActions)
-        {
-            Assert.NotNull(SignInEventClassifier.Classify(action));
-        }
+        Assert.All(SignInEventClassifier.RelevantActions,
+            action => Assert.NotNull(SignInEventClassifier.Classify(action)));
 
         Assert.Null(SignInEventClassifier.Classify(AuditAction.SecretRevealed));
         Assert.Null(SignInEventClassifier.Classify(AuditAction.ProfileUpdated));

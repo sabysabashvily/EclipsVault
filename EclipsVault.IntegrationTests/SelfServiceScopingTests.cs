@@ -74,7 +74,7 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         // The global audit retains the actual source; self-service projections hide it.
         Assert.Contains("198.51.100.114", await admin.GetStringAsync("/Audit"));
         using var history = JsonDocument.Parse(historyBody);
-        AssertSummary(history.RootElement, 1, 1, 1, 2, true, JsonValueKind.String);
+        AssertSummary(history.RootElement, 1, 1, 1, 2, needsAttention: true, lastFailureKind: JsonValueKind.String);
         var unlocked = Assert.Single(history.RootElement.GetProperty("events").EnumerateArray(),
             item => item.GetProperty("title").GetString() == "Account unlocked");
         Assert.Equal("Info", unlocked.GetProperty("outcome").GetString());
@@ -122,7 +122,7 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         }
         using (var history = JsonDocument.Parse(aResponses[1]))
         {
-            AssertSummary(history.RootElement, 1, 0, 0, 1, false, JsonValueKind.Null);
+            AssertSummary(history.RootElement, 1, 0, 0, 1, needsAttention: false, lastFailureKind: JsonValueKind.Null);
             var signIn = Assert.Single(history.RootElement.GetProperty("events").EnumerateArray());
             Assert.Equal(aAddress, signIn.GetProperty("sourceIp").GetString());
             Assert.Equal("Signed in", signIn.GetProperty("title").GetString());
@@ -130,7 +130,7 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         }
         using (var history = JsonDocument.Parse(bResponses[1]))
         {
-            AssertSummary(history.RootElement, 7, 1, 1, 3, true, JsonValueKind.String);
+            AssertSummary(history.RootElement, 7, 1, 1, 3, needsAttention: true, lastFailureKind: JsonValueKind.String);
             var events = history.RootElement.GetProperty("events").EnumerateArray().ToArray();
             Assert.Equal(8, events.Length);
             Assert.Equal(3, events.Count(e => e.GetProperty("title").GetString() == "Signed in with a recovery code"));
@@ -166,7 +166,7 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         // other accounts and B using recovery codes must widen neither history nor posture.
         using (var history = JsonDocument.Parse(adminResponses[1]))
         {
-            AssertSummary(history.RootElement, 1, 0, 0, 1, false, JsonValueKind.Null);
+            AssertSummary(history.RootElement, 1, 0, 0, 1, needsAttention: false, lastFailureKind: JsonValueKind.Null);
             Assert.Equal("internal", Assert.Single(history.RootElement.GetProperty("events").EnumerateArray())
                 .GetProperty("sourceIp").GetString());
         }
@@ -217,7 +217,7 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         }
         using (var history = JsonDocument.Parse(newResponses[1]))
         {
-            AssertSummary(history.RootElement, 1, 0, 0, 1, false, JsonValueKind.Null);
+            AssertSummary(history.RootElement, 1, 0, 0, 1, needsAttention: false, lastFailureKind: JsonValueKind.Null);
             Assert.Equal(newAddress, Assert.Single(history.RootElement.GetProperty("events").EnumerateArray())
                 .GetProperty("sourceIp").GetString());
         }
@@ -236,34 +236,34 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
     {
         var a = await vault.SignInNewAccountAsync("it-scope-unknown-a", IPAddress.Parse("198.51.100.88"));
         var b = await vault.SignInNewAccountAsync("it-scope-unknown-b", IPAddress.Parse("198.51.100.89"));
-        var clients = new[] { a.Client, b.Client, await vault.AdminClientAsync() };
-        var beforeA = await ReadEndpointsAsync(clients[0]);
-        var beforeB = await ReadEndpointsAsync(clients[1]);
-        var beforeAdmin = await ReadEndpointsAsync(clients[2]);
+        var admin = await vault.AdminClientAsync();
+        var beforeA = await ReadEndpointsAsync(a.Client);
+        var beforeB = await ReadEndpointsAsync(b.Client);
+        var beforeAdmin = await ReadEndpointsAsync(admin);
 
         const string unknown = "it-scope-does-not-exist";
         const string source = "198.51.100.90";
         await FailSignInAsync(unknown, source);
         // The global Audit log proves the fail-closed write occurred, without inspecting a DB row.
-        var audit = await clients[2].GetStringAsync("/Audit");
+        var audit = await admin.GetStringAsync("/Audit");
         Assert.Contains(unknown, audit);
         Assert.Contains(source, audit);
 
-        var afterA = await ReadEndpointsAsync(clients[0]);
+        var afterA = await ReadEndpointsAsync(a.Client);
         Assert.Equal(beforeA, afterA);
         Assert.All(afterA, body =>
         {
             Assert.DoesNotContain(unknown, body);
             Assert.DoesNotContain(source, body);
         });
-        var afterB = await ReadEndpointsAsync(clients[1]);
+        var afterB = await ReadEndpointsAsync(b.Client);
         Assert.Equal(beforeB, afterB);
         Assert.All(afterB, body =>
         {
             Assert.DoesNotContain(unknown, body);
             Assert.DoesNotContain(source, body);
         });
-        var afterAdmin = await ReadEndpointsAsync(clients[2]);
+        var afterAdmin = await ReadEndpointsAsync(admin);
         Assert.Equal(beforeAdmin, afterAdmin);
         Assert.All(afterAdmin, body =>
         {
@@ -277,10 +277,10 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
     {
         var a = await vault.SignInNewAccountAsync("it-scope-authenticated-unknown-a", IPAddress.Parse("198.51.100.96"));
         var b = await vault.SignInNewAccountAsync("it-scope-authenticated-unknown-b", IPAddress.Parse("198.51.100.98"));
-        var clients = new[] { a.Client, b.Client, await vault.AdminClientAsync() };
-        var beforeA = await ReadEndpointsAsync(clients[0]);
-        var beforeB = await ReadEndpointsAsync(clients[1]);
-        var beforeAdmin = await ReadEndpointsAsync(clients[2]);
+        var admin = await vault.AdminClientAsync();
+        var beforeA = await ReadEndpointsAsync(a.Client);
+        var beforeB = await ReadEndpointsAsync(b.Client);
+        var beforeAdmin = await ReadEndpointsAsync(admin);
 
         const string unknown = "it-scope-authenticated-does-not-exist";
         const string source = "198.51.100.97";
@@ -295,17 +295,17 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("Invalid username or password.", await response.Content.ReadAsStringAsync());
         Assert.NotNull(signedIn.SessionCookie);
-        var audit = await clients[2].GetStringAsync("/Audit");
+        var audit = await admin.GetStringAsync("/Audit");
         Assert.Contains(unknown, audit);
         Assert.Contains(source, audit);
 
-        var afterA = await ReadEndpointsAsync(clients[0]);
+        var afterA = await ReadEndpointsAsync(a.Client);
         Assert.All(afterA, body => Assert.DoesNotContain(source, body));
         Assert.Equal(beforeA, afterA);
-        var afterB = await ReadEndpointsAsync(clients[1]);
+        var afterB = await ReadEndpointsAsync(b.Client);
         Assert.All(afterB, body => Assert.DoesNotContain(source, body));
         Assert.Equal(beforeB, afterB);
-        var afterAdmin = await ReadEndpointsAsync(clients[2]);
+        var afterAdmin = await ReadEndpointsAsync(admin);
         Assert.All(afterAdmin, body => Assert.DoesNotContain(source, body));
         Assert.Equal(beforeAdmin, afterAdmin);
     }
@@ -315,10 +315,10 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
     {
         var a = await vault.SignInNewAccountAsync("it-scope-sso-unknown-a", IPAddress.Parse("198.51.100.99"));
         var b = await vault.SignInNewAccountAsync("it-scope-sso-unknown-b", IPAddress.Parse("198.51.100.100"));
-        var clients = new[] { a.Client, b.Client, await vault.AdminClientAsync() };
-        var beforeA = await ReadEndpointsAsync(clients[0]);
-        var beforeB = await ReadEndpointsAsync(clients[1]);
-        var beforeAdmin = await ReadEndpointsAsync(clients[2]);
+        var admin = await vault.AdminClientAsync();
+        var beforeA = await ReadEndpointsAsync(a.Client);
+        var beforeB = await ReadEndpointsAsync(b.Client);
+        var beforeAdmin = await ReadEndpointsAsync(admin);
 
         const string unknown = "it-scope-idp-only@example.test";
         const string source = "198.51.100.101";
@@ -353,24 +353,24 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         Assert.Equal("/Account/Login", response.Headers.Location?.OriginalString);
         Assert.Null(callback.Cookies.GetCookies(callback.Client.BaseAddress!)[cookieName]);
         Assert.NotNull(callback.SessionCookie);
-        var audit = await clients[2].GetStringAsync("/Audit");
+        var audit = await admin.GetStringAsync("/Audit");
         Assert.Contains(unknown, audit);
         Assert.Contains(source, audit);
-        var afterA = await ReadEndpointsAsync(clients[0]);
+        var afterA = await ReadEndpointsAsync(a.Client);
         Assert.All(afterA, body =>
         {
             Assert.DoesNotContain(unknown, body);
             Assert.DoesNotContain(source, body);
         });
         Assert.Equal(beforeA, afterA);
-        var afterB = await ReadEndpointsAsync(clients[1]);
+        var afterB = await ReadEndpointsAsync(b.Client);
         Assert.All(afterB, body =>
         {
             Assert.DoesNotContain(unknown, body);
             Assert.DoesNotContain(source, body);
         });
         Assert.Equal(beforeB, afterB);
-        var afterAdmin = await ReadEndpointsAsync(clients[2]);
+        var afterAdmin = await ReadEndpointsAsync(admin);
         Assert.All(afterAdmin, body =>
         {
             Assert.DoesNotContain(unknown, body);

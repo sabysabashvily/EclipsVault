@@ -12,6 +12,7 @@ namespace EclipsVault.IntegrationTests;
 public sealed partial class SignInReturnUrlTests(VaultFixture vault)
 {
     private static int _nextAddress;
+    private const int MaximumRedirectHops = 5;
 
     [Fact]
     public async Task Enrollment_completion_honors_a_local_target()
@@ -253,6 +254,7 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
     [InlineData("/Secrets/../Account/Totp", "/Secrets")]
     [InlineData("/Secrets\\..\\Account\\Totp", "/Secrets")]
     [InlineData("/Secrets/%2e%2e/Account/Totp", "/Secrets")]
+    // Kestrel keeps an encoded slash inside one route segment rather than treating it as a separator.
     [InlineData("/Account/Totp/%2F..", "/Secrets")]
     [InlineData("/Account/Totp/..%2F", "/Secrets")]
     [InlineData("/Account/Totp/x%2F..%2F..", "/Secrets")]
@@ -273,6 +275,7 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
     [InlineData("/Account/Denied?x=1", "/Account/Denied?x=1")]
     [InlineData("/Account/Denied#top", "/Account/Denied#top")]
     [InlineData("/Access?view=mine", "/Access?view=mine")]
+    // Location is ASCII-only; model binding decodes the first query, while the encoded query remains local.
     [InlineData("/Secrets?q=é", "/Secrets")]
     [InlineData("/Secrets?q=%C3%A9", "/Secrets?q=%C3%A9")]
     public async Task A_completed_sign_in_returns_neither_to_a_second_factor_page_nor_to_a_non_ascii_target(string target, string expected)
@@ -312,6 +315,7 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/ui/me")).StatusCode);
     }
 
+    // A transport decode must not turn an encoded separator into an external authority.
     [Theory]
     [InlineData("/Access?view=mine&sort=name#matrix", "/Access?view=mine&sort=name#matrix")]
     [InlineData(null, "/Secrets")]
@@ -345,6 +349,41 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
             Assert.NotEqual(Guid.Empty, registration.GetProperty("id").GetGuid());
         }
 
+
+
+        using var client = NewClient();
+        var loginPage = await client.GetStringAsync(WithReturnUrl("/Account/Login", target));
+        var signInOptions = await PostJsonAsync(client, "/Account/PasskeyLoginBegin", loginPage, new { username, returnUrl = target });
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/ui/me")).StatusCode);
+        var result = await PostJsonAsync(client, "/Account/PasskeyLoginComplete", loginPage, new { credential = authenticator.Assert(signInOptions) });
+        Assert.True(result.GetProperty("success").GetBoolean());
+        var redirect = result.GetProperty("redirect").GetString();
+        Assert.StartsWith("/Account/Login?ReturnUrl=", redirect, StringComparison.Ordinal);
+        var completionRedirect = await client.GetAsync(redirect);
+        Assert.Equal(HttpStatusCode.Redirect, completionRedirect.StatusCode);
+        Assert.Equal(expected, completionRedirect.Headers.Location?.OriginalString);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/ui/me")).StatusCode);
+        // Consuming the challenge prevents a replay from issuing another redirect/session.
+        var replay = await PostJsonAsync(client, "/Account/PasskeyLoginComplete", await client.GetStringAsync("/Secrets"), new { credential = new { } });
+        Assert.False(replay.GetProperty("success").GetBoolean());
+        Assert.False(replay.TryGetProperty("redirect", out _));
+    }
+
+    [Fact]
+    public async Task A_failed_passkey_attempt_returns_no_target_and_a_retry_replaces_its_target()
+    {
+        var (username, password, secret, enrolled) = await EnrollAccountAsync();
+        using var authenticator = new PasskeyAuthenticator();
+        using (enrolled)
+        {
+            var operationId = await VerifyProfileChangeAsync(enrolled, password, secret,
+                new { kind = "AddPasskey", passkeyNickname = "Return URL test" });
+            var options = await ProfileRequestAsync(enrolled, "/api/ui/profile/passkeys/registration/begin", new { operationId });
+            var registration = await ProfileRequestAsync(enrolled, "/api/ui/profile/passkeys/registration/complete",
+                new { operationId, credential = authenticator.Register(options.GetProperty("publicKey")) });
+            Assert.NotEqual(Guid.Empty, registration.GetProperty("id").GetGuid());
+        }
+
         using (var failedClient = NewClient())
         {
             var login = await failedClient.GetStringAsync(WithReturnUrl("/Account/Login", "/Access#matrix"));
@@ -363,32 +402,17 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
             var final = await failedClient.GetAsync(retry.GetProperty("redirect").GetString());
             Assert.Equal("/Secrets", final.Headers.Location?.OriginalString);
         }
-
-        // Model binding decodes the transport once. A path that is still percent-encoded after that is
-        // refused rather than interpreted, so an encoded separator never becomes an authority.
-        using var client = NewClient();
-        var successfulLogin = await client.GetStringAsync(WithReturnUrl("/Account/Login", target));
-        var signInOptions = await PostJsonAsync(client, "/Account/PasskeyLoginBegin", successfulLogin, new { username, returnUrl = target });
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/ui/me")).StatusCode);
-        var result = await PostJsonAsync(client, "/Account/PasskeyLoginComplete", successfulLogin, new { credential = authenticator.Assert(signInOptions) });
-        Assert.True(result.GetProperty("success").GetBoolean());
-        var redirect = result.GetProperty("redirect").GetString();
-        Assert.StartsWith("/Account/Login?ReturnUrl=", redirect, StringComparison.Ordinal);
-        var completionRedirect = await client.GetAsync(redirect);
-        Assert.Equal(HttpStatusCode.Redirect, completionRedirect.StatusCode);
-        Assert.Equal(expected, completionRedirect.Headers.Location?.OriginalString);
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/ui/me")).StatusCode);
-        // Consuming the challenge prevents a replay from issuing another redirect/session.
-        var replay = await PostJsonAsync(client, "/Account/PasskeyLoginComplete", await client.GetStringAsync("/Secrets"), new { credential = new { } });
-        Assert.False(replay.GetProperty("success").GetBoolean());
-        Assert.False(replay.TryGetProperty("redirect", out _));
     }
 
     private static async Task<HttpResponseMessage> FollowRedirectsAsync(HttpClient client, HttpResponseMessage response)
     {
-        for (var hops = 0; hops < 5 && response.StatusCode == HttpStatusCode.Redirect; hops++)
+        for (var hops = 0; hops < MaximumRedirectHops && response.StatusCode == HttpStatusCode.Redirect; hops++)
         {
             response = await client.GetAsync(response.Headers.Location);
+        }
+        if (response.StatusCode == HttpStatusCode.Redirect)
+        {
+            throw new InvalidOperationException("Sign-in still redirects after its hop limit: " + response.Headers.Location);
         }
         return response;
     }
@@ -458,8 +482,14 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         return await client.SendAsync(request);
     }
 
-    private HttpClient NewClient() => vault.CreateSession(source: IPAddress.Parse(
-        $"192.0.2.{Interlocked.Increment(ref _nextAddress).ToString(CultureInfo.InvariantCulture)}")).Client;
+    private HttpClient NewClient()
+    {
+        // These theories must not share another class's frozen credential-throttle budget.
+        var sequence = Interlocked.Increment(ref _nextAddress);
+        var high = (sequence >> 16).ToString("x", CultureInfo.InvariantCulture);
+        var low = (sequence & ushort.MaxValue).ToString("x", CultureInfo.InvariantCulture);
+        return vault.CreateSession(source: IPAddress.Parse($"2001:db8:91::{high}:{low}")).Client;
+    }
 
     private async Task<(string Username, string Password)> CreateAccountAsync()
     {

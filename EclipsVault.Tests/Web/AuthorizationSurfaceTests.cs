@@ -236,15 +236,16 @@ public class AuthorizationSurfaceTests
         Assert.Equal(controllers.Keys.Order(StringComparer.Ordinal),
             UiAreas.All.Select(area => area.Key).Order(StringComparer.Ordinal));
 
-        foreach (var (key, policy) in UiAreas.All)
+        Assert.All(UiAreas.All, area =>
         {
+            var (key, policy) = area;
             var enforced = controllers[key].GetCustomAttributes<AuthorizeAttribute>(inherit: true)
                 .Select(attribute => attribute.Policy)
                 .OfType<string>()
                 .ToList();
             Assert.True(enforced.Contains(policy) && enforced.All(name => name == VaultPolicies.Session || name == policy),
                 $"Area '{key}' is offered by '{policy}', but {controllers[key].Name} enforces: {string.Join(", ", enforced)}");
-        }
+        });
     }
 
     private static string Name(MethodInfo action)

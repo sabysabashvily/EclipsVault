@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Authentication;
@@ -196,6 +197,60 @@ public abstract class AccountRevokersTests(VaultFixture vault)
         Assert.NotEqual(original.GetSessionStampOrNull()!.RevocationVersion,
             await vault.Services.GetRequiredService<ISessionRevocationService>().FindAsync(original.GetUserId()));
         Assert.Equal(HttpStatusCode.Unauthorized, (await owner.Client.GetAsync("/api/ui/me")).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_role_change_between_sign_in_posts_refuses_the_pending_proof_and_a_fresh_session_uses_the_new_role()
+    {
+        const string password = "It-http-role-issuance-2026!";
+        const string username = "it-http-role-issuance";
+        await vault.SignInNewAccountAsync(username, IPAddress.Parse("198.18.91.20"),
+            ClearanceLevel.TopSecret, password: password);
+        var account = await ProfileHttp.AccountAsync(vault, username);
+        var pending = vault.CreateSession(source: IPAddress.Parse("198.18.91.21"));
+        await SignInProof.BeginPasswordAsync(pending.Client, username, password);
+        var token = VaultFixture.FormTokenOf(await pending.Client.GetStringAsync("/Account/Totp"), "/Account/Totp");
+        var code = Totp.NextCode(account.TotpSecret!);
+        var admin = await vault.AdminClientAsync();
+        var editPath = $"/Admin/EditUser/{account.Id}";
+        var edit = await admin.GetStringAsync(editPath);
+
+        var changed = await admin.PostAsync(editPath, new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(edit, editPath),
+            ["Id"] = account.Id.ToString(),
+            ["Username"] = username,
+            ["DisplayName"] = "Integration Test",
+            ["Clearance"] = ((int)ClearanceLevel.Standard).ToString(CultureInfo.InvariantCulture),
+            ["ProjectKey"] = "ROLE-HTTP",
+        }));
+        Assert.Equal(HttpStatusCode.Redirect, changed.StatusCode);
+        var refused = await pending.Client.PostAsync("/Account/Totp", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = token,
+            ["Code"] = code,
+        }));
+
+        Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
+        Assert.Equal("/Account/Login", refused.Headers.Location?.AbsolutePath);
+        Assert.Null(pending.SessionCookie);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await pending.Client.GetAsync("/api/ui/me")).StatusCode);
+        Assert.Equal(account.LastTotpStep, (await ProfileHttp.AccountAsync(vault, username)).LastTotpStep);
+
+        await SignInProof.BeginPasswordAsync(pending.Client, username, password);
+        var freshToken = VaultFixture.FormTokenOf(await pending.Client.GetStringAsync("/Account/Totp"), "/Account/Totp");
+        var signedIn = await pending.Client.PostAsync("/Account/Totp", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = freshToken,
+            ["Code"] = code,
+        }));
+
+        Assert.Equal(HttpStatusCode.Redirect, signedIn.StatusCode);
+        Assert.Equal("/Secrets", signedIn.Headers.Location?.OriginalString);
+        Assert.Equal(HttpStatusCode.OK, (await pending.Client.GetAsync("/api/ui/me")).StatusCode);
+        var principal = SessionApi.PrincipalOf(vault, pending);
+        Assert.Equal(ClearanceLevel.Standard, principal.GetClearance());
+        Assert.Equal("ROLE-HTTP", principal.GetProject());
     }
 
     [Fact]

@@ -89,6 +89,10 @@ Real HTTP (`EclipsVault.IntegrationTests`), where the browser cannot honestly re
   Redis outage: `VerifiedProfileAuditFailureTests`, `ProfileSessionOutcomeTests`, `LocalSignOutTests`,
   `RedisSessionHttpTests`.
 - Store failure before and after a password commit: `RedisSessionHttpTests`.
+- Role change during sign-in: `AccountRevokersTests.A_role_change_between_sign_in_posts_refuses_the_pending_proof_and_a_fresh_session_uses_the_new_role`
+  posts password, administrator role edit and authenticator code through the Production routes;
+  stale proof creates no session, spends no factor, and a fresh sign-in carries the new role/project.
+  Both memory-store and Redis fixtures inherit it.
 - Concurrent account proofs: `ProfileVerificationTests`.
 - Retired Legacy writes in any case and method: `RetiredProfileRoutesTests`.
 
@@ -98,7 +102,8 @@ Real-provider and service seams (`EclipsVault.IntegrationTests`), not HTTP execu
   consumption directly against the providers.
 - `AccountRevokersTests.Demotion_between_verification_and_issuance_refuses_the_stale_role_snapshot`
   uses real Production-fixture authentication/admin services and `SessionIssuer` with a response
-  context; it proves no cookie is issued from the stale role snapshot. Separate HTTP assertions in
+  context; it pins the within-request boundary after credential verification. The HTTP test above
+  covers the between-request role race. Separate HTTP assertions in
   `A_role_change_retires_the_original_version_and_refuses_the_old_cookie` prove old-cookie refusal.
 
 Vitest additionally checks `pagehide`, back-forward restoration and session-loss clearing (`profile-writes.spec.ts`),
