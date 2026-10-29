@@ -70,11 +70,12 @@ every node has moved to a new session-store incarnation:**
 
 The vault cannot tell a restored copy from the live one, so it cannot do this for you: the
 guarantee holds only when the recovery follows these steps. Losing Redis entirely needs no action;
-the missing state already refuses the sessions it covered. If a credential change cannot recheck
+the missing state already refuses the sessions it covered. If an account change cannot recheck
 Redis before committing, it answers `503 session_store_unavailable` and that transaction saves
 nothing. If the change commits but Redis then prevents issuing its replacement session, the change
-stands and the response is `changed_sign_in_required`: sign in again rather than repeat the change.
-These outcomes point at Redis, not the audit trail.
+stands and the response is `503 changed_sign_in_required`: sign in again rather than repeat the change.
+`session_store_unavailable` points at Redis, not the audit trail; `changed_sign_in_required` can
+also follow a concurrent sign-out, and the same advice applies.
 
 A mailbox request whose code was sent but whose delivery-completion recheck loses Redis answers
 `503 email_request_incomplete`. The request remains recorded and the active email is unchanged;

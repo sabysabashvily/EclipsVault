@@ -1121,25 +1121,26 @@ No push, PR, closure, shipped claim, excluded-directory access or broad Docker c
 
 ## Ticket #91 final selector/documentation corrections (2026-10-29, GPT Sol 6.1 xhigh)
 
-Browser r50 passed106/106 in50.8minutes; all8 browser-health failures were deliberately detected and
-both owned stacks/images cleaned up. Backend r54 then ran separately:681/681 integration cases,
-zero failed/skipped (12minutes), plus698units,6guardrails,locked restore,0warning/errorReleasebuild
-and format. This proves both realHTTP role-race fixtures. Frontend/models r54 follow that backend.
+Browser r50 passed 106/106 in 50.8 minutes, and all 8 browser-health guard failures were detected
+on purpose; both runs removed their own stacks and images. Backend r54 then ran separately: 681/681
+integration tests with none failed or skipped (12 minutes), plus 698 unit tests, 6 guardrails, a
+locked restore, a Release build with 0 warnings or errors, and format. This proves both real-HTTP
+role-race fixtures. Frontend and model checks r54 followed that backend run.
 
-Security r7 (Opus5.5high) found no actionable defect with the full authority packet read. Opus r7
-Standards/Spec failed quota; fresh authorized Sol6.1xhigh r8 reviews read the complete packet. They
-found two low items: R8-1 duplicate raw avatar pickers despite the existing page-object field, and
-SP-3 recovery guidance that overstated precommit no-change as applying after commit. Both are
-corrected: the two scenarios reuse avatarFile, and guidance distinguishes session_store_unavailable,
-changed_sign_in_required and email_request_incomplete. Lint r55 passes. No C# or application source
-changed; the backend sources match the681-pass run exactly.
+Security r7 (Claude Opus 5.5 high) found no actionable defect. The Opus r7 Standards and Spec tasks
+failed on quota, so fresh GPT Sol 6.1 xhigh r8 reviews ran instead. They found two Low items: R8-1,
+two raw avatar-picker selectors despite the existing page-object field, and SP-3, recovery guidance
+that said a Redis failure never commits. Both are corrected in 2ef5787: the two scenarios reuse
+avatarFile, and the guidance distinguishes session_store_unavailable, changed_sign_in_required and
+email_request_incomplete. No C# or application source changed after the 681-pass backend run.
 
-The r8 reports disclose incomplete line-by-line coverage of remaining test/generated hunks. Final
-r9 whole-Area rechecks must close remaining non-generated source/test coverage, use prior frozen
-reviews for unchanged sections and review generated outputs against their semantic models, while
-including every new commit. No approval is claimed merely from the reported fixed point.
+## Ticket #91 final run and reviews on 2ef5787 (2026-10-30, Claude Opus 5.5 continuation)
 
-Next: commit these three intended paths; final browser/guard run r56 on that snapshot after r54
-frontend/models; complete independent whole-Area r9 reviews, resolve findings, final command/count/
-subject/provenance manifests, concrete PR body and report under logs/ticket-91, then same coordinator
-report. Never push, open a PR, close91, mark shipped, change branches/worktrees, or touch exclusions.
+Browser r56 on 2ef5787 stopped when Docker Desktop exited mid-run; it proves nothing either way.
+Its own leftover stack was removed by name, and r58 reruns the full suite under caffeinate. Final
+r9 rechecks (Claude Opus 5.5 high, one fresh task per axis) cover 0ff55d2...2ef5787 on top of the
+whole-Area r7 and r8 reviews. Standards r9 confirmed R8-1 fixed and raised two documentation items,
+both fixed: this section's spacing, and naming the 503 status for changed_sign_in_required.
+Remaining: the r58 result, the security and Spec r9 reports, the final report and the PR body
+under logs/ticket-91, and the coordinator report. Never push, open a PR, close #91 or mark the Area
+shipped.
