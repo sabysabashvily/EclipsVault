@@ -85,11 +85,21 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
         }
         var token = await LegacyAccessRequests.TokenAsync(reviewer);
 
-        await LegacyAccessRequests.PostAsync(reviewer, action, token, pending.Id);
+        await LegacyAccessRequests.PostFormAsync(reviewer, action, new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = token,
+            ["id"] = pending.Id.ToString(),
+            ["ttlDays"] = "0",
+            ["note"] = "A forged decision note",
+        });
 
         var page = await requester.Client.GetStringAsync("/AccessRequests");
         Assert.Contains("A previously stored note", page);
         Assert.DoesNotContain("A forged decision note", page);
+        using var check = vault.Services.CreateScope();
+        var email = await check.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().EmailLogs
+            .SingleAsync(email => email.Body.Contains($"it-request-note-secret-{addressSuffix}"));
+        Assert.DoesNotContain("A forged decision note", email.Body);
     }
 
     [Fact]

@@ -22,7 +22,8 @@ public sealed class AccessRequestServiceTests
     [InlineData(int.MaxValue)]
     public async Task Expiry_outside_zero_to_3650_days_is_refused_in_Core(int days)
     {
-        var service = new AccessRequestService(new MissingRequests(), null!, null!, null!, null!, null!, null!, TimeProvider.System);
+        var service = new AccessRequestService(requests: new MissingRequests(), grants: null!, secrets: null!, users: null!,
+            committer: null!, actor: null!, notifications: null!, clock: TimeProvider.System);
         await Assert.ThrowsAsync<SharingException>(() => service.ApproveAsync(Guid.NewGuid(), days, default));
     }
 

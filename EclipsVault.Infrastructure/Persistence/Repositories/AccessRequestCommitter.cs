@@ -7,19 +7,9 @@ namespace EclipsVault.Infrastructure.Persistence.Repositories;
 
 public sealed class AccessRequestCommitter(EclipsVaultDbContext context) : IAccessRequestCommitter
 {
-    private const string OneSharePerRecipientIndex = "IX_SecretGrants_SecretId_GranteeUserId";
-
     public Task<bool> ApproveAsync(AccessRequest request, SecretGrant? share, SecretGrant? expiredShare, CancellationToken ct)
-        => SaveDecisionAsync(request, share, expiredShare, ct);
-
-    internal async Task<bool> SaveDecisionAsync(AccessRequest request, SecretGrant? share, SecretGrant? expiredShare, CancellationToken ct)
     {
-        var replacedShareId = expiredShare?.Id;
-        var decision = context.Entry(request);
-        decision.Property(r => r.Status).OriginalValue = AccessRequestStatus.Pending;
-        decision.Property(r => r.Status).IsModified = true;
-        decision.Property(r => r.DecidedBy).IsModified = true;
-        decision.Property(r => r.DecidedAtUtc).IsModified = true;
+        StageDecision(request);
         if (expiredShare is not null)
         {
             context.SecretGrants.Remove(expiredShare);
@@ -29,6 +19,28 @@ public sealed class AccessRequestCommitter(EclipsVaultDbContext context) : IAcce
             context.SecretGrants.Add(share);
         }
 
+        return SaveAsync(request, share, expiredShare?.Id, ct);
+    }
+
+    internal Task<bool> DecideAsync(AccessRequest request, CancellationToken ct)
+    {
+        StageDecision(request);
+        return SaveAsync(request, share: null, replacedShareId: null, ct);
+    }
+
+    private void StageDecision(AccessRequest request)
+    {
+        // Status is the concurrency token. Pinning its original value to Pending makes the save fail
+        // when another decision committed first, even if this entity was read before that one.
+        var decision = context.Entry(request);
+        decision.Property(r => r.Status).OriginalValue = AccessRequestStatus.Pending;
+        decision.Property(r => r.Status).IsModified = true;
+        decision.Property(r => r.DecidedBy).IsModified = true;
+        decision.Property(r => r.DecidedAtUtc).IsModified = true;
+    }
+
+    private async Task<bool> SaveAsync(AccessRequest request, SecretGrant? share, Guid? replacedShareId, CancellationToken ct)
+    {
         try
         {
             await context.SaveChangesAsync(ct);
@@ -36,46 +48,44 @@ public sealed class AccessRequestCommitter(EclipsVaultDbContext context) : IAcce
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            var failure = new AuditWriteFailedException("The access request and its audit rows could not be persisted.", ex);
-            if (!MayHaveLostRace(ex, request.Id, expiredShare?.Id))
+            if (MayHaveLostRace(ex, request.Id, replacedShareId))
             {
-                throw failure;
-            }
-
-            // SaveChanges has rolled back and discarded staged changes. Check the decision first:
-            // two approvals can hit the share index before EF reaches the request's status update.
-            try
-            {
-                var status = await context.AccessRequests.AsNoTracking().Where(r => r.Id == request.Id)
-                    .Select(r => (AccessRequestStatus?)r.Status).SingleOrDefaultAsync(ct);
-                if (status is null || status != AccessRequestStatus.Pending)
+                // SaveChanges has rolled back and discarded staged changes. Check the decision first:
+                // two approvals can hit the share index before EF reaches the request's status update.
+                var decided = await IsDecidedAsync(request.Id, ct);
+                if (decided is true)
                 {
                     return false;
                 }
-
-                if (share is not null && await context.SecretGrants.AsNoTracking().AnyAsync(s =>
-                    s.SecretId == share.SecretId && s.GranteeUserId == share.GranteeUserId && s.Id != replacedShareId, ct))
+                if (decided is false && share is not null
+                    && await OneSharePerRecipient.AnotherShareExistsAsync(context, share, replacedShareId, ct))
                 {
                     throw new SharingException("They already have a share on this secret.");
                 }
             }
-            catch (SharingException)
-            {
-                throw;
-            }
-            catch (Exception lookup) when (lookup is not OperationCanceledException)
-            {
-                // An unreachable store cannot prove a race; keep the original save failure.
-                throw failure;
-            }
 
-            throw failure;
+            throw new AuditWriteFailedException("The access request and its audit rows could not be persisted.", ex);
         }
     }
 
-    private static bool MayHaveLostRace(Exception failure, Guid requestId, Guid? expiredShareId)
+    private static bool MayHaveLostRace(Exception failure, Guid requestId, Guid? replacedShareId)
         => failure is DbUpdateConcurrencyException conflict
             ? conflict.Entries.Any(entry => entry.Entity is AccessRequest r && r.Id == requestId
-                || entry.Entity is SecretGrant share && share.Id == expiredShareId)
-            : failure is DbUpdateException update && UniqueIndex.IsViolatedBy(update, OneSharePerRecipientIndex);
+                || entry.Entity is SecretGrant share && share.Id == replacedShareId)
+            : failure is DbUpdateException update && UniqueIndex.IsViolatedBy(update, OneSharePerRecipient.Index);
+
+    /// <summary>Null when the store cannot be read, so nothing proves another decision won.</summary>
+    private async Task<bool?> IsDecidedAsync(Guid requestId, CancellationToken ct)
+    {
+        try
+        {
+            var status = await context.AccessRequests.AsNoTracking().Where(r => r.Id == requestId)
+                .Select(r => (AccessRequestStatus?)r.Status).SingleOrDefaultAsync(ct);
+            return status != AccessRequestStatus.Pending;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return null;
+        }
+    }
 }

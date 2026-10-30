@@ -44,7 +44,11 @@ public interface IAccessRequestService
 
     Task<AccessRequestDto?> GetAsync(Guid id, CancellationToken ct);
 
-    /// <summary>Approves a pending request, creating a grant for the requester. Returns false if it was not pending.</summary>
+    /// <summary>
+    /// Approves a pending request and shares the secret with the requester, unless they already hold an
+    /// active share. <paramref name="expiresInDays"/> 0 means the share never expires. Returns false when
+    /// the request is no longer pending, including when another decision won.
+    /// </summary>
     Task<bool> ApproveAsync(Guid id, int expiresInDays, CancellationToken ct);
 
     Task<bool> RejectAsync(Guid id, CancellationToken ct);

@@ -50,5 +50,5 @@ public sealed class AccessRequestRepository : IAccessRequestRepository
             .ToListAsync(ct);
 
     public Task<bool> UpdateAsync(AccessRequest request, CancellationToken ct)
-        => new AccessRequestCommitter(_context).SaveDecisionAsync(request, share: null, expiredShare: null, ct);
+        => new AccessRequestCommitter(_context).DecideAsync(request, ct);
 }

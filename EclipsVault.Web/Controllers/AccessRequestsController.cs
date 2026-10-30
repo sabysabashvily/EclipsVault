@@ -74,9 +74,11 @@ public sealed class AccessRequestsController : VaultController
             return forbidden;
         }
 
+        // An expiry that is not a whole number binds as 0, which would approve with no expiry.
+        // Core checks the range itself.
         if (!ModelState.IsValid)
         {
-            this.FlashError("Grant expiry must be between 0 and 3650 days.");
+            this.FlashError(AccessRequestService.ExpiryOutOfRange);
             return RedirectToAction(nameof(Index));
         }
 

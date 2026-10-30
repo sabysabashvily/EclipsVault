@@ -9,6 +9,9 @@ public sealed class AccessRequestService : IAccessRequestService
     private const int MinReasonLength = 3;
     private const int MaxReasonLength = 500;
 
+    public const int LongestExpiryDays = 3650;
+    public static readonly string ExpiryOutOfRange = $"Grant expiry must be between 0 and {LongestExpiryDays} days.";
+
     private readonly IAccessRequestRepository _requests;
     private readonly ISecretGrantRepository _grants;
     private readonly ISecretRepository _secrets;
@@ -90,9 +93,9 @@ public sealed class AccessRequestService : IAccessRequestService
 
     public async Task<bool> ApproveAsync(Guid id, int expiresInDays, CancellationToken ct)
     {
-        if (expiresInDays is < 0 or > 3650)
+        if (expiresInDays is < 0 or > LongestExpiryDays)
         {
-            throw new SharingException("Grant expiry must be between 0 and 3650 days.");
+            throw new SharingException(ExpiryOutOfRange);
         }
 
         var request = await _requests.FindAsync(id, ct);

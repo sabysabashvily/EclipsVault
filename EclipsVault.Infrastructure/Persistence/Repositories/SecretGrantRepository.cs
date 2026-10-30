@@ -7,8 +7,6 @@ namespace EclipsVault.Infrastructure.Persistence.Repositories;
 
 public sealed class SecretGrantRepository : ISecretGrantRepository
 {
-    private const string OneSharePerRecipientIndex = "IX_SecretGrants_SecretId_GranteeUserId";
-
     private readonly EclipsVaultDbContext _context;
 
     public SecretGrantRepository(EclipsVaultDbContext context) => _context = context;
@@ -68,7 +66,7 @@ public sealed class SecretGrantRepository : ISecretGrantRepository
             // The failed transaction has rolled back. Losing a race to another share for this
             // recipient is a conflict, not an unavailable audit store; every other save failure,
             // including one that leaves only the expired share, still fails closed.
-            if (!await AnotherShareExistsAsync(grant, replacedShareId, ct))
+            if (!await OneSharePerRecipient.AnotherShareExistsAsync(_context, grant, replacedShareId, ct))
             {
                 throw;
             }
@@ -84,23 +82,7 @@ public sealed class SecretGrantRepository : ISecretGrantRepository
     /// deletes was already gone. Either way another request may have saved a share first.
     /// </summary>
     private static bool MayHaveLostToAnotherShare(DbUpdateException failure)
-        => failure is DbUpdateConcurrencyException || UniqueIndex.IsViolatedBy(failure, OneSharePerRecipientIndex);
-
-    private async Task<bool> AnotherShareExistsAsync(SecretGrant grant, Guid? replacedShareId, CancellationToken ct)
-    {
-        try
-        {
-            return await _context.SecretGrants.AsNoTracking().AnyAsync(share => share.SecretId == grant.SecretId
-                && share.GranteeUserId == grant.GranteeUserId
-                && share.Id != replacedShareId, ct);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // The database that failed the save may still be unreachable. Nothing shows a race was
-            // lost, so the save's own failure is the answer.
-            return false;
-        }
-    }
+        => failure is DbUpdateConcurrencyException || UniqueIndex.IsViolatedBy(failure, OneSharePerRecipient.Index);
 
     private async Task SaveShareChangeAsync(CancellationToken ct)
     {
