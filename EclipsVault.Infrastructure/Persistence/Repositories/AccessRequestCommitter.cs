@@ -74,14 +74,14 @@ public sealed class AccessRequestCommitter(EclipsVaultDbContext context) : IAcce
                 || entry.Entity is SecretGrant share && share.Id == replacedShareId)
             : failure is DbUpdateException update && UniqueIndex.IsViolatedBy(update, OneSharePerRecipient.Index);
 
-    /// <summary>Null when the store cannot be read, so nothing proves another decision won.</summary>
+    /// <summary>True when the request is no longer pending or is gone; null when the store cannot be read.</summary>
     private async Task<bool?> IsDecidedAsync(Guid requestId, CancellationToken ct)
     {
         try
         {
             var status = await context.AccessRequests.AsNoTracking().Where(r => r.Id == requestId)
                 .Select(r => (AccessRequestStatus?)r.Status).SingleOrDefaultAsync(ct);
-            return status != AccessRequestStatus.Pending;
+            return status is null || status != AccessRequestStatus.Pending;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

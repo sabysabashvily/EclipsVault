@@ -98,7 +98,7 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
         Assert.DoesNotContain("A forged decision note", page);
         using var check = vault.Services.CreateScope();
         var email = await check.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().EmailLogs
-            .SingleAsync(email => email.Body.Contains($"it-request-note-secret-{addressSuffix}"));
+            .SingleAsync(log => log.Body.Contains($"it-request-note-secret-{addressSuffix}"));
         Assert.DoesNotContain("A forged decision note", email.Body);
     }
 
