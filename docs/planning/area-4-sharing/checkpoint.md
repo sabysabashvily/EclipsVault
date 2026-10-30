@@ -28,3 +28,22 @@ Q14 lost share-index race, Q15 Denied page form, Q16 presentation, Q17 concurren
 Q18 test plan.
 
 ADR-0027 gained Q12, Q13 and Q14. No questions remain; see [decisions.md](decisions.md).
+
+## Delivery: ticket 1 (#97) done locally, 2026-10-30
+
+Branch `area-4-sharing` from `main` at `f31b0a8`, not pushed, no PR; #97 stays open for the owner.
+
+- `eaef66e` commits these records, `CONTEXT.md` and ADR-0017's amendment and ADR-0027.
+- `a36d542` applies Q6, Q8 and Q14 in `SecretGrantService` and `SecretGrantRepository`; the audit
+  interceptor records a replaced expired share as one `SecretShared` row.
+- `63f4a3e` fixes the review findings: a failed save is a conflict only when the share index refused it
+  or a replacement lost its expired share, and another share is visible; a failed lookup keeps the audit
+  failure.
+
+Race and fault tests share a two-database fixture (`ShareDatabases`, SQL Server and PostgreSQL) that later
+tickets can reuse for access-request races. The audit-failure test calls the share service directly,
+because the sharing panel audits a metadata view before it shares. On the Legacy panel the conflict is
+the flash "They already have a share on this secret."; the UI API's `409 share_exists` belongs to the
+ticket that adds approval to the UI API.
+
+To restart: check out `area-4-sharing`, read `logs/ticket-97/final-report.md`, then start ticket 2 (#98).
