@@ -1144,3 +1144,17 @@ both fixed: this section's spacing, and naming the 503 status for changed_sign_i
 Remaining: the r58 result, the security and Spec r9 reports, the final report and the PR body
 under logs/ticket-91, and the coordinator report. Never push, open a PR, close #91 or mark the Area
 shipped.
+
+## Ticket #91 owner decisions (2026-10-30)
+
+Browser r58 passed 106/106 and detected all 8 guard failures; the final report went to the
+coordinator.
+
+- The browser, HTTP and Vitest split in `browser-acceptance.md` is accepted (Spec P1).
+- The credential methods that skip account verification and have no Web route stay until Area 8:
+  `ProfileService.ChangePasswordAsync` and `ResetOwnMfaAsync`, `PasskeyService.CompleteRegistrationAsync`
+  and `RemoveAsync`, and `MfaRecoveryService.GenerateAsync`. Area 8 removes them or limits them to
+  its Legacy callers. A new route must not call them.
+
+Next: push `area-3-profile`, run CI, and open the single Area PR. Do not merge, close #91 or delete
+the branch.
