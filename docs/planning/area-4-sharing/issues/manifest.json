@@ -1,0 +1,112 @@
+{
+ "status": "published",
+ "confirmed": true,
+ "repository": "sabysabashvily/EclipsVault",
+ "parent": {
+  "title": "Angular migration — Area 4: Sharing (Shared with me, Access requests)",
+  "file": "spec.md",
+  "number": 96,
+  "url": "https://github.com/sabysabashvily/EclipsVault/issues/96",
+  "id": 6116580073,
+  "bodySha256": "b5385739a00bf097ed04dec44218f19a2d80e3fb0e2136b6aa0f26a1fa106825"
+ },
+ "tickets": [
+  {
+   "order": 1,
+   "title": "Area 4 · 1/6: Shares refuse recipients they cannot help and replace expired ones",
+   "file": "ticket-1.md",
+   "blockedByOrders": [],
+   "number": 97,
+   "url": "https://github.com/sabysabashvily/EclipsVault/issues/97",
+   "id": 6116580502,
+   "bodySha256": "d2c972d361ea967b0d4a5771366c2cfb9dd28bfcb0a5437f5d0e0510681baa97",
+   "linkedAsSubIssue": true
+  },
+  {
+   "order": 2,
+   "title": "Area 4 · 2/6: Commit each access-request change with its audit rows, one winner",
+   "file": "ticket-2.md",
+   "blockedByOrders": [
+    1
+   ],
+   "number": 98,
+   "url": "https://github.com/sabysabashvily/EclipsVault/issues/98",
+   "id": 6116582537,
+   "bodySha256": "281e493e9ec5327c2a89297da57ecee23eddafc833fce592bf1ca6c2d5ec0f8e",
+   "linkedAsSubIssue": true,
+   "blockedByLinked": [
+    1
+   ]
+  },
+  {
+   "order": 3,
+   "title": "Area 4 · 3/6: File and decide access requests under the sharing rule",
+   "file": "ticket-3.md",
+   "blockedByOrders": [
+    2
+   ],
+   "number": 99,
+   "url": "https://github.com/sabysabashvily/EclipsVault/issues/99",
+   "id": 6116583014,
+   "bodySha256": "34d247b9cfb5261f4b0b6c231bb1544d3da97e304afeb3634a2bb53083db65e9",
+   "linkedAsSubIssue": true,
+   "blockedByLinked": [
+    2
+   ]
+  },
+  {
+   "order": 4,
+   "title": "Area 4 · 4/6: Shared with me served by the Angular UI",
+   "file": "ticket-4.md",
+   "blockedByOrders": [
+    1
+   ],
+   "number": 100,
+   "url": "https://github.com/sabysabashvily/EclipsVault/issues/100",
+   "id": 6116583460,
+   "bodySha256": "faf2e2b55fabbc87557943935a80ff5e815c9211ee705915c261d9f199c90bcf",
+   "linkedAsSubIssue": true,
+   "blockedByLinked": [
+    1
+   ]
+  },
+  {
+   "order": 5,
+   "title": "Area 4 · 5/6: Access requests served by the Angular UI",
+   "file": "ticket-5.md",
+   "blockedByOrders": [
+    3,
+    4
+   ],
+   "number": 101,
+   "url": "https://github.com/sabysabashvily/EclipsVault/issues/101",
+   "id": 6116583894,
+   "bodySha256": "e03176a3111ebd9381e37af7e61dc2810182284713422dc2e45b679628a6400c",
+   "linkedAsSubIssue": true,
+   "blockedByLinked": [
+    3,
+    4
+   ]
+  },
+  {
+   "order": 6,
+   "title": "Area 4 · 6/6: Verify the whole Area and prepare its single PR",
+   "file": "ticket-6.md",
+   "blockedByOrders": [
+    5
+   ],
+   "number": 102,
+   "url": "https://github.com/sabysabashvily/EclipsVault/issues/102",
+   "id": 6116584344,
+   "bodySha256": "7a3641cddbe765696d081974d4969d8df9cfff5f3c0613967f69cfbbab84b135",
+   "linkedAsSubIssue": true,
+   "blockedByLinked": [
+    5
+   ]
+  }
+ ],
+ "placeholders": {
+  "#SPEC": "parent issue number",
+  "#T<n>": "ticket n issue number"
+ }
+}
