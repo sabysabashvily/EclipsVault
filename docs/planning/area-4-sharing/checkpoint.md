@@ -47,3 +47,27 @@ the flash "They already have a share on this secret."; the UI API's `409 share_e
 ticket that adds approval to the UI API.
 
 To restart: check out `area-4-sharing`, read `logs/ticket-97/final-report.md`, then start ticket 2 (#98).
+
+## Delivery: ticket 2 (#98) done locally, 2026-10-30
+
+Same branch, on top of `6244a50`; not pushed, no PR, #98 stays open for the owner.
+
+- `3896660` commits filing, approval, rejection and withdrawal with their audit rows through
+  `DescribeAccessRequestChange`. Approval goes through `IAccessRequestCommitter`, which commits the
+  share (or the replacement of an expired one), the decision, `SecretShared` and
+  `AccessRequestApproved` together. `AccessRequest.Status` is a concurrency token, so one decision
+  wins; losers return false ("That request is no longer pending."). Expiry is 0–3650 days in Core,
+  and decision notes are no longer accepted.
+- `3ed7fec` and the commits after it answer the reviews. Panel shares and approval shares are built
+  by `ShareRecipient.NewShare`; the committer is split into steps and shares
+  `OneSharePerRecipient` with the share repository; the tests state literal expectations.
+
+The concurrency token needed no migration: both pending-model checks pass. Access-request races reuse
+`ShareDatabases` and hold the audit chain until both contenders have queued their writes.
+
+Left for later tickets: who may file and who may decide is #99, and so is removing Legacy's metadata
+read before filing. The UI API codes and the Angular pages are #100 and #101. The Legacy flash
+"a grant was created" is also shown when an active share is reused; #101 copies Legacy text, so the
+owner may want new wording.
+
+To restart: check out `area-4-sharing`, read `logs/ticket-98/final-report.md`, then start ticket 3 (#99).
