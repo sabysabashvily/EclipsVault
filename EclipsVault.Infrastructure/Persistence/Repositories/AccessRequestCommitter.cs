@@ -7,17 +7,14 @@ namespace EclipsVault.Infrastructure.Persistence.Repositories;
 
 public sealed class AccessRequestCommitter(EclipsVaultDbContext context) : IAccessRequestCommitter
 {
-    public Task<bool> ApproveAsync(AccessRequest request, SecretGrant? share, SecretGrant? expiredShare, CancellationToken ct)
+    public Task<bool> ApproveAsync(AccessRequest request, SecretGrant share, SecretGrant? expiredShare, CancellationToken ct)
     {
         StageDecision(request);
         if (expiredShare is not null)
         {
             context.SecretGrants.Remove(expiredShare);
         }
-        if (share is not null)
-        {
-            context.SecretGrants.Add(share);
-        }
+        context.SecretGrants.Add(share);
 
         return SaveAsync(request, share, expiredShare?.Id, ct);
     }

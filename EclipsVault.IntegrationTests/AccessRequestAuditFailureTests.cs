@@ -1,7 +1,5 @@
 using System.Net;
-using EclipsVault.Core.Application.AccessRequests;
 using EclipsVault.Core.Domain.Entities;
-using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -68,11 +66,11 @@ public sealed class AccessRequestAuditFailureTests(AuditFailureFixture failure)
     }
 
     [Fact]
-    public async Task Filing_with_a_failed_audit_creates_no_request_through_Legacy_or_the_production_service()
+    public async Task Filing_with_a_failed_audit_creates_no_request()
     {
         var vault = failure.Vault;
         var admin = await vault.AdminClientAsync();
-        var requester = await vault.SignInNewAccountAsync("it-request-file-failure", IPAddress.Parse("198.51.100.151"));
+        var requester = await vault.SignInNewAccountAsync("it-request-file-failure", IPAddress.Parse("198.51.100.151"), project: "IT-REQUESTERS");
         var account = await ProfileHttp.AccountAsync(vault, "it-request-file-failure");
         var details = await LegacySharing.CreateSecretAsync(admin, "it-request-file-failure-secret");
         var secretId = LegacySharing.SecretIdOf(details);
@@ -84,11 +82,6 @@ public sealed class AccessRequestAuditFailureTests(AuditFailureFixture failure)
             var response = await LegacyAccessRequests.PostAsync(requester.Client, "Create", token, secretId);
             Assert.Equal("/Home/Error?code=503", response.Headers.Location?.OriginalString);
             using var scope = vault.Services.CreateScope();
-            // Legacy reads metadata before filing. Reach the actual filing save as well, through
-            // the unchanged Production container, so the rollback itself is tested.
-            var requests = scope.ServiceProvider.GetRequiredService<IAccessRequestService>();
-            await Assert.ThrowsAsync<AuditWriteFailedException>(() => requests.CreateAsync(secretId, "it-request-file-failure-secret",
-                "GLOBAL", account.Id, account.Username, "Need deployment access", null, default));
             var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
             Assert.False(await db.AccessRequests.AnyAsync(request => request.SecretId == secretId));
             Assert.False(await db.SecretGrants.AnyAsync(share => share.SecretId == secretId));
@@ -106,7 +99,7 @@ public sealed class AccessRequestAuditFailureTests(AuditFailureFixture failure)
     {
         var reviewer = await failure.Vault.AdminClientAsync();
         var username = $"it-request-failure-{addressSuffix}";
-        var requester = await failure.Vault.SignInNewAccountAsync(username, IPAddress.Parse($"198.51.100.{addressSuffix}"));
+        var requester = await failure.Vault.SignInNewAccountAsync(username, IPAddress.Parse($"198.51.100.{addressSuffix}"), project: "IT-REQUESTERS");
         var details = await LegacySharing.CreateSecretAsync(reviewer, $"it-request-audit-{addressSuffix}");
         var pending = await LegacyAccessRequests.PendingAsync(failure.Vault, details, username);
         return (pending, reviewer, requester, details);

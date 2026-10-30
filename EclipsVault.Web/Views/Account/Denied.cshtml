@@ -44,19 +44,21 @@
 {
     <section class="panel narrow-left">
         <div class="panel-header"><h2>Request access</h2></div>
-        <p class="muted">
-            Ask a reviewer — an administrator, or a member of this secret's project — to grant you
-            access to this secret. Approval creates a grant that crosses the project boundary only;
-            your clearance, network, and time still apply.
-        </p>
-        <form asp-controller="AccessRequests" asp-action="Create" method="post">
-            <input type="hidden" name="secretId" value="@secretId" />
-            <input type="hidden" name="deniedReasons" value="@string.Join('\n', Model.Reasons)" />
-            <div class="field">
-                <label for="reason">Reason</label>
-                <textarea id="reason" name="reason" rows="3" maxlength="500" placeholder="Why do you need this secret?"></textarea>
-            </div>
-            <button type="submit" class="button primary">Submit request</button>
-        </form>
+        @if (Model.RequestRefusal is { } refusal)
+        {
+            <p class="muted">@refusal</p>
+        }
+        else
+        {
+            <p class="muted">Ask a reviewer, an administrator or a member of this secret's project who can open it, to share it with you.</p>
+            <form asp-controller="AccessRequests" asp-action="Create" method="post">
+                <input type="hidden" name="secretId" value="@secretId" />
+                <div class="field">
+                    <label for="reason">Reason</label>
+                    <textarea id="reason" name="reason" rows="3" maxlength="500" placeholder="Why do you need this secret?"></textarea>
+                </div>
+                <button type="submit" class="button primary">Submit request</button>
+            </form>
+        }
     </section>
 }

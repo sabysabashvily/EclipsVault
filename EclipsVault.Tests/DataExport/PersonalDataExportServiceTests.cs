@@ -6,6 +6,7 @@ using EclipsVault.Core.Application.DataExport;
 using EclipsVault.Core.Application.Mfa;
 using EclipsVault.Core.Application.Passkeys;
 using EclipsVault.Core.Application.Profile;
+using EclipsVault.Core.Application.Secrets;
 using EclipsVault.Core.Application.Sessions;
 using EclipsVault.Core.Domain.Enums;
 using Xunit;
@@ -80,13 +81,15 @@ public class PersonalDataExportServiceTests
         {
             if (requesterUserId != User) return Task.FromResult<IReadOnlyList<AccessRequestDto>>([]);
             IReadOnlyList<AccessRequestDto> list = Enumerable.Range(0, count)
-                .Select(i => new AccessRequestDto(Guid.NewGuid(), Guid.NewGuid(), $"prod/db-{i}", "PHOENIX", "alice",
+                .Select(i => new AccessRequestDto(Guid.NewGuid(), Guid.NewGuid(), $"prod/db-{i}", "PHOENIX", User, "alice",
                     "need access", null, AccessRequestStatus.Pending, DateTimeOffset.UtcNow, null, null, null)).ToList();
             return Task.FromResult(list);
         }
-        public Task<AccessRequestCreateResult> CreateAsync(Guid secretId, string secretName, string projectKey, Guid requesterUserId, string requesterUsername, string reason, string? deniedReasons, CancellationToken ct) => throw new NotSupportedException();
-        public Task<IReadOnlyList<AccessRequestDto>> ListToReviewAsync(bool isAdmin, string reviewerProject, CancellationToken ct) => throw new NotSupportedException();
-        public Task<AccessRequestDto?> GetAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
+        public Task<AccessRequestRefusal?> FilingRefusalAsync(Guid secretId, Guid requesterUserId, CancellationToken ct) => throw new NotSupportedException();
+        public Task<SecretSummaryDto> SecretToRequestAsync(Guid secretId, CancellationToken ct) => throw new NotSupportedException();
+        public Task<AccessRequestCreateResult> CreateAsync(Guid secretId, Guid requesterUserId, string requesterUsername, string reason, IReadOnlyList<string> denialReasons, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyList<AccessRequestForReview>> ListPendingForReviewAsync(CancellationToken ct) => throw new NotSupportedException();
+        public Task<AccessRequestForReview?> FindForReviewAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task<bool> ApproveAsync(Guid id, int expiresInDays, CancellationToken ct) => throw new NotSupportedException();
         public Task<bool> RejectAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task<bool> CancelAsync(Guid id, Guid requesterUserId, CancellationToken ct) => throw new NotSupportedException();

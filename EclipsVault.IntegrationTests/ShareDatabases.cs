@@ -68,7 +68,7 @@ public abstract class ShareDatabases : IAsyncLifetime
             new EmailLogRepository(context), new UserRepository(context, TimeProvider.System), new NotificationOptions(false), TimeProvider.System);
         var requests = new AccessRequestService(new AccessRequestRepository(context), new SecretGrantRepository(context),
             new SecretRepository(context), new UserRepository(context, TimeProvider.System), new AccessRequestCommitter(context),
-            new Actor(issuer.Id, issuer.Username), notices, TimeProvider.System);
+            intrusion: null!, new Actor(issuer.Id, issuer.Username), notices, TimeProvider.System);
         return new ShareRequest(context, shares, requests);
     }
 

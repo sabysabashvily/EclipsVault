@@ -37,17 +37,21 @@ public sealed class AccessRequestRepository : IAccessRequestRepository
             .OrderByDescending(r => r.CreatedAtUtc)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<AccessRequest>> ListPendingAsync(CancellationToken ct)
-        => await _context.AccessRequests.AsNoTracking()
-            .Where(r => r.Status == AccessRequestStatus.Pending)
-            .OrderByDescending(r => r.CreatedAtUtc)
-            .ToListAsync(ct);
+    public async Task<IReadOnlyList<AccessRequestForReview>> ListPendingForReviewAsync(CancellationToken ct)
+        => (await ForReview(_context.AccessRequests.Where(r => r.Status == AccessRequestStatus.Pending)).ToListAsync(ct))
+            .OrderByDescending(r => r.Request.CreatedAtUtc)
+            .ToList();
 
-    public async Task<IReadOnlyList<AccessRequest>> ListPendingForProjectAsync(string projectKey, CancellationToken ct)
-        => await _context.AccessRequests.AsNoTracking()
-            .Where(r => r.Status == AccessRequestStatus.Pending && r.ProjectKey == projectKey)
-            .OrderByDescending(r => r.CreatedAtUtc)
-            .ToListAsync(ct);
+    public Task<AccessRequestForReview?> FindForReviewAsync(Guid id, CancellationToken ct)
+        => ForReview(_context.AccessRequests.Where(r => r.Id == id)).SingleOrDefaultAsync(ct);
+
+    private IQueryable<AccessRequestForReview> ForReview(IQueryable<AccessRequest> requests)
+        => from request in requests.AsNoTracking()
+           join secret in _context.Secrets.AsNoTracking() on request.SecretId equals secret.Id
+           select new AccessRequestForReview(
+               AccessRequestDto.From(request),
+               new SecretSummaryDto(secret.Id, secret.Name, secret.ProjectKey, secret.Environment, secret.Sensitivity,
+                   secret.CreatedAtUtc, secret.ExpiresAtUtc));
 
     public Task<bool> UpdateAsync(AccessRequest request, CancellationToken ct)
         => new AccessRequestCommitter(_context).DecideAsync(request, ct);

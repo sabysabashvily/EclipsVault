@@ -12,11 +12,9 @@ public interface IAccessRequestRepository
 
     Task<IReadOnlyList<AccessRequest>> ListByRequesterAsync(Guid requesterUserId, CancellationToken ct);
 
-    /// <summary>All pending requests (administrator queue).</summary>
-    Task<IReadOnlyList<AccessRequest>> ListPendingAsync(CancellationToken ct);
+    Task<IReadOnlyList<AccessRequestForReview>> ListPendingForReviewAsync(CancellationToken ct);
 
-    /// <summary>Pending requests for one project (project-member queue).</summary>
-    Task<IReadOnlyList<AccessRequest>> ListPendingForProjectAsync(string projectKey, CancellationToken ct);
+    Task<AccessRequestForReview?> FindForReviewAsync(Guid id, CancellationToken ct);
 
     Task<bool> UpdateAsync(AccessRequest request, CancellationToken ct);
 }

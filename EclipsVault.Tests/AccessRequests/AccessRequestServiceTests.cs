@@ -23,7 +23,7 @@ public sealed class AccessRequestServiceTests
     public async Task Expiry_outside_zero_to_3650_days_is_refused_in_Core(int days)
     {
         var service = new AccessRequestService(requests: new MissingRequests(), grants: null!, secrets: null!, users: null!,
-            committer: null!, actor: null!, notifications: null!, clock: TimeProvider.System);
+            committer: null!, intrusion: null!, actor: null!, notifications: null!, clock: TimeProvider.System);
         await Assert.ThrowsAsync<SharingException>(() => service.ApproveAsync(Guid.NewGuid(), days, default));
     }
 
@@ -39,7 +39,7 @@ public sealed class AccessRequestServiceTests
     }
 
     [Fact]
-    public async Task Approval_with_an_active_share_decides_the_request_without_creating_a_second_share()
+    public async Task Approval_for_a_requester_holding_an_active_share_is_refused_and_changes_nothing()
     {
         await using var setup = await ApprovalSetup.CreateAsync();
         var active = new SecretGrant
@@ -54,11 +54,13 @@ public sealed class AccessRequestServiceTests
         setup.Context.SecretGrants.Add(active);
         await setup.Context.SaveChangesAsync();
 
-        Assert.True(await setup.Service.ApproveAsync(setup.Request.Id, 7, default));
+        var refused = await Assert.ThrowsAsync<AccessRequestIneligibleException>(() => setup.Service.ApproveAsync(setup.Request.Id, 7, default));
 
-        Assert.Equal(AccessRequestStatus.Approved, setup.Request.Status);
-        Assert.Equal(active.Id, (await setup.Context.SecretGrants.SingleAsync()).Id);
-        Assert.Equal("previous-issuer", (await setup.Context.SecretGrants.SingleAsync()).GrantedBy);
+        Assert.Equal(AccessRequestRefusal.AlreadyAbleToOpen, refused.Refusal);
+        Assert.Equal(
+            "A share would not help: the requester's project, clearance or an active share already covers this secret.", refused.Message);
+        Assert.Equal(AccessRequestStatus.Pending, (await setup.Context.AccessRequests.AsNoTracking().SingleAsync()).Status);
+        Assert.Equal(active.Id, (await setup.Context.SecretGrants.AsNoTracking().SingleAsync()).Id);
     }
 
     private sealed class ApprovalSetup(SqliteConnection connection, EclipsVaultDbContext context, AccessRequest request) : IAsyncDisposable
@@ -67,7 +69,7 @@ public sealed class AccessRequestServiceTests
         public AccessRequest Request { get; } = request;
         public AccessRequestService Service { get; } = new(new AccessRequestRepository(context), new SecretGrantRepository(context),
             new SecretRepository(context), new UserRepository(context, TimeProvider.System), new AccessRequestCommitter(context),
-            new Reviewer(), new NotificationService(new LoggingEmailSender(NullLogger<LoggingEmailSender>.Instance),
+            intrusion: null!, new Reviewer(), new NotificationService(new LoggingEmailSender(NullLogger<LoggingEmailSender>.Instance),
                 new EmailLogRepository(context), new UserRepository(context, TimeProvider.System), new NotificationOptions(false), TimeProvider.System), TimeProvider.System);
 
         public static async Task<ApprovalSetup> CreateAsync()
@@ -76,8 +78,9 @@ public sealed class AccessRequestServiceTests
             await connection.OpenAsync();
             var context = new EclipsVaultDbContext(new DbContextOptionsBuilder<EclipsVaultDbContext>().UseSqlite(connection).Options);
             await context.Database.EnsureCreatedAsync();
-            var user = new User { Id = Guid.NewGuid(), Username = "requester", Email = "requester@example.test" };
-            var secret = new Secret { Id = Guid.NewGuid(), Name = "deployment-key" };
+            // Outside the secret's project with enough clearance, so a share would help.
+            var user = new User { Id = Guid.NewGuid(), Username = "requester", Email = "requester@example.test", ProjectKey = "TEAM-B" };
+            var secret = new Secret { Id = Guid.NewGuid(), Name = "deployment-key", ProjectKey = "PAYMENTS" };
             var request = new AccessRequest
             {
                 Id = Guid.NewGuid(),
@@ -112,7 +115,7 @@ public sealed class AccessRequestServiceTests
         public Task<bool> UpdateAsync(AccessRequest request, CancellationToken ct) => throw new NotSupportedException();
         public Task<bool> HasPendingAsync(Guid secretId, Guid requesterUserId, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<AccessRequest>> ListByRequesterAsync(Guid requesterUserId, CancellationToken ct) => throw new NotSupportedException();
-        public Task<IReadOnlyList<AccessRequest>> ListPendingAsync(CancellationToken ct) => throw new NotSupportedException();
-        public Task<IReadOnlyList<AccessRequest>> ListPendingForProjectAsync(string projectKey, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyList<AccessRequestForReview>> ListPendingForReviewAsync(CancellationToken ct) => throw new NotSupportedException();
+        public Task<AccessRequestForReview?> FindForReviewAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
     }
 }

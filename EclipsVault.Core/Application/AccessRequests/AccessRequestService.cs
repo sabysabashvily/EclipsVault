@@ -17,13 +17,14 @@ public sealed class AccessRequestService : IAccessRequestService
     private readonly ISecretRepository _secrets;
     private readonly IUserRepository _users;
     private readonly IAccessRequestCommitter _committer;
+    private readonly IIntrusionResponseService _intrusion;
     private readonly IAuditContext _actor;
     private readonly INotificationService _notifications;
     private readonly TimeProvider _clock;
 
     public AccessRequestService(
         IAccessRequestRepository requests, ISecretGrantRepository grants, ISecretRepository secrets,
-        IUserRepository users, IAccessRequestCommitter committer, IAuditContext actor,
+        IUserRepository users, IAccessRequestCommitter committer, IIntrusionResponseService intrusion, IAuditContext actor,
         INotificationService notifications, TimeProvider clock)
     {
         _requests = requests;
@@ -31,15 +32,39 @@ public sealed class AccessRequestService : IAccessRequestService
         _secrets = secrets;
         _users = users;
         _committer = committer;
+        _intrusion = intrusion;
         _actor = actor;
         _notifications = notifications;
         _clock = clock;
     }
 
-    public async Task<AccessRequestCreateResult> CreateAsync(
-        Guid secretId, string secretName, string projectKey,
-        Guid requesterUserId, string requesterUsername, string reason, string? deniedReasons, CancellationToken ct)
+    public async Task<AccessRequestRefusal?> FilingRefusalAsync(Guid secretId, Guid requesterUserId, CancellationToken ct)
+        => await FilingRefusalAsync(await LiveSecretAsync(secretId, ct), requesterUserId, ct);
+
+    public async Task<SecretSummaryDto> SecretToRequestAsync(Guid secretId, CancellationToken ct)
     {
+        var secret = await LiveSecretAsync(secretId, ct);
+        return new SecretSummaryDto(
+            secret.Id, secret.Name, secret.ProjectKey, secret.Environment, secret.Sensitivity, secret.CreatedAtUtc, secret.ExpiresAtUtc);
+    }
+
+    public async Task<AccessRequestCreateResult> CreateAsync(
+        Guid secretId, Guid requesterUserId, string requesterUsername, string reason,
+        IReadOnlyList<string> denialReasons, CancellationToken ct)
+    {
+        var secret = await LiveSecretAsync(secretId, ct);
+        if (secret.IsHoneyToken)
+        {
+            // Deliberately before any rule: the trap fires no matter who asks or why.
+            await _intrusion.TriggerHoneyTokenAsync(secret.Id, secret.Name, ct);
+            throw new HoneyTokenTrippedException(secret.Id, secret.Name);
+        }
+
+        if (await FilingRefusalAsync(secret, requesterUserId, ct) is { } refusal)
+        {
+            return AccessRequestCreateResult.Failed(AccessRequestRules.ToRequester(refusal));
+        }
+
         reason = reason.Trim();
         if (reason.Length < MinReasonLength)
         {
@@ -51,21 +76,16 @@ public sealed class AccessRequestService : IAccessRequestService
             reason = reason[..MaxReasonLength];
         }
 
-        if (await _requests.HasPendingAsync(secretId, requesterUserId, ct))
-        {
-            return AccessRequestCreateResult.Failed("You already have a pending request for this secret.");
-        }
-
         var request = new AccessRequest
         {
             Id = Guid.NewGuid(),
-            SecretId = secretId,
-            SecretName = secretName,
-            ProjectKey = projectKey,
+            SecretId = secret.Id,
+            SecretName = secret.Name,
+            ProjectKey = secret.ProjectKey,
             RequesterUserId = requesterUserId,
             RequesterUsername = requesterUsername,
             Reason = reason,
-            DeniedReasons = string.IsNullOrWhiteSpace(deniedReasons) ? null : deniedReasons,
+            DeniedReasons = denialReasons.Count == 0 ? null : string.Join('\n', denialReasons),
             Status = AccessRequestStatus.Pending,
             CreatedAtUtc = _clock.GetUtcNow()
         };
@@ -75,21 +95,13 @@ public sealed class AccessRequestService : IAccessRequestService
     }
 
     public async Task<IReadOnlyList<AccessRequestDto>> ListMineAsync(Guid requesterUserId, CancellationToken ct)
-        => (await _requests.ListByRequesterAsync(requesterUserId, ct)).Select(Map).ToList();
+        => (await _requests.ListByRequesterAsync(requesterUserId, ct)).Select(AccessRequestDto.From).ToList();
 
-    public async Task<IReadOnlyList<AccessRequestDto>> ListToReviewAsync(bool isAdmin, string reviewerProject, CancellationToken ct)
-    {
-        var pending = isAdmin
-            ? await _requests.ListPendingAsync(ct)
-            : await _requests.ListPendingForProjectAsync(reviewerProject, ct);
-        return pending.Select(Map).ToList();
-    }
+    public Task<IReadOnlyList<AccessRequestForReview>> ListPendingForReviewAsync(CancellationToken ct)
+        => _requests.ListPendingForReviewAsync(ct);
 
-    public async Task<AccessRequestDto?> GetAsync(Guid id, CancellationToken ct)
-    {
-        var request = await _requests.FindAsync(id, ct);
-        return request is null ? null : Map(request);
-    }
+    public Task<AccessRequestForReview?> FindForReviewAsync(Guid id, CancellationToken ct)
+        => _requests.FindForReviewAsync(id, ct);
 
     public async Task<bool> ApproveAsync(Guid id, int expiresInDays, CancellationToken ct)
     {
@@ -107,15 +119,18 @@ public sealed class AccessRequestService : IAccessRequestService
         var secret = await _secrets.FindAsync(request.SecretId, ct) ?? throw new SecretNotFoundException(request.SecretId);
         var recipient = await _users.FindByIdAsync(request.RequesterUserId, ct)
             ?? throw new SharingException("That requester account no longer exists.");
-        ShareRecipient.EnsureCanReceive(secret, recipient, _actor.UserId);
-
         var now = _clock.GetUtcNow();
         var existing = await _grants.FindForRecipientAsync(recipient.Id, secret.Id, ct);
-        var needsShare = existing is null || !existing.IsActive(now);
-        var share = needsShare ? ShareRecipient.NewShare(secret, recipient, _actor, now, expiresInDays) : null;
+        if (AccessRequestRules.ShareRefusal(SubjectOf(recipient), AttributesOf(secret), existing?.IsActive(now) == true) is { } refusal)
+        {
+            throw new AccessRequestIneligibleException(refusal, AccessRequestRules.ToReviewer(refusal));
+        }
+
+        ShareRecipient.EnsureCanReceive(secret, recipient, _actor.UserId);
+        var share = ShareRecipient.NewShare(secret, recipient, _actor, now, expiresInDays);
 
         Decide(request, AccessRequestStatus.Approved, _actor.Username ?? "system");
-        if (!await _committer.ApproveAsync(request, share, needsShare ? existing : null, ct))
+        if (!await _committer.ApproveAsync(request, share, expiredShare: existing, ct))
         {
             return false;
         }
@@ -163,7 +178,29 @@ public sealed class AccessRequestService : IAccessRequestService
         request.DecidedBy = by;
     }
 
-    private static AccessRequestDto Map(AccessRequest r) => new(
-        r.Id, r.SecretId, r.SecretName, r.ProjectKey, r.RequesterUsername, r.Reason, r.DeniedReasons,
-        r.Status, r.CreatedAtUtc, r.DecidedAtUtc, r.DecidedBy, r.DecisionNote);
+    /// <summary>A secret anyone could still open: not shredded and not expired.</summary>
+    private async Task<Secret> LiveSecretAsync(Guid secretId, CancellationToken ct)
+    {
+        var secret = await _secrets.FindAsync(secretId, ct);
+        return secret is null || secret.IsShredded || secret.ExpiresAtUtc <= _clock.GetUtcNow()
+            ? throw new SecretNotFoundException(secretId)
+            : secret;
+    }
+
+    private async Task<AccessRequestRefusal?> FilingRefusalAsync(Secret secret, Guid requesterUserId, CancellationToken ct)
+    {
+        var requester = await _users.FindByIdAsync(requesterUserId, ct)
+            ?? throw new InvalidOperationException("The signed-in account no longer exists.");
+        var holdsActiveShare = await _grants.HasActiveGrantAsync(requester.Id, secret.Id, _clock.GetUtcNow(), ct);
+        if (AccessRequestRules.ShareRefusal(SubjectOf(requester), AttributesOf(secret), holdsActiveShare) is { } refusal)
+        {
+            return refusal;
+        }
+
+        return await _requests.HasPendingAsync(secret.Id, requester.Id, ct) ? AccessRequestRefusal.AlreadyPending : null;
+    }
+
+    private static SubjectAttributes SubjectOf(User account) => new(account.Clearance, account.ProjectKey);
+
+    private static ResourceAttributes AttributesOf(Secret secret) => new(secret.Environment, secret.Sensitivity, secret.ProjectKey);
 }

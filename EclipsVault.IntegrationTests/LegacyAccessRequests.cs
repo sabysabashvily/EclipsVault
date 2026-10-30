@@ -12,6 +12,15 @@ internal static class LegacyAccessRequests
     public static async Task<string> TokenAsync(HttpClient client)
         => VaultFixture.FormTokenOf(await client.GetStringAsync("/Secrets/Create"), "/Secrets/Create");
 
+    /// <summary>The page's "To review" panel alone, since "My requests" lists the caller's own requests.</summary>
+    public static async Task<string> ToReviewPanelAsync(HttpClient client)
+    {
+        var page = await client.GetStringAsync("/AccessRequests");
+        var start = page.IndexOf("<h2>To review</h2>", StringComparison.Ordinal);
+        var end = start < 0 ? -1 : page.IndexOf("<h2>My requests</h2>", start, StringComparison.Ordinal);
+        return end > start ? page[start..end] : throw new InvalidOperationException("Access requests showed no To review panel.");
+    }
+
     public static Task<HttpResponseMessage> PostAsync(HttpClient client, string action, string token, Guid id, string ttlDays = "0")
         => PostFormAsync(client, action, new Dictionary<string, string>
         {
