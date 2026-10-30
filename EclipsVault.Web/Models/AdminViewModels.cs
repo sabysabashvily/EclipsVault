@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using EclipsVault.Core.Application.Users;
 using EclipsVault.Core.Domain.Enums;
 
 namespace EclipsVault.Web.Models;
@@ -34,8 +35,8 @@ public sealed class EditUserViewModel
 public sealed class CreateUserViewModel
 {
     [Required]
-    [StringLength(64, MinimumLength = 3)]
-    [RegularExpression(@"^[a-zA-Z0-9_\-\.]+$", ErrorMessage = "Use letters, digits, underscores, hyphens or dots.")]
+    [StringLength(UsernameRules.MaximumLength, MinimumLength = UsernameRules.MinimumLength)]
+    [RegularExpression(UsernameRules.AllowedCharactersPattern, ErrorMessage = UsernameRules.Description)]
     [Display(Name = "Username")]
     public string Username { get; set; } = string.Empty;
 

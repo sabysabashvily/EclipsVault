@@ -47,6 +47,12 @@ public static class AngularUiRoutes
         "/Data",
         "/Data/Index",
 
+        // Profile
+        "/Profile",
+        "/Profile/Index",
+        "/Profile/ChangePassword",
+        "/Profile/RecoveryCodes",
+
         // Shared by me
         "/Secrets/SharedByMe",
     ];

@@ -59,6 +59,7 @@ public static class DependencyInjection
             MaxAuthAgeMinutes = stepUp.GetValue<int?>("MaxAuthAgeMinutes") ?? new StepUpOptions().MaxAuthAgeMinutes
         });
         services.AddScoped<IStepUpService, StepUpService>();
+        services.AddScoped<SecondFactorVerifier>();
 
         // Email domain used when auto-generating account emails.
         services.AddSingleton(new UserDirectoryOptions(
@@ -97,6 +98,10 @@ public static class DependencyInjection
         services.AddSingleton<AuditGroupCommitter>();
         services.AddHostedService(sp => sp.GetRequiredService<AuditGroupCommitter>());
         services.AddScoped<IAuditSink, AuditSink>();
+        services.AddScoped<IAccountChangeCommitter, AccountChangeCommitter>();
+        services.AddScoped<AccountTransaction>();
+        services.AddScoped<IAuthenticationAttempt, AuthenticationAttempt>();
+        services.AddScoped<AuthenticationFailures>();
 
         services.AddScoped<ISecretRepository, SecretRepository>();
         services.AddScoped<ISecretGrantRepository, SecretGrantRepository>();
@@ -108,6 +113,7 @@ public static class DependencyInjection
         services.AddScoped<IEmailLogRepository, EmailLogRepository>();
         services.AddScoped<ITrustedNetworkRepository, TrustedNetworkRepository>();
         services.AddScoped<IDynamicSecretRepository, DynamicSecretRepository>();
+        services.AddScoped<IProfileOperationRepository, ProfileOperationRepository>();
 
         // Security primitives.
         services.AddSingleton<IPasswordHasher, Argon2idPasswordHasher>();
@@ -134,16 +140,14 @@ public static class DependencyInjection
         var redisOptions = configuration.GetSection(RedisOptions.SectionName).Get<RedisOptions>() ?? new RedisOptions();
         if (redisOptions.Enabled)
         {
-            RedisConnectionGuard.RequireAuthentication(redisOptions);
-
-            // One multiplexer per process (the expensive, thread-safe singleton). Connecting here
-            // fails fast at startup if the shared store is unreachable — it now holds security state.
-            services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisOptions.Configuration));
+            // One multiplexer per process (the expensive, thread-safe singleton).
+            services.AddSingleton<IConnectionMultiplexer>(RedisConnectionGuard.Connect(redisOptions));
             services.AddSingleton<ISecretCache, RedisSecretCache>();
             services.AddSingleton<IIpBlacklist, RedisIpBlacklist>();
             services.AddSingleton<ISessionRevocationService, RedisSessionRevocationService>();
             services.AddSingleton<ISessionRegistry, RedisSessionRegistry>();
             services.AddSingleton<IAuthThrottle, RedisAuthThrottle>();
+            services.AddSingleton<IPasskeyCeremonyStore, RedisPasskeyCeremonyStore>();
         }
         else
         {
@@ -152,6 +156,7 @@ public static class DependencyInjection
             services.AddSingleton<ISessionRevocationService, InMemorySessionRevocationService>();
             services.AddSingleton<ISessionRegistry, InMemorySessionRegistry>();
             services.AddSingleton<IAuthThrottle, InMemoryAuthThrottle>();
+            services.AddSingleton<IPasskeyCeremonyStore, MemoryPasskeyCeremonyStore>();
         }
         services.AddScoped<IIntrusionResponseService, IntrusionResponseService>();
 
@@ -206,9 +211,18 @@ public static class DependencyInjection
         services.AddScoped<IUserAdminService, UserAdminService>();
         services.AddScoped<IProfileService, ProfileService>();
         services.AddScoped<IMfaRecoveryService, MfaRecoveryService>();
+        services.AddSingleton<CandidatePasswordHashing>();
+        services.AddScoped<ProfileOperationPreparation>();
+        services.AddScoped<AccountVerification>();
+        services.AddScoped<VerifiedProfileChanges>();
+        services.AddScoped<ProfileEmailChanges>();
+        services.AddScoped<IEmailVerificationSendLimits, EmailVerificationSendLimits>();
+        services.AddSingleton<SmtpEmailSender>();
+        services.AddSingleton<IEmailVerificationDelivery, EmailVerificationDelivery>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IActivityService, ActivityService>();
         services.AddScoped<ISignInHistoryService, SignInHistoryService>();
+        services.AddScoped<ISignedInDevices, SignedInDevices>();
         services.AddScoped<ISecurityCheckupService, SecurityCheckupService>();
         services.AddScoped<IPersonalDataExportService, PersonalDataExportService>();
         services.AddScoped<IPasskeyService, PasskeyService>();

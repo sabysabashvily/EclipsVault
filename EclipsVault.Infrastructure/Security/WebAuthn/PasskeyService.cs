@@ -2,6 +2,7 @@ using System.Buffers.Text;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using EclipsVault.Core.Application.Authentication;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
 using Microsoft.Extensions.Options;
@@ -10,34 +11,49 @@ namespace EclipsVault.Infrastructure.Security.WebAuthn;
 
 /// <summary>
 /// Orchestrates the WebAuthn ceremonies: builds the option payloads, verifies responses via
-/// <see cref="WebAuthnVerifier"/>, persists credentials, and audits every outcome through the
-/// fail-closed <see cref="IAuditSink"/>. A registered passkey with user verification is a
+/// <see cref="WebAuthnVerifier"/>, and persists credentials. Adding and removing a passkey commit
+/// together with their audit event. Sign-in events commit with their counter and lockout bookkeeping
+/// through <see cref="IAuthenticationAttempt"/>. A registered passkey with user verification is a
 /// self-contained second factor, so a successful assertion signs the user in without a
 /// password or TOTP — passwordless MFA.
 /// </summary>
 public sealed class PasskeyService : IPasskeyService
 {
     private const int ChallengeBytes = 32;
+    private const int Es256Algorithm = -7;
+    private const int Rs256Algorithm = -257;
     private const int CeremonyTimeoutMs = 120_000;
 
     private readonly IUserRepository _users;
     private readonly IPasskeyCredentialRepository _passkeys;
-    private readonly IAuditSink _audit;
+    private readonly IAccountChangeCommitter _changes;
+    private readonly IAuthenticationAttempt _attempt;
+    private readonly AuthenticationFailures _failures;
+    private readonly ISessionRevocationService _revocation;
     private readonly WebAuthnOptions _options;
     private readonly TimeProvider _clock;
+    private readonly INotificationService? _notifications;
 
     public PasskeyService(
         IUserRepository users,
         IPasskeyCredentialRepository passkeys,
-        IAuditSink audit,
+        IAccountChangeCommitter changes,
+        IAuthenticationAttempt attempt,
+        AuthenticationFailures failures,
+        ISessionRevocationService revocation,
         IOptions<WebAuthnOptions> options,
-        TimeProvider clock)
+        TimeProvider clock,
+        INotificationService? notifications = null)
     {
         _users = users;
         _passkeys = passkeys;
-        _audit = audit;
+        _changes = changes;
+        _attempt = attempt;
+        _failures = failures;
+        _revocation = revocation;
         _options = options.Value;
         _clock = clock;
+        _notifications = notifications;
     }
 
     public async Task<PasskeyCeremonyOptions> BeginRegistrationAsync(Guid userId, CancellationToken ct)
@@ -60,8 +76,8 @@ public sealed class PasskeyService : IPasskeyService
             challenge = Base64Url.EncodeToString(challenge),
             pubKeyCredParams = new[]
             {
-                new { type = "public-key", alg = -7 },
-                new { type = "public-key", alg = -257 }
+                new { type = "public-key", alg = Es256Algorithm },
+                new { type = "public-key", alg = Rs256Algorithm }
             },
             timeout = CeremonyTimeoutMs,
             excludeCredentials = existing
@@ -75,7 +91,7 @@ public sealed class PasskeyService : IPasskeyService
     }
 
     public async Task<PasskeyRegistrationResult> CompleteRegistrationAsync(
-        Guid userId, string expectedChallenge, string responseJson, string? nickname, CancellationToken ct)
+        Guid userId, long credentialGeneration, string expectedChallenge, string responseJson, string? nickname, CancellationToken ct)
     {
         var user = await _users.FindByIdAsync(userId, ct);
         if (user is null)
@@ -83,6 +99,30 @@ public sealed class PasskeyService : IPasskeyService
             return PasskeyRegistrationResult.Failed("Your account could not be loaded.");
         }
 
+        if (user.CredentialGeneration != credentialGeneration)
+        {
+            return PasskeyRegistrationResult.Failed("Your sign-in details changed while this passkey was being added. Try again.");
+        }
+
+        var attestation = await VerifyRegistrationAsync(userId, expectedChallenge, responseJson, PasskeyNickname.Normalize(nickname), ct);
+        if (attestation.Credential is not { } entity)
+        {
+            return PasskeyRegistrationResult.Failed(attestation.Error!);
+        }
+
+        _passkeys.StageAddition(entity);
+        user.CredentialGeneration++;
+        await _changes.CommitAsync(user, AuditAction.PasskeyRegistered, $"Passkey '{entity.Nickname}' registered", ct);
+        if (_notifications is not null)
+        {
+            await _notifications.NotifySensitiveChangeAsync(user.Email, ProfileOperationKind.AddPasskey, CancellationToken.None);
+        }
+        return PasskeyRegistrationResult.Registered(user.CredentialGeneration);
+    }
+
+    public async Task<PasskeyAttestation> VerifyRegistrationAsync(
+        Guid userId, string expectedChallenge, string responseJson, string nickname, CancellationToken ct)
+    {
         byte[] rawId, clientDataJson, attestationObject;
         try
         {
@@ -92,14 +132,14 @@ public sealed class PasskeyService : IPasskeyService
             clientDataJson = DecodeB64Url(root, "clientDataJSON");
             attestationObject = DecodeB64Url(root, "attestationObject");
         }
-        catch (Exception ex) when (ex is JsonException or FormatException or KeyNotFoundException)
+        catch (Exception ex) when (ex is JsonException or FormatException or KeyNotFoundException or InvalidOperationException)
         {
-            return PasskeyRegistrationResult.Failed("The passkey response was malformed.");
+            return PasskeyAttestation.Failed("The passkey response was malformed.");
         }
 
         if (VerifyClientData(clientDataJson, "webauthn.create", expectedChallenge) is { } clientError)
         {
-            return PasskeyRegistrationResult.Failed(clientError);
+            return PasskeyAttestation.Failed(clientError);
         }
 
         AttestedCredential credential;
@@ -109,33 +149,79 @@ public sealed class PasskeyService : IPasskeyService
         }
         catch (WebAuthnException ex)
         {
-            return PasskeyRegistrationResult.Failed(ex.Message);
+            return PasskeyAttestation.Failed(ex.Message);
         }
 
         if (!credential.CredentialId.AsSpan().SequenceEqual(rawId))
         {
-            return PasskeyRegistrationResult.Failed("The credential id did not match the attestation.");
+            return PasskeyAttestation.Failed("The credential id did not match the attestation.");
         }
 
         if (await _passkeys.FindByCredentialIdAsync(credential.CredentialId, ct) is not null)
         {
-            return PasskeyRegistrationResult.Failed("That passkey is already registered.");
+            return PasskeyAttestation.Failed("That passkey is already registered.");
         }
 
-        var entity = new PasskeyCredential
+        return new PasskeyAttestation(new PasskeyCredential
         {
             Id = Guid.NewGuid(),
             UserId = userId,
             CredentialId = credential.CredentialId,
             PublicKey = credential.CosePublicKey,
             SignCount = credential.SignCount,
-            Nickname = NormalizeNickname(nickname),
+            Nickname = nickname,
             CreatedAtUtc = _clock.GetUtcNow()
+        }, null);
+    }
+
+    public async Task<PasskeyCeremonyOptions> BeginAccountVerificationAsync(Guid userId, Guid? excludedPasskeyId, CancellationToken ct)
+    {
+        var challenge = RandomNumberGenerator.GetBytes(ChallengeBytes);
+        var allowed = (await _passkeys.ListForUserAsync(userId, ct)).Where(key => key.Id != excludedPasskeyId);
+        var options = new
+        {
+            challenge = Base64Url.EncodeToString(challenge),
+            timeout = CeremonyTimeoutMs,
+            rpId = _options.RelyingPartyId,
+            allowCredentials = allowed
+                .Select(key => new { type = "public-key", id = Base64Url.EncodeToString(key.CredentialId) })
+                .ToArray(),
+            userVerification = "required"
         };
 
-        await _passkeys.AddAsync(entity, ct);
-        await AuditAsync(AuditAction.PasskeyRegistered, user, $"Passkey '{entity.Nickname}' registered", ct);
-        return PasskeyRegistrationResult.Ok;
+        return new PasskeyCeremonyOptions(JsonSerializer.Serialize(options), Base64Url.EncodeToString(challenge));
+    }
+
+    public async Task<PasskeyProof> VerifyAccountAssertionAsync(
+        User account, string expectedChallenge, string responseJson, Guid? excludedPasskeyId, CancellationToken ct)
+    {
+        if (ReadAssertion(responseJson) is not { } response)
+        {
+            return PasskeyProof.Malformed;
+        }
+
+        var (rawId, clientDataJson, authenticatorData, signature) = response;
+
+        if (VerifyClientData(clientDataJson, "webauthn.get", expectedChallenge) is { } clientError)
+        {
+            return PasskeyProof.Rejected($"Passkey verification rejected: {clientError}");
+        }
+
+        // Another account's valid passkey proves that account, not this one.
+        var stored = await _passkeys.FindByCredentialIdAsync(rawId, ct);
+        if (stored is null || stored.UserId != account.Id || stored.Id == excludedPasskeyId)
+        {
+            return PasskeyProof.Rejected("Passkey verification rejected: not one of this account's usable passkeys");
+        }
+
+        if (!await _passkeys.RefreshAsync(stored, ct))
+        {
+            return PasskeyProof.Rejected("Passkey verification rejected: credential was removed");
+        }
+
+        return await VerifyAssertionAndAdvanceCounterAsync(stored, authenticatorData, clientDataJson, signature, ct) is { } rejection
+            ? PasskeyProof.Rejected(rejection)
+            : PasskeyProof.Verified;
     }
 
     public async Task<PasskeyCeremonyOptions> BeginAssertionAsync(string? usernameOrEmail, CancellationToken ct)
@@ -145,13 +231,20 @@ public sealed class PasskeyService : IPasskeyService
         // A named user scopes the allowed credentials; an unknown or omitted name yields an
         // empty list (discoverable-credential mode), which also avoids leaking account existence.
         IReadOnlyList<byte[]> allowed = [];
+        PasskeyNamedAccount? namedAccount = null;
         if (!string.IsNullOrWhiteSpace(usernameOrEmail))
         {
             var user = await _users.FindByUsernameOrEmailAsync(usernameOrEmail.Trim(), ct);
             if (user is not null)
             {
+                var version = await _revocation.CaptureAsync(user.Id, ct);
+                if (!await _users.ReloadAsync(user, ct))
+                {
+                    return new PasskeyCeremonyOptions("{}", Base64Url.EncodeToString(challenge));
+                }
                 var creds = await _passkeys.ListForUserAsync(user.Id, ct);
                 allowed = creds.Select(c => c.CredentialId).ToList();
+                namedAccount = new PasskeyNamedAccount(user.Id, new SessionStamp(user.CredentialGeneration, version));
             }
         }
 
@@ -166,25 +259,18 @@ public sealed class PasskeyService : IPasskeyService
             userVerification = "required"
         };
 
-        return new PasskeyCeremonyOptions(JsonSerializer.Serialize(options), Base64Url.EncodeToString(challenge));
+        return new PasskeyCeremonyOptions(JsonSerializer.Serialize(options), Base64Url.EncodeToString(challenge), namedAccount);
     }
 
-    public async Task<PasskeyAssertionResult> CompleteAssertionAsync(string expectedChallenge, string responseJson, CancellationToken ct)
+    public async Task<PasskeyAssertionResult> CompleteAssertionAsync(
+        string expectedChallenge, PasskeyNamedAccount? namedAccount, string responseJson, CancellationToken ct)
     {
-        byte[] rawId, clientDataJson, authenticatorData, signature;
-        try
-        {
-            using var doc = JsonDocument.Parse(responseJson);
-            var root = doc.RootElement;
-            rawId = DecodeB64Url(root, "id");
-            clientDataJson = DecodeB64Url(root, "clientDataJSON");
-            authenticatorData = DecodeB64Url(root, "authenticatorData");
-            signature = DecodeB64Url(root, "signature");
-        }
-        catch (Exception ex) when (ex is JsonException or FormatException or KeyNotFoundException)
+        if (ReadAssertion(responseJson) is not { } response)
         {
             return PasskeyAssertionResult.Failed("The passkey response was malformed.");
         }
+
+        var (rawId, clientDataJson, authenticatorData, signature) = response;
 
         if (VerifyClientData(clientDataJson, "webauthn.get", expectedChallenge) is { } clientError)
         {
@@ -197,33 +283,11 @@ public sealed class PasskeyService : IPasskeyService
             return PasskeyAssertionResult.Failed("This passkey is not recognized.");
         }
 
-        uint newSignCount;
-        try
+        // A named sign-in proves only the account it named, so another account's passkey cannot finish it.
+        if (namedAccount is not null && namedAccount.AccountId != stored.UserId)
         {
-            newSignCount = WebAuthnVerifier.VerifyAssertion(
-                authenticatorData, clientDataJson, signature, stored.PublicKey,
-                _options.RelyingPartyId, requireUserVerification: true);
-        }
-        catch (WebAuthnException ex)
-        {
-            return PasskeyAssertionResult.Failed(ex.Message);
-        }
-
-        // Clone detection: a counter that fails to advance suggests a duplicated authenticator.
-        // (A pair of zeros means the authenticator does not keep a counter — allowed.)
-        if ((newSignCount != 0 || stored.SignCount != 0) && newSignCount <= (uint)stored.SignCount)
-        {
-            var owner = await _users.FindByIdAsync(stored.UserId, ct);
-            if (owner is not null)
-            {
-                await AuditAsync(AuditAction.LoginFailed, owner, "Passkey sign-in rejected: signature counter did not advance (possible clone)", ct);
-            }
-
             return PasskeyAssertionResult.Failed("This passkey could not be verified.");
         }
-
-        stored.SignCount = newSignCount;
-        await _passkeys.UpdateAsync(stored, ct);
 
         var user = await _users.FindByIdAsync(stored.UserId, ct);
         if (user is null)
@@ -231,20 +295,50 @@ public sealed class PasskeyService : IPasskeyService
             return PasskeyAssertionResult.Failed("The account for this passkey no longer exists.");
         }
 
-        if (user.IsDisabled)
+        // Without a name, the credential has just identified its account, so its generation is taken
+        // now, before the assertion is verified. Both are captured before the attempt reloads the
+        // account, so a change committed since then refuses this sign-in instead of passing it under
+        // a newer stamp.
+        var credentialGeneration = namedAccount?.Stamp.CredentialGeneration ?? user.CredentialGeneration;
+        var revocationVersion = namedAccount?.Stamp.RevocationVersion ?? await _revocation.CaptureAsync(user.Id, ct);
+        return await _attempt.RunAsync(user, async token =>
         {
-            await AuditAsync(AuditAction.LoginFailed, user, "Passkey sign-in blocked: account is disabled", ct);
-            return PasskeyAssertionResult.Failed("This account is disabled.");
-        }
+            if (user.CredentialGeneration != credentialGeneration
+                || await _revocation.FindAsync(user.Id, token) != revocationVersion)
+            {
+                return PasskeyAssertionResult.Failed("This sign-in expired. Try again.");
+            }
 
-        if (user.IsLockedOut(_clock.GetUtcNow()))
-        {
-            await AuditAsync(AuditAction.LoginFailed, user, "Passkey sign-in blocked: account is locked out", ct);
-            return PasskeyAssertionResult.Failed("This account is temporarily locked.");
-        }
+            if (user.IsDisabled)
+            {
+                _attempt.RecordUserEvent(AuditAction.LoginFailed, user, "Passkey sign-in blocked: account is disabled");
+                return PasskeyAssertionResult.Failed("This passkey could not be verified.");
+            }
 
-        await AuditAsync(AuditAction.PasskeyLogin, user, "Passwordless sign-in with a passkey", ct);
-        return PasskeyAssertionResult.Succeeded(Map(user));
+            if (user.IsLockedOut(_clock.GetUtcNow()))
+            {
+                _attempt.RecordUserEvent(AuditAction.LoginFailed, user, "Passkey sign-in blocked: account is locked out");
+                return PasskeyAssertionResult.Failed("This passkey could not be verified.");
+            }
+
+            // Another assertion can advance the counter while this request waits for the account
+            // lock. Compare against that committed value, not the copy read before waiting.
+            if (!await _passkeys.RefreshAsync(stored, token))
+            {
+                _attempt.RecordUserEvent(AuditAction.LoginFailed, user, "Passkey sign-in rejected: credential was removed");
+                return PasskeyAssertionResult.Failed("This passkey could not be verified.");
+            }
+
+            if (await VerifyAssertionAndAdvanceCounterAsync(stored, authenticatorData, clientDataJson, signature, token) is { } rejection)
+            {
+                await _failures.RecordAsync(user, AuditAction.LoginFailed, rejection, token);
+                return PasskeyAssertionResult.Failed("This passkey could not be verified.");
+            }
+
+            await _failures.ResetAsync(user, token);
+            _attempt.RecordUserEvent(AuditAction.PasskeyLogin, user, "Passwordless sign-in with a passkey");
+            return PasskeyAssertionResult.Succeeded(Map(user), new SessionStamp(credentialGeneration, revocationVersion));
+        }, ct);
     }
 
     public async Task<IReadOnlyList<PasskeySummary>> ListForUserAsync(Guid userId, CancellationToken ct)
@@ -255,23 +349,55 @@ public sealed class PasskeyService : IPasskeyService
             .ToList();
     }
 
-    public async Task<bool> RemoveAsync(Guid userId, Guid passkeyId, CancellationToken ct)
+    public async Task<long?> RemoveAsync(Guid userId, long credentialGeneration, Guid passkeyId, CancellationToken ct)
     {
-        var credential = await _passkeys.FindByIdForUserAsync(passkeyId, userId, ct);
-        if (credential is null)
-        {
-            return false;
-        }
-
-        await _passkeys.DeleteAsync(credential, ct);
-
         var user = await _users.FindByIdAsync(userId, ct);
-        if (user is not null)
+        var credential = await _passkeys.FindByIdForUserAsync(passkeyId, userId, ct);
+        if (user is null || credential is null)
         {
-            await AuditAsync(AuditAction.PasskeyRemoved, user, $"Passkey '{credential.Nickname ?? "Passkey"}' removed", ct);
+            return null;
         }
 
-        return true;
+        user.RequireCredentialGeneration(credentialGeneration);
+        _passkeys.StageRemoval(credential);
+        user.CredentialGeneration++;
+        await _changes.CommitAsync(user, AuditAction.PasskeyRemoved, $"Passkey '{credential.Nickname ?? "Passkey"}' removed", ct);
+        if (_notifications is not null)
+        {
+            await _notifications.NotifySensitiveChangeAsync(user.Email, ProfileOperationKind.RemovePasskey, CancellationToken.None);
+        }
+        return user.CredentialGeneration;
+    }
+
+    /// <summary>
+    /// Verifies the assertion's signature with user verification and advances the stored counter.
+    /// Returns why the assertion was refused, or null when it proved the passkey.
+    /// </summary>
+    private async Task<string?> VerifyAssertionAndAdvanceCounterAsync(
+        PasskeyCredential stored, byte[] authenticatorData, byte[] clientDataJson, byte[] signature, CancellationToken ct)
+    {
+        uint newSignCount;
+        try
+        {
+            newSignCount = WebAuthnVerifier.VerifyAssertion(
+                authenticatorData, clientDataJson, signature, stored.PublicKey,
+                _options.RelyingPartyId, requireUserVerification: true);
+        }
+        catch (WebAuthnException)
+        {
+            return "Passkey signature verification failed";
+        }
+
+        // A counter that fails to advance suggests a cloned authenticator. Zero-only
+        // authenticators do not provide this signal and remain usable.
+        if ((newSignCount != 0 || stored.SignCount != 0) && newSignCount <= (uint)stored.SignCount)
+        {
+            return "Passkey signature counter did not advance (possible clone)";
+        }
+
+        return await _passkeys.TryAdvanceSignCountAsync(stored, newSignCount, ct)
+            ? null
+            : "Passkey rejected: credential changed";
     }
 
     /// <summary>Validates ceremony type, challenge, and origin from the raw clientDataJSON. Returns an error message, or null when valid.</summary>
@@ -306,17 +432,22 @@ public sealed class PasskeyService : IPasskeyService
         }
     }
 
-    private Task AuditAsync(AuditAction action, User user, string details, CancellationToken ct)
-        => _audit.WriteAsync(new AuditEntry
+    private static AssertionResponse? ReadAssertion(string json)
+    {
+        try
         {
-            Action = action,
-            ResourceType = "User",
-            ResourceId = user.Id,
-            ActorUserId = user.Id,
-            ActorUsername = user.Username,
-            Details = details,
-            IsCritical = false
-        }, ct);
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            return new AssertionResponse(DecodeB64Url(root, "id"), DecodeB64Url(root, "clientDataJSON"),
+                DecodeB64Url(root, "authenticatorData"), DecodeB64Url(root, "signature"));
+        }
+        catch (Exception failure) when (failure is JsonException or FormatException or KeyNotFoundException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    private sealed record AssertionResponse(byte[] Id, byte[] ClientData, byte[] AuthenticatorData, byte[] Signature);
 
     private static byte[] DecodeB64Url(JsonElement root, string property)
     {
@@ -333,17 +464,6 @@ public sealed class PasskeyService : IPasskeyService
         }
 
         return CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(a), Encoding.UTF8.GetBytes(b));
-    }
-
-    private static string NormalizeNickname(string? nickname)
-    {
-        nickname = nickname?.Trim();
-        if (string.IsNullOrEmpty(nickname))
-        {
-            return "Passkey";
-        }
-
-        return nickname.Length > 64 ? nickname[..64] : nickname;
     }
 
     private static UserDto Map(User user)

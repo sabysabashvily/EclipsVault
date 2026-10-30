@@ -81,6 +81,8 @@ public static class AuditDisplay
         AuditAction.RecoveryCodeUsed => ("Recovery code used", "warn"),
         AuditAction.StepUpVerified => ("Step-up verified", "ok"),
         AuditAction.StepUpFailed => ("Step-up failed", "warn"),
+        AuditAction.AccountVerified => ("Account verified", "ok"),
+        AuditAction.AccountVerificationFailed => ("Account verification failed", "warn"),
         _ => (action.ToString(), "muted")
     };
 

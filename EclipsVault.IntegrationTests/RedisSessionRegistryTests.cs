@@ -5,9 +5,62 @@ namespace EclipsVault.IntegrationTests;
 
 public sealed class RedisSessionRegistryTests(RedisSessionFixture fixture) : IClassFixture<RedisSessionFixture>
 {
+    private static readonly SessionStamp Stamp = new(0, "current-version");
+
     private static SessionObservation Observation(Guid userId, Guid sessionId, DateTimeOffset? expires = null)
-        => new(userId, sessionId, "Chrome on macOS", "203.0.113.5", DateTimeOffset.UtcNow,
+        => new(userId, sessionId, Stamp, "Chrome on macOS", "203.0.113.5", DateTimeOffset.UtcNow,
             expires ?? DateTimeOffset.UtcNow.AddHours(1));
+
+    [Fact]
+    public async Task A_device_sign_out_winning_before_replacement_prevents_retirement()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        await fixture.Registry.RecordSeenAsync(Observation(userId, sessionId));
+        Assert.True(await fixture.PeerRegistry.RevokeAsync(userId, sessionId));
+
+        Assert.False(await fixture.Registry.TryRetireForReplacementAsync(userId, sessionId));
+    }
+
+    [Fact]
+    public async Task Retirement_winning_before_a_device_sign_out_cannot_be_reported_as_a_confirmed_removal()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        await fixture.Registry.RecordSeenAsync(Observation(userId, sessionId));
+        Assert.True(await fixture.Registry.TryRetireForReplacementAsync(userId, sessionId));
+
+        Assert.False(await fixture.PeerRegistry.RevokeAsync(userId, sessionId));
+        Assert.True(await fixture.PeerRegistry.IsRevokedAsync(userId, sessionId));
+    }
+
+    [Fact]
+    public async Task Concurrent_retirement_and_device_sign_out_have_exactly_one_winner()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        await fixture.Registry.RecordSeenAsync(Observation(userId, sessionId));
+
+        var outcomes = await Task.WhenAll(
+            fixture.Registry.TryRetireForReplacementAsync(userId, sessionId), fixture.PeerRegistry.RevokeAsync(userId, sessionId));
+
+        Assert.NotEqual(outcomes[0], outcomes[1]);
+        Assert.True(await fixture.PeerRegistry.IsRevokedAsync(userId, sessionId));
+        Assert.Empty(await fixture.Registry.ListAsync(userId, Stamp));
+    }
+
+    [Fact]
+    public async Task Missing_device_metadata_does_not_prevent_retiring_a_valid_session_for_replacement()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+
+        Assert.True(await fixture.Registry.TryRetireForReplacementAsync(userId, sessionId));
+        await fixture.PeerRegistry.RecordSeenAsync(Observation(userId, sessionId));
+
+        Assert.True(await fixture.PeerRegistry.IsRevokedAsync(userId, sessionId));
+        Assert.Empty(await fixture.Registry.ListAsync(userId, Stamp));
+    }
 
     [Fact]
     public async Task Revoking_the_accounts_live_session_returns_true_and_ends_access_on_another_node()
@@ -15,12 +68,12 @@ public sealed class RedisSessionRegistryTests(RedisSessionFixture fixture) : ICl
         var userId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
         await fixture.Registry.RecordSeenAsync(Observation(userId, sessionId));
-        Assert.Equal(sessionId, Assert.Single(await fixture.PeerRegistry.ListAsync(userId)).SessionId);
+        Assert.Equal(sessionId, Assert.Single(await fixture.PeerRegistry.ListAsync(userId, Stamp)).SessionId);
 
         Assert.True(await fixture.Registry.RevokeAsync(userId, sessionId));
 
         Assert.True(await fixture.PeerRegistry.IsRevokedAsync(userId, sessionId));
-        Assert.Empty(await fixture.PeerRegistry.ListAsync(userId));
+        Assert.Empty(await fixture.PeerRegistry.ListAsync(userId, Stamp));
     }
 
     [Fact]
@@ -33,7 +86,7 @@ public sealed class RedisSessionRegistryTests(RedisSessionFixture fixture) : ICl
 
         Assert.False(await fixture.PeerRegistry.RevokeAsync(caller, sessionId));
 
-        Assert.Equal(sessionId, Assert.Single(await fixture.Registry.ListAsync(owner)).SessionId);
+        Assert.Equal(sessionId, Assert.Single(await fixture.Registry.ListAsync(owner, Stamp)).SessionId);
         Assert.False(await fixture.Registry.IsRevokedAsync(owner, sessionId));
     }
 
@@ -46,7 +99,7 @@ public sealed class RedisSessionRegistryTests(RedisSessionFixture fixture) : ICl
         await fixture.Registry.RecordSeenAsync(Observation(userId, liveSessionId));
 
         Assert.False(await fixture.Registry.RevokeAsync(userId, sessionId));
-        Assert.Equal(liveSessionId, Assert.Single(await fixture.Registry.ListAsync(userId)).SessionId);
+        Assert.Equal(liveSessionId, Assert.Single(await fixture.Registry.ListAsync(userId, Stamp)).SessionId);
     }
 
     [Fact]
@@ -59,7 +112,7 @@ public sealed class RedisSessionRegistryTests(RedisSessionFixture fixture) : ICl
         await fixture.PeerRegistry.RecordSeenAsync(Observation(userId, sessionId));
 
         Assert.True(await fixture.PeerRegistry.IsRevokedAsync(userId, sessionId));
-        Assert.Empty(await fixture.PeerRegistry.ListAsync(userId));
+        Assert.Empty(await fixture.PeerRegistry.ListAsync(userId, Stamp));
     }
 
     [Fact]
@@ -86,7 +139,7 @@ public sealed class RedisSessionRegistryTests(RedisSessionFixture fixture) : ICl
         Assert.False(await fixture.PeerRegistry.RevokeAsync(userId, sessionId));
 
         Assert.True(await fixture.Registry.IsRevokedAsync(userId, sessionId));
-        Assert.Empty(await fixture.Registry.ListAsync(userId));
+        Assert.Empty(await fixture.Registry.ListAsync(userId, Stamp));
     }
 
     [Fact]
@@ -100,7 +153,7 @@ public sealed class RedisSessionRegistryTests(RedisSessionFixture fixture) : ICl
         await fixture.Registry.RecordSeenAsync(Observation(userId, sessionId));
 
         Assert.True(await fixture.Registry.IsRevokedAsync(userId, sessionId));
-        Assert.Empty(await fixture.Registry.ListAsync(userId));
+        Assert.Empty(await fixture.Registry.ListAsync(userId, Stamp));
     }
 
     [Fact]
@@ -117,7 +170,7 @@ public sealed class RedisSessionRegistryTests(RedisSessionFixture fixture) : ICl
         Assert.Single(results, removed => removed);
         Assert.Single(results, removed => !removed);
         Assert.True(await fixture.PeerRegistry.IsRevokedAsync(userId, sessionId));
-        Assert.Empty(await fixture.Registry.ListAsync(userId));
+        Assert.Empty(await fixture.Registry.ListAsync(userId, Stamp));
     }
 
     [Fact]
@@ -135,6 +188,6 @@ public sealed class RedisSessionRegistryTests(RedisSessionFixture fixture) : ICl
         await fixture.PeerRegistry.RecordSeenAsync(observation);
 
         Assert.True(await fixture.PeerRegistry.IsRevokedAsync(userId, sessionId));
-        Assert.Empty(await fixture.PeerRegistry.ListAsync(userId));
+        Assert.Empty(await fixture.PeerRegistry.ListAsync(userId, Stamp));
     }
 }

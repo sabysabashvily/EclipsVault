@@ -13,7 +13,7 @@ namespace EclipsVault.Infrastructure.Security;
 /// (field = session id → JSON), and a revoked session is a short-lived tombstone key the cookie
 /// validator checks. An atomic Lua upsert creates a session on first sight and throttles the
 /// last-seen refresh, so the per-request touch is a single round-trip and never resurrects a
-/// revoked session.
+/// revoked session. Its keys live under the session store's incarnation.
 /// </summary>
 public sealed class RedisSessionRegistry : ISessionRegistry
 {
@@ -21,6 +21,7 @@ public sealed class RedisSessionRegistry : ISessionRegistry
         local sessionsKey, tombstoneKey = KEYS[1], KEYS[2]
         local sessionField, seenUnix, device, ipAddress = ARGV[1], tonumber(ARGV[2]), ARGV[3], ARGV[4]
         local expiresUnix, throttleSeconds, ttlSeconds = tonumber(ARGV[5]), tonumber(ARGV[6]), ARGV[7]
+        local credentialGeneration, revocationVersion = ARGV[8], ARGV[9]
         if redis.call('EXISTS', tombstoneKey) == 1 then return 0 end
         local existing = redis.call('HGET', sessionsKey, sessionField)
         if existing then
@@ -33,7 +34,8 @@ public sealed class RedisSessionRegistry : ISessionRegistry
             end
         else
             local stored = { SessionId = sessionField, Device = device, IpAddress = ipAddress,
-                             CreatedUnix = seenUnix, LastSeenUnix = seenUnix, ExpiresUnix = expiresUnix }
+                             CreatedUnix = seenUnix, LastSeenUnix = seenUnix, ExpiresUnix = expiresUnix,
+                             CredentialGeneration = credentialGeneration, RevocationVersion = revocationVersion }
             redis.call('HSET', sessionsKey, sessionField, cjson.encode(stored))
         end
         redis.call('EXPIRE', sessionsKey, ttlSeconds)
@@ -57,10 +59,18 @@ public sealed class RedisSessionRegistry : ISessionRegistry
         return removed
         """;
 
+    private const string RetireForReplacementScript = """
+        if redis.call('EXISTS', KEYS[2]) == 1 then return 0 end
+        redis.call('SET', KEYS[2], '1', 'EX', ARGV[2])
+        redis.call('HDEL', KEYS[1], ARGV[1])
+        return 1
+        """;
+
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
 
     private sealed record StoredSession(
-        string SessionId, string Device, string IpAddress, long CreatedUnix, long LastSeenUnix, long ExpiresUnix);
+        string SessionId, string Device, string IpAddress, long CreatedUnix, long LastSeenUnix, long ExpiresUnix,
+        string? CredentialGeneration, string? RevocationVersion);
 
     private readonly IConnectionMultiplexer _redis;
     private readonly string _prefix;
@@ -69,6 +79,7 @@ public sealed class RedisSessionRegistry : ISessionRegistry
 
     // Only refresh last-seen once it has drifted by this much — throttles per-request writes.
     private const int TouchThrottleSeconds = 60;
+    private const int MinimumMetadataRetentionSeconds = 60;
 
     public RedisSessionRegistry(
         IConnectionMultiplexer redis,
@@ -76,7 +87,7 @@ public sealed class RedisSessionRegistry : ISessionRegistry
         ILogger<RedisSessionRegistry> logger)
     {
         _redis = redis;
-        _prefix = options.Value.InstanceName;
+        _prefix = options.Value.SessionKeyPrefix;
         // A tombstone must outlive any live cookie; reuse the revocation retention (default 24h).
         _tombstoneSeconds = Math.Max(1, options.Value.RevocationRetentionHours) * 3600;
         _logger = logger;
@@ -84,7 +95,7 @@ public sealed class RedisSessionRegistry : ISessionRegistry
 
     public async Task RecordSeenAsync(SessionObservation observation, CancellationToken ct = default)
     {
-        var ttlSeconds = Math.Max(60, (int)(observation.ExpiresAtUtc - observation.SeenAtUtc).TotalSeconds);
+        var ttlSeconds = Math.Max(MinimumMetadataRetentionSeconds, (int)(observation.ExpiresAtUtc - observation.SeenAtUtc).TotalSeconds);
         var database = _redis.GetDatabase();
         await database.ScriptEvaluateAsync(
             UpsertScript,
@@ -97,11 +108,13 @@ public sealed class RedisSessionRegistry : ISessionRegistry
                 observation.IpAddress,
                 observation.ExpiresAtUtc.ToUnixTimeSeconds(),
                 TouchThrottleSeconds,
-                ttlSeconds
+                ttlSeconds,
+                observation.Stamp.CredentialGeneration.ToString(CultureInfo.InvariantCulture),
+                observation.Stamp.RevocationVersion
             });
     }
 
-    public async Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, SessionStamp current, CancellationToken ct = default)
     {
         var database = _redis.GetDatabase();
         var entries = await database.HashGetAllAsync(SessionsKey(userId));
@@ -111,7 +124,8 @@ public sealed class RedisSessionRegistry : ISessionRegistry
         foreach (var entry in entries)
         {
             var stored = JsonSerializer.Deserialize<StoredSession>((string)entry.Value!, Json);
-            if (stored is null || stored.ExpiresUnix <= now || !Guid.TryParse(stored.SessionId, out var sessionId))
+            if (stored is null || stored.ExpiresUnix <= now || !Guid.TryParse(stored.SessionId, out var sessionId)
+                || !IssuedUnder(stored, current))
             {
                 continue;
             }
@@ -145,6 +159,15 @@ public sealed class RedisSessionRegistry : ISessionRegistry
 
     public async Task<bool> IsRevokedAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
         => await _redis.GetDatabase().KeyExistsAsync(RevokedKey(userId, sessionId));
+
+    public async Task<bool> TryRetireForReplacementAsync(Guid userId, Guid sessionId, CancellationToken ct = default)
+        => (long)await _redis.GetDatabase().ScriptEvaluateAsync(
+            RetireForReplacementScript, [SessionsKey(userId), RevokedKey(userId, sessionId)],
+            [sessionId.ToString("N"), _tombstoneSeconds]) == 1;
+
+    private static bool IssuedUnder(StoredSession stored, SessionStamp current)
+        => stored.CredentialGeneration == current.CredentialGeneration.ToString(CultureInfo.InvariantCulture)
+           && stored.RevocationVersion == current.RevocationVersion;
 
     private RedisKey SessionsKey(Guid userId) => $"{_prefix}:sessions:{userId:N}";
     private RedisKey RevokedKey(Guid userId, Guid sessionId)

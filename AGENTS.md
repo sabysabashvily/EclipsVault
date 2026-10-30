@@ -78,8 +78,8 @@ npm run e2e:verify-guards
 unset Seed__AdminPassword ECLIPSVAULT_KEK
 ```
 
-`e2e` builds the root production Dockerfile, starts a fresh SQL Server and a TLS proxy on a random
-loopback port, bootstraps `vault-admin` through the normal Production startup, enrolls MFA through
+`e2e` builds the root production Dockerfile, starts fresh SQL Server, authenticated Redis, SMTP capture
+and a TLS proxy on a random loopback port, bootstraps `vault-admin` through the normal Production startup, enrolls MFA through
 the browser, then signs in with a real TOTP code. It removes its own containers and image on exit.
 The first run downloads SQL Server (~2.5 GB) and the build images. `E2E_IMAGE=<local-tag>` skips the
 build to test an already-built production image, as CI does.
@@ -103,8 +103,10 @@ a missing or extra violation fails.
 
 Failures retain traces/screenshots in `test-results/` and an HTML report in `playwright-report/`;
 open with `npx playwright show-report`. Guard evidence is in `guard-results/`. Both runs also save
-`docker.log`. These ignored artifacts can contain disposable passwords, MFA enrollment material and
-session cookies; use only throwaway test credentials. CI uploads them on failure with short retention.
+`docker.log`. `E2E_EVIDENCE_DIR=<absolute dir>` puts those three folders under that directory instead,
+for a ticket's ignored `logs/ticket-<n>/`. These ignored artifacts can contain disposable passwords, MFA
+enrollment material and session cookies; use only throwaway test credentials. CI uploads them on
+failure with short retention.
 
 ## Known traps
 
@@ -159,6 +161,10 @@ session cookies; use only throwaway test credentials. CI uploads them on failure
 
 ## Working rules
 
+- For delegated agents, use only GPT Sol 6.1 (`gpt-6.1-sol`) with extra-high reasoning
+  (`reasoningEffort: xhigh`) or Claude Opus 5.5 (`claude-opus-5-5`) with high reasoning
+  (`effort: high`). Pass these settings as tool options. If one is unavailable, use the other;
+  if both are unavailable, report the blocker before choosing another model.
 - Do not merge pull requests, push tags, force-push, delete branches, or rewrite history unless the
   owner asks for that specific action. Before any branch deletion, prove the branch is contained in
   `main` with `git merge-base --is-ancestor`.

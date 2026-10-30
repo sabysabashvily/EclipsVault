@@ -1,3 +1,4 @@
+import { RouterLink } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { Component, DOCUMENT, ElementRef, inject, input, signal } from '@angular/core';
 import { Me } from '../account/me';
@@ -21,6 +22,7 @@ export function signOut(
 /** The Legacy UI's account menu: who is signed in, their profile, the theme and sign-out. */
 @Component({
   selector: 'app-account-menu',
+  imports: [RouterLink],
   templateUrl: './account-menu.html',
   host: {
     '(document:click)': 'closeUnlessInside($event)',

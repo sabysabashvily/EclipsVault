@@ -1,6 +1,7 @@
 using System.Reflection;
 using EclipsVault.Core.Application.Networks;
 using EclipsVault.Web.Controllers;
+using EclipsVault.Web.Middleware;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
@@ -8,8 +9,8 @@ using Microsoft.AspNetCore.Mvc.Filters;
 namespace EclipsVault.Web.Authorization;
 
 /// <summary>
-/// Applies <see cref="IAuthThrottle"/> to the credential-submitting actions on the controller it
-/// decorates. Safe (idempotent) methods pass through unmetered.
+/// Applies <see cref="IAuthThrottle"/> to the credential-submitting actions on the controller or
+/// action it decorates. Safe (idempotent) methods pass through unmetered.
 ///
 /// This replaces ASP.NET's built-in rate limiter, whose partitions are per-process and therefore
 /// grant each replica its own budget. It is a filter rather than middleware so the throttled
@@ -62,6 +63,8 @@ public sealed class AuthThrottleFilter : IAsyncActionFilter
 
         _logger.LogWarning(
             "Authentication request from {SourceIp} refused: over the rate budget for this window", partition);
-        context.Result = new StatusCodeResult(StatusCodes.Status429TooManyRequests);
+        context.Result = UiApiProblem.IsUiApi(context.HttpContext.Request)
+            ? UiApiProblem.Throttled()
+            : new StatusCodeResult(StatusCodes.Status429TooManyRequests);
     }
 }

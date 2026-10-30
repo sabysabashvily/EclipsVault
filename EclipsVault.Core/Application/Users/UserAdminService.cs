@@ -23,6 +23,7 @@ public sealed class UserAdminService : IUserAdminService
     private readonly UserDirectoryOptions _directory;
     private readonly INotificationService _notifications;
     private readonly IAuditSink _audit;
+    private readonly IAccountChangeCommitter _changes;
     private readonly IAuditContext _actor;
     private readonly TimeProvider _clock;
 
@@ -35,6 +36,7 @@ public sealed class UserAdminService : IUserAdminService
         UserDirectoryOptions directory,
         INotificationService notifications,
         IAuditSink audit,
+        IAccountChangeCommitter changes,
         IAuditContext actor,
         TimeProvider clock)
     {
@@ -46,6 +48,7 @@ public sealed class UserAdminService : IUserAdminService
         _directory = directory;
         _notifications = notifications;
         _audit = audit;
+        _changes = changes;
         _actor = actor;
         _clock = clock;
     }
@@ -76,9 +79,10 @@ public sealed class UserAdminService : IUserAdminService
     public async Task<CreatedUserDto> CreateAsync(CreateUserRequest request, CancellationToken ct)
     {
         var username = request.Username.Trim();
-        if (username.Length < 3)
+        if (!UsernameRules.Allows(username))
         {
-            throw new VaultAdminException("Usernames must be at least 3 characters long.");
+            throw new VaultAdminException(
+                $"Usernames are {UsernameRules.MinimumLength} to {UsernameRules.MaximumLength} characters. {UsernameRules.Description}");
         }
 
         var first = request.FirstName.Trim();
@@ -138,7 +142,17 @@ public sealed class UserAdminService : IUserAdminService
         var prefix = $"{Slug(first)}.{Slug(last)}";
         var existing = await _users.FindEmailsWithPrefixAsync(prefix, _directory.EmailDomain, ct);
         var next = existing.Select(e => ParseSequence(e, prefix)).DefaultIfEmpty(0).Max() + 1;
-        return $"{prefix}.{next}@{_directory.EmailDomain}";
+        // The scan above sees only emails. An older account's username can also be this address,
+        // and the new account is not saved yet, so no account's own address is exempt.
+        var notYetSaved = Guid.Empty;
+        while (await _users.IsEmailTakenAsync(Address(next), notYetSaved, ct))
+        {
+            next++;
+        }
+
+        return Address(next);
+
+        string Address(int sequence) => $"{prefix}.{sequence}@{_directory.EmailDomain}";
     }
 
     private static int ParseSequence(string email, string prefix)
@@ -186,7 +200,7 @@ public sealed class UserAdminService : IUserAdminService
 
         // A clearance/project change alters what the user may reach, so drop their
         // current sessions; the new attributes take effect at their next sign-in.
-        await _revocation.RevokeAsync(user.Id, _clock.GetUtcNow(), ct);
+        await _revocation.RevokeAsync(user.Id, ct);
 
         await AuditUserAsync(
             AuditAction.UserRoleChanged, user.Id, _actor.Username ?? "system",
@@ -223,7 +237,7 @@ public sealed class UserAdminService : IUserAdminService
         if (!enabled)
         {
             // Kill active sessions immediately; new sign-ins are blocked at credential check.
-            await _revocation.RevokeAsync(user.Id, _clock.GetUtcNow(), ct);
+            await _revocation.RevokeAsync(user.Id, ct);
         }
 
         await AuditUserAsync(
@@ -241,7 +255,7 @@ public sealed class UserAdminService : IUserAdminService
             return false;
         }
 
-        await _revocation.RevokeAsync(user.Id, _clock.GetUtcNow(), ct);
+        await _revocation.RevokeAsync(user.Id, ct);
         await AuditUserAsync(
             AuditAction.UserForceLoggedOut, user.Id, _actor.Username ?? "system",
             $"All sessions for '{user.Username}' revoked by administrator", ct);
@@ -256,14 +270,22 @@ public sealed class UserAdminService : IUserAdminService
             return false;
         }
 
+        await _recoveryCodes.StageRemovalOfAllAsync(user.Id, ct);
         user.TotpSecret = null;
         user.TotpEnabled = false;
-        await _users.UpdateAsync(user, ct);
-        // Old recovery codes belong to the retired authenticator; clear them so they cannot bypass the fresh enrollment.
-        await _recoveryCodes.DeleteAllAsync(user.Id, ct);
-        await AuditUserAsync(
-            AuditAction.UserTotpReset, user.Id, _actor.Username ?? "system",
-            $"MFA reset for '{user.Username}'; TOTP re-enrollment required at next sign-in", ct);
+        user.LastTotpStep = null;
+        // A reset retires the account's authenticator, so it ends what the authenticator opened:
+        // sessions and pending sign-ins are refused, as after the account's own reset.
+        user.CredentialGeneration++;
+        await _changes.CommitAsync(user, new AuditEntry
+        {
+            Action = AuditAction.UserTotpReset,
+            ResourceType = nameof(User),
+            ResourceId = user.Id,
+            ActorUserId = _actor.UserId,
+            ActorUsername = _actor.Username ?? "system",
+            Details = $"MFA reset for '{user.Username}'; sessions revoked; TOTP re-enrollment required at next sign-in"
+        }, ct);
         return true;
     }
 
@@ -287,7 +309,7 @@ public sealed class UserAdminService : IUserAdminService
 
         // A session carries the account's clearance and project, so one that outlived the account
         // would keep its access. Revoked first: if the delete then fails, the account only lost its sessions.
-        await _revocation.RevokeAsync(user.Id, _clock.GetUtcNow(), ct);
+        await _revocation.RevokeAsync(user.Id, ct);
         await _users.DeleteAsync(user, ct);
         await AuditUserAsync(
             AuditAction.UserDeleted, userId, _actor.Username ?? "system",

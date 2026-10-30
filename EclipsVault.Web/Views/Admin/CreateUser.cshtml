@@ -40,7 +40,7 @@
             <div class="field">
                 <label asp-for="Password"></label>
                 <input asp-for="Password" autocomplete="new-password" data-reveal data-strength
-                       data-breach-check="@Url.Action("CheckPasswordBreached", "Profile")" data-breach-status="#new-user-password-breach" />
+                       data-breach-check="/api/ui/passwords/check-breached" data-breach-status="#new-user-password-breach" />
                 <span asp-validation-for="Password" class="field-error"></span>
                 <p id="new-user-password-breach" class="field-note" role="status" aria-live="polite"></p>
             </div>

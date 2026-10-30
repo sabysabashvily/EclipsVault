@@ -214,56 +214,12 @@ function labelThemeToggles() {
 }
 
 // --- WebAuthn / passkeys ---------------------------------------------------------
-// [data-passkey-register] registers a new authenticator for the signed-in user;
-// [data-passkey-login] performs a passwordless sign-in. Both talk to the server over
-// fetch(), converting the base64url fields the JSON API uses to/from the ArrayBuffers
-// the WebAuthn browser API expects.
+// The remaining Legacy ceremony is passwordless sign-in; registration belongs to Angular Profile.
 function wirePasskeys() {
-    const registerButton = document.querySelector('[data-passkey-register]');
     const loginButton = document.querySelector('[data-passkey-login]');
-
-    if (registerButton) {
-        if (!window.PublicKeyCredential) return disablePasskeyUi(registerButton);
-        registerButton.addEventListener('click', () => registerPasskey(registerButton));
-    }
-    if (loginButton) {
-        if (!window.PublicKeyCredential) return disablePasskeyUi(loginButton);
-        loginButton.addEventListener('click', () => loginWithPasskey(loginButton));
-    }
-}
-
-async function registerPasskey(button) {
-    const status = document.querySelector('[data-passkey-status]');
-    const nickname = document.querySelector(button.dataset.nickname || '#passkey-nickname');
-    try {
-        setPasskeyStatus(status, 'Follow the prompt on your device…', false);
-        button.disabled = true;
-
-        const options = await passkeyPost('/Profile/PasskeyRegisterBegin').then(readJson);
-        options.challenge = base64urlToBuffer(options.challenge);
-        options.user.id = base64urlToBuffer(options.user.id);
-        options.excludeCredentials = (options.excludeCredentials || []).map(withBufferId);
-
-        const credential = await navigator.credentials.create({ publicKey: options });
-        const result = await passkeyPost('/Profile/PasskeyRegisterComplete', {
-            nickname: nickname ? nickname.value : '',
-            credential: {
-                id: credential.id,
-                clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
-                attestationObject: bufferToBase64url(credential.response.attestationObject)
-            }
-        }).then(readJson);
-
-        if (result.success) {
-            window.location.reload();
-        } else {
-            setPasskeyStatus(status, result.error || 'Registration failed.', true);
-            button.disabled = false;
-        }
-    } catch (err) {
-        setPasskeyStatus(status, friendlyPasskeyError(err), true);
-        button.disabled = false;
-    }
+    if (!loginButton) return;
+    if (!window.PublicKeyCredential) return disablePasskeyUi(loginButton);
+    loginButton.addEventListener('click', () => loginWithPasskey(loginButton));
 }
 
 async function loginWithPasskey(button) {

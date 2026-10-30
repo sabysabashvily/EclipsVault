@@ -33,7 +33,7 @@
             @foreach (var user in Model.Users)
             {
                 var isSelf = user.Id == Model.CurrentUserId;
-                var avatar = Url.Action("Avatar", "Profile", new { id = user.Id, seed = user.DisplayName, v = user.HasCustomAvatar ? "c" : "g" });
+                var avatar = Url.Content($"~/Profile/Avatar?id={user.Id}&seed={Uri.EscapeDataString(user.DisplayName)}&v={(user.HasCustomAvatar ? "c" : "g")}");
                 <tr class="@(user.IsDisabled ? "row-muted" : "")">
                     <td>
                         <div class="user-cell">

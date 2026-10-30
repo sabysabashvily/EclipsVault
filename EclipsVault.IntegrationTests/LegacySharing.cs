@@ -7,14 +7,14 @@ namespace EclipsVault.IntegrationTests;
 
 internal static class LegacySharing
 {
-    public static async Task<string> CreateSecretAsync(HttpClient admin, string name)
+    public static async Task<string> CreateSecretAsync(HttpClient admin, string name, string value = "it-share-audit-value")
     {
         var page = await admin.GetStringAsync("/Secrets/Create");
         var response = await admin.PostAsync("/Secrets/Create", new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(page, "/Secrets/Create"),
             ["Name"] = name,
-            ["Value"] = "it-share-audit-value",
+            ["Value"] = value,
             ["ProjectKey"] = "GLOBAL",
             ["Environment"] = "Development",
             ["Sensitivity"] = "Internal",

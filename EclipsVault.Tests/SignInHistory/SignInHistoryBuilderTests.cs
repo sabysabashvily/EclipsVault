@@ -32,14 +32,28 @@ public class SignInHistoryBuilderTests
     [Fact]
     public void Every_relevant_action_classifies_and_others_do_not()
     {
-        foreach (var action in SignInEventClassifier.RelevantActions)
-        {
-            Assert.NotNull(SignInEventClassifier.Classify(action));
-        }
+        Assert.All(SignInEventClassifier.RelevantActions,
+            action => Assert.NotNull(SignInEventClassifier.Classify(action)));
 
         Assert.Null(SignInEventClassifier.Classify(AuditAction.SecretRevealed));
         Assert.Null(SignInEventClassifier.Classify(AuditAction.ProfileUpdated));
         Assert.Null(SignInEventClassifier.Classify(AuditAction.SessionRevokedByUser));
+    }
+
+    [Fact]
+    public void Profile_account_verification_is_not_a_sign_in_and_never_makes_an_address_familiar()
+    {
+        var history = SignInHistoryBuilder.Build(
+        [
+            Row(0, AuditAction.AccountVerified, Attacker),
+            Row(1, AuditAction.AccountVerificationFailed, Attacker),
+            Row(2, AuditAction.LoginSucceeded, Attacker)
+        ]);
+
+        Assert.DoesNotContain(AuditAction.AccountVerified, SignInEventClassifier.RelevantActions);
+        Assert.DoesNotContain(AuditAction.AccountVerificationFailed, SignInEventClassifier.RelevantActions);
+        var signIn = Assert.Single(history.Events);
+        Assert.Equal(SignInLocationFlag.FirstSeen, signIn.LocationFlag);
     }
 
     [Fact]

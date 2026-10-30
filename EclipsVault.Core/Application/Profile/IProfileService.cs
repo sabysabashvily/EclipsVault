@@ -12,21 +12,18 @@ public sealed record ProfileDto(
     bool TotpEnabled,
     bool HasCustomAvatar);
 
-/// <summary>
-/// Self-service account management for the signed-in user: display name and email,
-/// profile picture, password, and their own MFA enrollment. Every mutation is
-/// audited. Nothing here can change a user's clearance or project — that is an
-/// administrative action (see <see cref="IUserAdminService"/>).
-/// </summary>
+/// <summary>Cosmetic Profile edits and shared credential persistence for remaining authentication callers.</summary>
 public interface IProfileService
 {
     Task<ProfileDto?> GetAsync(Guid userId, CancellationToken ct);
 
-    /// <summary>Updates display name and email. Returns the refreshed profile. Throws ProfileException on invalid input.</summary>
-    Task<ProfileDto> UpdateAsync(Guid userId, string displayName, string email, CancellationToken ct);
+    /// <summary>Changes the display name alone. Throws ProfileException on invalid input.</summary>
+    /// <returns>The display name as saved.</returns>
+    Task<string> UpdateDisplayNameAsync(Guid userId, string displayName, CancellationToken ct);
 
     /// <summary>Verifies the current password before setting a new one. Throws ProfileException on mismatch or a weak password.</summary>
-    Task ChangePasswordAsync(Guid userId, string currentPassword, string newPassword, CancellationToken ct);
+    /// <returns>The credential generation the change committed.</returns>
+    Task<long> ChangePasswordAsync(Guid userId, long credentialGeneration, string currentPassword, string newPassword, CancellationToken ct);
 
     Task<byte[]?> GetAvatarPngAsync(Guid userId, CancellationToken ct);
 
@@ -36,5 +33,5 @@ public interface IProfileService
     Task RemoveAvatarAsync(Guid userId, CancellationToken ct);
 
     /// <summary>Clears the user's TOTP so they re-enroll a fresh authenticator at next sign-in.</summary>
-    Task ResetOwnMfaAsync(Guid userId, CancellationToken ct);
+    Task ResetOwnMfaAsync(Guid userId, long credentialGeneration, CancellationToken ct);
 }

@@ -16,7 +16,6 @@ public sealed class IntrusionResponseService : IIntrusionResponseService
     private readonly IIpBlacklist _blacklist;
     private readonly ISessionRevocationService _revocation;
     private readonly IAuditContext _actor;
-    private readonly TimeProvider _clock;
     private readonly ILogger<IntrusionResponseService> _logger;
 
     public IntrusionResponseService(
@@ -24,26 +23,23 @@ public sealed class IntrusionResponseService : IIntrusionResponseService
         IIpBlacklist blacklist,
         ISessionRevocationService revocation,
         IAuditContext actor,
-        TimeProvider clock,
         ILogger<IntrusionResponseService> logger)
     {
         _audit = audit;
         _blacklist = blacklist;
         _revocation = revocation;
         _actor = actor;
-        _clock = clock;
         _logger = logger;
     }
 
     public async Task TriggerHoneyTokenAsync(Guid secretId, string secretName, CancellationToken ct)
     {
-        var now = _clock.GetUtcNow();
         var userId = _actor.UserId;
         var sourceIp = _actor.SourceIp;
 
         if (userId is { } id)
         {
-            await _revocation.RevokeAsync(id, now, ct);
+            await _revocation.RevokeAsync(id, ct);
         }
 
         if (!string.IsNullOrEmpty(sourceIp))

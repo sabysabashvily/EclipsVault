@@ -16,8 +16,8 @@ namespace EclipsVault.Web.Controllers.Ui;
 [Route("api/ui/sessions")]
 [Authorize(AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme, Policy = VaultPolicies.Session)]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-public sealed class SessionsController(ISessionRegistry sessions, IAuditSink audit, IAntiforgery antiforgery,
-    ILogger<SessionsController> logger) : ControllerBase
+public sealed class SessionsController(ISessionRegistry sessions, ISignedInDevices devices, IAuditSink audit,
+    IAntiforgery antiforgery, ILogger<SessionsController> logger) : ControllerBase
 {
     private const string UnrecordedTitle = "The device was signed out, but the vault couldn't record it in the audit trail. Tell your administrator.";
 
@@ -32,7 +32,7 @@ public sealed class SessionsController(ISessionRegistry sessions, IAuditSink aud
         }
 
         var current = User.GetSessionId();
-        var live = await sessions.ListAsync(userId, ct);
+        var live = await devices.ListAsync(userId, ct);
         return new SessionsResponse(live.Select(session => new SessionResponse(
             session.SessionId,
             session.Device,
@@ -91,7 +91,7 @@ public sealed class SessionsController(ISessionRegistry sessions, IAuditSink aud
         }
 
         var current = User.GetSessionId();
-        var others = (await sessions.ListAsync(userId, ct)).Where(session => session.SessionId != current);
+        var others = (await devices.ListAsync(userId, ct)).Where(session => session.SessionId != current);
         var revoked = new List<Guid>();
         var incomplete = false;
         foreach (var session in others)

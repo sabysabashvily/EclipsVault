@@ -26,6 +26,12 @@ public static class VaultClaimTypes
 
     /// <summary>Unique id of this interactive session, so a single "signed-in device" can be revoked on its own.</summary>
     public const string SessionId = "vault:sid";
+
+    /// <summary>The account's credential generation the session or pending sign-in was issued under.</summary>
+    public const string CredentialGeneration = "vault:cg";
+
+    /// <summary>The account's session revocation version the session or pending sign-in was issued under.</summary>
+    public const string RevocationVersion = "vault:rv";
 }
 
 /// <summary>Shared interactive-session settings, so the cookie lifetime has one source of truth.</summary>

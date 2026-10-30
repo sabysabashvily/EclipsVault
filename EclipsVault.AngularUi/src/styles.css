@@ -1,5 +1,4 @@
-/* Ported from EclipsVault.Web/wwwroot/css/site.css for the shell and both themes.
-   This is the only stylesheet: components declare no styles (ADR-0013). */
+/* Components share one stylesheet to avoid runtime style injection under the CSP (ADR-0013). */
 /* ================================================================
    EclipsVault design system
    Layers: fonts → tokens → base → shell → components → pages → overlays → legacy
@@ -179,9 +178,7 @@ body {
   font-family: var(--font);
   font-size: 15px;
   line-height: 1.5;
-  /* No tracking at body size. The -0.01em here was compensating for SF Pro's looser
-       metrics; Geist is drawn tight already, and carrying the compensation over would
-       close up running text that people have to read carefully. */
+  /* Geist has tight metrics, so extra tracking would reduce readability at body size. */
   letter-spacing: 0;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -898,7 +895,51 @@ a.stat-card:hover {
   overflow-wrap: anywhere;
 }
 
+/* ---- MFA recovery codes --------------------------------------------- */
+.recovery-panel {
+  max-width: 640px;
+}
+.recovery-codes {
+  list-style: none;
+  margin: 1.4rem 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.6rem;
+  counter-reset: recovery;
+}
+.recovery-codes li {
+  counter-increment: recovery;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  font-size: 1.15rem;
+  letter-spacing: 0.12em;
+  user-select: all;
+}
+.recovery-codes li::before {
+  content: counter(recovery);
+  font-family: var(--sans, inherit);
+  font-size: 0.75rem;
+  letter-spacing: normal;
+  color: var(--text-faint);
+  min-width: 1.2em;
+  text-align: right;
+}
+.recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
 @media (max-width: 560px) {
+  .recovery-codes {
+    grid-template-columns: 1fr;
+  }
   /* Phone widths: drop the fixed label column and let long button labels wrap so
        nothing forces horizontal page scroll. */
   .detail-grid {
@@ -1181,7 +1222,6 @@ kbd {
   margin-right: 0.15rem;
 }
 
-/* Not in the Legacy UI, which dropped a failed search silently: here the page says so. */
 .palette-error {
   margin: 0;
   padding: 0.6rem 1rem;
@@ -1202,8 +1242,15 @@ kbd {
 @media print {
   .sidebar,
   .content-footer,
+  .recovery-actions,
+  .flash,
   .notice {
     display: none !important;
+  }
+  .recovery-codes li {
+    border-color: #000;
+    background: #fff;
+    color: #000;
   }
 }
 
@@ -1627,4 +1674,251 @@ app-command-palette {
   background: rgba(0, 0, 0, 0.55);
   -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
+}
+
+/* ---- Forms -------------------------------------------------------- */
+/* Copied from the Legacy site.css forms rules, so Profile's fields keep their Legacy look.
+   min-width:0 lets a field (and its width:100% control) shrink inside a flex row. */
+.field {
+  margin-bottom: 1.05rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.field label {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+input,
+textarea,
+select {
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 0.6rem 0.8rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+  width: 100%;
+  transition:
+    border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-faint);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.hint {
+  font-size: 0.83rem;
+  margin: -0.2rem 0 1.1rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* The avatar's file input is reached through its Upload image button. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- Password strength ------------------------------------------- */
+/* Advisory, not a gate: the two rules the vault actually enforces (length, breach corpus) are
+   reported as text by the field's own validation and the live breach check. This says how
+   expensive the password would be to guess, which no pass/fail can express.
+
+   The top margin keeps the bar clear of the input. Butted right up under the field it reads as
+   a green bottom border on the input — a statement about the field — rather than a separate
+   verdict about the password. */
+.strength {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.55rem;
+}
+.strength-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-inset);
+  overflow: hidden;
+}
+
+.strength-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: var(--radius-pill);
+  background: var(--text-faint);
+  transition:
+    width var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.strength-label {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.strength[data-score='0'] .strength-fill,
+.strength[data-score='1'] .strength-fill {
+  background: var(--danger);
+}
+.strength[data-score='2'] .strength-fill {
+  background: var(--warn);
+}
+.strength[data-score='3'] .strength-fill {
+  background: var(--accent);
+}
+.strength[data-score='4'] .strength-fill {
+  background: var(--ok);
+}
+
+.strength[data-score='0'] .strength-label,
+.strength[data-score='1'] .strength-label {
+  color: var(--danger);
+}
+.strength[data-score='4'] .strength-label {
+  color: var(--ok);
+}
+
+.avatar-editor {
+  display: flex;
+  align-items: center;
+  gap: 1.3rem;
+  flex-wrap: wrap;
+}
+.avatar-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.avatar-editor-actions .hint {
+  flex-basis: 100%;
+  margin: 0.2rem 0 0;
+}
+
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.settings-row:last-child {
+  border-bottom: none;
+}
+.settings-row p {
+  margin: 0.15rem 0 0;
+  font-size: 0.83rem;
+}
+.settings-row > div:first-child {
+  min-width: 0;
+}
+
+.input-affix {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.input-affix > input {
+  padding-right: 2.6rem;
+}
+
+.affix-button {
+  position: absolute;
+  right: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+.affix-button:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.affix-button svg {
+  width: 17px;
+  height: 17px;
+}
+
+fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.strength[data-score='0'] .strength-fill {
+  width: 20%;
+}
+.strength[data-score='1'] .strength-fill {
+  width: 40%;
+}
+.strength[data-score='2'] .strength-fill {
+  width: 60%;
+}
+.strength[data-score='3'] .strength-fill {
+  width: 80%;
+}
+.strength[data-score='4'] .strength-fill {
+  width: 100%;
+}
+.verification-dialog {
+  width: min(100% - 2rem, 480px);
+}
+
+.passkey-add {
+  margin-top: 1.1rem;
+}
+.passkey-status {
+  min-height: 1.2rem;
+  margin: 0.6rem 0 0;
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+
+.field-note {
+  min-height: 1.15rem;
+  margin: -0.4rem 0 0.6rem;
+  font-size: 0.83rem;
+  color: var(--text-muted);
+}
+.field-note.status-error {
+  color: var(--danger);
+}
+.field-note.status-ok {
+  color: var(--ok);
 }

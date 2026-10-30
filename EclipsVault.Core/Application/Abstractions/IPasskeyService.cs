@@ -1,3 +1,5 @@
+using EclipsVault.Core.Domain.Entities;
+
 namespace EclipsVault.Core.Application.Abstractions;
 
 /// <summary>
@@ -12,19 +14,52 @@ public interface IPasskeyService
     /// <summary>Issues creation options for the signed-in user to register a new authenticator.</summary>
     Task<PasskeyCeremonyOptions> BeginRegistrationAsync(Guid userId, CancellationToken ct);
 
-    /// <summary>Verifies the authenticator's attestation response and stores the new credential.</summary>
+    /// <summary>
+    /// Verifies the authenticator's attestation response and stores the new credential, advancing the
+    /// credential generation. Fails when the account's generation is no longer
+    /// <paramref name="credentialGeneration"/>, the one the ceremony began under.
+    /// </summary>
     Task<PasskeyRegistrationResult> CompleteRegistrationAsync(
-        Guid userId, string expectedChallenge, string responseJson, string? nickname, CancellationToken ct);
+        Guid userId, long credentialGeneration, string expectedChallenge, string responseJson, string? nickname, CancellationToken ct);
+
+    /// <summary>
+    /// Checks a registration response against <paramref name="expectedChallenge"/> and returns the
+    /// account's new credential, named <paramref name="nickname"/> and not yet saved.
+    /// </summary>
+    Task<PasskeyAttestation> VerifyRegistrationAsync(
+        Guid userId, string expectedChallenge, string responseJson, string nickname, CancellationToken ct);
+
+    /// <summary>
+    /// Issues assertion options for the signed-in account to verify itself, allowing only its own
+    /// passkeys other than <paramref name="excludedPasskeyId"/>.
+    /// </summary>
+    Task<PasskeyCeremonyOptions> BeginAccountVerificationAsync(Guid userId, Guid? excludedPasskeyId, CancellationToken ct);
+
+    /// <summary>
+    /// Checks that the response answers <paramref name="expectedChallenge"/>, with user verification,
+    /// from one of <paramref name="account"/>'s own passkeys other than <paramref name="excludedPasskeyId"/>,
+    /// and advances that passkey's counter. Call it inside the account's running
+    /// <see cref="IAuthenticationAttempt"/>, which saves the counter with the attempt's events.
+    /// </summary>
+    Task<PasskeyProof> VerifyAccountAssertionAsync(
+        User account, string expectedChallenge, string responseJson, Guid? excludedPasskeyId, CancellationToken ct);
 
     /// <summary>Issues assertion options for a passwordless sign-in. A username scopes the allowed credentials; null enables discoverable credentials.</summary>
     Task<PasskeyCeremonyOptions> BeginAssertionAsync(string? usernameOrEmail, CancellationToken ct);
 
-    /// <summary>Verifies an assertion response and, on success, returns the authenticated user.</summary>
-    Task<PasskeyAssertionResult> CompleteAssertionAsync(string expectedChallenge, string responseJson, CancellationToken ct);
+    /// <summary>
+    /// Verifies an assertion response and, on success, returns the authenticated user. Without a named
+    /// account the credential identifies its owner, whose generation is taken at that point, before
+    /// the assertion is verified.
+    /// </summary>
+    Task<PasskeyAssertionResult> CompleteAssertionAsync(
+        string expectedChallenge, PasskeyNamedAccount? namedAccount, string responseJson, CancellationToken ct);
 
     /// <summary>Lists the caller's registered passkeys for the profile page.</summary>
     Task<IReadOnlyList<PasskeySummary>> ListForUserAsync(Guid userId, CancellationToken ct);
 
-    /// <summary>Removes one of the caller's own passkeys. Returns false if it was not found.</summary>
-    Task<bool> RemoveAsync(Guid userId, Guid passkeyId, CancellationToken ct);
+    /// <summary>Removes one of the caller's own passkeys, advancing the credential generation.</summary>
+    /// <returns>The credential generation the removal committed, or null when the passkey was not found.</returns>
+    /// <exception cref="Domain.Exceptions.StaleProofException">The account's credentials changed after the session was issued.</exception>
+    Task<long?> RemoveAsync(Guid userId, long credentialGeneration, Guid passkeyId, CancellationToken ct);
 }

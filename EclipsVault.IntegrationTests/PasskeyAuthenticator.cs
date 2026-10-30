@@ -51,9 +51,12 @@ internal sealed class PasskeyAuthenticator : IDisposable
         };
     }
 
-    public object Assert(JsonElement options)
+    public object Assert(JsonElement options, bool advanceCounter = true)
     {
-        _counter++;
+        if (advanceCounter)
+        {
+            _counter++;
+        }
         var authData = AuthenticatorData(options.GetProperty("rpId").GetString()!, 0x05);
         var clientData = ClientData(options, "webauthn.get");
         byte[] signedData = [.. authData, .. SHA256.HashData(clientData)];
@@ -64,6 +67,14 @@ internal sealed class PasskeyAuthenticator : IDisposable
             authenticatorData = Base64Url.EncodeToString(authData),
             signature = Base64Url.EncodeToString(_key.SignData(signedData, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence))
         };
+    }
+
+    public object AssertWithWrongSignature(JsonElement options)
+    {
+        var response = JsonSerializer.SerializeToNode(Assert(options))!;
+        response["signature"] = Base64Url.EncodeToString(
+            _key.SignData([1, 2, 3], HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence));
+        return response;
     }
 
     private byte[] AuthenticatorData(string rpId, byte flags)

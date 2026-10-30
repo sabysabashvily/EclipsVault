@@ -1,5 +1,7 @@
+using System.Text.Json;
 using EclipsVault.Core.Application.Sso;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Web.Authentication;
 using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Extensions;
@@ -26,35 +28,40 @@ namespace EclipsVault.Web.Controllers;
 public sealed class AccountController : Controller
 {
     /// <summary>Session key holding the challenge issued for an in-flight passkey sign-in.</summary>
-    private const string PasskeyAssertionChallengeKey = "passkey:assertion:challenge";
-    private const string PasskeyReturnUrlKey = "passkey:assertion:return-url";
+    private const string PasskeyAssertionKey = "passkey:assertion";
 
     private readonly IVaultAuthenticationService _auth;
     private readonly IPasskeyService _passkeys;
+    private readonly IPasskeyCeremonyStore _passkeyCeremonies;
     private readonly IIpBlacklist _blacklist;
     private readonly ISessionRegistry _sessions;
     private readonly IAuditSink _audit;
     private readonly ISsoSignInService _sso;
     private readonly ISsoAvailability _ssoAvailability;
+    private readonly SessionIssuer _issuer;
     private readonly ILogger<AccountController> _logger;
 
     public AccountController(
         IVaultAuthenticationService auth,
         IPasskeyService passkeys,
+        IPasskeyCeremonyStore passkeyCeremonies,
         IIpBlacklist blacklist,
         ISessionRegistry sessions,
         IAuditSink audit,
         ISsoSignInService sso,
         ISsoAvailability ssoAvailability,
+        SessionIssuer issuer,
         ILogger<AccountController> logger)
     {
         _auth = auth;
         _passkeys = passkeys;
+        _passkeyCeremonies = passkeyCeremonies;
         _blacklist = blacklist;
         _sessions = sessions;
         _audit = audit;
         _sso = sso;
         _ssoAvailability = ssoAvailability;
+        _issuer = issuer;
         _logger = logger;
     }
 
@@ -118,7 +125,7 @@ public sealed class AccountController : Controller
         }
 
         var result = await _auth.ValidateCredentialsAsync(model.Username, model.Password, ct);
-        if (result.Status == CredentialStatus.Invalid || result.User is null)
+        if (result.Status == CredentialStatus.Invalid || result.User is null || result.Stamp is null)
         {
             _logger.LogWarning("Password stage failed for {Username} from {SourceIp}",
                 model.Username, HttpContext.Connection.RemoteIpAddress);
@@ -126,7 +133,7 @@ public sealed class AccountController : Controller
             return View(Decorate(model));
         }
 
-        var principal = VaultClaimsFactory.CreatePendingMfaPrincipal(result.User);
+        var principal = VaultClaimsFactory.CreatePendingMfaPrincipal(result.User, result.Stamp);
         await HttpContext.SignInAsync(AuthSchemes.MfaPending, principal);
 
         return RedirectToAction(result.Status == CredentialStatus.RequiresTotpEnrollment
@@ -147,19 +154,32 @@ public sealed class AccountController : Controller
             return View(model);
         }
 
-        if (GetMfaPendingUserId() is not { } userId)
+        if (GetPendingSignIn() is not (var userId, var stamp))
         {
             return RedirectToAction(nameof(Login), new { ReturnUrl = model.ReturnUrl });
         }
 
-        var user = await _auth.VerifyTotpAsync(userId, model.Code, ct);
+        UserDto? user;
+        try
+        {
+            user = await _auth.VerifyTotpAsync(userId, stamp, model.Code, ct);
+        }
+        catch (StaleProofException)
+        {
+            return await RestartSignInAsync(model.ReturnUrl);
+        }
+
         if (user is null)
         {
             ModelState.AddModelError(string.Empty, "Invalid authenticator code.");
             return View(model);
         }
 
-        await CompleteSignInAsync(user);
+        if (!await _issuer.SignInAsync(HttpContext, user, stamp))
+        {
+            return await RestartSignInAsync(model.ReturnUrl);
+        }
+
         return RedirectAfterSignIn(model.ReturnUrl);
     }
 
@@ -181,19 +201,32 @@ public sealed class AccountController : Controller
             return View(model);
         }
 
-        if (GetMfaPendingUserId() is not { } userId)
+        if (GetPendingSignIn() is not (var userId, var stamp))
         {
             return RedirectToAction(nameof(Login), new { ReturnUrl = model.ReturnUrl });
         }
 
-        var user = await _auth.VerifyRecoveryCodeAsync(userId, model.Code, ct);
+        UserDto? user;
+        try
+        {
+            user = await _auth.VerifyRecoveryCodeAsync(userId, stamp, model.Code, ct);
+        }
+        catch (StaleProofException)
+        {
+            return await RestartSignInAsync(model.ReturnUrl);
+        }
+
         if (user is null)
         {
             ModelState.AddModelError(string.Empty, "That recovery code is not valid, or it has already been used.");
             return View(model);
         }
 
-        await CompleteSignInAsync(user);
+        if (!await _issuer.SignInAsync(HttpContext, user, stamp))
+        {
+            return await RestartSignInAsync(model.ReturnUrl);
+        }
+
         this.FlashInfo("You signed in with a recovery code — that code is now used up. Generate a new set from your profile if you're running low.");
         return RedirectAfterSignIn(model.ReturnUrl);
     }
@@ -202,12 +235,21 @@ public sealed class AccountController : Controller
     [HttpGet]
     public async Task<IActionResult> EnrollTotp(string? returnUrl, CancellationToken ct)
     {
-        if (GetMfaPendingUserId() is not { } userId)
+        if (GetPendingSignIn() is not (var userId, var stamp))
         {
             return RedirectToAction(nameof(Login), new { ReturnUrl = returnUrl });
         }
 
-        var enrollment = await _auth.BeginTotpEnrollmentAsync(userId, ct);
+        TotpEnrollmentDto enrollment;
+        try
+        {
+            enrollment = await _auth.BeginTotpEnrollmentAsync(userId, stamp, ct);
+        }
+        catch (StaleProofException)
+        {
+            return await RestartSignInAsync(returnUrl);
+        }
+
         return View(new EnrollTotpViewModel
         {
             ReturnUrl = returnUrl,
@@ -220,24 +262,35 @@ public sealed class AccountController : Controller
     [HttpPost]
     public async Task<IActionResult> EnrollTotp(EnrollTotpViewModel model, CancellationToken ct)
     {
-        if (GetMfaPendingUserId() is not { } userId)
+        if (GetPendingSignIn() is not (var userId, var stamp))
         {
             return RedirectToAction(nameof(Login), new { ReturnUrl = model.ReturnUrl });
         }
 
-        if (!ModelState.IsValid)
+        try
         {
-            return await RedisplayEnrollmentAsync(userId, model, ct);
+            if (!ModelState.IsValid)
+            {
+                return await RedisplayEnrollmentAsync(userId, stamp, model, ct);
+            }
+
+            var user = await _auth.CompleteTotpEnrollmentAsync(userId, stamp, model.Code, ct);
+            if (user is null)
+            {
+                ModelState.AddModelError(string.Empty, "The confirmation code did not match. Try again.");
+                return await RedisplayEnrollmentAsync(userId, stamp, model, ct);
+            }
+
+            if (!await _issuer.SignInAsync(HttpContext, user, stamp))
+            {
+                return await RestartSignInAsync(model.ReturnUrl);
+            }
+        }
+        catch (StaleProofException)
+        {
+            return await RestartSignInAsync(model.ReturnUrl);
         }
 
-        var user = await _auth.CompleteTotpEnrollmentAsync(userId, model.Code, ct);
-        if (user is null)
-        {
-            ModelState.AddModelError(string.Empty, "The confirmation code did not match. Try again.");
-            return await RedisplayEnrollmentAsync(userId, model, ct);
-        }
-
-        await CompleteSignInAsync(user);
         return RedirectAfterSignIn(model.ReturnUrl);
     }
 
@@ -251,8 +304,11 @@ public sealed class AccountController : Controller
     public async Task<IActionResult> PasskeyLoginBegin([FromBody] PasskeyLoginRequest? model, CancellationToken ct)
     {
         var options = await _passkeys.BeginAssertionAsync(model?.Username, ct);
-        HttpContext.Session.SetString(PasskeyAssertionChallengeKey, options.Challenge);
-        HttpContext.Session.SetString(PasskeyReturnUrlKey, model?.ReturnUrl ?? string.Empty);
+        var ceremony = new PasskeySignInState(options.Challenge, model?.ReturnUrl, options.NamedAccount);
+        // A session value makes ASP.NET issue its opaque browser-session cookie.
+        HttpContext.Session.SetString(PasskeyAssertionKey, "pending");
+        await _passkeyCeremonies.ReplaceAsync(HttpContext.Session.Id, PasskeyCeremonyPurpose.SignIn, JsonSerializer.Serialize(ceremony), ct);
+
         return Content(options.OptionsJson, "application/json");
     }
 
@@ -261,27 +317,28 @@ public sealed class AccountController : Controller
     [HttpPost]
     public async Task<IActionResult> PasskeyLoginComplete([FromBody] PasskeyAssertionCompletion request, CancellationToken ct)
     {
-        var challenge = HttpContext.Session.GetString(PasskeyAssertionChallengeKey);
-        var returnUrl = HttpContext.Session.GetString(PasskeyReturnUrlKey);
-        HttpContext.Session.Remove(PasskeyAssertionChallengeKey);
-        HttpContext.Session.Remove(PasskeyReturnUrlKey);
-        if (string.IsNullOrEmpty(challenge))
+        var ceremony = PasskeySignInState.Read(await _passkeyCeremonies.TakeAsync(HttpContext.Session.Id, PasskeyCeremonyPurpose.SignIn, ct));
+        if (ceremony is null || string.IsNullOrEmpty(ceremony.Challenge))
         {
             return Json(new { success = false, error = "Sign-in timed out. Try again." });
         }
 
-        var result = await _passkeys.CompleteAssertionAsync(challenge, request.Credential.GetRawText(), ct);
-        if (!result.Success || result.User is null)
+        var result = await _passkeys.CompleteAssertionAsync(ceremony.Challenge, ceremony.NamedAccount, request.Credential.GetRawText(), ct);
+        if (!result.Success || result.User is null || result.Stamp is null)
         {
             _logger.LogWarning("Passkey sign-in failed from {SourceIp}: {Error}",
                 HttpContext.Connection.RemoteIpAddress, result.Error);
             return Json(new { success = false, error = result.Error ?? "Passkey sign-in failed." });
         }
 
-        await CompleteSignInAsync(result.User);
+        if (!await _issuer.SignInAsync(HttpContext, result.User, result.Stamp))
+        {
+            return Json(new { success = false, error = "Sign-in timed out. Try again." });
+        }
+
         // Fetch's Response.url drops fragments. Navigate at the top level through Login's
         // signed-in branch, which checks the target again and executes the final LocalRedirect.
-        return Json(new { success = true, redirect = Url.Action(nameof(Login), new { ReturnUrl = SignInTarget(returnUrl) }) });
+        return Json(new { success = true, redirect = Url.Action(nameof(Login), new { ReturnUrl = SignInTarget(ceremony.ReturnUrl) }) });
     }
 
     /// <summary>
@@ -306,23 +363,14 @@ public sealed class AccountController : Controller
         var sourceIp = HttpContext.Connection.RemoteIpAddress;
 
         var credentials = await _auth.ValidateCredentialsAsync(model.Username, model.Password, ct);
-        var user = credentials.Status == CredentialStatus.RequiresTotp && credentials.User is not null
-            ? await _auth.VerifyTotpAsync(credentials.User.Id, model.Code, ct)
+        var stamp = credentials.Stamp;
+        var user = credentials.Status == CredentialStatus.RequiresTotp && credentials.User is not null && stamp is not null
+            ? await _auth.VerifyBreakGlassAsync(credentials.User.Id, stamp, model.Code, ct)
             : null;
 
-        if (user is null)
+        if (user is null || stamp is null)
         {
             _logger.LogWarning("Break-glass recovery failed for {Username} from {SourceIp}", model.Username, sourceIp);
-            ModelState.AddModelError(string.Empty, "Recovery could not be completed with these credentials.");
-            return View(model);
-        }
-
-        if (user.Clearance != ClearanceLevel.TopSecret)
-        {
-            await AuditRecoveryAsync(
-                AuditAction.LoginFailed, user.Id, user.Username,
-                "Break-glass recovery denied: insufficient clearance", ct);
-            _logger.LogWarning("Break-glass recovery denied for {Username}: insufficient clearance", user.Username);
             ModelState.AddModelError(string.Empty, "Recovery could not be completed with these credentials.");
             return View(model);
         }
@@ -335,7 +383,12 @@ public sealed class AccountController : Controller
             "Break-glass recovery completed by {Username} from {SourceIp}; block lifted: {BlockLifted}",
             user.Username, sourceIp, blockLifted);
 
-        await CompleteSignInAsync(user);
+        if (!await _issuer.SignInAsync(HttpContext, user, stamp))
+        {
+            ModelState.AddModelError(string.Empty, "Recovery could not be completed with these credentials.");
+            return View(model);
+        }
+
         this.FlashSuccess(blockLifted
             ? "The intrusion-defence block on your network was lifted and your session restored."
             : "Access restored. Your network was not blocked.");
@@ -349,8 +402,7 @@ public sealed class AccountController : Controller
         // valid until it expires. Revoking the session id is the tombstone the cookie validator
         // checks, so that copy is refused on its next request and the device leaves the list.
         // If the tombstone cannot be stored, the cookie is still cleared: a live session left in the
-        // browser (a shared machine) is the likelier threat, and the copy surviving is only the
-        // behaviour from before revocation existed.
+        // browser (a shared machine) is the likelier threat even when a copy may remain usable.
         if (User.GetSessionId() is { } sessionId)
         {
             try
@@ -380,9 +432,9 @@ public sealed class AccountController : Controller
             SecretId = secretId
         });
 
-    private async Task<IActionResult> RedisplayEnrollmentAsync(Guid userId, EnrollTotpViewModel model, CancellationToken ct)
+    private async Task<IActionResult> RedisplayEnrollmentAsync(Guid userId, SessionStamp stamp, EnrollTotpViewModel model, CancellationToken ct)
     {
-        var enrollment = await _auth.BeginTotpEnrollmentAsync(userId, ct);
+        var enrollment = await _auth.BeginTotpEnrollmentAsync(userId, stamp, ct);
         model.SecretBase32 = enrollment.SecretBase32;
         model.QrCodeDataUri = TotpQrCode.PngDataUri(enrollment.OtpAuthUri);
         return View(model);
@@ -420,7 +472,7 @@ public sealed class AccountController : Controller
         var identity = ExternalIdentityReader.Read(result.Principal);
         var decision = await _sso.SignInAsync(identity, ct);
 
-        if (decision.Outcome != SsoOutcome.Linked || decision.User is null)
+        if (decision.Outcome != SsoOutcome.Linked || decision.User is null || decision.Stamp is null)
         {
             // One message for every refusal. The trail records exactly which it was; the sign-in
             // page must not tell an anonymous caller whether an address has an account here.
@@ -433,44 +485,32 @@ public sealed class AccountController : Controller
         var user = decision.User;
         if (decision.SecondFactorSatisfied)
         {
-            await CompleteSignInAsync(user);
-            // SSO has always landed on the dashboard, not the password flow's secrets list.
+            if (!await _issuer.SignInAsync(HttpContext, user, decision.Stamp))
+            {
+                return await RestartSignInAsync(returnUrl);
+            }
+
             return RedirectAfterSignIn(returnUrl, "Dashboard");
         }
 
         // The IdP proved one factor; this vault wants its own. Rejoin the ordinary flow rather than
         // inventing a second one — TOTP, enrollment and recovery codes all already live there.
-        var pending = VaultClaimsFactory.CreatePendingMfaPrincipal(user);
+        var pending = VaultClaimsFactory.CreatePendingMfaPrincipal(user, decision.Stamp);
         await HttpContext.SignInAsync(AuthSchemes.MfaPending, pending);
         return RedirectToAction(user.TotpEnabled ? nameof(Totp) : nameof(EnrollTotp), new { ReturnUrl = returnUrl });
     }
 
-    private async Task CompleteSignInAsync(UserDto user)
+    // The pending sign-in began before the account's credentials changed or it was signed out
+    // everywhere, so it cannot finish; the password stage proves what is current now.
+    private async Task<IActionResult> RestartSignInAsync(string? returnUrl)
     {
         await HttpContext.SignOutAsync(AuthSchemes.MfaPending);
-
-        // A fresh per-session id lets this device be revoked on its own, distinct from the
-        // account-wide "sign out everywhere" kill switch. It rides in the cookie as a claim.
-        var sessionId = Guid.NewGuid();
-        var principal = VaultClaimsFactory.CreateSessionPrincipal(user, sessionId, DateTimeOffset.UtcNow);
-
-        await HttpContext.SignInAsync(
-            CookieAuthenticationDefaults.AuthenticationScheme,
-            principal,
-            new AuthenticationProperties { IsPersistent = false });
-
-        var now = DateTimeOffset.UtcNow;
-        await _sessions.RecordSeenAsync(new SessionObservation(
-            user.Id,
-            sessionId,
-            UserAgentSummary.Describe(Request.Headers.UserAgent.ToString()),
-            HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            now,
-            now + SessionDefaults.InteractiveLifetime), HttpContext.RequestAborted);
-
-        _logger.LogInformation("User {Username} ({UserId}) completed multi-factor sign-in from {SourceIp}",
-            user.Username, user.Id, HttpContext.Connection.RemoteIpAddress);
+        this.FlashError("Your account changed while you were signing in. Sign in again.");
+        return RedirectToAction(nameof(Login), new { ReturnUrl = returnUrl });
     }
 
-    private Guid? GetMfaPendingUserId() => User.GetUserIdOrNull();
+    // A pending sign-in without a stamp cannot be fenced, so it must start again.
+    private (Guid UserId, SessionStamp Stamp)? GetPendingSignIn()
+        => User.GetUserIdOrNull() is { } userId && User.GetSessionStampOrNull() is { } stamp ? (userId, stamp) : null;
+
 }

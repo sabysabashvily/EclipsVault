@@ -1,4 +1,5 @@
 using EclipsVault.Core.Application.Abstractions;
+using EclipsVault.Core.Application.Authentication;
 using EclipsVault.Core.Application.Secrets;
 using EclipsVault.Core.Application.Users;
 using EclipsVault.Core.Domain.Entities;
@@ -49,15 +50,22 @@ public class SecretGrantServiceTests
         public Task<User?> FindByUsernameOrEmailAsync(string identifier, CancellationToken ct)
             => Task.FromResult<User?>(new User { Id = Guid.NewGuid(), Username = "carol" });
 
+        public Task<User?> FindByEmailAsync(string email, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> IsEmailTakenAsync(string email, Guid accountId, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<string>> FindEmailsWithPrefixAsync(string localPrefix, string domain, CancellationToken ct) => throw new NotSupportedException();
         public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> ReloadAsync(User user, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<User>> ListAsync(CancellationToken ct) => throw new NotSupportedException();
         public Task AddAsync(User user, CancellationToken ct) => throw new NotSupportedException();
         public Task UpdateAsync(User user, CancellationToken ct) => throw new NotSupportedException();
         public Task DeleteAsync(User user, CancellationToken ct) => throw new NotSupportedException();
         public Task<byte[]?> GetAvatarPngAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
-        public Task SetAvatarAsync(User user, byte[] png, CancellationToken ct) => throw new NotSupportedException();
-        public Task RemoveAvatarAsync(User user, CancellationToken ct) => throw new NotSupportedException();
+        public Task StageAvatarAsync(User user, byte[] png, CancellationToken ct) => throw new NotSupportedException();
+        public Task StageAvatarRemovalAsync(User user, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> TryAcceptTotpStepAsync(User user, long step, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> TryCompleteTotpEnrollmentAsync(User user, long step, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> RecordFailedAttemptAsync(User user, LockoutPolicy lockout, DateTimeOffset nowUtc, CancellationToken ct) => throw new NotSupportedException();
+        public Task ClearFailedAttemptsAsync(User user, CancellationToken ct) => throw new NotSupportedException();
     }
 
     private sealed class StubActor : IAuditContext

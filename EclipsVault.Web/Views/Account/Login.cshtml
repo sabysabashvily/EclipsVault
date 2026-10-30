@@ -9,6 +9,11 @@
     <h1>Sign in</h1>
     <p class="muted">Step 1 of 2 — password. An authenticator code is always required next.</p>
 
+    @if (Context.Request.Query["signOut"] == "sign_out_incomplete")
+    {
+        <p class="flash flash-error" role="alert">This browser's cookie was cleared. Other devices may still be signed in.</p>
+    }
+
     <form asp-action="Login" method="post">
         <input asp-for="ReturnUrl" type="hidden" />
         <div asp-validation-summary="ModelOnly" class="validation-summary"></div>

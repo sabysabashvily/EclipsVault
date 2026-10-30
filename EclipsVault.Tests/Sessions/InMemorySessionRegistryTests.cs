@@ -12,13 +12,98 @@ namespace EclipsVault.Tests.Sessions;
 /// </summary>
 public class InMemorySessionRegistryTests
 {
+    private static readonly SessionStamp Stamp = new(0, "current-version");
+
     private static InMemorySessionRegistry CreateRegistry()
         => new(NullLogger<InMemorySessionRegistry>.Instance, TimeProvider.System);
 
     private static SessionObservation Observation(
         Guid userId, Guid sessionId, string device = "Chrome on macOS", string ip = "203.0.113.5",
         DateTimeOffset? seen = null, DateTimeOffset? expires = null)
-        => new(userId, sessionId, device, ip, seen ?? DateTimeOffset.UtcNow, expires ?? DateTimeOffset.UtcNow.AddHours(1));
+        => new(userId, sessionId, Stamp, device, ip, seen ?? DateTimeOffset.UtcNow, expires ?? DateTimeOffset.UtcNow.AddHours(1));
+
+    [Fact]
+    public async Task A_late_touch_cannot_list_a_device_from_an_older_credential_generation()
+    {
+        var registry = CreateRegistry();
+        var userId = Guid.NewGuid();
+        var original = Observation(userId, Guid.NewGuid());
+        var current = Stamp with { CredentialGeneration = 1 };
+        await registry.RecordSeenAsync(original);
+
+        await registry.RecordSeenAsync(original with { SeenAtUtc = DateTimeOffset.UtcNow.AddMinutes(2) });
+
+        Assert.Empty(await registry.ListAsync(userId, current));
+    }
+
+    [Fact]
+    public async Task A_late_touch_cannot_list_a_device_from_an_older_revocation_version()
+    {
+        var registry = CreateRegistry();
+        var userId = Guid.NewGuid();
+        var original = Observation(userId, Guid.NewGuid());
+        var current = Stamp with { RevocationVersion = "replacement-version" };
+        await registry.RecordSeenAsync(original);
+
+        await registry.RecordSeenAsync(original with { SeenAtUtc = DateTimeOffset.UtcNow.AddMinutes(2) });
+
+        Assert.Empty(await registry.ListAsync(userId, current));
+    }
+
+    [Fact]
+    public async Task A_device_sign_out_winning_before_replacement_prevents_retirement()
+    {
+        var registry = CreateRegistry();
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        await registry.RecordSeenAsync(Observation(userId, sessionId));
+        Assert.True(await registry.RevokeAsync(userId, sessionId));
+
+        Assert.False(await registry.TryRetireForReplacementAsync(userId, sessionId));
+    }
+
+    [Fact]
+    public async Task Retirement_winning_before_a_device_sign_out_cannot_be_reported_as_a_confirmed_removal()
+    {
+        var registry = CreateRegistry();
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        await registry.RecordSeenAsync(Observation(userId, sessionId));
+        Assert.True(await registry.TryRetireForReplacementAsync(userId, sessionId));
+
+        Assert.False(await registry.RevokeAsync(userId, sessionId));
+        Assert.True(await registry.IsRevokedAsync(userId, sessionId));
+    }
+
+    [Fact]
+    public async Task Concurrent_retirement_and_device_sign_out_have_exactly_one_winner()
+    {
+        var registry = CreateRegistry();
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        await registry.RecordSeenAsync(Observation(userId, sessionId));
+
+        var outcomes = await Task.WhenAll(
+            registry.TryRetireForReplacementAsync(userId, sessionId), registry.RevokeAsync(userId, sessionId));
+
+        Assert.NotEqual(outcomes[0], outcomes[1]);
+        Assert.True(await registry.IsRevokedAsync(userId, sessionId));
+        Assert.Empty(await registry.ListAsync(userId, Stamp));
+    }
+
+    [Fact]
+    public async Task Missing_device_metadata_does_not_prevent_retiring_a_valid_session_for_replacement()
+    {
+        var registry = CreateRegistry();
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+
+        Assert.True(await registry.TryRetireForReplacementAsync(userId, sessionId));
+        await registry.RecordSeenAsync(Observation(userId, sessionId));
+
+        Assert.True(await registry.IsRevokedAsync(userId, sessionId));
+        Assert.Empty(await registry.ListAsync(userId, Stamp));
+    }
 
     [Fact]
     public async Task A_recorded_session_is_listed_for_its_owner()
@@ -28,7 +113,7 @@ public class InMemorySessionRegistryTests
         var sessionId = Guid.NewGuid();
         await registry.RecordSeenAsync(Observation(userId, sessionId, device: "Firefox on Linux", ip: "198.51.100.9"));
 
-        var item = Assert.Single(await registry.ListAsync(userId));
+        var item = Assert.Single(await registry.ListAsync(userId, Stamp));
         Assert.Equal(sessionId, item.SessionId);
         Assert.Equal("Firefox on Linux", item.Device);
         Assert.Equal("198.51.100.9", item.IpAddress);
@@ -41,7 +126,7 @@ public class InMemorySessionRegistryTests
         var owner = Guid.NewGuid();
         await registry.RecordSeenAsync(Observation(owner, Guid.NewGuid()));
 
-        Assert.Empty(await registry.ListAsync(Guid.NewGuid()));
+        Assert.Empty(await registry.ListAsync(Guid.NewGuid(), Stamp));
     }
 
     [Fact]
@@ -55,7 +140,7 @@ public class InMemorySessionRegistryTests
         var revoked = await registry.RevokeAsync(userId, sessionId);
 
         Assert.True(revoked);
-        Assert.Empty(await registry.ListAsync(userId));
+        Assert.Empty(await registry.ListAsync(userId, Stamp));
         Assert.True(await registry.IsRevokedAsync(userId, sessionId));
     }
 
@@ -70,7 +155,7 @@ public class InMemorySessionRegistryTests
 
         Assert.False(await registry.RevokeAsync(caller, sessionId));
 
-        Assert.Equal(sessionId, Assert.Single(await registry.ListAsync(owner)).SessionId);
+        Assert.Equal(sessionId, Assert.Single(await registry.ListAsync(owner, Stamp)).SessionId);
         Assert.False(await registry.IsRevokedAsync(owner, sessionId));
     }
 
@@ -84,7 +169,7 @@ public class InMemorySessionRegistryTests
         await registry.RecordSeenAsync(Observation(userId, liveSessionId));
 
         Assert.False(await registry.RevokeAsync(userId, sessionId));
-        Assert.Equal(liveSessionId, Assert.Single(await registry.ListAsync(userId)).SessionId);
+        Assert.Equal(liveSessionId, Assert.Single(await registry.ListAsync(userId, Stamp)).SessionId);
     }
 
     [Fact]
@@ -98,7 +183,7 @@ public class InMemorySessionRegistryTests
         await registry.RecordSeenAsync(Observation(userId, sessionId));
 
         Assert.True(await registry.IsRevokedAsync(userId, sessionId));
-        Assert.Empty(await registry.ListAsync(userId));
+        Assert.Empty(await registry.ListAsync(userId, Stamp));
     }
 
     [Fact]
@@ -126,7 +211,7 @@ public class InMemorySessionRegistryTests
         await registry.RecordSeenAsync(Observation(userId, sessionId));
 
         Assert.True(await registry.IsRevokedAsync(userId, sessionId));
-        Assert.Empty(await registry.ListAsync(userId));
+        Assert.Empty(await registry.ListAsync(userId, Stamp));
     }
 
     [Fact]
@@ -154,7 +239,7 @@ public class InMemorySessionRegistryTests
         Assert.Single(results, removed => removed);
         Assert.Single(results, removed => !removed);
         Assert.True(await registry.IsRevokedAsync(userId, sessionId));
-        Assert.Empty(await registry.ListAsync(userId));
+        Assert.Empty(await registry.ListAsync(userId, Stamp));
     }
 
     [Fact]
@@ -182,7 +267,7 @@ public class InMemorySessionRegistryTests
 
         Assert.True(await revoke);
         Assert.True(await registry.IsRevokedAsync(userId, sessionId));
-        Assert.Empty(await registry.ListAsync(userId));
+        Assert.Empty(await registry.ListAsync(userId, Stamp));
     }
 
     [Fact]
@@ -196,7 +281,7 @@ public class InMemorySessionRegistryTests
 
         await registry.RecordSeenAsync(Observation(userId, sessionId));
 
-        Assert.Empty(await registry.ListAsync(userId));
+        Assert.Empty(await registry.ListAsync(userId, Stamp));
         Assert.True(await registry.IsRevokedAsync(userId, sessionId));
     }
 
@@ -207,7 +292,7 @@ public class InMemorySessionRegistryTests
         var userId = Guid.NewGuid();
         await registry.RecordSeenAsync(Observation(userId, Guid.NewGuid(), expires: DateTimeOffset.UtcNow.AddMinutes(-1)));
 
-        Assert.Empty(await registry.ListAsync(userId));
+        Assert.Empty(await registry.ListAsync(userId, Stamp));
     }
 
     [Fact]
@@ -222,7 +307,7 @@ public class InMemorySessionRegistryTests
         await registry.RecordSeenAsync(Observation(userId, older, seen: now.AddMinutes(-10), expires: now.AddHours(1)));
         await registry.RecordSeenAsync(Observation(userId, newer, seen: now.AddMinutes(-1), expires: now.AddHours(1)));
 
-        var list = await registry.ListAsync(userId);
+        var list = await registry.ListAsync(userId, Stamp);
         Assert.Equal(newer, list[0].SessionId);
         Assert.Equal(older, list[1].SessionId);
     }
@@ -238,7 +323,7 @@ public class InMemorySessionRegistryTests
         await registry.RecordSeenAsync(Observation(userId, sessionId, seen: firstSeen, expires: firstSeen.AddHours(1)));
         await registry.RecordSeenAsync(Observation(userId, sessionId, seen: firstSeen.AddSeconds(30), expires: firstSeen.AddHours(1)));
 
-        var afterThrottled = Assert.Single(await registry.ListAsync(userId));
+        var afterThrottled = Assert.Single(await registry.ListAsync(userId, Stamp));
         Assert.Equal(firstSeen, afterThrottled.LastSeenAtUtc);
     }
 
@@ -253,7 +338,7 @@ public class InMemorySessionRegistryTests
 
         await registry.RecordSeenAsync(Observation(userId, sessionId, seen: firstSeen.AddSeconds(90), expires: firstSeen.AddHours(1)));
 
-        var afterMoved = Assert.Single(await registry.ListAsync(userId));
+        var afterMoved = Assert.Single(await registry.ListAsync(userId, Stamp));
         Assert.Equal(firstSeen.AddSeconds(90), afterMoved.LastSeenAtUtc);
         Assert.Equal(firstSeen, afterMoved.CreatedAtUtc);
     }

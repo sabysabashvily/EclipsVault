@@ -1,3 +1,4 @@
+using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Extensions;
 using Microsoft.AspNetCore.Authorization;
@@ -30,4 +31,8 @@ public abstract class VaultController : Controller
 
     /// <summary>This device's session id, or null when the principal carries none.</summary>
     protected Guid? CurrentSessionId() => User.GetSessionId();
+
+    /// <summary>The credential generation this session was issued under; a session without one is stale.</summary>
+    protected long CurrentCredentialGeneration()
+        => User.GetSessionStampOrNull()?.CredentialGeneration ?? throw new StaleProofException();
 }

@@ -24,9 +24,10 @@ public sealed record UserDto(
             user.Clearance, user.ProjectKey, user.TotpEnabled, user.IsDisabled);
 }
 
-public sealed record CredentialCheckResult(CredentialStatus Status, UserDto? User)
+/// <summary>The password stage's outcome; a passed stage carries the stamp the rest of the sign-in must keep.</summary>
+public sealed record CredentialCheckResult(CredentialStatus Status, UserDto? User, SessionStamp? Stamp)
 {
-    public static readonly CredentialCheckResult Invalid = new(CredentialStatus.Invalid, null);
+    public static readonly CredentialCheckResult Invalid = new(CredentialStatus.Invalid, null, null);
 }
 
 public sealed record TotpEnrollmentDto(string SecretBase32, string OtpAuthUri);

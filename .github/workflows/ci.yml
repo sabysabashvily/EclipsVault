@@ -178,7 +178,8 @@ jobs:
   # through the test environment, with no repository secrets or development seeding.
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # About an hour: the Profile specs wait out the real sign-in throttle and mailbox budgets.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

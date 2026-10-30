@@ -1,12 +1,11 @@
 using System.Net;
 using System.Security.Cryptography;
-using System.Text.RegularExpressions;
 using EclipsVault.Core.Domain.Enums;
 using Xunit;
 
 namespace EclipsVault.IntegrationTests;
 
-internal sealed partial class SessionAccount(VaultFixture vault, string username, string password, VaultSession browser, string[] recoveryCodes)
+internal sealed class SessionAccount(VaultFixture vault, string username, string password, VaultSession browser, string[] recoveryCodes)
 {
     public VaultSession Browser { get; } = browser;
 
@@ -15,15 +14,7 @@ internal sealed partial class SessionAccount(VaultFixture vault, string username
     {
         var password = "It-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
         var browser = await vault.SignInNewAccountAsync(username, IPAddress.Parse(address), clearance, password: password);
-        var page = await browser.Client.GetStringAsync("/Profile");
-        var generated = await browser.Client.PostAsync("/Profile/GenerateRecoveryCodes", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(page, "/Profile")
-        }));
-        Assert.Equal(HttpStatusCode.Redirect, generated.StatusCode);
-        var codes = RecoveryCode().Matches(await browser.Client.GetStringAsync("/Profile/RecoveryCodes"))
-            .Select(match => WebUtility.HtmlDecode(match.Groups[1].Value)).ToArray();
-        Assert.Equal(10, codes.Length);
+        var codes = await ProfileApi.RecoverySetAsync(browser.ProfileOwner!);
         return new SessionAccount(vault, username, password, browser, codes);
     }
 
@@ -50,6 +41,4 @@ internal sealed partial class SessionAccount(VaultFixture vault, string username
         return session;
     }
 
-    [GeneratedRegex("<li class=\"mono\">([^<]+)</li>")]
-    private static partial Regex RecoveryCode();
 }

@@ -8,7 +8,9 @@ import { setTimeout } from 'node:timers/promises';
 const ui = fileURLToPath(new URL('../', import.meta.url));
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const probes = process.argv.includes('--verify-guards');
-const output = probes ? 'guard-results' : 'test-results';
+const evidence = process.env.E2E_EVIDENCE_DIR || ui;
+const output = new URL(probes ? 'guard-results/' : 'test-results/', `file://${evidence}/`);
+const testResults = new URL('test-results/', `file://${evidence}/`);
 // Cleanup removes this project's containers and volumes, so the runner always names a project of its
 // own: a prefix may be chosen, the random suffix may not, and an existing project is never adopted.
 // Specs still receive the name as E2E_COMPOSE_PROJECT.
@@ -131,9 +133,11 @@ async function main() {
   const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
   const env = {
     ...process.env,
+    E2E_TEST_RESULTS: fileURLToPath(testResults),
     E2E_IMAGE: image,
     // Lets a spec reach this run's own disposable database, for state no production screen can create.
     E2E_COMPOSE_PROJECT: project,
+    E2E_REDIS_PASSWORD: randomBytes(24).toString('hex'),
     E2E_SQL_PASSWORD: `Sa1!${randomBytes(24).toString('hex')}`,
     E2E_PROXY_IP: '127.0.0.1', // Replaced with the proxy's actual address before starting the vault.
     ECLIPSVAULT_AUDIT_SIGNING_KEY: privateKey
@@ -142,7 +146,7 @@ async function main() {
   };
   const composeArgs = ['compose', '--project-name', project, '--file', 'e2e/compose.yml'];
   const compose = (args, options) => checked('docker', [...composeArgs, ...args], env, options);
-  await mkdir(new URL(`../${output}/`, import.meta.url), { recursive: true });
+  await mkdir(output, { recursive: true });
   let builtImage = false;
   try {
     if (!process.env.E2E_IMAGE) {
@@ -151,7 +155,7 @@ async function main() {
     }
     // Discover the address Docker assigned instead of trusting arbitrary forwarded headers or
     // reserving a fixed subnet that could collide with another developer's network.
-    await compose(['up', '-d', '--wait', '--wait-timeout', '180', 'sql', 'proxy']);
+    await compose(['up', '-d', '--wait', '--wait-timeout', '180', 'sql', 'proxy', 'smtp', 'redis']);
     const proxyId = await compose(['ps', '-q', 'proxy'], { capture: true });
     env.E2E_PROXY_IP = await checked(
       'docker',
@@ -161,21 +165,20 @@ async function main() {
     );
     const address = await compose(['port', 'proxy', '443'], { capture: true });
     env.E2E_BASE_URL = `https://localhost:${address.split(':').at(-1)}`;
+    const smtpAddress = await compose(['port', 'smtp', '8025'], { capture: true });
+    env.E2E_SMTP_URL = `http://127.0.0.1:${smtpAddress.split(':').at(-1)}`;
     await compose(['up', '-d', 'vault']);
     await waitForVault(env.E2E_BASE_URL);
 
     // A failed runner must never be mistaken for the previous invocation's expected failures.
-    if (probes)
-      await rm(new URL('../guard-results/results.json', import.meta.url), { force: true });
+    if (probes) await rm(new URL('results.json', output), { force: true });
     const result = await run(process.execPath, ['node_modules/@playwright/test/cli.js', 'test'], {
       ...env,
       E2E_VERIFY_GUARDS: probes ? '1' : '0',
     });
     if (probes) {
       verifyGuardFailures(
-        JSON.parse(
-          await readFile(new URL('../guard-results/results.json', import.meta.url), 'utf8'),
-        ),
+        JSON.parse(await readFile(new URL('results.json', output), 'utf8')),
         result.code,
       );
     } else if (result.code !== 0) {
@@ -186,7 +189,7 @@ async function main() {
   } finally {
     try {
       const logs = await compose(['logs', '--no-color'], { capture: true, cleanup: true });
-      await writeFile(new URL(`../${output}/docker.log`, import.meta.url), logs);
+      await writeFile(new URL('docker.log', output), logs);
     } finally {
       // These containers belong to this run's unique project. Capture their anonymous image
       // volumes explicitly so cleanup never asks Compose to remove an unbounded set of volumes.

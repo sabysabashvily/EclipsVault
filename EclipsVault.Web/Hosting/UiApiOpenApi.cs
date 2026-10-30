@@ -28,11 +28,19 @@ public static class UiApiOpenApi
                 description.RelativePath?.StartsWith("api/ui/", StringComparison.OrdinalIgnoreCase) == true;
             options.AddSchemaTransformer((schema, context, _) =>
             {
-                // A string property naming a Core enum value lists the enum's names as its closed set.
+                // The wire contract accepts enum names only, including within arrays.
                 if (context.JsonPropertyInfo?.AttributeProvider?.GetCustomAttributes(typeof(UiEnumAttribute), inherit: false)
                     is [UiEnumAttribute uiEnum])
                 {
-                    schema.Enum = Enum.GetNames(uiEnum.EnumType).Select(name => (JsonNode)JsonValue.Create(name)).ToList();
+                    var names = Enum.GetNames(uiEnum.EnumType).Select(name => (JsonNode)JsonValue.Create(name)).ToList();
+                    if (schema.Items is OpenApiSchema item)
+                    {
+                        item.Enum = names;
+                    }
+                    else
+                    {
+                        schema.Enum = names;
+                    }
                 }
 
                 return Task.CompletedTask;

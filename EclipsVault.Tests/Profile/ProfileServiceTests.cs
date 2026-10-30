@@ -1,5 +1,6 @@
 using System.Text;
 using EclipsVault.Core.Application.Abstractions;
+using EclipsVault.Core.Application.Authentication;
 using EclipsVault.Core.Application.Mfa;
 using EclipsVault.Core.Application.Notifications;
 using EclipsVault.Core.Application.Profile;
@@ -11,30 +12,10 @@ using Xunit;
 
 namespace EclipsVault.Tests.Profile;
 
-/// <summary>
-/// A password change is a credential reset, so it must turn out every other session: a session
-/// opened with the old password cannot be allowed to outlive it. These pin that the account-wide
-/// revocation fires on success — and, crucially, only on success — so a rejected change (wrong
-/// current password, breached new one) never disturbs a live session.
-/// </summary>
 public class ProfileServiceTests
 {
     private const string CurrentPassword = "current-password-value";
     private static readonly Guid UserId = Guid.NewGuid();
-
-    private sealed class RecordingRevocation : ISessionRevocationService
-    {
-        public List<(Guid UserId, DateTimeOffset At)> Revocations { get; } = [];
-
-        public Task RevokeAsync(Guid userId, DateTimeOffset revokedAtUtc, CancellationToken ct = default)
-        {
-            Revocations.Add((userId, revokedAtUtc));
-            return Task.CompletedTask;
-        }
-
-        public Task<bool> IsRevokedAsync(Guid userId, DateTimeOffset sessionIssuedAtUtc, CancellationToken ct = default)
-            => throw new NotSupportedException();
-    }
 
     // Verifies the fixed "current-password" bytes and nothing else, so a test can drive the
     // wrong-password branch by passing anything but CurrentPassword.
@@ -54,13 +35,14 @@ public class ProfileServiceTests
         public int CorpusSize => 0;
     }
 
-    private sealed class StubUsers : IUserRepository
+    private sealed class StubUsers(User user, bool emailTaken) : IUserRepository
     {
-        private readonly User _user;
-        public StubUsers(User user) => _user = user;
+        public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult<User?>(user);
+        public Task<bool> ReloadAsync(User user, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> IsEmailTakenAsync(string email, Guid accountId, CancellationToken ct) => Task.FromResult(emailTaken);
 
-        public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult<User?>(id == _user.Id ? _user : null);
-        public Task UpdateAsync(User user, CancellationToken ct) => Task.CompletedTask;
+        public Task UpdateAsync(User user, CancellationToken ct) => throw new NotSupportedException();
+        public Task<User?> FindByEmailAsync(string email, CancellationToken ct) => throw new NotSupportedException();
 
         public Task<User?> FindByUsernameAsync(string username, CancellationToken ct) => throw new NotSupportedException();
         public Task<User?> FindByUsernameOrEmailAsync(string identifier, CancellationToken ct) => throw new NotSupportedException();
@@ -69,17 +51,40 @@ public class ProfileServiceTests
         public Task AddAsync(User user, CancellationToken ct) => throw new NotSupportedException();
         public Task DeleteAsync(User user, CancellationToken ct) => throw new NotSupportedException();
         public Task<byte[]?> GetAvatarPngAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
-        public Task SetAvatarAsync(User user, byte[] png, CancellationToken ct) => throw new NotSupportedException();
-        public Task RemoveAvatarAsync(User user, CancellationToken ct) => throw new NotSupportedException();
+        public Task StageAvatarAsync(User user, byte[] png, CancellationToken ct) => throw new NotSupportedException();
+        public Task StageAvatarRemovalAsync(User user, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> TryAcceptTotpStepAsync(User user, long step, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> TryCompleteTotpEnrollmentAsync(User user, long step, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> RecordFailedAttemptAsync(User user, LockoutPolicy lockout, DateTimeOffset nowUtc, CancellationToken ct) => throw new NotSupportedException();
+        public Task ClearFailedAttemptsAsync(User user, CancellationToken ct) => throw new NotSupportedException();
     }
 
     private sealed class NoopNotifications : INotificationService
     {
+        public Task NotifyCredentialChangedAsync(Guid userId, ProfileOperationKind kind, CancellationToken ct) => Task.CompletedTask;
         public Task NotifyPasswordChangedAsync(Guid userId, CancellationToken ct) => Task.CompletedTask;
         public Task NotifyAccessRequestDecidedAsync(Guid requesterUserId, string secretName, bool approved, string reviewer, string? note, CancellationToken ct) => throw new NotSupportedException();
         public Task NotifyUserProvisionedAsync(string email, string displayName, string username, CancellationToken ct) => throw new NotSupportedException();
         public Task<bool> NotifyExpiringSecretAsync(Guid ownerUserId, string secretName, DateTimeOffset expiresAtUtc, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<EmailLogDto>> ListRecentAsync(int max, CancellationToken ct) => throw new NotSupportedException();
+        public Task NotifySensitiveChangeAsync(string trustedAddress, ProfileOperationKind kind, CancellationToken ct) => Task.CompletedTask;
+    }
+
+    private sealed class RecordingChanges : IAccountChangeCommitter
+    {
+        public Task<bool> CommitAsync(User account, AuditEntry entry, CancellationToken ct)
+            => CommitAsync(account, entry.Action, entry.Details!, ct);
+
+        public List<(AuditAction Action, long CredentialGeneration)> Committed { get; } = [];
+
+        public Task<bool> CommitAsync(User account, AuditAction action, string details, CancellationToken ct)
+        {
+            Committed.Add((action, account.CredentialGeneration));
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> CommitAsync(User account, AuditAction action, string details, Func<CancellationToken, Task> recheck, CancellationToken ct)
+            => throw new NotSupportedException();
     }
 
     private sealed class NoopSink : IAuditSink
@@ -104,68 +109,103 @@ public class ProfileServiceTests
     {
         public Task<IReadOnlyList<MfaRecoveryCode>> ListUnusedAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
         public Task<int> CountUnusedAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
-        public Task ReplaceAllAsync(Guid userId, IReadOnlyList<MfaRecoveryCode> codes, CancellationToken ct) => throw new NotSupportedException();
-        public Task MarkUsedAsync(MfaRecoveryCode code, CancellationToken ct) => throw new NotSupportedException();
-        public Task DeleteAllAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
+        public Task StageReplacementAsync(Guid userId, IReadOnlyList<MfaRecoveryCode> codes, CancellationToken ct) => throw new NotSupportedException();
+        public Task StageRemovalOfAllAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> TryRedeemAsync(MfaRecoveryCode code, DateTimeOffset usedAtUtc, CancellationToken ct) => throw new NotSupportedException();
     }
 
-    private static (ProfileService Service, RecordingRevocation Revocation) NewService(bool breached = false)
+    private static User Owner() => new()
     {
-        var user = new User
-        {
-            Id = UserId,
-            Username = "owner",
-            PasswordHash = Encoding.UTF8.GetBytes(CurrentPassword),
-            PasswordSalt = [9, 9, 9],
-            Clearance = ClearanceLevel.Standard
-        };
+        Id = UserId,
+        Username = "owner",
+        Email = "owner@example.test",
+        PasswordHash = Encoding.UTF8.GetBytes(CurrentPassword),
+        PasswordSalt = [9, 9, 9],
+        Clearance = ClearanceLevel.Standard
+    };
 
-        var revocation = new RecordingRevocation();
+    private static (ProfileService Service, RecordingChanges Changes) NewService(
+        bool breached = false, bool emailTaken = false)
+    {
+        var changes = new RecordingChanges();
         var service = new ProfileService(
-            new StubUsers(user),
+            new StubUsers(Owner(), emailTaken),
             new StubHasher(),
             new ThrowingAvatarProcessor(),
             new ThrowingRecoveryCodes(),
             new StubBreachScreen(breached),
             new NoopNotifications(),
-            revocation,
+            changes,
             new NoopSink(),
-            new StubActor(),
-            TimeProvider.System);
+            new StubActor());
 
-        return (service, revocation);
+        return (service, changes);
     }
 
     [Fact]
-    public async Task Changing_the_password_revokes_every_session_for_the_user()
+    public async Task Changing_the_password_advances_the_credential_generation_in_the_same_commit()
     {
-        var (service, revocation) = NewService();
+        var (service, changes) = NewService();
 
-        await service.ChangePasswordAsync(UserId, CurrentPassword, "a-brand-new-password", CancellationToken.None);
+        var committed = await service.ChangePasswordAsync(UserId, 0, CurrentPassword, "a-brand-new-password", CancellationToken.None);
 
-        var revoked = Assert.Single(revocation.Revocations);
-        Assert.Equal(UserId, revoked.UserId);
+        Assert.Equal(1, committed);
+        Assert.Equal([(AuditAction.PasswordChanged, 1L)], changes.Committed);
     }
 
     [Fact]
-    public async Task A_wrong_current_password_changes_nothing_and_revokes_nothing()
+    public async Task A_wrong_current_password_commits_nothing()
     {
-        var (service, revocation) = NewService();
+        var (service, changes) = NewService();
 
         await Assert.ThrowsAsync<ProfileException>(() =>
-            service.ChangePasswordAsync(UserId, "not-the-current-password", "a-brand-new-password", CancellationToken.None));
+            service.ChangePasswordAsync(UserId, 0, "not-the-current-password", "a-brand-new-password", CancellationToken.None));
 
-        Assert.Empty(revocation.Revocations); // a rejected change must not disturb a live session
+        Assert.Empty(changes.Committed);
     }
 
     [Fact]
-    public async Task A_breached_new_password_is_rejected_without_revoking()
+    public async Task A_breached_new_password_is_rejected_without_committing()
     {
-        var (service, revocation) = NewService(breached: true);
+        var (service, changes) = NewService(breached: true);
 
         await Assert.ThrowsAsync<ProfileException>(() =>
-            service.ChangePasswordAsync(UserId, CurrentPassword, "a-brand-new-password", CancellationToken.None));
+            service.ChangePasswordAsync(UserId, 0, CurrentPassword, "a-brand-new-password", CancellationToken.None));
 
-        Assert.Empty(revocation.Revocations);
+        Assert.Empty(changes.Committed);
     }
+
+    [Fact]
+    public async Task A_password_change_from_a_session_of_an_earlier_generation_is_refused()
+    {
+        var (service, changes) = NewService();
+
+        await Assert.ThrowsAsync<StaleProofException>(() =>
+            service.ChangePasswordAsync(UserId, 3, CurrentPassword, "a-brand-new-password", CancellationToken.None));
+
+        Assert.Empty(changes.Committed);
+    }
+
+    [Fact]
+    public async Task Saving_a_display_name_preserves_the_email_and_credential_generation()
+    {
+        var (service, changes) = NewService();
+
+        Assert.Equal("New Owner", await service.UpdateDisplayNameAsync(UserId, "  New Owner  ", default));
+
+        var profile = await service.GetAsync(UserId, default);
+        Assert.Equal("owner@example.test", profile!.Email);
+        Assert.Equal([(AuditAction.ProfileUpdated, 0L)], changes.Committed);
+    }
+
+    [Fact]
+    public async Task An_empty_display_name_commits_nothing()
+    {
+        var (service, changes) = NewService();
+
+        await Assert.ThrowsAsync<ProfileException>(() => service.UpdateDisplayNameAsync(UserId, "  ", default));
+
+        Assert.Empty(changes.Committed);
+    }
+
 }

@@ -15,13 +15,13 @@ public sealed class SecurityCheckupService : ISecurityCheckupService
     private readonly IProfileService _profile;
     private readonly IPasskeyService _passkeys;
     private readonly IMfaRecoveryService _recovery;
-    private readonly ISessionRegistry _sessions;
+    private readonly ISignedInDevices _sessions;
 
     public SecurityCheckupService(
         IProfileService profile,
         IPasskeyService passkeys,
         IMfaRecoveryService recovery,
-        ISessionRegistry sessions)
+        ISignedInDevices sessions)
     {
         _profile = profile;
         _passkeys = passkeys;

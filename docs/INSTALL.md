@@ -6,7 +6,8 @@ secrets or your servers. This guide is the production runbook; for feature detai
 
 ## 1. Prerequisites
 
-- A database: SQL Server or PostgreSQL 17+ (see `Database:Provider`).
+- A database: SQL Server 2017 or later, or PostgreSQL 17+ (see `Database:Provider`). The
+  migrations use `TRIM`, `TRANSLATE` and `STRING_AGG`, which need SQL Server 2017.
 - A TLS-terminating reverse proxy or ingress in front of the app (the container serves plain HTTP on
   port 8080 inside your network).
 - A place to hold a persistent Data Protection key ring directory, shared by every replica.
@@ -103,3 +104,20 @@ Put your reverse proxy in front, terminating TLS and forwarding `X-Forwarded-For
 Back up the database **and** the Data Protection key ring directory. The key ring is sealed with your
 KEK, so a backup is inert without `ECLIPSVAULT_KEK` — keep the KEK in your secret manager, not beside
 the backup.
+
+## 8. Upgrading
+
+Every session carries the account's credential generation and session revocation version, and ends
+when either moves on: a credential change, or signing out everywhere. Two rules follow when you
+upgrade from a release whose sessions carry neither:
+
+- **Everyone signs in again once.** The vault refuses those sessions, and sign-ins left half-finished
+  across the upgrade, rather than guess what they would carry.
+- **Upgrade every node before relying on this.** A node still running the earlier release keeps its
+  own rules, so it would accept sessions the new one has ended. Drain and retire old nodes instead of
+  running both releases behind one load balancer.
+- **Redis must not evict.** With `Redis:Enabled=true` the vault refuses to start unless Redis reports
+  `maxmemory-policy noeviction` and allows `INFO`. Many managed services default to `volatile-lru`;
+  change that parameter before upgrading. Every configured server must answer at startup: a vault
+  that used to start while one endpoint was down now refuses until it is back. See
+  [`BACKUP_AND_RECOVERY.md`](BACKUP_AND_RECOVERY.md).

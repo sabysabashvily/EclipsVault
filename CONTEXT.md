@@ -26,6 +26,26 @@ _Avoid_: 2FA code, OTP
 A fresh second factor demanded before revealing a high-sensitivity secret on a session whose last strong sign-in is too old.
 _Avoid_: Re-login, re-auth prompt
 
+**Account verification**:
+Fresh proof using an existing credential of the signed-in vault account, required before changing how that account signs in.
+_Avoid_: Step-up (when an account change is meant)
+
+**Credential generation**:
+The current revision of a vault account's sign-in credentials, which identifies the sessions and pending proofs that still belong to those credentials.
+_Avoid_: Authentication time, session age
+
+**Session revocation version**:
+The current revision of a vault account's explicit sign-out state, which identifies the sessions that have not been signed out everywhere.
+_Avoid_: Credential generation (when explicit sign-out is meant), authentication time
+
+**Session-store incarnation**:
+The identity of a session store's lifetime; replacing it retires sessions from an earlier lifetime.
+_Avoid_: Credential generation, account revocation version
+
+**Authenticator reset**:
+Retirement of a vault account's enrolled authenticator and its recovery codes, followed by fresh enrollment when sign-in requires local TOTP.
+_Avoid_: Disable MFA, turn off two-step sign-in
+
 **Break-glass recovery**:
 The one way a vault administrator signs back in from a blocked network: all factors at once, audited, lifting the block on their own range.
 _Avoid_: Emergency login, unblock

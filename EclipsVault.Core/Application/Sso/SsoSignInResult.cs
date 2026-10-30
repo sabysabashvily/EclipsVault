@@ -9,11 +9,14 @@ namespace EclipsVault.Core.Application.Sso;
 /// <see cref="SecondFactorSatisfied"/> answers "are they done authenticating". Keeping them apart is
 /// the point — a linked identity that has only proved one factor is not a session, and collapsing
 /// the two questions into one boolean is how a factor goes missing.
+///
+/// A linked identity also carries the <see cref="Stamp"/> its session, or its pending second factor,
+/// must be issued under.
 /// </summary>
-public sealed record SsoSignInResult(SsoOutcome Outcome, UserDto? User, bool SecondFactorSatisfied)
+public sealed record SsoSignInResult(SsoOutcome Outcome, UserDto? User, SessionStamp? Stamp, bool SecondFactorSatisfied)
 {
-    public static SsoSignInResult Refused(SsoOutcome outcome) => new(outcome, null, false);
+    public static SsoSignInResult Refused(SsoOutcome outcome) => new(outcome, null, null, false);
 
-    public static SsoSignInResult Linked(UserDto user, bool secondFactorSatisfied) =>
-        new(SsoOutcome.Linked, user, secondFactorSatisfied);
+    public static SsoSignInResult Linked(UserDto user, SessionStamp stamp, bool secondFactorSatisfied) =>
+        new(SsoOutcome.Linked, user, stamp, secondFactorSatisfied);
 }

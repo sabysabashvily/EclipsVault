@@ -63,7 +63,12 @@ test('a separate vault account enrolls MFA for its signed-in device scenarios', 
   browserHealth,
 }) => {
   test.setTimeout(210_000);
-  const state = JSON.parse(await readFile('test-results/sessions-administrator.json', 'utf8')) as {
+  const state = JSON.parse(
+    await readFile(
+      `${process.env['E2E_TEST_RESULTS'] || 'test-results'}/sessions-administrator.json`,
+      'utf8',
+    ),
+  ) as {
     cookies: Awaited<ReturnType<BrowserContext['cookies']>>;
   };
   await page.context().addCookies(state.cookies);
@@ -389,7 +394,7 @@ test('Security checkup opens Signed-in devices without a document load', async (
   expect(documents).toEqual([]);
 });
 
-test('the sign out everywhere link opens Profile on the same session through Legacy', async ({
+test('the sign out everywhere link opens Profile on the same session inside Angular', async ({
   page,
 }) => {
   await openOwner(page);
@@ -400,7 +405,7 @@ test('the sign out everywhere link opens Profile on the same session through Leg
   });
   await page.getByRole('link', { name: 'sign out everywhere', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Profile', exact: true })).toBeVisible();
-  expect(documents).toEqual(['/Profile']);
+  expect(documents).toEqual([]);
 });
 
 test('confirming a real device sign-out ends the second browser context on its next request', async ({

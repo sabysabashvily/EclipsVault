@@ -19,6 +19,11 @@ export function totp(secret: string, time = Date.now()): string {
   return ((digest.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).toString().padStart(6, '0');
 }
 
+/** The 30-second step a code generated now belongs to; replay protection refuses it again. */
+export function currentTotpStep(): number {
+  return Math.floor(Date.now() / 30_000);
+}
+
 export async function freshTotp(secret: string, previousStep = -1): Promise<string> {
   const now = Date.now();
   // Enrollment consumes its code. Wait for a new step before the subsequent sign-in, and avoid

@@ -103,11 +103,7 @@
           </div>
           <div class="feed-action">
             @if (check.status !== 'Pass' && check.url) {
-              @if (check.kind === 'SignedInDevices') {
-                <a class="button small" [routerLink]="check.url">{{ check.fixLabel }}</a>
-              } @else {
-                <a class="button small" [href]="check.url">{{ check.fixLabel }}</a>
-              }
+              <a class="button small" [routerLink]="check.url">{{ check.fixLabel }}</a>
             }
           </div>
         </li>

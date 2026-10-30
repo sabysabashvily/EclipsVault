@@ -60,9 +60,23 @@ public sealed partial class VaultFixture : IAsyncLifetime
     private WebApplicationFactory<Program>? _factory;
     private Task<HttpClient>? _adminClient;
 
+    public bool TrustIdpMfa { get; init; }
+
+    public SmtpCapture? Mailbox { get; init; }
+
+    public string? RedisConfiguration { get; init; }
+
     public async Task InitializeAsync()
     {
         await _sql.StartAsync();
+        if (Mailbox is not null)
+        {
+            await Mailbox.StartAsync();
+            SetEnvironment("Email__Sender", "Smtp");
+            SetEnvironment("Email__Enabled", "true");
+            SetEnvironment("Email__Smtp__Host", Mailbox.Host);
+            SetEnvironment("Email__Smtp__Port", Mailbox.Port.ToString(CultureInfo.InvariantCulture));
+        }
 
         using var signingKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         SetEnvironment("ConnectionStrings__DefaultConnection",
@@ -71,11 +85,19 @@ public sealed partial class VaultFixture : IAsyncLifetime
         SetEnvironment("ECLIPSVAULT_AUDIT_SIGNING_KEY", Convert.ToBase64String(signingKey.ExportPkcs8PrivateKey()));
         SetEnvironment("DataProtection__KeyRingPath", _keyRing.FullName);
         SetEnvironment("Seed__AdminPassword", _adminPassword);
+        if (RedisConfiguration is not null)
+        {
+            SetEnvironment("Redis__Enabled", "true");
+            SetEnvironment("Redis__Configuration", RedisConfiguration + ",asyncTimeout=1000,syncTimeout=1000");
+            SetEnvironment("Redis__AllowUnauthenticated", "true");
+            SetEnvironment("Redis__SessionIncarnation", "before-recovery");
+        }
         // The single-node install with no deploy pipeline, which lets the vault apply its own migrations.
         SetEnvironment("Database__MigrateOnStartup", "true");
         // Register the production OIDC correlation cookie for HTTP callback scoping tests.
         // Those start after the IdP assertion, so this authority is never contacted.
         SetEnvironment("Sso__Enabled", "true");
+        SetEnvironment("Sso__TrustIdpMultiFactor", TrustIdpMfa.ToString());
         SetEnvironment("Sso__Authority", "https://idp.example.test/realms/integration");
         SetEnvironment("Sso__ClientId", "integration-vault");
         SetEnvironment("Sso__ClientSecret", Convert.ToHexString(RandomNumberGenerator.GetBytes(32)));
@@ -119,6 +141,10 @@ public sealed partial class VaultFixture : IAsyncLifetime
         }
 
         await _sql.DisposeAsync();
+        if (Mailbox is not null)
+        {
+            await Mailbox.DisposeAsync();
+        }
         foreach (var name in _environment)
         {
             Environment.SetEnvironmentVariable(name, null);
@@ -134,6 +160,8 @@ public sealed partial class VaultFixture : IAsyncLifetime
         AllowAutoRedirect = false,
         HandleCookies = true,
     });
+
+    public Task<HttpContext> SendAsync(Action<HttpContext> configure) => _factory!.Server.SendAsync(configure);
 
     /// <summary>
     /// The bootstrap administrator's session, signed in once per run through the vault's real sign-in:
@@ -193,6 +221,7 @@ public sealed partial class VaultFixture : IAsyncLifetime
 
         var session = CreateSession(source: source);
         await SignInFirstTimeAsync(session.Client, username, password);
+        session.ProfileOwner = new ProfileAccount(session, await ProfileHttp.AccountAsync(this, username), password);
         return session;
     }
 
@@ -349,6 +378,9 @@ public sealed partial class VaultFixture : IAsyncLifetime
 /// <summary>A client and the cookies it holds, so a test can inspect or copy its session cookie.</summary>
 public sealed record VaultSession(HttpClient Client, CookieContainer Cookies)
 {
+    internal ProfileAccount? ProfileOwner { get; set; }
+    internal long LastProfileProofStep { get; set; }
+
     public Cookie? SessionCookie => Cookies.GetCookies(Client.BaseAddress!)[VaultFixture.SessionCookie];
 }
 

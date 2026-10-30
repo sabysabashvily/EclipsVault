@@ -13,7 +13,7 @@ public class StepUpPolicyTests
     private static IStepUpService Service(SensitivityLevel minimum = SensitivityLevel.Secret, int maxAgeMinutes = 10)
         => new StepUpService(
             new StepUpOptions { MinimumSensitivity = minimum, MaxAuthAgeMinutes = maxAgeMinutes },
-            users: null!, totp: null!, audit: null!); // IsRequired is pure; the collaborators are unused
+            users: null!, secondFactors: null!, attempt: null!, failures: null!, clock: null!, revocation: null!);
 
     private static readonly DateTimeOffset Now = new(2026, 7, 14, 12, 0, 0, TimeSpan.Zero);
 

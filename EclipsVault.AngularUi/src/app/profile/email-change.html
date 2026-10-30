@@ -1,0 +1,84 @@
+<div class="field">
+  <label for="active-email">Email</label>
+  <input id="active-email" [value]="profile().email" readonly autocomplete="email" />
+</div>
+@if (!profile().changes.changeEmail.available) {
+  <p class="hint muted">{{ profile().changes.changeEmail.explanation }}</p>
+} @else if (profile().pendingEmail; as pending) {
+  <p role="status">Pending email: {{ pending.address }}. Your current email is still active.</p>
+  <p class="hint muted">
+    Mailbox codes are valid for 15 minutes after delivery. Account verification lasts five minutes;
+    verify again if it expires.
+  </p>
+  <form (submit)="confirm($event)">
+    <div class="field">
+      <label for="mailbox-code">Mailbox confirmation code</label>
+      <input
+        id="mailbox-code"
+        autocomplete="one-time-code"
+        maxlength="64"
+        required
+        [value]="code()"
+        (input)="code.set($any($event.target).value)"
+        [disabled]="session.busy() || session.blocked() || awaitingProof()"
+      />
+    </div>
+    <div class="button-row">
+      <button
+        type="submit"
+        class="button primary"
+        [disabled]="session.busy() || session.blocked() || awaitingProof()"
+      >
+        Confirm email
+      </button>
+      <button
+        type="button"
+        class="button"
+        (click)="reverify('confirm')"
+        [disabled]="session.busy() || session.blocked() || awaitingProof()"
+      >
+        Verify account again
+      </button>
+      <button
+        type="button"
+        class="button"
+        (click)="reverify('resend')"
+        [disabled]="session.busy() || session.blocked() || awaitingProof()"
+      >
+        Resend code
+      </button>
+      <button
+        type="button"
+        class="button"
+        (click)="cancelPending()"
+        [disabled]="session.busy() || session.blocked() || awaitingProof()"
+      >
+        Cancel email change
+      </button>
+    </div>
+  </form>
+} @else {
+  <form (submit)="start($event)">
+    <div class="field">
+      <label for="new-email">New email</label>
+      <input
+        id="new-email"
+        type="email"
+        autocomplete="email"
+        maxlength="256"
+        required
+        [value]="address()"
+        (input)="address.set($any($event.target).value)"
+        [disabled]="session.busy() || session.blocked() || awaitingProof()"
+      />
+    </div>
+    <button
+      class="button"
+      type="submit"
+      [disabled]="session.busy() || session.blocked() || awaitingProof()"
+    >
+      Change email
+    </button>
+  </form>
+}
+<app-verification-dialog (verified)="verified($event)" (cancelled)="clear()" />

@@ -1,0 +1,30 @@
+<div class="page-header">
+  <div>
+    <h1 #heading tabindex="-1">Your recovery codes</h1>
+    <p class="page-sub">Save these now — this is the only time they are shown.</p>
+  </div>
+</div>
+
+<section class="panel recovery-panel">
+  <div class="notice notice-warn">
+    <strong>⚠ Store these somewhere safe and private.</strong>
+    <span
+      >Each code signs you in once if you lose your authenticator, then stops working. Anyone who
+      has a code can pass your second factor, so treat them like passwords. Generating a new set
+      replaces these.</span
+    >
+  </div>
+
+  <ol class="recovery-codes">
+    @for (code of codes(); track $index) {
+      <li class="mono">{{ code }}</li>
+    }
+  </ol>
+
+  <div class="recovery-actions">
+    <button type="button" class="button" (click)="print()">Print</button>
+    <button type="button" class="button primary" (click)="done.emit()">
+      I've saved them — done
+    </button>
+  </div>
+</section>

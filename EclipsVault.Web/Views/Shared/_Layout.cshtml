@@ -1,13 +1,12 @@
-@using System.Security.Claims
 @using EclipsVault.Web.Extensions
 @{
     var controller = ViewContext.RouteData.Values["controller"]?.ToString() ?? "";
     var action = ViewContext.RouteData.Values["action"]?.ToString() ?? "";
     var isAdmin = User.IsAdmin();
     var clearanceName = User.GetClearanceOrNull()?.ToDisplayName();
-    var displayName = User.FindFirstValue(VaultClaimTypes.Display) ?? User.Identity?.Name ?? "";
-    var avatarVersion = User.FindFirstValue(VaultClaimTypes.AvatarVersion) ?? "0";
-    var avatarUrl = Url.Action("Avatar", "Profile", new { v = avatarVersion });
+    var displayName = User.GetDisplayName();
+    var avatarVersion = User.GetAvatarVersion();
+    var avatarUrl = Url.Content($"~/Profile/Avatar?v={avatarVersion}");
     var theme = Context.Request.Cookies["EclipsVault.Theme"] == "light" ? "light" : "dark";
 
     // Sub-pages of the Secrets controller that have their own nav entry, so the plain
@@ -222,7 +221,7 @@
                        is a form button, not a link, so it is not harvested; a palette that can log
                        you out on a mistyped Enter is not a convenience. *@
                     <div class="account-menu-panel" role="menu" data-command-source>
-                        <a class="menu-item" role="menuitem" asp-controller="Profile" asp-action="Index">
+                        <a class="menu-item" role="menuitem" href="/Profile">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 20c.6-3.7 3-6 6.5-6s5.9 2.3 6.5 6"/></svg>
                             Profile
                         </a>

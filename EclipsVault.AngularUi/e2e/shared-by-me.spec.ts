@@ -12,7 +12,12 @@ let recipientCookies: Awaited<ReturnType<BrowserContext['cookies']>> = [];
 let secretDetails = '';
 
 async function openAsIssuer(page: Page, path = '/Secrets/SharedByMe'): Promise<SharedByMe> {
-  const state = JSON.parse(await readFile('test-results/sessions-administrator.json', 'utf8')) as {
+  const state = JSON.parse(
+    await readFile(
+      `${process.env['E2E_TEST_RESULTS'] || 'test-results'}/sessions-administrator.json`,
+      'utf8',
+    ),
+  ) as {
     cookies: Awaited<ReturnType<BrowserContext['cookies']>>;
   };
   await page.context().addCookies(state.cookies);
