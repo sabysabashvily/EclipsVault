@@ -243,17 +243,39 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
             secretNames[secretId] = secret?.Name ?? "secret";
         }
 
-        Inject<SecretGrant>(context, entry => DescribeShareChange(entry, secretNames[entry.Entity.SecretId]));
+        var replaced = ReplacedExpiredShares(shares);
+        Inject<SecretGrant>(context, entry => DescribeShareChange(
+            entry, secretNames[entry.Entity.SecretId], replaced.Contains((entry.Entity.SecretId, entry.Entity.GranteeUserId))));
     }
 
-    private static AuditRow? DescribeShareChange(EntityEntry<SecretGrant> entry, string secretName)
+    /// <summary>
+    /// The (secret, recipient) pairs whose expired share is deleted and whose new share is added in
+    /// this save. Nobody revoked that expired share, so the pair is recorded as one share event.
+    /// </summary>
+    private HashSet<(Guid SecretId, Guid RecipientId)> ReplacedExpiredShares(List<EntityEntry<SecretGrant>> shares)
+    {
+        var now = _clock.GetUtcNow();
+        var added = shares
+            .Where(entry => entry.State == EntityState.Added)
+            .Select(entry => (entry.Entity.SecretId, entry.Entity.GranteeUserId));
+        return shares
+            .Where(entry => entry.State == EntityState.Deleted && !entry.Entity.IsActive(now))
+            .Select(entry => (entry.Entity.SecretId, entry.Entity.GranteeUserId))
+            .Intersect(added)
+            .ToHashSet();
+    }
+
+    private static AuditRow? DescribeShareChange(EntityEntry<SecretGrant> entry, string secretName, bool replacesExpiredShare)
     {
         var share = entry.Entity;
         return entry.State switch
         {
             EntityState.Added => new AuditRow(
                 AuditAction.SecretShared, nameof(Secret), share.SecretId, secretName,
-                $"Shared with '{share.GranteeUsername}'" + (share.ExpiresAtUtc is { } expiry ? $" until {expiry:u}" : "")),
+                $"Shared with '{share.GranteeUsername}'"
+                + (share.ExpiresAtUtc is { } expiry ? $" until {expiry:u}" : "")
+                + (replacesExpiredShare ? ", replacing an expired share" : "")),
+            EntityState.Deleted when replacesExpiredShare => null,
             EntityState.Deleted => new AuditRow(
                 AuditAction.SecretShareRevoked, nameof(Secret), share.SecretId, secretName,
                 $"Revoked access for '{share.GranteeUsername}'"),

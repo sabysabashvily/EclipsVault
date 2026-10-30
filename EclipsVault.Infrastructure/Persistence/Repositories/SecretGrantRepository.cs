@@ -11,10 +11,17 @@ public sealed class SecretGrantRepository : ISecretGrantRepository
 
     public SecretGrantRepository(EclipsVaultDbContext context) => _context = context;
 
-    public async Task AddAsync(SecretGrant grant, CancellationToken ct)
+    public Task<bool> AddAsync(SecretGrant grant, CancellationToken ct)
     {
         _context.SecretGrants.Add(grant);
-        await SaveShareChangeAsync(ct);
+        return SaveNewShareAsync(grant, replacedShareId: null, ct);
+    }
+
+    public Task<bool> ReplaceExpiredAsync(SecretGrant expired, SecretGrant grant, CancellationToken ct)
+    {
+        _context.SecretGrants.Remove(expired);
+        _context.SecretGrants.Add(grant);
+        return SaveNewShareAsync(grant, expired.Id, ct);
     }
 
     public Task<SecretGrant?> FindAsync(Guid grantId, CancellationToken ct)
@@ -48,6 +55,30 @@ public sealed class SecretGrantRepository : ISecretGrantRepository
         return true;
     }
 
+    private async Task<bool> SaveNewShareAsync(SecretGrant grant, Guid? replacedShareId, CancellationToken ct)
+    {
+        try
+        {
+            await SaveShareChangeAsync(ct);
+        }
+        catch (AuditWriteFailedException failure) when (failure.InnerException is DbUpdateException)
+        {
+            // The failed transaction has rolled back. Losing a race to another share for this
+            // recipient is a conflict, not an unavailable audit store; every other save failure,
+            // including one that leaves only the expired share, still fails closed.
+            if (!await _context.SecretGrants.AsNoTracking().AnyAsync(share => share.SecretId == grant.SecretId
+                    && share.GranteeUserId == grant.GranteeUserId
+                    && share.Id != replacedShareId, ct))
+            {
+                throw;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
     private async Task SaveShareChangeAsync(CancellationToken ct)
     {
         try
@@ -69,8 +100,8 @@ public sealed class SecretGrantRepository : ISecretGrantRepository
                            && g.SecretId == secretId
                            && (g.ExpiresAtUtc == null || g.ExpiresAtUtc > asOfUtc), ct);
 
-    public Task<bool> ExistsAsync(Guid userId, Guid secretId, CancellationToken ct)
-        => _context.SecretGrants.AsNoTracking().AnyAsync(g => g.GranteeUserId == userId && g.SecretId == secretId, ct);
+    public Task<SecretGrant?> FindForRecipientAsync(Guid userId, Guid secretId, CancellationToken ct)
+        => _context.SecretGrants.FirstOrDefaultAsync(g => g.GranteeUserId == userId && g.SecretId == secretId, ct);
 
     public async Task<IReadOnlyList<SecretGrant>> ListForSecretAsync(Guid secretId, CancellationToken ct)
         => await _context.SecretGrants

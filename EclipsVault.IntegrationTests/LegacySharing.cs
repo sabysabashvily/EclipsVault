@@ -7,7 +7,8 @@ namespace EclipsVault.IntegrationTests;
 
 internal static class LegacySharing
 {
-    public static async Task<string> CreateSecretAsync(HttpClient admin, string name, string value = "it-share-audit-value")
+    public static async Task<string> CreateSecretAsync(
+        HttpClient admin, string name, string value = "it-share-audit-value", string sensitivity = "Internal")
     {
         var page = await admin.GetStringAsync("/Secrets/Create");
         var response = await admin.PostAsync("/Secrets/Create", new FormUrlEncodedContent(new Dictionary<string, string>
@@ -17,7 +18,7 @@ internal static class LegacySharing
             ["Value"] = value,
             ["ProjectKey"] = "GLOBAL",
             ["Environment"] = "Development",
-            ["Sensitivity"] = "Internal",
+            ["Sensitivity"] = sensitivity,
         }));
         return response.Headers.Location?.OriginalString is { } details && details.StartsWith("/Secrets/Details/", StringComparison.Ordinal)
             ? details
@@ -55,5 +56,21 @@ internal static class LegacySharing
         var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
         var secretId = SecretIdOf(details);
         return await db.SecretGrants.AsNoTracking().SingleAsync(share => share.SecretId == secretId);
+    }
+
+    public static async Task<bool> HasAnyShareAsync(VaultFixture vault, string details)
+    {
+        using var scope = vault.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+        var secretId = SecretIdOf(details);
+        return await db.SecretGrants.AsNoTracking().AnyAsync(share => share.SecretId == secretId);
+    }
+
+    /// <summary>Moves a share's expiry into the past directly, since no page can make time pass.</summary>
+    public static async Task ExpireShareAsync(VaultFixture vault, Guid shareId)
+    {
+        using var scope = vault.Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().SecretGrants.Where(share => share.Id == shareId)
+            .ExecuteUpdateAsync(set => set.SetProperty(share => share.ExpiresAtUtc, DateTimeOffset.UtcNow.AddMinutes(-1)));
     }
 }
