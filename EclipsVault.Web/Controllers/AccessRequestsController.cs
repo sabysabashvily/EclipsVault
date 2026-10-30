@@ -67,16 +67,22 @@ public sealed class AccessRequestsController : VaultController
     }
 
     [HttpPost]
-    public async Task<IActionResult> Approve(Guid id, int ttlDays, string? note, CancellationToken ct)
+    public async Task<IActionResult> Approve(Guid id, int ttlDays, CancellationToken ct)
     {
         if (await AuthorizeReviewAsync(id, ct) is { } forbidden)
         {
             return forbidden;
         }
 
+        if (!ModelState.IsValid)
+        {
+            this.FlashError("Grant expiry must be between 0 and 3650 days.");
+            return RedirectToAction(nameof(Index));
+        }
+
         try
         {
-            if (await _requests.ApproveAsync(id, CurrentUsername(), ttlDays > 0 ? ttlDays : null, note, ct))
+            if (await _requests.ApproveAsync(id, ttlDays, ct))
             {
                 this.FlashSuccess("Request approved — a grant was created for the requester.");
             }
@@ -94,14 +100,14 @@ public sealed class AccessRequestsController : VaultController
     }
 
     [HttpPost]
-    public async Task<IActionResult> Reject(Guid id, string? note, CancellationToken ct)
+    public async Task<IActionResult> Reject(Guid id, CancellationToken ct)
     {
         if (await AuthorizeReviewAsync(id, ct) is { } forbidden)
         {
             return forbidden;
         }
 
-        if (await _requests.RejectAsync(id, CurrentUsername(), note, ct))
+        if (await _requests.RejectAsync(id, ct))
         {
             this.FlashInfo("Request rejected.");
         }
@@ -122,7 +128,7 @@ public sealed class AccessRequestsController : VaultController
         }
         else
         {
-            this.FlashError("That request could not be withdrawn.");
+            this.FlashError("That request is no longer pending.");
         }
 
         return RedirectToAction(nameof(Index));

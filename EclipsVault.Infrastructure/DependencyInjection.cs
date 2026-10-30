@@ -110,6 +110,7 @@ public static class DependencyInjection
         services.AddScoped<IPasskeyCredentialRepository, PasskeyCredentialRepository>();
         services.AddScoped<IMfaRecoveryCodeRepository, MfaRecoveryCodeRepository>();
         services.AddScoped<IAccessRequestRepository, AccessRequestRepository>();
+        services.AddScoped<IAccessRequestCommitter, AccessRequestCommitter>();
         services.AddScoped<IEmailLogRepository, EmailLogRepository>();
         services.AddScoped<ITrustedNetworkRepository, TrustedNetworkRepository>();
         services.AddScoped<IDynamicSecretRepository, DynamicSecretRepository>();

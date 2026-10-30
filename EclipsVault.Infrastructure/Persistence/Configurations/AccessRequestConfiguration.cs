@@ -18,7 +18,7 @@ public sealed class AccessRequestConfiguration : IEntityTypeConfiguration<Access
         builder.Property(r => r.DeniedReasons).HasMaxLength(2000);
         builder.Property(r => r.DecidedBy).HasMaxLength(64);
         builder.Property(r => r.DecisionNote).HasMaxLength(500);
-        builder.Property(r => r.Status).HasConversion<int>();
+        builder.Property(r => r.Status).HasConversion<int>().IsConcurrencyToken();
 
         builder.HasIndex(r => r.Status);
         builder.HasIndex(r => r.RequesterUserId);

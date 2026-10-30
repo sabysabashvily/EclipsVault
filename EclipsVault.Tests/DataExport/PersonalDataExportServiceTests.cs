@@ -87,8 +87,8 @@ public class PersonalDataExportServiceTests
         public Task<AccessRequestCreateResult> CreateAsync(Guid secretId, string secretName, string projectKey, Guid requesterUserId, string requesterUsername, string reason, string? deniedReasons, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<AccessRequestDto>> ListToReviewAsync(bool isAdmin, string reviewerProject, CancellationToken ct) => throw new NotSupportedException();
         public Task<AccessRequestDto?> GetAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
-        public Task<bool> ApproveAsync(Guid id, string reviewerUsername, int? ttlDays, string? note, CancellationToken ct) => throw new NotSupportedException();
-        public Task<bool> RejectAsync(Guid id, string reviewerUsername, string? note, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> ApproveAsync(Guid id, int expiresInDays, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> RejectAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task<bool> CancelAsync(Guid id, Guid requesterUserId, CancellationToken ct) => throw new NotSupportedException();
     }
 

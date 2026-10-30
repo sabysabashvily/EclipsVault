@@ -20,5 +20,5 @@ public interface IAccessRequestRepository
     /// <summary>Pending requests for one project (project-member queue).</summary>
     Task<IReadOnlyList<AccessRequest>> ListPendingForProjectAsync(string projectKey, CancellationToken ct);
 
-    Task UpdateAsync(AccessRequest request, CancellationToken ct);
+    Task<bool> UpdateAsync(AccessRequest request, CancellationToken ct);
 }

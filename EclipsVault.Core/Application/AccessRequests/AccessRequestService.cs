@@ -1,35 +1,35 @@
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Core.Domain.Exceptions;
 
 namespace EclipsVault.Core.Application.AccessRequests;
 
-/// <summary>
-/// Drives the access-request workflow. Approval delegates to <see cref="ISecretGrantService"/>,
-/// so an approved request becomes an ordinary grant governed by the same ABAC engine — the
-/// project boundary is crossed, but clearance, network, and time rules still apply.
-/// </summary>
 public sealed class AccessRequestService : IAccessRequestService
 {
     private const int MinReasonLength = 3;
     private const int MaxReasonLength = 500;
 
     private readonly IAccessRequestRepository _requests;
-    private readonly ISecretGrantService _grants;
+    private readonly ISecretGrantRepository _grants;
+    private readonly ISecretRepository _secrets;
+    private readonly IUserRepository _users;
+    private readonly IAccessRequestCommitter _committer;
+    private readonly IAuditContext _actor;
     private readonly INotificationService _notifications;
-    private readonly IAuditSink _audit;
     private readonly TimeProvider _clock;
 
     public AccessRequestService(
-        IAccessRequestRepository requests,
-        ISecretGrantService grants,
-        INotificationService notifications,
-        IAuditSink audit,
-        TimeProvider clock)
+        IAccessRequestRepository requests, ISecretGrantRepository grants, ISecretRepository secrets,
+        IUserRepository users, IAccessRequestCommitter committer, IAuditContext actor,
+        INotificationService notifications, TimeProvider clock)
     {
         _requests = requests;
         _grants = grants;
+        _secrets = secrets;
+        _users = users;
+        _committer = committer;
+        _actor = actor;
         _notifications = notifications;
-        _audit = audit;
         _clock = clock;
     }
 
@@ -68,7 +68,6 @@ public sealed class AccessRequestService : IAccessRequestService
         };
 
         await _requests.AddAsync(request, ct);
-        await AuditAsync(AuditAction.AccessRequested, request, $"Access to '{secretName}' requested", ct);
         return AccessRequestCreateResult.Ok;
     }
 
@@ -89,31 +88,51 @@ public sealed class AccessRequestService : IAccessRequestService
         return request is null ? null : Map(request);
     }
 
-    public async Task<bool> ApproveAsync(Guid id, string reviewerUsername, int? ttlDays, string? note, CancellationToken ct)
+    public async Task<bool> ApproveAsync(Guid id, int expiresInDays, CancellationToken ct)
     {
+        if (expiresInDays is < 0 or > 3650)
+        {
+            throw new SharingException("Grant expiry must be between 0 and 3650 days.");
+        }
+
         var request = await _requests.FindAsync(id, ct);
         if (request is null || request.Status != AccessRequestStatus.Pending)
         {
             return false;
         }
 
-        // Skip re-granting if a live grant already covers them; otherwise create it. A failure
-        // here (SharingException) propagates so the reviewer sees it and the request stays pending.
-        if (!await _grants.HasActiveGrantAsync(request.RequesterUserId, request.SecretId, ct))
+        var secret = await _secrets.FindAsync(request.SecretId, ct) ?? throw new SecretNotFoundException(request.SecretId);
+        var recipient = await _users.FindByIdAsync(request.RequesterUserId, ct)
+            ?? throw new SharingException("That requester account no longer exists.");
+        ShareRecipient.EnsureCanReceive(secret, recipient, _actor.UserId);
+
+        var now = _clock.GetUtcNow();
+        var existing = await _grants.FindForRecipientAsync(recipient.Id, secret.Id, ct);
+        var needsShare = existing is null || !existing.IsActive(now);
+        var share = needsShare ? new SecretGrant
         {
-            await _grants.GrantAsync(request.SecretId, request.RequesterUsername, ttlDays, ct);
+            Id = Guid.NewGuid(),
+            SecretId = secret.Id,
+            GranteeUserId = recipient.Id,
+            GranteeUsername = recipient.Username,
+            IssuerUserId = _actor.UserId,
+            GrantedBy = _actor.Username ?? "system",
+            CreatedAtUtc = now,
+            ExpiresAtUtc = expiresInDays > 0 ? now.AddDays(expiresInDays) : null,
+        } : null;
+
+        Decide(request, AccessRequestStatus.Approved, _actor.Username ?? "system");
+        if (!await _committer.ApproveAsync(request, share, needsShare ? existing : null, ct))
+        {
+            return false;
         }
 
-        Decide(request, AccessRequestStatus.Approved, reviewerUsername, note);
-        await _requests.UpdateAsync(request, ct);
-        await AuditAsync(AuditAction.AccessRequestApproved, request,
-            $"Access to '{request.SecretName}' approved for {request.RequesterUsername}", ct);
         await _notifications.NotifyAccessRequestDecidedAsync(
-            request.RequesterUserId, request.SecretName, approved: true, reviewerUsername, note, ct);
+            request.RequesterUserId, request.SecretName, approved: true, request.DecidedBy!, note: null, ct);
         return true;
     }
 
-    public async Task<bool> RejectAsync(Guid id, string reviewerUsername, string? note, CancellationToken ct)
+    public async Task<bool> RejectAsync(Guid id, CancellationToken ct)
     {
         var request = await _requests.FindAsync(id, ct);
         if (request is null || request.Status != AccessRequestStatus.Pending)
@@ -121,12 +140,14 @@ public sealed class AccessRequestService : IAccessRequestService
             return false;
         }
 
-        Decide(request, AccessRequestStatus.Rejected, reviewerUsername, note);
-        await _requests.UpdateAsync(request, ct);
-        await AuditAsync(AuditAction.AccessRequestRejected, request,
-            $"Access to '{request.SecretName}' rejected for {request.RequesterUsername}", ct);
+        Decide(request, AccessRequestStatus.Rejected, _actor.Username ?? "system");
+        if (!await _requests.UpdateAsync(request, ct))
+        {
+            return false;
+        }
+
         await _notifications.NotifyAccessRequestDecidedAsync(
-            request.RequesterUserId, request.SecretName, approved: false, reviewerUsername, note, ct);
+            request.RequesterUserId, request.SecretName, approved: false, request.DecidedBy!, note: null, ct);
         return true;
     }
 
@@ -138,29 +159,16 @@ public sealed class AccessRequestService : IAccessRequestService
             return false;
         }
 
-        Decide(request, AccessRequestStatus.Cancelled, request.RequesterUsername, null);
-        await _requests.UpdateAsync(request, ct);
-        await AuditAsync(AuditAction.AccessRequestCancelled, request, $"Request for '{request.SecretName}' withdrawn", ct);
-        return true;
+        Decide(request, AccessRequestStatus.Cancelled, request.RequesterUsername);
+        return await _requests.UpdateAsync(request, ct);
     }
 
-    private void Decide(AccessRequest request, AccessRequestStatus status, string by, string? note)
+    private void Decide(AccessRequest request, AccessRequestStatus status, string by)
     {
         request.Status = status;
         request.DecidedAtUtc = _clock.GetUtcNow();
         request.DecidedBy = by;
-        request.DecisionNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
     }
-
-    private Task AuditAsync(AuditAction action, AccessRequest request, string details, CancellationToken ct)
-        => _audit.WriteAsync(new AuditEntry
-        {
-            Action = action,
-            ResourceType = nameof(Secret),
-            ResourceId = request.SecretId,
-            ResourceName = request.SecretName,
-            Details = details
-        }, ct);
 
     private static AccessRequestDto Map(AccessRequest r) => new(
         r.Id, r.SecretId, r.SecretName, r.ProjectKey, r.RequesterUsername, r.Reason, r.DeniedReasons,

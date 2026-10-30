@@ -45,9 +45,9 @@ public interface IAccessRequestService
     Task<AccessRequestDto?> GetAsync(Guid id, CancellationToken ct);
 
     /// <summary>Approves a pending request, creating a grant for the requester. Returns false if it was not pending.</summary>
-    Task<bool> ApproveAsync(Guid id, string reviewerUsername, int? ttlDays, string? note, CancellationToken ct);
+    Task<bool> ApproveAsync(Guid id, int expiresInDays, CancellationToken ct);
 
-    Task<bool> RejectAsync(Guid id, string reviewerUsername, string? note, CancellationToken ct);
+    Task<bool> RejectAsync(Guid id, CancellationToken ct);
 
     /// <summary>Lets the original requester withdraw their own pending request.</summary>
     Task<bool> CancelAsync(Guid id, Guid requesterUserId, CancellationToken ct);

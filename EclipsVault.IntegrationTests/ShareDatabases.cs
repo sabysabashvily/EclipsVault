@@ -1,8 +1,11 @@
 using System.Security.Cryptography;
 using EclipsVault.Core.Application.Abstractions;
+using EclipsVault.Core.Application.AccessRequests;
+using EclipsVault.Core.Application.Notifications;
 using EclipsVault.Core.Application.Secrets;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Infrastructure.Notifications;
 using EclipsVault.Infrastructure.Persistence;
 using EclipsVault.Infrastructure.Persistence.Interceptors;
 using EclipsVault.Infrastructure.Persistence.Locking;
@@ -61,7 +64,12 @@ public abstract class ShareDatabases : IAsyncLifetime
         var shares = new SecretGrantService(
             new SecretGrantRepository(context), new SecretRepository(context), new UserRepository(context, TimeProvider.System),
             new Actor(issuer.Id, issuer.Username), TimeProvider.System);
-        return new ShareRequest(context, shares);
+        var notices = new NotificationService(new LoggingEmailSender(NullLogger<LoggingEmailSender>.Instance),
+            new EmailLogRepository(context), new UserRepository(context, TimeProvider.System), new NotificationOptions(false), TimeProvider.System);
+        var requests = new AccessRequestService(new AccessRequestRepository(context), new SecretGrantRepository(context),
+            new SecretRepository(context), new UserRepository(context, TimeProvider.System), new AccessRequestCommitter(context),
+            new Actor(issuer.Id, issuer.Username), notices, TimeProvider.System);
+        return new ShareRequest(context, shares, requests);
     }
 
     /// <summary>An Internal secret in one project and an issuer in it, with a recipient from another project.</summary>
@@ -165,11 +173,13 @@ public abstract class ShareDatabases : IAsyncLifetime
 }
 
 /// <summary>One request's context and the vault's own share service built on it.</summary>
-public sealed class ShareRequest(EclipsVaultDbContext context, ISecretGrantService shares) : IAsyncDisposable
+public sealed class ShareRequest(EclipsVaultDbContext context, ISecretGrantService shares, IAccessRequestService requests) : IAsyncDisposable
 {
     public EclipsVaultDbContext Context { get; } = context;
 
     public ISecretGrantService Shares { get; } = shares;
+
+    public IAccessRequestService Requests { get; } = requests;
 
     public ValueTask DisposeAsync() => Context.DisposeAsync();
 }

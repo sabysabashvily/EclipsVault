@@ -32,6 +32,15 @@ public sealed class SmtpCapture : IAsyncDisposable
             message.GetProperty("To").EnumerateArray().Any(to => to.GetProperty("Address").GetString() == address));
     }
 
+    public async Task<bool> HasDecisionForAsync(string address)
+    {
+        using var client = new HttpClient { BaseAddress = new Uri($"http://{Host}:{_container.GetMappedPublicPort(8025)}") };
+        var result = await client.GetFromJsonAsync<JsonElement>("/api/v1/messages");
+        return result.GetProperty("messages").EnumerateArray().Any(message =>
+            message.GetProperty("Subject").GetString() is "Your access request was approved" or "Your access request was declined"
+            && message.GetProperty("To").EnumerateArray().Any(to => to.GetProperty("Address").GetString() == address));
+    }
+
     public async Task<string> CodeForAsync(string address)
     {
         using var client = new HttpClient { BaseAddress = new Uri($"http://{Host}:{_container.GetMappedPublicPort(8025)}") };

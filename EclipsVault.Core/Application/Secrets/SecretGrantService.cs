@@ -55,16 +55,7 @@ public sealed class SecretGrantService : ISecretGrantService
         var grantee = await _users.FindByUsernameOrEmailAsync(granteeUsernameOrEmail.Trim(), ct)
                       ?? throw new SharingException($"No user found for '{granteeUsernameOrEmail}'.");
 
-        if (grantee.Id == _actor.UserId)
-        {
-            throw new SharingException("You already have access — you cannot share a secret with yourself.");
-        }
-
-        // A share lifts only the project rule, so it cannot help a recipient the clearance rule denies.
-        if ((int)grantee.Clearance < (int)secret.Sensitivity)
-        {
-            throw new SharingException("That account's clearance is below this secret's sensitivity, so a share would not let them open it.");
-        }
+        ShareRecipient.EnsureCanReceive(secret, grantee, _actor.UserId);
 
         var now = _clock.GetUtcNow();
         var existing = await _grants.FindForRecipientAsync(grantee.Id, secretId, ct);

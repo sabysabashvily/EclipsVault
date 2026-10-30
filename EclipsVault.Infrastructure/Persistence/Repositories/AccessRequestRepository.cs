@@ -1,5 +1,6 @@
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Core.Domain.Exceptions;
 using Microsoft.EntityFrameworkCore;
 
 namespace EclipsVault.Infrastructure.Persistence.Repositories;
@@ -13,7 +14,14 @@ public sealed class AccessRequestRepository : IAccessRequestRepository
     public async Task AddAsync(AccessRequest request, CancellationToken ct)
     {
         _context.AccessRequests.Add(request);
-        await _context.SaveChangesAsync(ct);
+        try
+        {
+            await _context.SaveChangesAsync(ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            throw new AuditWriteFailedException("The access request and its audit row could not be persisted.", ex);
+        }
     }
 
     public Task<AccessRequest?> FindAsync(Guid id, CancellationToken ct)
@@ -41,9 +49,6 @@ public sealed class AccessRequestRepository : IAccessRequestRepository
             .OrderByDescending(r => r.CreatedAtUtc)
             .ToListAsync(ct);
 
-    public async Task UpdateAsync(AccessRequest request, CancellationToken ct)
-    {
-        _context.AccessRequests.Update(request);
-        await _context.SaveChangesAsync(ct);
-    }
+    public Task<bool> UpdateAsync(AccessRequest request, CancellationToken ct)
+        => new AccessRequestCommitter(_context).SaveDecisionAsync(request, share: null, expiredShare: null, ct);
 }

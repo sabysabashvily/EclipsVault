@@ -154,6 +154,7 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
         }
 
         Inject<Secret>(context, DescribeSecretChange);
+        Inject<AccessRequest>(context, DescribeAccessRequestChange);
         Inject<TrustedNetwork>(context, DescribeTrustedNetworkChange);
         Inject<DynamicSecretLease>(context, DescribeLeaseChange);
         InjectOperationEvents(context);
@@ -280,6 +281,32 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
                 AuditAction.SecretShareRevoked, nameof(Secret), share.SecretId, secretName,
                 $"Revoked access for '{share.GranteeUsername}'"),
             _ => null
+        };
+    }
+
+    private static AuditRow? DescribeAccessRequestChange(EntityEntry<AccessRequest> entry)
+    {
+        var request = entry.Entity;
+        if (entry.State == EntityState.Added)
+        {
+            return new AuditRow(AuditAction.AccessRequested, nameof(Secret), request.SecretId, request.SecretName,
+                $"Access to '{request.SecretName}' requested");
+        }
+
+        if (entry.State != EntityState.Modified || !entry.Property(r => r.Status).IsModified)
+        {
+            return null;
+        }
+
+        return request.Status switch
+        {
+            AccessRequestStatus.Approved => new AuditRow(AuditAction.AccessRequestApproved, nameof(Secret), request.SecretId, request.SecretName,
+                $"Access to '{request.SecretName}' approved for {request.RequesterUsername}"),
+            AccessRequestStatus.Rejected => new AuditRow(AuditAction.AccessRequestRejected, nameof(Secret), request.SecretId, request.SecretName,
+                $"Access to '{request.SecretName}' rejected for {request.RequesterUsername}"),
+            AccessRequestStatus.Cancelled => new AuditRow(AuditAction.AccessRequestCancelled, nameof(Secret), request.SecretId, request.SecretName,
+                $"Request for '{request.SecretName}' withdrawn"),
+            _ => null,
         };
     }
 
