@@ -109,17 +109,7 @@ public sealed class AccessRequestService : IAccessRequestService
         var now = _clock.GetUtcNow();
         var existing = await _grants.FindForRecipientAsync(recipient.Id, secret.Id, ct);
         var needsShare = existing is null || !existing.IsActive(now);
-        var share = needsShare ? new SecretGrant
-        {
-            Id = Guid.NewGuid(),
-            SecretId = secret.Id,
-            GranteeUserId = recipient.Id,
-            GranteeUsername = recipient.Username,
-            IssuerUserId = _actor.UserId,
-            GrantedBy = _actor.Username ?? "system",
-            CreatedAtUtc = now,
-            ExpiresAtUtc = expiresInDays > 0 ? now.AddDays(expiresInDays) : null,
-        } : null;
+        var share = needsShare ? ShareRecipient.NewShare(secret, recipient, _actor, now, expiresInDays) : null;
 
         Decide(request, AccessRequestStatus.Approved, _actor.Username ?? "system");
         if (!await _committer.ApproveAsync(request, share, needsShare ? existing : null, ct))

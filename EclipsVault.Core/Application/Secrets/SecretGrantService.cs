@@ -64,17 +64,7 @@ public sealed class SecretGrantService : ISecretGrantService
             throw new SharingException($"'{grantee.Username}' already has a grant on this secret.");
         }
 
-        var grant = new SecretGrant
-        {
-            Id = Guid.NewGuid(),
-            SecretId = secretId,
-            GranteeUserId = grantee.Id,
-            GranteeUsername = grantee.Username,
-            IssuerUserId = _actor.UserId,
-            GrantedBy = _actor.Username ?? "system",
-            CreatedAtUtc = now,
-            ExpiresAtUtc = ttlDays is > 0 ? now.AddDays(ttlDays.Value) : null
-        };
+        var grant = ShareRecipient.NewShare(secret, grantee, _actor, now, ttlDays);
 
         var saved = existing is null
             ? await _grants.AddAsync(grant, ct)

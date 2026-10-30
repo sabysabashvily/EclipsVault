@@ -1,3 +1,4 @@
+using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Exceptions;
 
@@ -5,6 +6,19 @@ namespace EclipsVault.Core.Application.Secrets;
 
 public static class ShareRecipient
 {
+    public static SecretGrant NewShare(Secret secret, User recipient, IAuditContext issuer, DateTimeOffset now, int? expiresInDays)
+        => new()
+        {
+            Id = Guid.NewGuid(),
+            SecretId = secret.Id,
+            GranteeUserId = recipient.Id,
+            GranteeUsername = recipient.Username,
+            IssuerUserId = issuer.UserId,
+            GrantedBy = issuer.Username ?? "system",
+            CreatedAtUtc = now,
+            ExpiresAtUtc = expiresInDays is > 0 ? now.AddDays(expiresInDays.Value) : null,
+        };
+
     public static void EnsureCanReceive(Secret secret, User recipient, Guid? issuerId)
     {
         if (recipient.Id == issuerId)

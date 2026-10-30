@@ -389,7 +389,6 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
     private static bool IsShredTransition(EntityEntry<Secret> entry)
         => entry.Property(s => s.IsShredded) is { OriginalValue: false, CurrentValue: true };
 
-    /// <summary>True when <paramref name="propertyName"/> is the only modified property on the entry.</summary>
     private static bool OnlyChanged(EntityEntry entry, string propertyName)
     {
         var modified = entry.Properties.Where(p => p.IsModified).Select(p => p.Metadata.Name).ToList();

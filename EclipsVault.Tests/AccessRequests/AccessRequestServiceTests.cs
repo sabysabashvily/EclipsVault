@@ -28,13 +28,13 @@ public sealed class AccessRequestServiceTests
 
     [Theory]
     [InlineData(0, null)]
-    [InlineData(3650, 3650)]
-    public async Task Expiry_at_each_bound_is_committed_with_the_expected_share_lifetime(int days, int? expectedDays)
+    [InlineData(3650, 3650.0)]
+    public async Task Expiry_at_each_bound_is_committed_with_the_expected_share_lifetime(int days, double? expectedDays)
     {
         await using var setup = await ApprovalSetup.CreateAsync();
         Assert.True(await setup.Service.ApproveAsync(setup.Request.Id, days, default));
         var share = await setup.Context.SecretGrants.SingleAsync();
-        Assert.Equal(expectedDays is null ? null : TimeSpan.FromDays(expectedDays.Value), share.ExpiresAtUtc - share.CreatedAtUtc);
+        Assert.Equal(expectedDays, (share.ExpiresAtUtc - share.CreatedAtUtc)?.TotalDays);
     }
 
     [Fact]
