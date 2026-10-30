@@ -12,10 +12,6 @@ namespace EclipsVault.IntegrationTests;
 /// </summary>
 public abstract class ConcurrentShareTests(ShareDatabases databases)
 {
-    private const string Shared = "shared";
-
-    private const string Conflict = "They already have a share on this secret.";
-
     [Fact]
     public async Task Two_shares_to_one_recipient_at_once_make_one_share_and_a_conflict()
     {
@@ -23,15 +19,17 @@ public abstract class ConcurrentShareTests(ShareDatabases databases)
         await using var first = databases.NewRequest(issuer);
         await using var second = databases.NewRequest(issuer);
 
-        Task<string> firstOutcome, secondOutcome;
+        Task<SharingException?> firstRefusal, secondRefusal;
         await using (var chain = await databases.HoldAuditChainAsync())
         {
-            firstOutcome = OutcomeOf(first.Shares.GrantAsync(secret.Id, recipient.Username, ttlDays: null, default));
-            secondOutcome = OutcomeOf(second.Shares.GrantAsync(secret.Id, recipient.Username, ttlDays: null, default));
+            firstRefusal = RefusalOf(first.Shares.GrantAsync(secret.Id, recipient.Username, ttlDays: null, default));
+            secondRefusal = RefusalOf(second.Shares.GrantAsync(secret.Id, recipient.Username, ttlDays: null, default));
             await chain.WaitForQueuedWritersAsync(2);
         }
 
-        Assert.Equal([Conflict, Shared], (await Task.WhenAll(firstOutcome, secondOutcome)).Order(StringComparer.Ordinal));
+        var refusals = await Task.WhenAll(firstRefusal, secondRefusal);
+        Assert.Single(refusals, refusal => refusal is null);
+        Assert.Equal("They already have a share on this secret.", Assert.Single(refusals, refusal => refusal is not null)!.Message);
         await using var check = databases.NewRequest(issuer);
         var share = await check.Context.SecretGrants.SingleAsync(stored => stored.SecretId == secret.Id);
         Assert.Equal(recipient.Id, share.GranteeUserId);
@@ -46,15 +44,17 @@ public abstract class ConcurrentShareTests(ShareDatabases databases)
         await using var first = databases.NewRequest(issuer);
         await using var second = databases.NewRequest(issuer);
 
-        Task<string> firstOutcome, secondOutcome;
+        Task<SharingException?> firstRefusal, secondRefusal;
         await using (var chain = await databases.HoldAuditChainAsync())
         {
-            firstOutcome = OutcomeOf(first.Shares.GrantAsync(secret.Id, recipient.Username, ttlDays: null, default));
-            secondOutcome = OutcomeOf(second.Shares.GrantAsync(secret.Id, recipient.Username, ttlDays: null, default));
+            firstRefusal = RefusalOf(first.Shares.GrantAsync(secret.Id, recipient.Username, ttlDays: null, default));
+            secondRefusal = RefusalOf(second.Shares.GrantAsync(secret.Id, recipient.Username, ttlDays: null, default));
             await chain.WaitForQueuedWritersAsync(2);
         }
 
-        Assert.Equal([Conflict, Shared], (await Task.WhenAll(firstOutcome, secondOutcome)).Order(StringComparer.Ordinal));
+        var refusals = await Task.WhenAll(firstRefusal, secondRefusal);
+        Assert.Single(refusals, refusal => refusal is null);
+        Assert.Equal("They already have a share on this secret.", Assert.Single(refusals, refusal => refusal is not null)!.Message);
         await using var check = databases.NewRequest(issuer);
         var share = await check.Context.SecretGrants.SingleAsync(stored => stored.SecretId == secret.Id);
         Assert.NotEqual(expired.Id, share.Id);
@@ -62,17 +62,17 @@ public abstract class ConcurrentShareTests(ShareDatabases databases)
         Assert.Equal([AuditAction.SecretCreated, AuditAction.SecretShared, AuditAction.SecretShared], await ActionsOnAsync(check, secret.Id));
     }
 
-    /// <summary>"shared", or the refusal the request answered. Any other failure fails the test.</summary>
-    private static async Task<string> OutcomeOf(Task share)
+    /// <summary>Null when the share was saved, or the refusal the request answered. Any other failure fails the test.</summary>
+    private static async Task<SharingException?> RefusalOf(Task share)
     {
         try
         {
             await share;
-            return Shared;
+            return null;
         }
         catch (SharingException refused)
         {
-            return refused.Message;
+            return refused;
         }
     }
 

@@ -9,6 +9,7 @@ using EclipsVault.Infrastructure.Persistence.Locking;
 using EclipsVault.Infrastructure.Persistence.Repositories;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -53,10 +54,10 @@ public abstract class ShareDatabases : IAsyncLifetime
 
     public Task DisposeAsync() => StopServerAsync();
 
-    /// <summary>One request signed in as <paramref name="issuer"/>.</summary>
-    public ShareRequest NewRequest(User issuer)
+    /// <summary>One request signed in as <paramref name="issuer"/>, its database calls passing through <paramref name="fault"/>.</summary>
+    public ShareRequest NewRequest(User issuer, IInterceptor? fault = null)
     {
-        var context = NewContext(new Actor(issuer.Id, issuer.Username));
+        var context = NewContext(new Actor(issuer.Id, issuer.Username), fault);
         var shares = new SecretGrantService(
             new SecretGrantRepository(context), new SecretRepository(context), new UserRepository(context, TimeProvider.System),
             new Actor(issuer.Id, issuer.Username), TimeProvider.System);
@@ -106,6 +107,21 @@ public abstract class ShareDatabases : IAsyncLifetime
     }
 
     /// <summary>
+    /// Saves a share straight to its table, as a request that saved first leaves it. It has no audit
+    /// row: an audited save would wait for the audit chain, which the caller's request may hold.
+    /// </summary>
+    public async Task<Guid> SaveShareDirectlyAsync(Secret secret, User issuer, User recipient)
+    {
+        var shareId = Guid.NewGuid();
+        await using var context = NewContext(new Actor(null, null));
+        await context.Database.ExecuteSqlAsync($"""
+            INSERT INTO "SecretGrants" ("Id", "SecretId", "GranteeUserId", "GranteeUsername", "IssuerUserId", "GrantedBy", "CreatedAtUtc")
+            VALUES ({shareId}, {secret.Id}, {recipient.Id}, {recipient.Username}, {issuer.Id}, {issuer.Username}, {DateTimeOffset.UtcNow})
+            """);
+        return shareId;
+    }
+
+    /// <summary>
     /// Holds the audit chain until disposed. Every share save takes the chain after its checks, so
     /// requests started meanwhile have all checked before any of them saves.
     /// </summary>
@@ -117,12 +133,16 @@ public abstract class ShareDatabases : IAsyncLifetime
         return new AuditChainHold(context, transaction, QueuedChainWritersSql);
     }
 
-    private EclipsVaultDbContext NewContext(Actor actor)
+    private EclipsVaultDbContext NewContext(Actor actor, IInterceptor? fault = null)
     {
         var interceptor = new AuditSaveChangesInterceptor(
             actor, _chain!, TimeProvider.System, NullLogger<AuditSaveChangesInterceptor>.Instance);
         var options = new DbContextOptionsBuilder<EclipsVaultDbContext>();
         options.UseVaultDatabase(Provider, ConnectionString()).AddInterceptors(interceptor);
+        if (fault is not null)
+        {
+            options.AddInterceptors(fault);
+        }
         return new EclipsVaultDbContext(options.Options);
     }
 

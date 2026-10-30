@@ -201,7 +201,7 @@ public class SecretGrantServiceTests
 
         await service.GrantAsync(expired.SecretId, "carol", ttlDays: 7, CancellationToken.None);
 
-        Assert.Same(expired, grants.Replaced);
+        Assert.Equal(expired.Id, grants.Replaced?.Id);
         var added = Assert.IsType<SecretGrant>(grants.Added);
         Assert.NotEqual(expired.Id, added.Id);
         Assert.Equal(Carol.Id, added.GranteeUserId);
