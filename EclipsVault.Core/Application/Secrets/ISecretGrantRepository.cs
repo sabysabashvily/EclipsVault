@@ -29,7 +29,10 @@ public interface ISecretGrantRepository
 
     Task<IReadOnlyList<SecretGrant>> ListForSecretAsync(Guid secretId, CancellationToken ct);
 
-    /// <summary>Active grants for a user, joined to their still-accessible (non-shredded, non-expired) secrets.</summary>
+    /// <summary>
+    /// Active grants for a user, joined to their still-accessible secrets: not shredded, not expired,
+    /// and not decoys, which the Secrets list never enumerates either.
+    /// </summary>
     Task<IReadOnlyList<SharedSecretDto>> ListSharedWithUserAsync(Guid userId, DateTimeOffset asOfUtc, CancellationToken ct);
 
     /// <summary>Active shares issued by one account, joined to the (non-shredded) secrets they cover.</summary>

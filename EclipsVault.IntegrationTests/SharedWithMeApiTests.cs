@@ -33,7 +33,7 @@ public sealed class SharedWithMeApiTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task The_recipients_shares_are_returned_by_name_as_page_data()
+    public async Task The_recipients_shares_are_returned_in_name_order_with_every_field()
     {
         var issuer = await vault.SignInNewAccountAsync("it-swm-shape-issuer", IPAddress.Parse("10.104.0.1"), ClearanceLevel.TopSecret);
         var recipient = await vault.SignInNewAccountAsync("it-swm-shape", IPAddress.Parse("10.104.0.2"), ClearanceLevel.Secret, "IT-SWM-SHAPE");
@@ -143,6 +143,27 @@ public sealed class SharedWithMeApiTests(VaultFixture vault)
         }
 
         Assert.Equal(["it-swm-lifetime-live"], await ListedNamesAsync(recipient));
+    }
+
+    [Fact]
+    public async Task A_share_on_a_decoy_secret_is_left_out()
+    {
+        var recipient = await vault.SignInNewAccountAsync("it-swm-decoy", IPAddress.Parse("10.104.0.11"), project: "IT-SWM-DECOY");
+        var admin = await vault.AdminClientAsync();
+        var decoy = await LegacySharing.CreateSecretAsync(admin, "it-swm-decoy-flagged");
+        var genuine = await LegacySharing.CreateSecretAsync(admin, "it-swm-decoy-genuine");
+        await LegacySharing.ShareAsync(admin, decoy, "it-swm-decoy");
+        await LegacySharing.ShareAsync(admin, genuine, "it-swm-decoy");
+
+        // No screen makes a decoy: an operator flags one in the database, and its shares remain.
+        using (var scope = vault.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+            (await db.Secrets.SingleAsync(secret => secret.Id == LegacySharing.SecretIdOf(decoy))).IsHoneyToken = true;
+            await db.SaveChangesAsync();
+        }
+
+        Assert.Equal(["it-swm-decoy-genuine"], await ListedNamesAsync(recipient));
     }
 
     [Fact]

@@ -122,6 +122,7 @@ public sealed class SecretGrantRepository : ISecretGrantRepository
             where g.GranteeUserId == userId
                   && (g.ExpiresAtUtc == null || g.ExpiresAtUtc > asOfUtc)
                   && !s.IsShredded
+                  && !s.IsHoneyToken
                   && (s.ExpiresAtUtc == null || s.ExpiresAtUtc > asOfUtc)
             orderby s.Name
             select new SharedSecretDto(s.Id, s.Name, s.ProjectKey, s.Environment, s.Sensitivity, g.GrantedBy, g.ExpiresAtUtc))
