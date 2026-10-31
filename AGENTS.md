@@ -30,6 +30,8 @@ file, tests and commit messages included, and the code-review Standards axis che
   including interceptor rows and standalone group commits. Tests restore writes in `finally`.
   This proves real transaction rollback without replacing services or modifying `Program`.
   The separate host protects ordinary HTTP tests from the failure mode and makes the suite slower.
+  `ClosedProductionWindowFixture` is a third such host, configured so the production window never
+  opens; the ordinary vault follows the real clock, so only this host can prove the window rule.
 - A model change needs a migration in both sets: SQL Server (`EclipsVault.Infrastructure`) and PostgreSQL
   (`EclipsVault.Migrations.Postgres`). CI checks both; the exact `dotnet ef` commands are in
   `.github/workflows/ci.yml`. For Postgres the startup project is `EclipsVault.Web`.

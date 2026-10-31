@@ -28,6 +28,14 @@ export class SecretsList {
     return row.getByRole('cell').nth(0);
   }
 
+  projectOf(row: Locator) {
+    return row.getByRole('cell').nth(1);
+  }
+
+  expiresOf(row: Locator) {
+    return row.getByRole('cell').nth(4);
+  }
+
   environmentBadgeOf(row: Locator, environment: string) {
     return row.getByRole('cell').nth(2).getByText(environment, { exact: true });
   }

@@ -68,9 +68,8 @@ internal static class LegacySharing
     }
 
     /// <summary>
-    /// Stores a share from the administrator directly, for shares no page issues now: one to a recipient
-    /// whose clearance is too low, which sharing used to accept, or one on a secret its issuer cannot
-    /// open at this moment.
+    /// Stores a share from the administrator directly, for shares the Share panel refuses to make: one
+    /// to a recipient whose clearance is too low, or one on a secret its issuer cannot open right now.
     /// </summary>
     public static async Task InsertShareAsync(VaultFixture vault, string details, string recipient)
     {

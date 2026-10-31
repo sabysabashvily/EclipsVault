@@ -169,17 +169,18 @@ test('after an issuer shares, the recipient lists it under the Legacy columns an
   await expect(shared.rows).toHaveCount(2);
   await expect(shared.nameOf(shared.rows.first())).toHaveText('E2e_Shared_With_Me');
   await expect(shared.nameOf(shared.rows.last())).toHaveText('E2e_Shared_With_Me_Expiring');
-  for (const name of ['E2e_Shared_With_Me', 'E2e_Shared_With_Me_Expiring']) {
-    const row = shared.secret(name);
-    await expect(shared.cellsOf(row).nth(1)).toHaveText('GLOBAL');
-    await expect(shared.environmentBadgeOf(row, 'Development')).toBeVisible();
-    await expect(shared.sensitivityBadgeOf(row, 'Internal')).toBeVisible();
-    await expect(shared.cellsOf(row).nth(4)).toHaveText('vault-admin');
-  }
-  await expect(shared.accessUntilOf(shared.secret('E2e_Shared_With_Me'))).toHaveText('no expiry');
-  await expect(shared.accessUntilOf(shared.secret('E2e_Shared_With_Me_Expiring'))).toHaveText(
-    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
-  );
+  const withoutExpiry = shared.secret('E2e_Shared_With_Me');
+  await expect(shared.projectOf(withoutExpiry)).toHaveText('GLOBAL');
+  await expect(shared.environmentBadgeOf(withoutExpiry, 'Development')).toBeVisible();
+  await expect(shared.sensitivityBadgeOf(withoutExpiry, 'Internal')).toBeVisible();
+  await expect(shared.sharedByOf(withoutExpiry)).toHaveText('vault-admin');
+  await expect(shared.accessUntilOf(withoutExpiry)).toHaveText('no expiry');
+  const expiring = shared.secret('E2e_Shared_With_Me_Expiring');
+  await expect(shared.projectOf(expiring)).toHaveText('GLOBAL');
+  await expect(shared.environmentBadgeOf(expiring, 'Development')).toBeVisible();
+  await expect(shared.sensitivityBadgeOf(expiring, 'Internal')).toBeVisible();
+  await expect(shared.sharedByOf(expiring)).toHaveText('vault-admin');
+  await expect(shared.accessUntilOf(expiring)).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
   await expect(recipient.getByText(underCleared, { exact: true })).toHaveCount(0);
 
   await shared.openOf(shared.secret('E2e_Shared_With_Me')).click();
@@ -199,11 +200,17 @@ for (const theme of ['dark', 'light']) {
     await page.context().addCookies(recipientCookies);
     await legacy.open();
     const legacyRow = legacy.secret('E2e_Shared_With_Me');
+    // The removed Legacy page used the Secrets list's own table classes; its muted cells are the
+    // Expires (UTC) column's.
     const expected = {
       heading: await lookOf(legacy.heading),
       introduction: await lookOf(legacy.introduction),
+      table: await lookOf(page.getByRole('table')),
       column: await lookOf(legacy.columns.first()),
       name: await lookOf(legacy.nameOf(legacyRow)),
+      project: await lookOf(legacy.projectOf(legacyRow)),
+      sharedBy: await lookOf(legacy.expiresOf(legacyRow)),
+      accessUntil: await lookOf(legacy.expiresOf(legacyRow)),
       environment: await lookOf(legacy.environmentBadgeOf(legacyRow, 'Development')),
       sensitivity: await lookOf(legacy.sensitivityBadgeOf(legacyRow, 'Internal')),
       open: await lookOf(legacy.openOf(legacyRow)),
@@ -215,8 +222,12 @@ for (const theme of ['dark', 'light']) {
     expect({
       heading: await lookOf(shared.heading),
       introduction: await lookOf(shared.introduction),
+      table: await lookOf(page.getByRole('table')),
       column: await lookOf(shared.columns.first()),
       name: await lookOf(shared.nameOf(row)),
+      project: await lookOf(shared.projectOf(row)),
+      sharedBy: await lookOf(shared.sharedByOf(row)),
+      accessUntil: await lookOf(shared.accessUntilOf(row)),
       environment: await lookOf(shared.environmentBadgeOf(row, 'Development')),
       sensitivity: await lookOf(shared.sensitivityBadgeOf(row, 'Internal')),
       open: await lookOf(shared.openOf(row)),
@@ -238,9 +249,7 @@ test('the keyboard reaches a row and opens its Legacy Details page', async ({ pa
   ).toBeVisible();
 });
 
-test('Shared with me is served as the titled Angular document, bookmarks in any case', async ({
-  page,
-}) => {
+test('Shared with me is served as the titled Angular document', async ({ page }) => {
   await page.context().addCookies(recipientCookies);
   const response = await page.goto('/Secrets/SharedWithMe');
   await expect(new SharedWithMe(page).heading).toBeVisible();
@@ -248,7 +257,10 @@ test('Shared with me is served as the titled Angular document, bookmarks in any 
   expect(response?.headers()['content-security-policy']).toContain(
     "require-trusted-types-for 'script'",
   );
-  await page.goto('/sEcReTs/sHaReDwItHmE');
+});
+
+test('a mixed-case Shared with me bookmark serves the titled Angular page', async ({ page }) => {
+  await openAsRecipient(page, '/sEcReTs/sHaReDwItHmE');
   await expect(new SharedWithMe(page).rows).toHaveCount(2);
   await expect(page).toHaveTitle('Shared with me — EclipsVault');
 });
@@ -275,7 +287,7 @@ test('the palette opens Shared with me without a document load', async ({ page }
   expect(documents).toEqual([]);
 });
 
-test('the Legacy sidebar and palette load Shared with me into Angular', async ({ page }) => {
+test('the Legacy sidebar loads Shared with me into Angular', async ({ page }) => {
   await openAsRecipient(page, '/Secrets');
   const documents = recordDocuments(page);
   await page.getByText('Sharing', { exact: true }).click();
@@ -283,8 +295,11 @@ test('the Legacy sidebar and palette load Shared with me into Angular', async ({
   await expect(new SharedWithMe(page).rows).toHaveCount(2);
   await expect(page).toHaveTitle('Shared with me — EclipsVault');
   expect(documents).toEqual(['/Secrets/SharedWithMe']);
-  await page.goto('/Secrets');
-  documents.length = 0;
+});
+
+test('the Legacy palette loads Shared with me into Angular', async ({ page }) => {
+  await openAsRecipient(page, '/Secrets');
+  const documents = recordDocuments(page);
   await openPalette(page);
   await page.getByRole('combobox').fill('Shared with me');
   await page.getByRole('option', { name: /Shared with me/ }).click();

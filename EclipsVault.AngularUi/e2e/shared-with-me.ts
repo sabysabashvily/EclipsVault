@@ -50,12 +50,12 @@ export class SharedWithMe {
   }
 
   // Cells have no accessible name of their own; the header order places them.
-  cellsOf(row: Locator) {
-    return row.getByRole('cell');
-  }
-
   nameOf(row: Locator) {
     return row.getByRole('cell').nth(0);
+  }
+
+  projectOf(row: Locator) {
+    return row.getByRole('cell').nth(1);
   }
 
   environmentBadgeOf(row: Locator, environment: string) {
@@ -64,6 +64,10 @@ export class SharedWithMe {
 
   sensitivityBadgeOf(row: Locator, sensitivity: string) {
     return row.getByRole('cell').nth(3).getByText(sensitivity, { exact: true });
+  }
+
+  sharedByOf(row: Locator) {
+    return row.getByRole('cell').nth(4);
   }
 
   accessUntilOf(row: Locator) {
