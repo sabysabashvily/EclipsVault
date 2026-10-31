@@ -44,7 +44,7 @@
 {
     <section class="panel narrow-left">
         <div class="panel-header"><h2>Request access</h2></div>
-        @if (Model.RequestRefusal is { } refusal)
+        @if (Model.RequestRefusalMessage is { } refusal)
         {
             <p class="muted">@refusal</p>
         }

@@ -126,7 +126,32 @@ public sealed class AccessRequestFilingTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task The_Denied_page_offers_the_form_with_the_new_help_text_when_a_share_would_help()
+    public async Task The_Denied_page_trips_a_honey_token_instead_of_answering_for_it()
+    {
+        // Tripping blocks the requester's address range and ends their sessions. The range is this test's own.
+        var requester = await vault.SignInNewAccountAsync(
+            "it-denied-decoy", IPAddress.Parse("100.99.98.10"), ClearanceLevel.Elevated, "IT-FILING");
+        var secretId = await ConfidentialSecretAsync("it-denied-decoy-secret");
+        using (var scope = vault.Services.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().Secrets.Where(secret => secret.Id == secretId)
+                .ExecuteUpdateAsync(set => set.SetProperty(secret => secret.IsHoneyToken, true));
+        }
+        // Kept before the request, whose answer clears the cookie from this browser.
+        var sessionCookie = requester.SessionCookie;
+        Assert.NotNull(sessionCookie);
+        var before = await AuditTrail.HeadAsync(vault);
+
+        var response = await requester.Client.GetAsync($"/Account/Denied?secretId={secretId}");
+
+        Assert.Equal("/Account/Login", response.Headers.Location?.OriginalString);
+        Assert.Equal([AuditAction.HoneyTokenTripped], (await AuditTrail.RowsAfterAsync(vault, before)).Select(row => row.Action));
+        var sameSessionElsewhere = vault.CreateSession(sessionCookie, IPAddress.Parse("100.98.97.10"));
+        Assert.Equal("/Account/Login", (await sameSessionElsewhere.Client.GetAsync("/AccessRequests")).Headers.Location?.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task The_Denied_page_offers_the_request_form_when_a_share_would_help()
     {
         var requester = await vault.SignInNewAccountAsync(
             "it-denied-eligible", IPAddress.Parse("203.0.113.216"), ClearanceLevel.Elevated, "IT-FILING");

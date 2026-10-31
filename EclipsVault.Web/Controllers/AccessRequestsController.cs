@@ -100,6 +100,10 @@ public sealed class AccessRequestsController : VaultController
         {
             this.FlashError(ex.Message);
         }
+        catch (SecretNotFoundException)
+        {
+            this.FlashError("That secret no longer exists.");
+        }
 
         return RedirectToAction(nameof(Index));
     }

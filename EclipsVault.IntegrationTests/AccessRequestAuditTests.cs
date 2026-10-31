@@ -163,30 +163,61 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task Approval_a_share_could_no_longer_help_is_refused_with_its_reason_and_rejection_still_works()
+    public async Task Approval_is_refused_with_its_reason_when_a_share_could_no_longer_help()
     {
         var reviewer = await vault.AdminClientAsync();
         await vault.SignInNewAccountAsync("it-request-existing-168", IPAddress.Parse("198.51.100.168"), project: "IT-REQUESTERS");
         var details = await LegacySharing.CreateSecretAsync(reviewer, "it-request-existing-168");
         var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-request-existing-168");
         await LegacySharing.ShareAsync(reviewer, details, "it-request-existing-168");
-        var token = await LegacyAccessRequests.TokenAsync(reviewer);
         var before = await AuditTrail.HeadAsync(vault);
 
-        await LegacyAccessRequests.PostAsync(reviewer, "Approve", token, pending.Id);
+        await LegacyAccessRequests.PostAsync(reviewer, "Approve", await LegacyAccessRequests.TokenAsync(reviewer), pending.Id);
 
         Assert.Contains(
             "A share would not help: the requester's project, clearance or an active share already covers this secret.",
             WebUtility.HtmlDecode(await reviewer.GetStringAsync("/AccessRequests")));
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
+        Assert.Equal(AccessRequestStatus.Pending, await StatusOfAsync(pending.Id));
+    }
 
-        await LegacyAccessRequests.PostAsync(reviewer, "Reject", token, pending.Id);
+    [Fact]
+    public async Task Rejection_decides_a_request_a_share_could_no_longer_help()
+    {
+        var reviewer = await vault.AdminClientAsync();
+        await vault.SignInNewAccountAsync("it-request-existing-241", IPAddress.Parse("198.51.100.241"), project: "IT-REQUESTERS");
+        var details = await LegacySharing.CreateSecretAsync(reviewer, "it-request-existing-241");
+        var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-request-existing-241");
+        await LegacySharing.ShareAsync(reviewer, details, "it-request-existing-241");
+        var before = await AuditTrail.HeadAsync(vault);
+
+        await LegacyAccessRequests.PostAsync(reviewer, "Reject", await LegacyAccessRequests.TokenAsync(reviewer), pending.Id);
 
         var row = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before));
         Assert.Equal(AuditAction.AccessRequestRejected, row.Action);
-        using var scope = vault.Services.CreateScope();
-        Assert.Equal(AccessRequestStatus.Rejected, (await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().AccessRequests
-            .SingleAsync(request => request.Id == pending.Id)).Status);
+        Assert.Equal(AccessRequestStatus.Rejected, await StatusOfAsync(pending.Id));
+    }
+
+    [Fact]
+    public async Task Approval_is_refused_when_the_secret_has_expired()
+    {
+        var reviewer = await vault.AdminClientAsync();
+        await vault.SignInNewAccountAsync("it-request-expired-secret", IPAddress.Parse("198.51.100.242"), project: "IT-REQUESTERS");
+        var details = await LegacySharing.CreateSecretAsync(reviewer, "it-request-expired-secret");
+        var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-request-expired-secret");
+        using (var scope = vault.Services.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().Secrets.Where(secret => secret.Id == pending.SecretId)
+                .ExecuteUpdateAsync(set => set.SetProperty(secret => secret.ExpiresAtUtc, DateTimeOffset.UtcNow.AddMinutes(-1)));
+        }
+        var before = await AuditTrail.HeadAsync(vault);
+
+        await LegacyAccessRequests.PostAsync(reviewer, "Approve", await LegacyAccessRequests.TokenAsync(reviewer), pending.Id);
+
+        Assert.Contains("That secret no longer exists.", await reviewer.GetStringAsync("/AccessRequests"));
+        Assert.False(await LegacySharing.HasAnyShareAsync(vault, details));
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
+        Assert.Equal(AccessRequestStatus.Pending, await StatusOfAsync(pending.Id));
     }
 
     [Fact]
@@ -229,5 +260,12 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         using var scope = vault.Services.CreateScope();
         Assert.Equal(AccessRequestStatus.Pending, (await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().AccessRequests.SingleAsync(r => r.Id == pending.Id)).Status);
+    }
+
+    private async Task<AccessRequestStatus> StatusOfAsync(Guid requestId)
+    {
+        using var scope = vault.Services.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().AccessRequests.AsNoTracking()
+            .Where(request => request.Id == requestId).Select(request => request.Status).SingleAsync();
     }
 }

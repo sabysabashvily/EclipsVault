@@ -37,6 +37,7 @@ public sealed class AccessRequestRepository : IAccessRequestRepository
             .OrderByDescending(r => r.CreatedAtUtc)
             .ToListAsync(ct);
 
+    // Sorted after loading: the projection builds its DTOs in memory, so SQL cannot order by their fields.
     public async Task<IReadOnlyList<AccessRequestForReview>> ListPendingForReviewAsync(CancellationToken ct)
         => (await ForReview(_context.AccessRequests.Where(r => r.Status == AccessRequestStatus.Pending)).ToListAsync(ct))
             .OrderByDescending(r => r.Request.CreatedAtUtc)
@@ -45,6 +46,7 @@ public sealed class AccessRequestRepository : IAccessRequestRepository
     public Task<AccessRequestForReview?> FindForReviewAsync(Guid id, CancellationToken ct)
         => ForReview(_context.AccessRequests.Where(r => r.Id == id)).SingleOrDefaultAsync(ct);
 
+    // The secret is projected column by column so its ciphertext is never read.
     private IQueryable<AccessRequestForReview> ForReview(IQueryable<AccessRequest> requests)
         => from request in requests.AsNoTracking()
            join secret in _context.Secrets.AsNoTracking() on request.SecretId equals secret.Id

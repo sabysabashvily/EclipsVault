@@ -71,7 +71,7 @@ public sealed class AccessDeniedViewModel
     public Guid? SecretId { get; set; }
 
     /// <summary>Why a request for <see cref="SecretId"/> would be refused, shown instead of the form; null when it would be filed.</summary>
-    public string? RequestRefusal { get; set; }
+    public string? RequestRefusalMessage { get; set; }
 }
 
 public sealed class EnrollTotpViewModel

@@ -1,6 +1,6 @@
 namespace EclipsVault.Core.Domain.Enums;
 
-/// <summary>Why an access request may not be filed, or, for the first two, approved.</summary>
+/// <summary>Why an access request may not be filed. Approval refuses for ShareCannotHelp and AlreadyAbleToOpen too.</summary>
 public enum AccessRequestRefusal
 {
     /// <summary>The requester's clearance is below the secret's sensitivity, and a share lifts only the project rule.</summary>

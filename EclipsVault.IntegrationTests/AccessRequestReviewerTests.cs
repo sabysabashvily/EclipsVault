@@ -46,7 +46,7 @@ public sealed class AccessRequestReviewerTests(VaultFixture vault)
     {
         var requester = await vault.SignInNewAccountAsync("it-review-own", IPAddress.Parse("10.99.0.3"), ClearanceLevel.TopSecret);
         var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-review-secret-own", sensitivity: "Confidential");
-        // Filed before the rule refused requests from accounts that can already open the secret.
+        // Inserted directly: filing refuses an account that can already open the secret, but such a request can exist.
         var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-review-own");
         var before = await AuditTrail.HeadAsync(vault);
 

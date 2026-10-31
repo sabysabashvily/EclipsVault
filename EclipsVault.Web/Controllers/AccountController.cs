@@ -430,16 +430,16 @@ public sealed class AccountController : Controller
                 ? reasons.Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 : [],
             SecretId = secretId,
-            RequestRefusal = secretId is { } id ? await RequestRefusalAsync(requests, id, ct) : null,
+            RequestRefusalMessage = secretId is { } id ? await RequestRefusalMessageAsync(requests, id, ct) : null,
         });
 
     /// <summary>Why the Request access form is not offered for this secret, or null when it is.</summary>
-    private async Task<string?> RequestRefusalAsync(IAccessRequestService requests, Guid secretId, CancellationToken ct)
+    private async Task<string?> RequestRefusalMessageAsync(IAccessRequestService requests, Guid secretId, CancellationToken ct)
     {
         try
         {
             return await requests.FilingRefusalAsync(secretId, User.GetUserId(), ct) is { } refusal
-                ? AccessRequestRules.ToRequester(refusal)
+                ? AccessRequestRules.ExplainToRequester(refusal)
                 : null;
         }
         catch (SecretNotFoundException)

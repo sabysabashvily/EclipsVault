@@ -39,11 +39,11 @@ public sealed class AccessRequestService : IAccessRequestService
     }
 
     public async Task<AccessRequestRefusal?> FilingRefusalAsync(Guid secretId, Guid requesterUserId, CancellationToken ct)
-        => await FilingRefusalAsync(await LiveSecretAsync(secretId, ct), requesterUserId, ct);
+        => await FilingRefusalAsync(await RequestableSecretAsync(secretId, ct), requesterUserId, ct);
 
     public async Task<SecretSummaryDto> SecretToRequestAsync(Guid secretId, CancellationToken ct)
     {
-        var secret = await LiveSecretAsync(secretId, ct);
+        var secret = await RequestableSecretAsync(secretId, ct);
         return new SecretSummaryDto(
             secret.Id, secret.Name, secret.ProjectKey, secret.Environment, secret.Sensitivity, secret.CreatedAtUtc, secret.ExpiresAtUtc);
     }
@@ -52,17 +52,10 @@ public sealed class AccessRequestService : IAccessRequestService
         Guid secretId, Guid requesterUserId, string requesterUsername, string reason,
         IReadOnlyList<string> denialReasons, CancellationToken ct)
     {
-        var secret = await LiveSecretAsync(secretId, ct);
-        if (secret.IsHoneyToken)
-        {
-            // Deliberately before any rule: the trap fires no matter who asks or why.
-            await _intrusion.TriggerHoneyTokenAsync(secret.Id, secret.Name, ct);
-            throw new HoneyTokenTrippedException(secret.Id, secret.Name);
-        }
-
+        var secret = await RequestableSecretAsync(secretId, ct);
         if (await FilingRefusalAsync(secret, requesterUserId, ct) is { } refusal)
         {
-            return AccessRequestCreateResult.Failed(AccessRequestRules.ToRequester(refusal));
+            return AccessRequestCreateResult.Failed(AccessRequestRules.ExplainToRequester(refusal));
         }
 
         reason = reason.Trim();
@@ -116,14 +109,14 @@ public sealed class AccessRequestService : IAccessRequestService
             return false;
         }
 
-        var secret = await _secrets.FindAsync(request.SecretId, ct) ?? throw new SecretNotFoundException(request.SecretId);
+        var secret = await LiveSecretAsync(request.SecretId, ct);
         var recipient = await _users.FindByIdAsync(request.RequesterUserId, ct)
             ?? throw new SharingException("That requester account no longer exists.");
         var now = _clock.GetUtcNow();
         var existing = await _grants.FindForRecipientAsync(recipient.Id, secret.Id, ct);
         if (AccessRequestRules.ShareRefusal(SubjectOf(recipient), AttributesOf(secret), existing?.IsActive(now) == true) is { } refusal)
         {
-            throw new AccessRequestIneligibleException(refusal, AccessRequestRules.ToReviewer(refusal));
+            throw new AccessRequestIneligibleException(refusal, AccessRequestRules.ExplainToReviewer(refusal));
         }
 
         ShareRecipient.EnsureCanReceive(secret, recipient, _actor.UserId);
@@ -176,6 +169,22 @@ public sealed class AccessRequestService : IAccessRequestService
         request.Status = status;
         request.DecidedAtUtc = _clock.GetUtcNow();
         request.DecidedBy = by;
+    }
+
+    /// <summary>
+    /// A live secret that is not a decoy. A decoy trips its trap here, before any rule runs, so no lookup by
+    /// id can tell a decoy from a real secret without setting it off.
+    /// </summary>
+    private async Task<Secret> RequestableSecretAsync(Guid secretId, CancellationToken ct)
+    {
+        var secret = await LiveSecretAsync(secretId, ct);
+        if (secret.IsHoneyToken)
+        {
+            await _intrusion.TriggerHoneyTokenAsync(secret.Id, secret.Name, ct);
+            throw new HoneyTokenTrippedException(secret.Id, secret.Name);
+        }
+
+        return secret;
     }
 
     /// <summary>A secret anyone could still open: not shredded and not expired.</summary>

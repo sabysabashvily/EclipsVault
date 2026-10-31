@@ -31,7 +31,7 @@ public static class AccessRequestRules
         return null;
     }
 
-    public static string ToRequester(AccessRequestRefusal refusal) => refusal switch
+    public static string ExplainToRequester(AccessRequestRefusal refusal) => refusal switch
     {
         AccessRequestRefusal.ShareCannotHelp => "A share would not help: your clearance is below this secret's sensitivity.",
         AccessRequestRefusal.AlreadyAbleToOpen => "A share would not help: your project, clearance or an active share already covers this secret.",
@@ -39,7 +39,7 @@ public static class AccessRequestRules
         _ => throw new ArgumentOutOfRangeException(nameof(refusal), refusal, null),
     };
 
-    public static string ToReviewer(AccessRequestRefusal refusal) => refusal switch
+    public static string ExplainToReviewer(AccessRequestRefusal refusal) => refusal switch
     {
         AccessRequestRefusal.ShareCannotHelp => "A share would not help: the requester's clearance is below this secret's sensitivity.",
         AccessRequestRefusal.AlreadyAbleToOpen => "A share would not help: the requester's project, clearance or an active share already covers this secret.",
