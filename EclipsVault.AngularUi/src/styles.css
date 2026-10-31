@@ -1042,6 +1042,22 @@ kbd {
   letter-spacing: 0;
 }
 
+.badge.env-development {
+  color: var(--ok);
+  border-color: transparent;
+  background: var(--ok-soft);
+}
+.badge.env-staging {
+  color: var(--warn);
+  border-color: transparent;
+  background: var(--warn-soft);
+}
+.badge.env-production {
+  color: var(--danger);
+  border-color: transparent;
+  background: var(--danger-soft);
+}
+
 /* Classification badges. The glow rises with the classification, so the most dangerous thing on
    a page is the thing your eye lands on first — on a screen full of pills that all look alike,
    "which of these is the production root key?" should not need reading. Restrained on purpose:
@@ -1067,6 +1083,9 @@ kbd {
   background: var(--danger-soft);
   box-shadow: 0 0 12px rgba(255, 69, 58, 0.16);
   font-weight: 650;
+}
+.badge.env-production {
+  box-shadow: 0 0 10px rgba(255, 69, 58, 0.12);
 }
 
 /* ---- Overlays ----------------------------------------------------------------- */
