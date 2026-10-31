@@ -62,7 +62,7 @@ const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)
         icon: 'access-group',
         children: [
           link('access', 'My access', '/Access', 'access', true),
-          link('access-requests', 'Access requests', '/AccessRequests'),
+          link('access-requests', 'Access requests', '/AccessRequests', 'access-requests', true),
         ],
       },
       {

@@ -42,12 +42,9 @@ public sealed class AccessRequestFilingTests(VaultFixture vault)
     }
 
     [Theory]
-    [InlineData("under-cleared", ClearanceLevel.Standard, "IT-FILING", "203.0.113.211",
-        "A share would not help: your clearance is below this secret's sensitivity.")]
-    [InlineData("project-member", ClearanceLevel.Elevated, "GLOBAL", "203.0.113.212",
-        "A share would not help: your project, clearance or an active share already covers this secret.")]
-    [InlineData("administrator", ClearanceLevel.TopSecret, "IT-FILING", "203.0.113.213",
-        "A share would not help: your project, clearance or an active share already covers this secret.")]
+    [InlineData("under-cleared", ClearanceLevel.Standard, "IT-FILING", "203.0.113.211", "share_cannot_help")]
+    [InlineData("project-member", ClearanceLevel.Elevated, "GLOBAL", "203.0.113.212", "already_able_to_open")]
+    [InlineData("administrator", ClearanceLevel.TopSecret, "IT-FILING", "203.0.113.213", "already_able_to_open")]
     public async Task A_request_a_share_could_not_help_is_refused_with_its_reason_and_records_nothing(
         string role, ClearanceLevel clearance, string project, string address, string refusal)
     {
@@ -55,11 +52,9 @@ public sealed class AccessRequestFilingTests(VaultFixture vault)
         var secretId = await ConfidentialSecretAsync($"it-filing-secret-{role}");
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await LegacyAccessRequests.PostAsync(
-            requester.Client, "Create", await LegacyAccessRequests.TokenAsync(requester.Client), secretId);
+        var response = await LegacyAccessRequests.FileAsync(requester.Client, await LegacyAccessRequests.TokenAsync(requester.Client), secretId);
 
-        Assert.Equal("/AccessRequests", response.Headers.Location?.OriginalString);
-        Assert.Contains(refusal, WebUtility.HtmlDecode(await requester.Client.GetStringAsync("/AccessRequests")));
+        Assert.Equal($"/AccessRequests?refused={refusal}", response.Headers.Location?.OriginalString);
         Assert.False(await HasRequestAsync(secretId));
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
@@ -74,12 +69,10 @@ public sealed class AccessRequestFilingTests(VaultFixture vault)
         await LegacySharing.ShareAsync(issuer.Client, details, "it-filing-share-holder");
         var before = await AuditTrail.HeadAsync(vault);
 
-        await LegacyAccessRequests.PostAsync(
-            requester.Client, "Create", await LegacyAccessRequests.TokenAsync(requester.Client), LegacySharing.SecretIdOf(details));
+        var response = await LegacyAccessRequests.FileAsync(
+            requester.Client, await LegacyAccessRequests.TokenAsync(requester.Client), LegacySharing.SecretIdOf(details));
 
-        Assert.Contains(
-            "A share would not help: your project, clearance or an active share already covers this secret.",
-            WebUtility.HtmlDecode(await requester.Client.GetStringAsync("/AccessRequests")));
+        Assert.Equal("/AccessRequests?refused=already_able_to_open", response.Headers.Location?.OriginalString);
         Assert.False(await HasRequestAsync(LegacySharing.SecretIdOf(details)));
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
@@ -93,10 +86,10 @@ public sealed class AccessRequestFilingTests(VaultFixture vault)
         await LegacyAccessRequests.PendingAsync(vault, details, "it-filing-pending");
         var before = await AuditTrail.HeadAsync(vault);
 
-        await LegacyAccessRequests.PostAsync(
-            requester.Client, "Create", await LegacyAccessRequests.TokenAsync(requester.Client), LegacySharing.SecretIdOf(details));
+        var response = await LegacyAccessRequests.FileAsync(
+            requester.Client, await LegacyAccessRequests.TokenAsync(requester.Client), LegacySharing.SecretIdOf(details));
 
-        Assert.Contains("You already have a pending request for this secret.", await requester.Client.GetStringAsync("/AccessRequests"));
+        Assert.Equal("/AccessRequests?refused=already_pending", response.Headers.Location?.OriginalString);
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
@@ -115,7 +108,7 @@ public sealed class AccessRequestFilingTests(VaultFixture vault)
         var token = await LegacyAccessRequests.TokenAsync(requester.Client);
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await LegacyAccessRequests.PostAsync(requester.Client, "Create", token, secretId);
+        var response = await LegacyAccessRequests.FileAsync(requester.Client, token, secretId);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Equal([AuditAction.HoneyTokenTripped], (await AuditTrail.RowsAfterAsync(vault, before)).Select(row => row.Action));

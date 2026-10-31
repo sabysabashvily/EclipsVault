@@ -58,6 +58,10 @@ public static class AngularUiRoutes
 
         // Shared with me
         "/Secrets/SharedWithMe",
+
+        // Access requests
+        "/AccessRequests",
+        "/AccessRequests/Index",
     ];
 
     /// <summary>

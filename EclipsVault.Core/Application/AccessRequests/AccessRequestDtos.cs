@@ -28,12 +28,10 @@ public sealed record AccessRequestDto(
 /// <summary>A request with its secret as it is now, whose attributes decide who may review the request.</summary>
 public sealed record AccessRequestForReview(AccessRequestDto Request, SecretSummaryDto Secret);
 
-/// <summary>Outcome of filing a request: whether it was created, and if not, why.</summary>
-public sealed record AccessRequestCreateResult(bool Created, string? Error)
+/// <summary>Outcome of filing a request: created when <see cref="Refusal"/> is null, otherwise why not.</summary>
+public sealed record AccessRequestCreateResult(AccessRequestRefusal? Refusal)
 {
-    public static readonly AccessRequestCreateResult Ok = new(true, null);
-
-    public static AccessRequestCreateResult Failed(string error) => new(false, error);
+    public static readonly AccessRequestCreateResult Ok = new(Refusal: null);
 }
 
 /// <summary>

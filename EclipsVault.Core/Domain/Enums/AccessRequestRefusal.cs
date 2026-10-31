@@ -10,4 +10,7 @@ public enum AccessRequestRefusal
     AlreadyAbleToOpen,
 
     AlreadyPending,
+
+    /// <summary>The reason given is too short for a reviewer to decide on.</summary>
+    ReasonTooShort,
 }

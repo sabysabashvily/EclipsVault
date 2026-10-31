@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -11,19 +12,19 @@ namespace EclipsVault.IntegrationTests;
 public sealed class AccessRequestAuditFailureTests(AuditFailureFixture failure)
 {
     [Theory]
-    [InlineData("Approve", "152")]
-    [InlineData("Reject", "153")]
-    public async Task A_failed_review_audit_keeps_the_request_share_trail_and_email_unchanged(string action, string addressSuffix)
+    [InlineData("approve", "152")]
+    [InlineData("reject", "153")]
+    public async Task A_failed_review_audit_keeps_the_request_share_trail_and_email_unchanged(string decision, string addressSuffix)
     {
         var (pending, reviewer, _, _) = await PendingAsync(addressSuffix);
-        await AssertRollbackAsync(pending, reviewer, action, expectedShareId: null);
+        await AssertRollbackAsync(pending, reviewer, decision, expectedShareId: null);
     }
 
     [Fact]
     public async Task A_failed_withdrawal_audit_keeps_the_request_share_trail_and_email_unchanged()
     {
         var (pending, _, requester, _) = await PendingAsync("154");
-        await AssertRollbackAsync(pending, requester.Client, "Cancel", expectedShareId: null);
+        await AssertRollbackAsync(pending, requester.Client, "withdraw", expectedShareId: null);
     }
 
     [Fact]
@@ -33,20 +34,21 @@ public sealed class AccessRequestAuditFailureTests(AuditFailureFixture failure)
         await LegacySharing.ShareAsync(reviewer, details, pending.RequesterUsername);
         var expired = await LegacySharing.ShareOfAsync(failure.Vault, details);
         await LegacySharing.ExpireShareAsync(failure.Vault, expired.Id);
-        await AssertRollbackAsync(pending, reviewer, "Approve", expired.Id);
+        await AssertRollbackAsync(pending, reviewer, "approve", expired.Id);
         Assert.False((await LegacySharing.ShareOfAsync(failure.Vault, details)).IsActive(DateTimeOffset.UtcNow));
     }
 
-    private async Task AssertRollbackAsync(AccessRequest pending, HttpClient caller, string action, Guid? expectedShareId)
+    private async Task AssertRollbackAsync(AccessRequest pending, HttpClient caller, string decision, Guid? expectedShareId)
     {
         var vault = failure.Vault;
-        var token = await LegacyAccessRequests.TokenAsync(caller);
+        var token = await UiApiRequest.AntiforgeryTokenAsync(caller);
         var before = await AuditTrail.HeadAsync(vault);
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await LegacyAccessRequests.PostAsync(caller, action, token, pending.Id);
-            Assert.Equal("/Home/Error?code=503", response.Headers.Location?.OriginalString);
+            var response = await AccessRequestsApi.DecideAsync(caller, token, pending.Id, decision,
+                decision == "approve" ? JsonContent.Create(new { expiresInDays = 0 }) : null);
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
             using var scope = vault.Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
             var kept = await db.AccessRequests.SingleAsync(request => request.SecretId == pending.SecretId);
@@ -79,7 +81,7 @@ public sealed class AccessRequestAuditFailureTests(AuditFailureFixture failure)
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await LegacyAccessRequests.PostAsync(requester.Client, "Create", token, secretId);
+            var response = await LegacyAccessRequests.FileAsync(requester.Client, token, secretId);
             Assert.Equal("/Home/Error?code=503", response.Headers.Location?.OriginalString);
             using var scope = vault.Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();

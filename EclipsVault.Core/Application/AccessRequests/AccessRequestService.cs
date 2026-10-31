@@ -55,13 +55,13 @@ public sealed class AccessRequestService : IAccessRequestService
         var secret = await LiveSecretTrippingDecoysAsync(secretId, ct);
         if (await FilingRefusalAsync(secret, requesterUserId, ct) is { } refusal)
         {
-            return AccessRequestCreateResult.Failed(AccessRequestRules.ExplainToRequester(refusal));
+            return new AccessRequestCreateResult(refusal);
         }
 
         reason = reason.Trim();
         if (reason.Length < MinReasonLength)
         {
-            return AccessRequestCreateResult.Failed("Add a short reason so a reviewer can decide.");
+            return new AccessRequestCreateResult(AccessRequestRefusal.ReasonTooShort);
         }
 
         if (reason.Length > MaxReasonLength)

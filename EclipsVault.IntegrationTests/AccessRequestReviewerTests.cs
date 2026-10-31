@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
@@ -9,15 +10,13 @@ using Xunit;
 namespace EclipsVault.IntegrationTests;
 
 /// <summary>
-/// Who may see and decide an access request, through Legacy's Access requests page. Every secret here is
+/// Who may see and decide an access request, through the Access requests UI API. Every secret here is
 /// Confidential in GLOBAL, so only a trusted address (10.0.0.0/8) with Elevated clearance or above opens
 /// it. Requesters belong to another project, so each request is one a share could help.
 /// </summary>
 [Collection(VaultCollection.Name)]
 public sealed class AccessRequestReviewerTests(VaultFixture vault)
 {
-    private const string NotFound = "That request was not found.";
-
     // An administrator always holds TopSecret clearance, so no administrator is below a secret's
     // sensitivity; an off-network administrator is the administrator who fails the access check.
     [Theory]
@@ -33,11 +32,11 @@ public sealed class AccessRequestReviewerTests(VaultFixture vault)
         var pending = await PendingRequestAsync(secretName, $"it-review-requester-{role}", requesterAddress);
         var before = await AuditTrail.HeadAsync(vault);
 
-        Assert.DoesNotContain(secretName, await LegacyAccessRequests.ToReviewPanelAsync(reviewer.Client));
-        await AssertRefusedAsNotFoundAsync(reviewer.Client, "Approve", pending.Id);
-        await AssertRefusedAsNotFoundAsync(reviewer.Client, "Reject", pending.Id);
+        Assert.DoesNotContain(secretName, await AccessRequestsApi.ToReviewAsync(reviewer.Client));
+        await AssertRequestNotFoundAsync(await AccessRequestsApi.ApproveAsync(reviewer.Client, pending.Id));
+        await AssertRequestNotFoundAsync(await AccessRequestsApi.RejectAsync(reviewer.Client, pending.Id));
 
-        Assert.Equal(AccessRequestStatus.Pending, await StatusOfAsync(pending.Id));
+        Assert.Equal(AccessRequestStatus.Pending, await AccessRequestsApi.StatusOfAsync(vault, pending.Id));
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
@@ -50,11 +49,11 @@ public sealed class AccessRequestReviewerTests(VaultFixture vault)
         var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-review-own");
         var before = await AuditTrail.HeadAsync(vault);
 
-        Assert.DoesNotContain("it-review-secret-own", await LegacyAccessRequests.ToReviewPanelAsync(requester.Client));
-        await AssertRefusedAsNotFoundAsync(requester.Client, "Approve", pending.Id);
-        await AssertRefusedAsNotFoundAsync(requester.Client, "Reject", pending.Id);
+        Assert.DoesNotContain("it-review-secret-own", await AccessRequestsApi.ToReviewAsync(requester.Client));
+        await AssertRequestNotFoundAsync(await AccessRequestsApi.ApproveAsync(requester.Client, pending.Id));
+        await AssertRequestNotFoundAsync(await AccessRequestsApi.RejectAsync(requester.Client, pending.Id));
 
-        Assert.Equal(AccessRequestStatus.Pending, await StatusOfAsync(pending.Id));
+        Assert.Equal(AccessRequestStatus.Pending, await AccessRequestsApi.StatusOfAsync(vault, pending.Id));
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
@@ -68,11 +67,11 @@ public sealed class AccessRequestReviewerTests(VaultFixture vault)
         var secretName = $"it-review-secret-qualified-{role}";
         var pending = await PendingRequestAsync(secretName, $"it-review-requester-qualified-{role}", requesterAddress);
 
-        Assert.Contains(secretName, await LegacyAccessRequests.ToReviewPanelAsync(reviewer.Client));
-        var response = await LegacyAccessRequests.PostAsync(reviewer.Client, "Approve", await LegacyAccessRequests.TokenAsync(reviewer.Client), pending.Id);
+        Assert.Contains(secretName, await AccessRequestsApi.ToReviewAsync(reviewer.Client));
+        var response = await AccessRequestsApi.ApproveAsync(reviewer.Client, pending.Id);
 
-        Assert.Equal("/AccessRequests", response.Headers.Location?.OriginalString);
-        Assert.Equal(AccessRequestStatus.Approved, await StatusOfAsync(pending.Id));
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal(AccessRequestStatus.Approved, await AccessRequestsApi.StatusOfAsync(vault, pending.Id));
         using var scope = vault.Services.CreateScope();
         var share = await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().SecretGrants.AsNoTracking()
             .SingleAsync(share => share.SecretId == pending.SecretId);
@@ -80,24 +79,40 @@ public sealed class AccessRequestReviewerTests(VaultFixture vault)
         Assert.Equal($"it-review-qualified-{role}", share.GrantedBy);
     }
 
-    [Fact]
-    public async Task A_request_the_reviewer_cannot_decide_is_refused_exactly_like_an_unknown_one()
+    [Theory]
+    [InlineData("approve", "10.99.1.1", "203.0.113.221")]
+    [InlineData("reject", "10.99.1.2", "203.0.113.222")]
+    [InlineData("withdraw", "10.99.1.3", "203.0.113.223")]
+    public async Task A_request_the_caller_cannot_decide_or_withdraw_is_refused_exactly_like_an_unknown_one(
+        string decision, string callerAddress, string requesterAddress)
     {
-        var reviewer = await vault.SignInNewAccountAsync(
-            "it-review-identical", IPAddress.Parse("10.99.0.6"), ClearanceLevel.Secret, "IT-REVIEW-ELSEWHERE");
-        var pending = await PendingRequestAsync("it-review-secret-identical", "it-review-requester-identical", "203.0.113.209");
-        var token = await LegacyAccessRequests.TokenAsync(reviewer.Client);
+        var caller = await vault.SignInNewAccountAsync(
+            $"it-review-identical-{decision}", IPAddress.Parse(callerAddress), ClearanceLevel.Secret, "IT-REVIEW-ELSEWHERE");
+        var pending = await PendingRequestAsync(
+            $"it-review-secret-identical-{decision}", $"it-review-requester-identical-{decision}", requesterAddress);
         var before = await AuditTrail.HeadAsync(vault);
 
-        var undecidable = await LegacyAccessRequests.PostAsync(reviewer.Client, "Approve", token, pending.Id);
-        var undecidablePage = await reviewer.Client.GetStringAsync("/AccessRequests");
-        var unknown = await LegacyAccessRequests.PostAsync(reviewer.Client, "Approve", token, Guid.NewGuid());
-        var unknownPage = await reviewer.Client.GetStringAsync("/AccessRequests");
+        var undecidable = await DecideAsync(caller, decision, pending.Id);
+        var unknown = await DecideAsync(caller, decision, Guid.NewGuid());
 
-        Assert.Equal(unknown.StatusCode, undecidable.StatusCode);
-        Assert.Equal(unknown.Headers.Location?.OriginalString, undecidable.Headers.Location?.OriginalString);
-        Assert.Contains(NotFound, undecidablePage);
-        Assert.Contains(NotFound, unknownPage);
+        await AssertRequestNotFoundAsync(undecidable);
+        await AssertRequestNotFoundAsync(unknown);
+        Assert.Equal(await unknown.Content.ReadAsStringAsync(), await undecidable.Content.ReadAsStringAsync());
+        Assert.Equal(AccessRequestStatus.Pending, await AccessRequestsApi.StatusOfAsync(vault, pending.Id));
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
+    }
+
+    [Fact]
+    public async Task Even_a_qualified_reviewer_cannot_withdraw_someone_elses_request()
+    {
+        var reviewer = await vault.SignInNewAccountAsync("it-review-withdraw-other", IPAddress.Parse("10.99.0.8"), ClearanceLevel.TopSecret);
+        var pending = await PendingRequestAsync("it-review-secret-withdraw-other", "it-review-requester-withdraw-other", "203.0.113.230");
+        Assert.Contains("it-review-secret-withdraw-other", await AccessRequestsApi.ToReviewAsync(reviewer.Client));
+        var before = await AuditTrail.HeadAsync(vault);
+
+        await AssertRequestNotFoundAsync(await AccessRequestsApi.WithdrawAsync(reviewer.Client, pending.Id));
+
+        Assert.Equal(AccessRequestStatus.Pending, await AccessRequestsApi.StatusOfAsync(vault, pending.Id));
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
@@ -108,19 +123,17 @@ public sealed class AccessRequestReviewerTests(VaultFixture vault)
         return await LegacyAccessRequests.PendingAsync(vault, details, requester);
     }
 
-    private async Task AssertRefusedAsNotFoundAsync(HttpClient reviewer, string action, Guid requestId)
+    private static Task<HttpResponseMessage> DecideAsync(VaultSession caller, string decision, Guid requestId) => decision switch
     {
-        var response = await LegacyAccessRequests.PostAsync(reviewer, action, await LegacyAccessRequests.TokenAsync(reviewer), requestId);
+        "approve" => AccessRequestsApi.ApproveAsync(caller.Client, requestId),
+        "reject" => AccessRequestsApi.RejectAsync(caller.Client, requestId),
+        _ => AccessRequestsApi.WithdrawAsync(caller.Client, requestId),
+    };
 
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/AccessRequests", response.Headers.Location?.OriginalString);
-        Assert.Contains(NotFound, await reviewer.GetStringAsync("/AccessRequests"));
-    }
-
-    private async Task<AccessRequestStatus> StatusOfAsync(Guid requestId)
+    private static async Task AssertRequestNotFoundAsync(HttpResponseMessage response)
     {
-        using var scope = vault.Services.CreateScope();
-        return await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().AccessRequests.AsNoTracking()
-            .Where(request => request.Id == requestId).Select(request => request.Status).SingleAsync();
+        await UiApiFailureContractTests.AssertProblemAsync(response, 404, "request_not_found");
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("That request was not found.", problem.RootElement.GetProperty("title").GetString());
     }
 }

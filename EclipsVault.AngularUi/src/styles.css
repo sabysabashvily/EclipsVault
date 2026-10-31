@@ -1377,6 +1377,16 @@ app-command-palette {
   text-align: right;
   white-space: nowrap;
 }
+.inline-form {
+  display: inline;
+}
+/* Legacy put Reject in a form of its own; here it is a button after the Approve form. */
+.cell-actions .inline-form + .button {
+  margin-left: 0.4rem;
+}
+.review-approve input {
+  max-width: 74px;
+}
 
 .badge.tone-ok {
   color: var(--ok);

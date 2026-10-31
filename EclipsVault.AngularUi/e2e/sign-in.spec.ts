@@ -668,7 +668,14 @@ test('the palette is driven from the keyboard, traps focus, and hands it back on
     await expect(options).toHaveText([/Access requests/]);
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/\/AccessRequests$/);
-    expect(documents).toEqual(['/AccessRequests']);
+    expect(documents).toEqual([]);
+
+    await openPalette(page);
+    await page.getByRole('combobox').fill('dynamic secrets');
+    await expect(options).toHaveText([/Dynamic secrets/]);
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/\/DynamicSecrets$/);
+    expect(documents).toEqual(['/DynamicSecrets']);
   });
 });
 

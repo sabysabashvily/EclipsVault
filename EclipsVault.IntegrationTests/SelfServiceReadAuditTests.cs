@@ -11,6 +11,7 @@ public sealed class SelfServiceReadAuditTests(VaultFixture vault)
     [InlineData("/api/ui/data")]
     [InlineData("/api/ui/shared-by-me")]
     [InlineData("/api/ui/shared-with-me")]
+    [InlineData("/api/ui/access-requests")]
     public async Task Reading_self_service_page_data_writes_no_audit_row(string path)
     {
         var client = await vault.AdminClientAsync();

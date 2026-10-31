@@ -46,6 +46,10 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
     [InlineData("/secrets/sharedbyme")]
     [InlineData("/Secrets/SharedWithMe")]
     [InlineData("/secrets/sharedwithme")]
+    [InlineData("/AccessRequests")]
+    [InlineData("/AccessRequests/Index")]
+    [InlineData("/accessrequests")]
+    [InlineData("/ACCESSREQUESTS/index")]
     public async Task Angular_documents_add_only_the_two_Trusted_Types_directives(string path)
     {
         var client = await vault.AdminClientAsync();

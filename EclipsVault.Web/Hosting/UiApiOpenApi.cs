@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Nodes;
 using EclipsVault.Web.Models.Ui;
 using Microsoft.AspNetCore.OpenApi;
@@ -41,6 +42,13 @@ public static class UiApiOpenApi
                     {
                         schema.Enum = names;
                     }
+                }
+
+                // A closed set of strings that names no Core enum, such as a scope, becomes a union too.
+                if (context.JsonPropertyInfo?.AttributeProvider?.GetCustomAttributes(typeof(AllowedValuesAttribute), inherit: false)
+                    is [AllowedValuesAttribute allowed])
+                {
+                    schema.Enum = allowed.Values.Select(value => (JsonNode)JsonValue.Create((string)value!)).ToList();
                 }
 
                 return Task.CompletedTask;

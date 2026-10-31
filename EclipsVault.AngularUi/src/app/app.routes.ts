@@ -25,6 +25,8 @@ const data = () => import('./data/data-page').then((m) => m.DataPage);
 const sharedByMe = () => import('./shared-by-me/shared-by-me-page').then((m) => m.SharedByMePage);
 const sharedWithMe = () =>
   import('./shared-with-me/shared-with-me-page').then((m) => m.SharedWithMePage);
+const accessRequests = () =>
+  import('./access-requests/access-requests-page').then((m) => m.AccessRequestsPage);
 
 const profile = () => import('./profile/profile-page').then((m) => m.ProfilePage);
 const password = () => import('./profile/change-password-page').then((m) => m.ChangePasswordPage);
@@ -50,6 +52,16 @@ export const routes: Routes = [
     matcher: legacyPath('Secrets/SharedWithMe'),
     loadComponent: sharedWithMe,
     title: 'Shared with me — EclipsVault',
+  },
+  {
+    matcher: legacyPath('AccessRequests'),
+    loadComponent: accessRequests,
+    title: 'Access requests — EclipsVault',
+  },
+  {
+    matcher: legacyPath('AccessRequests/Index'),
+    loadComponent: accessRequests,
+    title: 'Access requests — EclipsVault',
   },
   {
     matcher: legacyPath('Sessions'),

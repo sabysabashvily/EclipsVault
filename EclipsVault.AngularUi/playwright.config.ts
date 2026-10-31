@@ -35,6 +35,7 @@ export default defineConfig({
             '**/data.spec.ts',
             '**/shared-by-me.spec.ts',
             '**/shared-with-me.spec.ts',
+            '**/access-requests.spec.ts',
             '**/mailbox.spec.ts',
             '**/profile.spec.ts',
           ],
@@ -49,7 +50,7 @@ export default defineConfig({
         {
           name: 'mailbox',
           testMatch: '**/mailbox.spec.ts',
-          dependencies: ['shared-with-me'],
+          dependencies: ['access-requests'],
           use: { ...devices['Desktop Chrome'] },
         },
         {
@@ -74,6 +75,12 @@ export default defineConfig({
           name: 'shared-with-me',
           testMatch: '**/shared-with-me.spec.ts',
           dependencies: ['shared-by-me'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          name: 'access-requests',
+          testMatch: '**/access-requests.spec.ts',
+          dependencies: ['shared-with-me'],
           use: { ...devices['Desktop Chrome'] },
         },
       ],

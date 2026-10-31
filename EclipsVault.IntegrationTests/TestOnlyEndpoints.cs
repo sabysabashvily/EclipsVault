@@ -1,5 +1,6 @@
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Domain.Exceptions;
+using EclipsVault.Web.Controllers.Ui;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -63,6 +64,14 @@ public sealed class TestOnlyUiApiController(IIntrusionResponseService intrusion)
     /// <summary>An unsafe UI API request that changes nothing, so the antiforgery check alone decides its answer.</summary>
     [HttpPost("unsafe")]
     public IActionResult Unsafe() => NoContent();
+
+    /// <summary>
+    /// What approval throws when another request saved the requester's share first. Only a race produces it,
+    /// so this raises it under the filter the access-request endpoints use.
+    /// </summary>
+    [HttpGet("access-request-share-exists")]
+    [TypeFilter(typeof(AccessRequestProblemFilter))]
+    public IActionResult AccessRequestShareExists() => throw new SharingException(TestOnlyFailures.Detail);
 }
 
 /// <summary>The same failures on a Legacy UI path, which must keep its redirects.</summary>

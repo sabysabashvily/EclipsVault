@@ -2,6 +2,7 @@ import { Route, UrlSegment, UrlSegmentGroup } from '@angular/router';
 import { ProfilePage } from './profile/profile-page';
 import { ChangePasswordPage } from './profile/change-password-page';
 import { AccessPage } from './access/access-page';
+import { AccessRequestsPage } from './access-requests/access-requests-page';
 import { ActivityPage } from './activity/activity-page';
 import { routes } from './app.routes';
 import { SignInsPage } from './sign-ins/sign-ins-page';
@@ -74,6 +75,14 @@ describe('routes', () => {
       const route = routeFor(url);
       expect(route?.title).toBe('Your data — EclipsVault');
       expect(await route?.loadComponent?.()).toBe(DataPage);
+    },
+  );
+  it.each(['/AccessRequests', '/AccessRequests/Index', '/accessrequests', '/ACCESSREQUESTS/index'])(
+    'opens Access requests at %s',
+    async (url) => {
+      const route = routeFor(url);
+      expect(route?.title).toBe('Access requests — EclipsVault');
+      expect(await route?.loadComponent?.()).toBe(AccessRequestsPage);
     },
   );
   it.each(['/Access', '/Access/Index', '/access', '/ACCESS/index'])(

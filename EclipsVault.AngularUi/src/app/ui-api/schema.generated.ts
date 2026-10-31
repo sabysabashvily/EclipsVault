@@ -39,6 +39,215 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ui/access-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AccessRequestsResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/access-requests/{requestId}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    requestId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AccessApprovalRequest"];
+                    "text/json": components["schemas"]["AccessApprovalRequest"];
+                    "application/*+json": components["schemas"]["AccessApprovalRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AccessRequestProblemResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AccessRequestProblemResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AccessRequestProblemResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/access-requests/{requestId}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    requestId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AccessRequestProblemResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AccessRequestProblemResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/access-requests/{requestId}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    requestId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AccessRequestProblemResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AccessRequestProblemResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ui/activity": {
         parameters: {
             query?: never;
@@ -1830,10 +2039,32 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AccessApprovalRequest: {
+            /** Format: int32 */
+            expiresInDays: null | number | string;
+        };
         AccessCellResponse: {
             environment: string;
             allowed: boolean;
             reason: null | string;
+        };
+        AccessRequestProblemResponse: {
+            type?: null | string;
+            title?: null | string;
+            /** Format: int32 */
+            status?: null | number | string;
+            detail?: null | string;
+            instance?: null | string;
+            code: string;
+            errors?: null | {
+                [key: string]: string[];
+            };
+        };
+        AccessRequestsResponse: {
+            /** @enum {string} */
+            reviewScope: "all" | "project";
+            toReview: components["schemas"]["RequestToReviewResponse"][];
+            mine: components["schemas"]["FiledRequestResponse"][];
         };
         AccessResponse: {
             clearance: string;
@@ -1913,6 +2144,20 @@ export interface components {
             available: boolean;
             unavailableReason: null | string;
             explanation: null | string;
+        };
+        FiledRequestResponse: {
+            /** Format: uuid */
+            requestId: string;
+            secretName: string;
+            project: string;
+            /** @enum {string} */
+            status: "Pending" | "Approved" | "Rejected" | "Cancelled";
+            /** Format: date-time */
+            requestedAtUtc: string;
+            decidedBy: null | string;
+            /** Format: date-time */
+            decidedAtUtc: null | string;
+            decisionNote: null | string;
         };
         /** Format: binary */
         IFormFile: string;
@@ -2059,6 +2304,17 @@ export interface components {
             nickname: string;
             /** Format: date-time */
             createdAtUtc: string;
+        };
+        RequestToReviewResponse: {
+            /** Format: uuid */
+            requestId: string;
+            secretName: string;
+            project: string;
+            requester: string;
+            reason: string;
+            deniedBecause: null | string;
+            /** Format: date-time */
+            requestedAtUtc: string;
         };
         SecurityCheckResponse: {
             /** @enum {string} */

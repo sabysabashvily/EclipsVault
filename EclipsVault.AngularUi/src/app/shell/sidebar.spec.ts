@@ -63,7 +63,7 @@ describe('sidebar mapping', () => {
                 label: 'Access requests',
                 icon: 'access-requests',
                 url: '/AccessRequests',
-                angular: false,
+                angular: true,
               },
             ],
           },

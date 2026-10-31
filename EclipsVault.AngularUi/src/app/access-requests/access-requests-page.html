@@ -1,0 +1,149 @@
+<div class="page-header">
+  <div>
+    <h1>Access requests</h1>
+    <p class="page-sub">
+      Request access to a secret you were denied, and review requests you can approve.
+    </p>
+  </div>
+</div>
+
+<app-status-line [message]="status().message" [error]="status().error" />
+<app-confirmation-dialog (decision)="decide($event)" />
+
+@if (requests.hasValue()) {
+  <section class="panel">
+    <div class="panel-header">
+      <h2>To review</h2>
+      <span class="muted">{{
+        requests.value().reviewScope === 'all' ? 'All projects' : 'Your project'
+      }}</span>
+    </div>
+
+    @if (requests.value().toReview.length === 0) {
+      <app-empty-state
+        icon="clipboard"
+        heading="Nothing waiting on you"
+        message="When someone requests access to a secret you can share, it lands here for you to approve or reject."
+      />
+    } @else {
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Secret</th>
+              <th>Requester</th>
+              <th>Reason</th>
+              <th>Denied because</th>
+              <th>Requested</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (request of requests.value().toReview; track request.requestId) {
+              <tr>
+                <!-- Wrapped, the cell's text would gain spaces that Legacy's did not have. -->
+                <!-- prettier-ignore -->
+                <td class="cell-strong">{{ request.secretName }} <span class="badge tone-muted">{{ request.project }}</span></td>
+                <td>{{ request.requester }}</td>
+                <td class="muted">{{ request.reason }}</td>
+                <td class="muted">{{ request.deniedBecause ?? '—' }}</td>
+                <td class="muted">{{ requested(request) }}</td>
+                <td class="cell-actions">
+                  <form
+                    class="inline-form review-approve"
+                    (submit)="approve($event, request, days)"
+                  >
+                    <input
+                      #days
+                      name="ttlDays"
+                      type="number"
+                      min="0"
+                      max="3650"
+                      value="0"
+                      title="Grant expires in days (0 = no expiry)"
+                      aria-label="Grant expiry in days"
+                    />
+                    <button type="submit" class="button small primary" [disabled]="busy()">
+                      Approve
+                    </button>
+                  </form>
+                  <button
+                    type="button"
+                    class="button small danger"
+                    [disabled]="busy()"
+                    (click)="askToReject(request)"
+                  >
+                    Reject
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+
+  <section class="panel">
+    <div class="panel-header"><h2>My requests</h2></div>
+
+    @if (requests.value().mine.length === 0) {
+      <app-empty-state
+        icon="inbox"
+        heading="You haven't requested any access"
+        message='If you&apos;re denied a secret outside your clearance or project, its page offers a "Request access" button — your requests and their decisions then show up here.'
+      >
+        <a class="button primary" href="/Secrets">Browse secrets</a>
+      </app-empty-state>
+    } @else {
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Secret</th>
+              <th>Status</th>
+              <th>Requested</th>
+              <th>Decision</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (request of requests.value().mine; track request.requestId) {
+              <tr>
+                <!-- Wrapped, the cell's text would gain spaces that Legacy's did not have. -->
+                <!-- prettier-ignore -->
+                <td class="cell-strong">{{ request.secretName }} <span class="badge tone-muted">{{ request.project }}</span></td>
+                <td>
+                  <span class="badge" [class]="badges[request.status].tone">{{
+                    badges[request.status].label
+                  }}</span>
+                </td>
+                <td class="muted">{{ requested(request) }}</td>
+                <td class="muted">{{ decision(request) }}</td>
+                <td class="cell-actions">
+                  @if (request.status === 'Pending') {
+                    <button
+                      type="button"
+                      class="button small"
+                      [disabled]="busy()"
+                      (click)="askToWithdraw(request)"
+                    >
+                      Withdraw
+                    </button>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+} @else if (requests.error()) {
+  <section class="panel">
+    <p role="alert">Could not load your access requests. Try again.</p>
+    <button type="button" class="button" (click)="requests.reload()">Try again</button>
+  </section>
+} @else {
+  <p role="status">Loading your access requests…</p>
+}
