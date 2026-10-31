@@ -135,6 +135,7 @@ public sealed class SecretGrantRepository : ISecretGrantRepository
             where g.IssuerUserId == issuerUserId
                   && (g.ExpiresAtUtc == null || g.ExpiresAtUtc > asOfUtc)
                   && !s.IsShredded
+                  && !s.IsHoneyToken
             orderby g.CreatedAtUtc descending
             select new OutgoingShareDto(g.Id, s.Id, s.Name, g.GranteeUsername, g.CreatedAtUtc, g.ExpiresAtUtc))
             .ToListAsync(ct);

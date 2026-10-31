@@ -252,6 +252,30 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
     }
 
     [Fact]
+    public async Task A_share_on_a_decoy_secret_is_left_out()
+    {
+        var issuer = await vault.SignInNewAccountAsync("it-shares-decoy", IPAddress.Parse("192.0.2.99"));
+        await vault.SignInNewAccountAsync("it-shares-decoy-recipient", IPAddress.Parse("192.0.2.100"));
+        var admin = await vault.AdminClientAsync();
+        var decoy = await LegacySharing.CreateSecretAsync(admin, "it-shares-decoy-flagged");
+        var genuine = await LegacySharing.CreateSecretAsync(admin, "it-shares-decoy-genuine");
+        await LegacySharing.ShareAsync(issuer.Client, decoy, "it-shares-decoy-recipient");
+        await LegacySharing.ShareAsync(issuer.Client, genuine, "it-shares-decoy-recipient");
+
+        // No screen makes a decoy: an operator flags one in the database, and its shares remain.
+        using (var scope = vault.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+            (await db.Secrets.SingleAsync(secret => secret.Id == LegacySharing.SecretIdOf(decoy))).IsHoneyToken = true;
+            await db.SaveChangesAsync();
+        }
+
+        var list = await issuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me");
+
+        Assert.Equal("it-shares-decoy-genuine", Assert.Single(list!.Shares).SecretName);
+    }
+
+    [Fact]
     public async Task Revocation_without_the_antiforgery_header_keeps_the_share_and_writes_no_audit_row()
     {
         var issuer = await vault.SignInNewAccountAsync("it-shares-csrf", IPAddress.Parse("192.0.2.92"));

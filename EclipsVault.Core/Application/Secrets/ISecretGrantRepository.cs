@@ -35,6 +35,9 @@ public interface ISecretGrantRepository
     /// </summary>
     Task<IReadOnlyList<SharedSecretDto>> ListSharedWithUserAsync(Guid userId, DateTimeOffset asOfUtc, CancellationToken ct);
 
-    /// <summary>Active shares issued by one account, joined to the (non-shredded) secrets they cover.</summary>
+    /// <summary>
+    /// Active shares issued by one account, joined to the secrets they cover: not shredded, and not
+    /// decoys, which the Secrets list never enumerates either.
+    /// </summary>
     Task<IReadOnlyList<OutgoingShareDto>> ListIssuedByAsync(Guid issuerUserId, DateTimeOffset asOfUtc, CancellationToken ct);
 }

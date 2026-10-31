@@ -122,9 +122,13 @@ Same branch, on top of `94c9f77`; not pushed, no PR, #100 stays open for the own
   - spaces around the Access until date;
   - Angular had no environment-badge colours.
 
-Owner items:
-- `976ba5e`'s subject is 74 characters. CI's `commit-subjects` job will fail on a PR until it is reworded, which is a history rewrite.
-- Shared by me's query (`ListIssuedByAsync`) still lists decoys.
+Owner items, both resolved by the coordinator before the push, with the owner's approval:
+- `976ba5e`'s 74-character subject was reworded to "Serve Shared with me in Angular, listing only
+  shares the user can use" (69). The six commits were replayed on `94c9f77` with the same tree, so the
+  SHAs below changed: `976ba5e`→`a2ce589`, `8570bd6`→`69e23df`, `7c824e2`→`2476c8a`,
+  `478c8c3`→`2880e3b`, `29fd32c`→`da428f9`, `729fd22`→`2d05ce1`.
+- Shared by me's query (`ListIssuedByAsync`) now leaves out decoys too, with
+  `SharedByMeApiTests.A_share_on_a_decoy_secret_is_left_out` shown failing first (2 items listed).
 
 Behaviour later tickets inherit:
 - `.badge.env-*` now exists in Angular's `styles.css`.
