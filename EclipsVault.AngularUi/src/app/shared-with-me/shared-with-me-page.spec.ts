@@ -119,6 +119,13 @@ describe('SharedWithMePage', () => {
         'Open',
       ],
     ]);
+    // Legacy's muted cells held their text alone, with no spaces around it.
+    expect([...page.querySelectorAll('tbody td.muted')].map((cell) => cell.textContent)).toEqual([
+      'colleague',
+      '2026-11-07 09:30',
+      'another-colleague',
+      'no expiry',
+    ]);
   });
 
   it('opens each shared secret on its Legacy details page', async () => {

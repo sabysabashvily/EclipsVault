@@ -45,13 +45,7 @@
                   }}</span>
                 </td>
                 <td class="muted">{{ share.sharedBy }}</td>
-                <td class="muted">
-                  {{
-                    share.accessUntilUtc
-                      ? (share.accessUntilUtc | date: 'yyyy-MM-dd HH:mm' : 'UTC')
-                      : 'no expiry'
-                  }}
-                </td>
+                <td class="muted">{{ accessUntil(share) }}</td>
                 <td class="cell-actions">
                   <a class="button small" [href]="'/Secrets/Details/' + share.secretId">Open</a>
                 </td>
