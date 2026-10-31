@@ -71,3 +71,38 @@ read before filing. The UI API codes and the Angular pages are #100 and #101. Th
 owner may want new wording.
 
 To restart: check out `area-4-sharing`, read `logs/ticket-98/final-report.md`, then start ticket 3 (#99).
+
+## Delivery: ticket 3 (#99) done locally, 2026-10-31
+
+Same branch, on top of `6041150`; not pushed, no PR, #99 stays open for the owner.
+
+- `e01cf1c` applies Q3 and Q4. `AccessRequestReviewers` (Web) is the one reviewer rule: someone other
+  than the requester, administrator or member of the secret's project, who passes `SecretAccessHandler`
+  now. Legacy's queue, Approve and Reject call it, and #100's UI API is to call it too. An undecidable
+  and an unknown id get the same "That request was not found.", with no audit row.
+  `AccessRequestRules.ShareRefusal` (Core) is the filing rule, used when filing, on the Denied page and
+  again at approval. The server writes the denial reasons; Legacy's hidden `deniedReasons` field is
+  gone. Migration `ClearPendingDenialReasons`, in both provider sets, clears that text on pending
+  requests only.
+- `8cde1d2` and `3b0d53b` answer the reviews:
+  - any lookup a requester makes trips a decoy, the Denied page included;
+  - approval refuses an expired or shredded secret;
+  - names and comments are clearer.
+
+Behaviour later tickets inherit:
+- Approving a requester who already holds an active share is now refused with the reviewer's
+  sentence. #98 used to reuse the share.
+- Requests for dead secrets stay in the queue so they can be rejected.
+- Legacy still labels an administrator's queue "All projects".
+- Both model snapshots gained `Status`'s concurrency token, which #98 left out; the schema is unchanged.
+
+Checks on `3b0d53b`:
+- locked restore;
+- Release build with 0 warnings;
+- format verify;
+- unit tests 729/729;
+- integration tests 758/758;
+- both pending-model checks;
+- guardrail tests 6/6.
+
+To restart: check out `area-4-sharing`, read `logs/ticket-99/final-report.md`, then start ticket 4 (#100).
