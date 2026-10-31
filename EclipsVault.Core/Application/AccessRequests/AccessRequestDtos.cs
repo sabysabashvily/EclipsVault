@@ -44,20 +44,21 @@ public sealed record AccessRequestCreateResult(bool Created, string? Error)
 public interface IAccessRequestService
 {
     /// <summary>
-    /// Why this account may not request the secret, or null when it may. Writes no audit row of its own; an
-    /// unknown, shredded or expired secret is a <see cref="SecretNotFoundException"/>, and a honey token trips.
+    /// Why this account may not request the secret, or null when it may. Writes no audit row; an unknown,
+    /// shredded or expired secret is a <see cref="SecretNotFoundException"/>, and a honey token trips its trap
+    /// and throws <see cref="HoneyTokenTrippedException"/>.
     /// </summary>
     Task<AccessRequestRefusal?> FilingRefusalAsync(Guid secretId, Guid requesterUserId, CancellationToken ct);
 
     /// <summary>
     /// The secret's attributes, for the host's access check that supplies the denial reasons. Writes no
-    /// audit row of its own; a honey token trips.
+    /// audit row; a honey token trips its trap and throws <see cref="HoneyTokenTrippedException"/>.
     /// </summary>
     Task<SecretSummaryDto> SecretToRequestAsync(Guid secretId, CancellationToken ct);
 
     /// <summary>
     /// Files a request. <paramref name="denialReasons"/> are the access check's own reasons, never text the
-    /// requester sent. A honey token trips.
+    /// requester sent. A honey token trips its trap and throws <see cref="HoneyTokenTrippedException"/>.
     /// </summary>
     Task<AccessRequestCreateResult> CreateAsync(
         Guid secretId, Guid requesterUserId, string requesterUsername, string reason,
@@ -76,7 +77,7 @@ public interface IAccessRequestService
     /// Approves a pending request and shares the secret with the requester. <paramref name="expiresInDays"/>
     /// 0 means the share never expires. Returns false when the request is no longer pending, including when
     /// another decision won. A request a share could no longer help is an <see cref="AccessRequestIneligibleException"/>,
-    /// and one whose secret was shredded or has expired a <see cref="SecretNotFoundException"/>.
+    /// and one whose secret was shredded or has expired is a <see cref="SecretNotFoundException"/>.
     /// </summary>
     Task<bool> ApproveAsync(Guid id, int expiresInDays, CancellationToken ct);
 

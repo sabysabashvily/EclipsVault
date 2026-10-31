@@ -39,11 +39,11 @@ public sealed class AccessRequestService : IAccessRequestService
     }
 
     public async Task<AccessRequestRefusal?> FilingRefusalAsync(Guid secretId, Guid requesterUserId, CancellationToken ct)
-        => await FilingRefusalAsync(await RequestableSecretAsync(secretId, ct), requesterUserId, ct);
+        => await FilingRefusalAsync(await LiveSecretTrippingDecoysAsync(secretId, ct), requesterUserId, ct);
 
     public async Task<SecretSummaryDto> SecretToRequestAsync(Guid secretId, CancellationToken ct)
     {
-        var secret = await RequestableSecretAsync(secretId, ct);
+        var secret = await LiveSecretTrippingDecoysAsync(secretId, ct);
         return new SecretSummaryDto(
             secret.Id, secret.Name, secret.ProjectKey, secret.Environment, secret.Sensitivity, secret.CreatedAtUtc, secret.ExpiresAtUtc);
     }
@@ -52,7 +52,7 @@ public sealed class AccessRequestService : IAccessRequestService
         Guid secretId, Guid requesterUserId, string requesterUsername, string reason,
         IReadOnlyList<string> denialReasons, CancellationToken ct)
     {
-        var secret = await RequestableSecretAsync(secretId, ct);
+        var secret = await LiveSecretTrippingDecoysAsync(secretId, ct);
         if (await FilingRefusalAsync(secret, requesterUserId, ct) is { } refusal)
         {
             return AccessRequestCreateResult.Failed(AccessRequestRules.ExplainToRequester(refusal));
@@ -172,10 +172,10 @@ public sealed class AccessRequestService : IAccessRequestService
     }
 
     /// <summary>
-    /// A live secret that is not a decoy. A decoy trips its trap here, before any rule runs, so no lookup by
-    /// id can tell a decoy from a real secret without setting it off.
+    /// A live secret that is not a decoy. A decoy trips its trap here, before any rule runs, so no lookup a
+    /// requester can make tells a decoy from a real secret without setting it off.
     /// </summary>
-    private async Task<Secret> RequestableSecretAsync(Guid secretId, CancellationToken ct)
+    private async Task<Secret> LiveSecretTrippingDecoysAsync(Guid secretId, CancellationToken ct)
     {
         var secret = await LiveSecretAsync(secretId, ct);
         if (secret.IsHoneyToken)

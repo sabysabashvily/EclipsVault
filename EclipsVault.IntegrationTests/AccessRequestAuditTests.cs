@@ -258,8 +258,7 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
         await LegacyAccessRequests.PostAsync(reviewer, "Approve", token, pending.Id, days);
         Assert.False(await LegacySharing.HasAnyShareAsync(vault, details));
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
-        using var scope = vault.Services.CreateScope();
-        Assert.Equal(AccessRequestStatus.Pending, (await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().AccessRequests.SingleAsync(r => r.Id == pending.Id)).Status);
+        Assert.Equal(AccessRequestStatus.Pending, await StatusOfAsync(pending.Id));
     }
 
     private async Task<AccessRequestStatus> StatusOfAsync(Guid requestId)

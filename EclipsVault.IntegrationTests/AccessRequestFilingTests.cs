@@ -144,6 +144,7 @@ public sealed class AccessRequestFilingTests(VaultFixture vault)
 
         var response = await requester.Client.GetAsync($"/Account/Denied?secretId={secretId}");
 
+        // The trap's redirect is relative; the sign-in challenge below is absolute and carries a ReturnUrl.
         Assert.Equal("/Account/Login", response.Headers.Location?.OriginalString);
         Assert.Equal([AuditAction.HoneyTokenTripped], (await AuditTrail.RowsAfterAsync(vault, before)).Select(row => row.Action));
         var sameSessionElsewhere = vault.CreateSession(sessionCookie, IPAddress.Parse("100.98.97.10"));

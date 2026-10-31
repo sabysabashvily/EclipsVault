@@ -433,7 +433,10 @@ public sealed class AccountController : Controller
             RequestRefusalMessage = secretId is { } id ? await RequestRefusalMessageAsync(requests, id, ct) : null,
         });
 
-    /// <summary>Why the Request access form is not offered for this secret, or null when it is.</summary>
+    /// <summary>
+    /// Why the Request access form is not offered for this secret, or null when it is. A honey token's
+    /// exception is left to the global handler, which signs the session out.
+    /// </summary>
     private async Task<string?> RequestRefusalMessageAsync(IAccessRequestService requests, Guid secretId, CancellationToken ct)
     {
         try
