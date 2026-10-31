@@ -11,7 +11,11 @@ public sealed record SecretGrantDto(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? ExpiresAtUtc);
 
-/// <summary>A secret that has been shared with the current user, for the "Shared with me" page.</summary>
+/// <summary>
+/// A secret that has been shared with the current user, for the "Shared with me" page. It is an
+/// <see cref="IGrantableResource"/> because each row is an access decision: the page lists only the
+/// shares its recipient could list on the Secrets page (ADR-0027).
+/// </summary>
 public sealed record SharedSecretDto(
     Guid SecretId,
     string Name,
@@ -19,7 +23,10 @@ public sealed record SharedSecretDto(
     SecretEnvironment Environment,
     SensitivityLevel Sensitivity,
     string GrantedBy,
-    DateTimeOffset? ExpiresAtUtc);
+    DateTimeOffset? ExpiresAtUtc) : IGrantableResource
+{
+    Guid IAbacResource.Id => SecretId;
+}
 
 /// <summary>A grant the current user has handed out, for the "Shared by me" access-review page.</summary>
 public sealed record OutgoingShareDto(

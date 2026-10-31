@@ -48,7 +48,7 @@ const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)
         label: 'Sharing',
         icon: 'shared-with-me',
         children: [
-          link('shared-with-me', 'Shared with me', '/Secrets/SharedWithMe'),
+          link('shared-with-me', 'Shared with me', '/Secrets/SharedWithMe', 'shared-with-me', true),
           link('shared-by-me', 'Shared by me', '/Secrets/SharedByMe', 'shared-by-me', true),
         ],
       },

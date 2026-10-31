@@ -214,7 +214,7 @@ public class AuthorizationSurfaceTests
             ["overview"] = typeof(HomeController),
             ["secrets"] = typeof(SecretsController),
             ["dynamic-secrets"] = typeof(DynamicSecretsController),
-            ["shared-with-me"] = typeof(SecretsController),
+            ["shared-with-me"] = typeof(EclipsVault.Web.Controllers.Ui.SharedWithMeController),
             ["shared-by-me"] = typeof(EclipsVault.Web.Controllers.Ui.SharedByMeController),
             ["access"] = typeof(EclipsVault.Web.Controllers.Ui.AccessController),
             ["access-requests"] = typeof(AccessRequestsController),

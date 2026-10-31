@@ -17,6 +17,7 @@ public sealed class RetiredSelfServiceRoutesTests(VaultFixture vault)
         Assert.Contains("href=\"/Sessions\"", page, StringComparison.Ordinal);
         Assert.Contains("href=\"/Data\"", page, StringComparison.Ordinal);
         Assert.Contains("href=\"/Secrets/SharedByMe\"", page, StringComparison.Ordinal);
+        Assert.Contains("href=\"/Secrets/SharedWithMe\"", page, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -54,6 +55,7 @@ public sealed class RetiredSelfServiceRoutesTests(VaultFixture vault)
     [InlineData("/Sessions/Index/legacy")]
     [InlineData("/Data/Index/legacy")]
     [InlineData("/Secrets/SharedByMe/legacy")]
+    [InlineData("/Secrets/SharedWithMe/legacy")]
     public async Task A_retired_view_cannot_be_reached_through_the_conventional_route(string path)
     {
         var client = await vault.AdminClientAsync();

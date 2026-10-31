@@ -1,0 +1,72 @@
+<div class="page-header">
+  <div>
+    <h1>Shared with me</h1>
+    <p class="page-sub">Secrets outside your project that someone has granted you access to.</p>
+  </div>
+</div>
+
+@if (shares.hasValue()) {
+  <section class="panel">
+    @if (shares.value().shares.length === 0) {
+      <app-empty-state
+        icon="share"
+        heading="Nothing shared with you yet"
+        message="This is where secrets from other projects show up when a colleague grants you access to them. There's nothing for you to do here until someone shares one."
+      >
+        <a class="button primary" href="/Secrets">Go to your secrets</a>
+      </app-empty-state>
+    } @else {
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Project</th>
+              <th>Environment</th>
+              <th>Sensitivity</th>
+              <th>Shared by</th>
+              <th>Access until</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (share of shares.value().shares; track share.secretId) {
+              <tr>
+                <td class="mono cell-strong">{{ share.name }}</td>
+                <td>{{ share.project }}</td>
+                <td>
+                  <span class="badge env-{{ share.environment.toLowerCase() }}">{{
+                    share.environment
+                  }}</span>
+                </td>
+                <td>
+                  <span class="badge sens-{{ share.sensitivity }}">{{
+                    share.sensitivityLabel
+                  }}</span>
+                </td>
+                <td class="muted">{{ share.sharedBy }}</td>
+                <td class="muted">
+                  {{
+                    share.accessUntilUtc
+                      ? (share.accessUntilUtc | date: 'yyyy-MM-dd HH:mm' : 'UTC')
+                      : 'no expiry'
+                  }}
+                </td>
+                <td class="cell-actions">
+                  <a class="button small" [href]="'/Secrets/Details/' + share.secretId">Open</a>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+} @else if (shares.error()) {
+  <section class="panel">
+    <p role="alert">Could not load the secrets shared with you. Try again.</p>
+    <button type="button" class="button" (click)="shares.reload()">Try again</button>
+  </section>
+} @else {
+  <p role="status">Loading the secrets shared with you…</p>
+}

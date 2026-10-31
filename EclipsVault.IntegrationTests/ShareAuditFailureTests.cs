@@ -30,7 +30,7 @@ public sealed class ShareAuditFailureTests(AuditFailureFixture failure)
 
             await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
             Assert.Equal(share.Id, (await LegacySharing.ShareOfAsync(vault, details)).Id);
-            Assert.Contains("it-failure-scoped-secret", await recipient.Client.GetStringAsync("/Secrets/SharedWithMe"));
+            Assert.Contains("it-failure-scoped-secret", await recipient.Client.GetStringAsync("/api/ui/shared-with-me"));
             Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         }
         finally

@@ -55,6 +55,9 @@ public static class AngularUiRoutes
 
         // Shared by me
         "/Secrets/SharedByMe",
+
+        // Shared with me
+        "/Secrets/SharedWithMe",
     ];
 
     /// <summary>

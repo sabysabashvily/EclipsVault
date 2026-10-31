@@ -8,7 +8,8 @@ namespace EclipsVault.IntegrationTests;
 internal static class LegacySharing
 {
     public static async Task<string> CreateSecretAsync(
-        HttpClient admin, string name, string value = "it-share-audit-value", string sensitivity = "Internal")
+        HttpClient admin, string name, string value = "it-share-audit-value", string sensitivity = "Internal",
+        string environment = "Development")
     {
         var page = await admin.GetStringAsync("/Secrets/Create");
         var response = await admin.PostAsync("/Secrets/Create", new FormUrlEncodedContent(new Dictionary<string, string>
@@ -17,7 +18,7 @@ internal static class LegacySharing
             ["Name"] = name,
             ["Value"] = value,
             ["ProjectKey"] = "GLOBAL",
-            ["Environment"] = "Development",
+            ["Environment"] = environment,
             ["Sensitivity"] = sensitivity,
         }));
         return response.Headers.Location?.OriginalString is { } details && details.StartsWith("/Secrets/Details/", StringComparison.Ordinal)
@@ -64,6 +65,30 @@ internal static class LegacySharing
         var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
         var secretId = SecretIdOf(details);
         return await db.SecretGrants.AsNoTracking().AnyAsync(share => share.SecretId == secretId);
+    }
+
+    /// <summary>
+    /// Stores a share from the administrator directly, for shares no page issues now: one to a recipient
+    /// whose clearance is too low, which sharing used to accept, or one on a secret its issuer cannot
+    /// open at this moment.
+    /// </summary>
+    public static async Task InsertShareAsync(VaultFixture vault, string details, string recipient)
+    {
+        using var scope = vault.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+        var recipientAccount = await db.Users.SingleAsync(user => user.Username == recipient);
+        var issuer = await db.Users.SingleAsync(user => user.Username == VaultFixture.AdminUsername);
+        db.SecretGrants.Add(new SecretGrant
+        {
+            Id = Guid.NewGuid(),
+            SecretId = SecretIdOf(details),
+            GranteeUserId = recipientAccount.Id,
+            GranteeUsername = recipient,
+            IssuerUserId = issuer.Id,
+            GrantedBy = issuer.Username,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+        });
+        await db.SaveChangesAsync();
     }
 
     /// <summary>Moves a share's expiry into the past directly, since no page can make time pass.</summary>

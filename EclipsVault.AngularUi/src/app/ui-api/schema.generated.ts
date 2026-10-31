@@ -1756,6 +1756,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ui/shared-with-me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SharedWithMeResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ui/sign-ins": {
         parameters: {
             query?: never;
@@ -2001,6 +2036,20 @@ export interface components {
             changes: components["schemas"]["ProfileChangesResponse"];
             pendingEmail: null | components["schemas"]["PendingEmailResponse"];
         };
+        ReceivedShareResponse: {
+            /** Format: uuid */
+            secretId: string;
+            name: string;
+            project: string;
+            /** @enum {string} */
+            environment: "Development" | "Staging" | "Production";
+            /** Format: int32 */
+            sensitivity: number | string;
+            sensitivityLabel: string;
+            sharedBy: string;
+            /** Format: date-time */
+            accessUntilUtc: null | string;
+        };
         RecoveryCodesResponse: {
             codes: string[];
         };
@@ -2063,6 +2112,9 @@ export interface components {
         };
         SharedByMeResponse: {
             shares: components["schemas"]["IssuedShareResponse"][];
+        };
+        SharedWithMeResponse: {
+            shares: components["schemas"]["ReceivedShareResponse"][];
         };
         ShareProblemResponse: {
             type?: null | string;

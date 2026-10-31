@@ -328,13 +328,6 @@ public sealed class SecretsController : VaultController
         return RedirectToAction(nameof(Details), new { id });
     }
 
-    [HttpGet]
-    public async Task<IActionResult> SharedWithMe(CancellationToken ct)
-    {
-        var shared = await _grants.ListSharedWithUserAsync(CurrentUserId(), ct);
-        return View(shared);
-    }
-
     [HttpPost]
     public async Task<IActionResult> Grant(ShareSecretViewModel model, CancellationToken ct)
     {

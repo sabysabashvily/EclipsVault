@@ -218,7 +218,7 @@ test('the palette opens Shared by me without a document load', async ({ page }) 
   expect(documents).toEqual([]);
 });
 
-test('Shared with me opens Legacy on the same session from Shared by me', async ({ page }) => {
+test('Shared with me opens in-app on the same session from Shared by me', async ({ page }) => {
   await openAsIssuer(page);
   const documents: string[] = [];
   page.on('request', (request) => {
@@ -227,7 +227,8 @@ test('Shared with me opens Legacy on the same session from Shared by me', async 
   });
   await page.getByRole('link', { name: 'Shared with me', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Shared with me', exact: true })).toBeVisible();
-  expect(documents).toEqual(['/Secrets/SharedWithMe']);
+  await expect(page).toHaveURL(/\/Secrets\/SharedWithMe$/);
+  expect(documents).toEqual([]);
   await expect(page.getByRole('link', { name: 'Sign in', exact: true })).toHaveCount(0);
 });
 
@@ -342,11 +343,12 @@ test('revoking a real share ends the recipient browser access on its next reques
   await expect(
     recipient.getByRole('heading', { name: 'E2e_Shared_No_Expiry', exact: true }),
   ).toHaveCount(0);
+  // The served page fetches its rows, so the remaining share is seen before the revoked one's absence.
   await recipient.goto('/Secrets/SharedWithMe');
+  await expect(recipient.getByRole('row').filter({ hasText: 'E2e_Shared_Expiring' })).toBeVisible();
   await expect(recipient.getByRole('row').filter({ hasText: 'E2e_Shared_No_Expiry' })).toHaveCount(
     0,
   );
-  await expect(recipient.getByRole('row').filter({ hasText: 'E2e_Shared_Expiring' })).toBeVisible();
 });
 
 test('signed out, Shared by me bookmarks return through sign-in', async ({ page }) => {

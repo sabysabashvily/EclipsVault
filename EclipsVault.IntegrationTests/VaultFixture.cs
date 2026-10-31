@@ -66,6 +66,8 @@ public sealed partial class VaultFixture : IAsyncLifetime
 
     public string? RedisConfiguration { get; init; }
 
+    public bool ProductionWindowNeverOpens { get; init; }
+
     public async Task InitializeAsync()
     {
         await _sql.StartAsync();
@@ -101,6 +103,12 @@ public sealed partial class VaultFixture : IAsyncLifetime
         SetEnvironment("Sso__Authority", "https://idp.example.test/realms/integration");
         SetEnvironment("Sso__ClientId", "integration-vault");
         SetEnvironment("Sso__ClientSecret", Convert.ToHexString(RandomNumberGenerator.GetBytes(32)));
+        if (ProductionWindowNeverOpens)
+        {
+            // The window runs from the start hour up to the end hour, so equal hours never open it.
+            SetEnvironment("Abac__ProductionWindowStartUtcHour", "0");
+            SetEnvironment("Abac__ProductionWindowEndUtcHour", "0");
+        }
 
         _factory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(host => host

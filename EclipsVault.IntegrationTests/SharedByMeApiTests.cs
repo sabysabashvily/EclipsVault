@@ -219,7 +219,7 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         await UiApiFailureContractTests.AssertProblemAsync(revoke, 404, "share_not_found");
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         Assert.Equal(HttpStatusCode.OK, (await recipient.Client.GetAsync(details)).StatusCode);
-        Assert.Contains(secretName, await recipient.Client.GetStringAsync("/Secrets/SharedWithMe"));
+        Assert.Contains(secretName, await recipient.Client.GetStringAsync("/api/ui/shared-with-me"));
     }
 
     [Fact]
