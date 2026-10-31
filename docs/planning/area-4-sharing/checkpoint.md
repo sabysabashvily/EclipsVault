@@ -106,3 +106,47 @@ Checks on `3b0d53b`:
 - guardrail tests 6/6.
 
 To restart: check out `area-4-sharing`, read `logs/ticket-99/final-report.md`, then start ticket 4 (#100).
+
+## Delivery: ticket 4 (#100) done locally, 2026-10-31
+
+Same branch, on top of `94c9f77`; not pushed, no PR, #100 stays open for the owner.
+
+- `976ba5e` serves Shared with me in Angular.
+  - `GET /api/ui/shared-with-me` is session-only and no-store.
+  - Each row goes through `VisibleToAsync`, the Secrets list's own handler, with the share counted, because `SharedSecretDto` is an `IGrantableResource`.
+  - The Legacy action and view are gone. The route table, both sidebars and the palette open the Angular page.
+  - `ClosedProductionWindowFixture` is a third vault, whose production window never opens.
+- `8570bd6` leaves shares on decoys out, as the Secrets list does. This came from the security review.
+- `7c824e2` answers the Standards and Spec reviews.
+- `478c8c3` and `29fd32c` fix two differences from Legacy that the browser suite found:
+  - spaces around the Access until date;
+  - Angular had no environment-badge colours.
+
+Owner items:
+- `976ba5e`'s subject is 74 characters. CI's `commit-subjects` job will fail on a PR until it is reworded, which is a history rewrite.
+- Shared by me's query (`ListIssuedByAsync`) still lists decoys.
+
+Behaviour later tickets inherit:
+- `.badge.env-*` now exists in Angular's `styles.css`.
+- `e2e/secrets-list.ts` is a page object for the Legacy Secrets list.
+- `e2e/look.ts` compares computed styles by name.
+- The Playwright chain is now `shared-by-me` → `shared-with-me` → `mailbox`.
+
+Checks:
+- on `7c824e2` (later commits change only Angular files):
+  - locked restore;
+  - Release build with 0 warnings;
+  - format verify;
+  - unit tests 729/729;
+  - integration tests 771/771;
+  - both pending-model checks;
+  - guardrail tests 6/6.
+- on `29fd32c`:
+  - lint, format check, build, build checks;
+  - Vitest 292/292;
+  - e2e 122/122;
+  - guards 8/8.
+- `check:api-types` was last run on `478c8c3`, and `npm audit` (exit 0, 21 moderate) before `976ba5e`.
+  The package files and response types have not changed since.
+
+To restart: check out `area-4-sharing`, read `logs/ticket-100/final-report.md`, then start ticket 5 (#101).
