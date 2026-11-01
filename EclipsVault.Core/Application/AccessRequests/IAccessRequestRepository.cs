@@ -16,5 +16,9 @@ public interface IAccessRequestRepository
 
     Task<AccessRequestForReview?> FindForReviewAsync(Guid id, CancellationToken ct);
 
-    Task<bool> UpdateAsync(AccessRequest request, CancellationToken ct);
+    /// <summary>
+    /// Saves a reject or withdraw decision with its audit row, only while the stored request is still
+    /// pending. False when another decision committed first.
+    /// </summary>
+    Task<bool> SaveDecisionAsync(AccessRequest request, CancellationToken ct);
 }

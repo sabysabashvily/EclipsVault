@@ -142,7 +142,7 @@ public sealed class AccessRequestService : IAccessRequestService
         }
 
         Decide(request, AccessRequestStatus.Rejected, _actor.Username ?? "system");
-        if (!await _requests.UpdateAsync(request, ct))
+        if (!await _requests.SaveDecisionAsync(request, ct))
         {
             return false;
         }
@@ -161,7 +161,7 @@ public sealed class AccessRequestService : IAccessRequestService
         }
 
         Decide(request, AccessRequestStatus.Cancelled, request.RequesterUsername);
-        return await _requests.UpdateAsync(request, ct);
+        return await _requests.SaveDecisionAsync(request, ct);
     }
 
     private void Decide(AccessRequest request, AccessRequestStatus status, string by)

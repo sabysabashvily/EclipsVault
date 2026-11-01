@@ -473,6 +473,7 @@ describe('AccessRequestsPage', () => {
   });
 
   it.each<Record<string, string>>([
+    // A name every plain object inherits: a lookup in an object literal would find it and show a message.
     { refused: 'constructor' },
     { refused: 'unknown_code' },
     { filed: 'yes' },

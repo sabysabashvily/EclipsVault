@@ -103,7 +103,7 @@ public sealed class AccessRequestAuditFailureTests(AuditFailureFixture failure)
         var username = $"it-request-failure-{addressSuffix}";
         var requester = await failure.Vault.SignInNewAccountAsync(username, IPAddress.Parse($"198.51.100.{addressSuffix}"), project: "IT-REQUESTERS");
         var details = await LegacySharing.CreateSecretAsync(reviewer, $"it-request-audit-{addressSuffix}");
-        var pending = await LegacyAccessRequests.PendingAsync(failure.Vault, details, username);
+        var pending = await LegacyAccessRequests.InsertPendingAsync(failure.Vault, details, username);
         return (pending, reviewer, requester, details);
     }
 }

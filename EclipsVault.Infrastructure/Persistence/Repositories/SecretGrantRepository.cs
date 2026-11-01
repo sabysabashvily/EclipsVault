@@ -105,6 +105,7 @@ public sealed class SecretGrantRepository : ISecretGrantRepository
                            && g.SecretId == secretId
                            && (g.ExpiresAtUtc == null || g.ExpiresAtUtc > asOfUtc), ct);
 
+    // Tracked, unlike the other reads: a new share replaces an expired one by deleting this same entity.
     public Task<SecretGrant?> FindForRecipientAsync(Guid userId, Guid secretId, CancellationToken ct)
         => _context.SecretGrants.FirstOrDefaultAsync(g => g.GranteeUserId == userId && g.SecretId == secretId, ct);
 

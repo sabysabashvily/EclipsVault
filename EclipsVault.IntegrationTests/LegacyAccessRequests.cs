@@ -24,16 +24,21 @@ internal static class LegacyAccessRequests
     public static Task<HttpResponseMessage> PostFormAsync(HttpClient client, string action, Dictionary<string, string> form)
         => client.PostAsync($"/AccessRequests/{action}", new FormUrlEncodedContent(form));
 
-    public static async Task<AccessRequest> PendingAsync(VaultFixture vault, string details, string username)
+    /// <summary>
+    /// Inserts a pending request for a GLOBAL secret straight into the database, bypassing filing and its
+    /// rule, for tests about deciding a request rather than filing one.
+    /// </summary>
+    public static async Task<AccessRequest> InsertPendingAsync(VaultFixture vault, string detailsPath, string username)
     {
         using var scope = vault.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
         var user = await db.Users.SingleAsync(user => user.Username == username);
+        var secretId = LegacySharing.SecretIdOf(detailsPath);
         var request = new AccessRequest
         {
             Id = Guid.NewGuid(),
-            SecretId = LegacySharing.SecretIdOf(details),
-            SecretName = (await db.Secrets.SingleAsync(secret => secret.Id == LegacySharing.SecretIdOf(details))).Name,
+            SecretId = secretId,
+            SecretName = (await db.Secrets.SingleAsync(secret => secret.Id == secretId)).Name,
             ProjectKey = "GLOBAL",
             RequesterUserId = user.Id,
             RequesterUsername = username,

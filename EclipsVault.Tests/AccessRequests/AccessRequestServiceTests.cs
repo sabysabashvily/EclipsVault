@@ -127,7 +127,7 @@ public sealed class AccessRequestServiceTests
     {
         public Task<AccessRequest?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult<AccessRequest?>(null);
         public Task AddAsync(AccessRequest request, CancellationToken ct) => throw new NotSupportedException();
-        public Task<bool> UpdateAsync(AccessRequest request, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> SaveDecisionAsync(AccessRequest request, CancellationToken ct) => throw new NotSupportedException();
         public Task<bool> HasPendingAsync(Guid secretId, Guid requesterUserId, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<AccessRequest>> ListByRequesterAsync(Guid requesterUserId, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<AccessRequestForReview>> ListPendingForReviewAsync(CancellationToken ct) => throw new NotSupportedException();

@@ -17,60 +17,62 @@ namespace EclipsVault.IntegrationTests;
 public sealed class RetiredSharingRoutesTests(VaultFixture vault)
 {
     [Theory]
-    [InlineData("/AccessRequests/Approve", HttpStatusCode.NotFound, "198.18.102.1")]
-    [InlineData("/aCcEsSrEqUeStS/aPpRoVe/", HttpStatusCode.NotFound, "198.18.102.2")]
-    [InlineData("/AccessRequests/Approve/{0}", HttpStatusCode.NotFound, "198.18.102.3")]
-    [InlineData("/AccessRequests/Reject", HttpStatusCode.NotFound, "198.18.102.4")]
-    [InlineData("/ACCESSREQUESTS/REJECT/{0}", HttpStatusCode.NotFound, "198.18.102.5")]
-    [InlineData("/AccessRequests", HttpStatusCode.MethodNotAllowed, "198.18.102.6")]
-    [InlineData("/accessrequests/index", HttpStatusCode.MethodNotAllowed, "198.18.102.7")]
-    [InlineData("/AccessRequests/Index/{0}", HttpStatusCode.NotFound, "198.18.102.8")]
-    [InlineData("/sEcReTs/SharedWithMe", HttpStatusCode.MethodNotAllowed, "198.18.102.9")]
+    [InlineData("/AccessRequests/Approve", "it-retired-review-1", "198.18.102.1")]
+    [InlineData("/aCcEsSrEqUeStS/aPpRoVe/", "it-retired-review-2", "198.18.102.2")]
+    [InlineData("/AccessRequests/Approve/{0}", "it-retired-review-3", "198.18.102.3")]
+    [InlineData("/AccessRequests/Reject", "it-retired-review-4", "198.18.102.4")]
+    [InlineData("/ACCESSREQUESTS/REJECT/{0}", "it-retired-review-5", "198.18.102.5")]
+    [InlineData("/AccessRequests/Index/{0}", "it-retired-review-8", "198.18.102.8")]
     public async Task A_retired_reviewer_write_decides_nothing_with_a_real_session_and_valid_antiforgery(
-        string path, HttpStatusCode expected, string requesterAddress)
+        string path, string requesterUsername, string requesterAddress)
     {
         var admin = await vault.AdminClientAsync();
-        var pending = await PendingRequestAsync(admin, $"it-retired-review-{requesterAddress[^1..]}", requesterAddress);
+        var pending = await PendingRequestAsync(admin, requesterUsername, requesterAddress);
         var before = await AuditTrail.HeadAsync(vault);
 
         var response = await PostLegacyDecisionAsync(admin, string.Format(path, pending.RequestId), pending.RequestId);
 
-        Assert.Equal(expected, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Equal(AccessRequestStatus.Pending, await AccessRequestsApi.StatusOfAsync(vault, pending.RequestId));
         Assert.Equal(0, await SharesForAsync(pending.RequesterId));
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
     [Theory]
-    [InlineData("/AccessRequests/Cancel", HttpStatusCode.NotFound, "198.18.102.20")]
-    [InlineData("/aCcEsSrEqUeStS/cAnCeL/{0}/", HttpStatusCode.NotFound, "198.18.102.21")]
+    [InlineData("/AccessRequests/Cancel", "it-retired-cancel-20", "198.18.102.20")]
+    [InlineData("/aCcEsSrEqUeStS/cAnCeL/{0}/", "it-retired-cancel-21", "198.18.102.21")]
     public async Task A_retired_withdrawal_withdraws_nothing_with_the_requesters_session_and_valid_antiforgery(
-        string path, HttpStatusCode expected, string requesterAddress)
+        string path, string requesterUsername, string requesterAddress)
     {
         var admin = await vault.AdminClientAsync();
-        var pending = await PendingRequestAsync(admin, $"it-retired-cancel-{requesterAddress[^2..]}", requesterAddress);
+        var pending = await PendingRequestAsync(admin, requesterUsername, requesterAddress);
         var before = await AuditTrail.HeadAsync(vault);
 
         var response = await PostLegacyDecisionAsync(pending.Requester, string.Format(path, pending.RequestId), pending.RequestId);
 
-        Assert.Equal(expected, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Equal(AccessRequestStatus.Pending, await AccessRequestsApi.StatusOfAsync(vault, pending.RequestId));
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
+    // 405 rows: the Angular route table serves GET and HEAD at the page paths, and Create keeps only its
+    // POST, so another method finds the path but no handler for that method.
     [Theory]
-    [InlineData("GET", "/AccessRequests/Approve/{0}", HttpStatusCode.NotFound, "198.18.102.40")]
-    [InlineData("PUT", "/aCcEsSrEqUeStS/aPpRoVe/{0}", HttpStatusCode.NotFound, "198.18.102.41")]
-    [InlineData("PATCH", "/AccessRequests/Reject/{0}", HttpStatusCode.NotFound, "198.18.102.42")]
-    [InlineData("DELETE", "/ACCESSREQUESTS/CANCEL/{0}", HttpStatusCode.NotFound, "198.18.102.43")]
-    [InlineData("GET", "/AccessRequests/Create", HttpStatusCode.MethodNotAllowed, "198.18.102.44")]
-    [InlineData("PUT", "/accessrequests/create", HttpStatusCode.MethodNotAllowed, "198.18.102.45")]
-    [InlineData("DELETE", "/Secrets/SharedWithMe", HttpStatusCode.MethodNotAllowed, "198.18.102.46")]
+    [InlineData("GET", "/AccessRequests/Approve/{0}", HttpStatusCode.NotFound, "it-retired-verb-40", "198.18.102.40")]
+    [InlineData("PUT", "/aCcEsSrEqUeStS/aPpRoVe/{0}", HttpStatusCode.NotFound, "it-retired-verb-41", "198.18.102.41")]
+    [InlineData("PATCH", "/AccessRequests/Reject/{0}", HttpStatusCode.NotFound, "it-retired-verb-42", "198.18.102.42")]
+    [InlineData("DELETE", "/ACCESSREQUESTS/CANCEL/{0}", HttpStatusCode.NotFound, "it-retired-verb-43", "198.18.102.43")]
+    [InlineData("GET", "/AccessRequests/Create", HttpStatusCode.MethodNotAllowed, "it-retired-verb-44", "198.18.102.44")]
+    [InlineData("PUT", "/accessrequests/create", HttpStatusCode.MethodNotAllowed, "it-retired-verb-45", "198.18.102.45")]
+    [InlineData("DELETE", "/Secrets/SharedWithMe", HttpStatusCode.MethodNotAllowed, "it-retired-verb-46", "198.18.102.46")]
+    [InlineData("POST", "/AccessRequests", HttpStatusCode.MethodNotAllowed, "it-retired-verb-47", "198.18.102.47")]
+    [InlineData("POST", "/accessrequests/index", HttpStatusCode.MethodNotAllowed, "it-retired-verb-48", "198.18.102.48")]
+    [InlineData("POST", "/sEcReTs/SharedWithMe", HttpStatusCode.MethodNotAllowed, "it-retired-verb-49", "198.18.102.49")]
     public async Task No_other_method_or_case_reaches_a_retired_sharing_handler(
-        string method, string path, HttpStatusCode expected, string requesterAddress)
+        string method, string path, HttpStatusCode expected, string requesterUsername, string requesterAddress)
     {
         var admin = await vault.AdminClientAsync();
-        var pending = await PendingRequestAsync(admin, $"it-retired-verb-{requesterAddress[^2..]}", requesterAddress);
+        var pending = await PendingRequestAsync(admin, requesterUsername, requesterAddress);
         var before = await AuditTrail.HeadAsync(vault);
 
         var response = await SendLegacyFormAsync(admin, new HttpMethod(method), string.Format(path, pending.RequestId), pending.RequestId);
@@ -86,7 +88,7 @@ public sealed class RetiredSharingRoutesTests(VaultFixture vault)
     private async Task<PendingRequest> PendingRequestAsync(HttpClient admin, string username, string requesterAddress)
     {
         var requester = await vault.SignInNewAccountAsync(username, IPAddress.Parse(requesterAddress), ClearanceLevel.Elevated, "IT-RETIRED");
-        var request = await LegacyAccessRequests.PendingAsync(vault, await LegacySharing.CreateSecretAsync(admin, username), username);
+        var request = await LegacyAccessRequests.InsertPendingAsync(vault, await LegacySharing.CreateSecretAsync(admin, username), username);
         return new PendingRequest(request.Id, request.RequesterUserId, requester.Client);
     }
 

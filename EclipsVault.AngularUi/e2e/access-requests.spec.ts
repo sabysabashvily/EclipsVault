@@ -210,6 +210,14 @@ test("an approval with an expiry reaches the requester's Shared with me", async 
   ]);
 });
 
+test("the requester opens an approval's share into its Legacy Details page", async ({ page }) => {
+  await openAsRequester(page, '/Secrets/SharedWithMe');
+  const shared = new SharedWithMe(page);
+  await shared.openOf(shared.secret(approved)).click();
+  await expect(page).toHaveURL(/\/Secrets\/Details\/[0-9a-f-]{36}$/);
+  await expect(page.getByRole('heading', { name: approved, exact: true })).toBeVisible();
+});
+
 test('a reviewer rejects through the confirmation dialog, after cancelling once', async ({
   page,
   browserHealth,

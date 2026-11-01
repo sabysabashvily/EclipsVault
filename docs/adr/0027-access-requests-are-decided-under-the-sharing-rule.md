@@ -33,7 +33,11 @@ project and sensitivity even when the share could never let them open it.
   recipient now exists, the answer is a conflict saying so. Every other failed save still fails
   closed as the audit trail being unavailable.
 
-These rules live in Core, so the Legacy sharing panel obeys them as well as the Angular UI.
+Who may file, when approval is still possible (`AccessRequestRules`) and which recipients a share
+refuses (`ShareRecipient`) live in Core, so the Legacy sharing panel obeys them as well as the Angular
+UI. The reviewer rule needs the vault's access check, which runs in Web, so it lives in
+`AccessRequestReviewers` there; the sharing panel's own issuer check applies the same rule and must
+change with it.
 
 ## Consequences
 

@@ -17,7 +17,7 @@ namespace EclipsVault.IntegrationTests;
 public sealed class SharingActivityTests(VaultFixture vault)
 {
     [Fact]
-    public async Task Filing_shows_in_the_requesters_activity_and_approving_with_its_share_in_the_reviewers()
+    public async Task Approving_shows_with_its_share_only_in_the_reviewers_activity()
     {
         var requester = await vault.SignInNewAccountAsync("it-activity-approve-requester", IPAddress.Parse("198.18.104.1"), ClearanceLevel.Elevated, "IT-ACTIVITY");
         var reviewer = await vault.SignInNewAccountAsync("it-activity-approve-reviewer", IPAddress.Parse("10.99.104.1"), ClearanceLevel.TopSecret);

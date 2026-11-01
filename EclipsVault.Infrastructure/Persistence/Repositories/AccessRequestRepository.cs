@@ -55,6 +55,6 @@ public sealed class AccessRequestRepository : IAccessRequestRepository
                new SecretSummaryDto(secret.Id, secret.Name, secret.ProjectKey, secret.Environment, secret.Sensitivity,
                    secret.CreatedAtUtc, secret.ExpiresAtUtc));
 
-    public Task<bool> UpdateAsync(AccessRequest request, CancellationToken ct)
+    public Task<bool> SaveDecisionAsync(AccessRequest request, CancellationToken ct)
         => new AccessRequestCommitter(_context).DecideAsync(request, ct);
 }

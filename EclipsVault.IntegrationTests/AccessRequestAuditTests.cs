@@ -29,7 +29,7 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
         await vault.SignInNewAccountAsync(username, IPAddress.Parse($"198.51.100.{addressSuffix}"), project: "IT-REQUESTERS");
         var name = $"it-request-secret-{addressSuffix}";
         var details = await LegacySharing.CreateSecretAsync(reviewer, name);
-        var pending = await LegacyAccessRequests.PendingAsync(vault, details, username);
+        var pending = await LegacyAccessRequests.InsertPendingAsync(vault, details, username);
         var token = await UiApiRequest.AntiforgeryTokenAsync(reviewer);
         var before = await AuditTrail.HeadAsync(vault);
 
@@ -58,7 +58,7 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
         var reviewer = await vault.AdminClientAsync();
         var requester = await vault.SignInNewAccountAsync("it-request-163", IPAddress.Parse("198.51.100.163"));
         var details = await LegacySharing.CreateSecretAsync(reviewer, "it-request-secret-163");
-        var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-request-163");
+        var pending = await LegacyAccessRequests.InsertPendingAsync(vault, details, "it-request-163");
         var token = await UiApiRequest.AntiforgeryTokenAsync(requester.Client);
         var before = await AuditTrail.HeadAsync(vault);
 
@@ -140,7 +140,7 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
         var reviewer = await vault.SignInNewAccountAsync("it-request-issuer", IPAddress.Parse("198.51.100.165"));
         await vault.SignInNewAccountAsync("it-request-original", IPAddress.Parse("198.51.100.166"), project: "IT-REQUESTERS");
         var details = await LegacySharing.CreateSecretAsync(admin, "it-request-account-identity");
-        var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-request-original");
+        var pending = await LegacyAccessRequests.InsertPendingAsync(vault, details, "it-request-original");
         using (var scope = vault.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
@@ -179,7 +179,7 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
         var reviewer = await vault.AdminClientAsync();
         await vault.SignInNewAccountAsync("it-request-existing-168", IPAddress.Parse("198.51.100.168"), project: "IT-REQUESTERS");
         var details = await LegacySharing.CreateSecretAsync(reviewer, "it-request-existing-168");
-        var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-request-existing-168");
+        var pending = await LegacyAccessRequests.InsertPendingAsync(vault, details, "it-request-existing-168");
         await LegacySharing.ShareAsync(reviewer, details, "it-request-existing-168");
         var token = await UiApiRequest.AntiforgeryTokenAsync(reviewer);
         var before = await AuditTrail.HeadAsync(vault);
@@ -200,7 +200,7 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
         var reviewer = await vault.AdminClientAsync();
         await vault.SignInNewAccountAsync("it-request-existing-241", IPAddress.Parse("198.51.100.241"), project: "IT-REQUESTERS");
         var details = await LegacySharing.CreateSecretAsync(reviewer, "it-request-existing-241");
-        var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-request-existing-241");
+        var pending = await LegacyAccessRequests.InsertPendingAsync(vault, details, "it-request-existing-241");
         await LegacySharing.ShareAsync(reviewer, details, "it-request-existing-241");
         var token = await UiApiRequest.AntiforgeryTokenAsync(reviewer);
         var before = await AuditTrail.HeadAsync(vault);
@@ -218,7 +218,7 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
         var reviewer = await vault.AdminClientAsync();
         await vault.SignInNewAccountAsync("it-request-expired-secret", IPAddress.Parse("198.51.100.242"), project: "IT-REQUESTERS");
         var details = await LegacySharing.CreateSecretAsync(reviewer, "it-request-expired-secret");
-        var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-request-expired-secret");
+        var pending = await LegacyAccessRequests.InsertPendingAsync(vault, details, "it-request-expired-secret");
         using (var scope = vault.Services.CreateScope())
         {
             await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().Secrets.Where(secret => secret.Id == pending.SecretId)
@@ -242,7 +242,7 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
         var reviewer = await vault.AdminClientAsync();
         await vault.SignInNewAccountAsync("it-request-existing-169", IPAddress.Parse("198.51.100.169"), project: "IT-REQUESTERS");
         var details = await LegacySharing.CreateSecretAsync(reviewer, "it-request-existing-169");
-        var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-request-existing-169");
+        var pending = await LegacyAccessRequests.InsertPendingAsync(vault, details, "it-request-existing-169");
         await LegacySharing.ShareAsync(reviewer, details, "it-request-existing-169");
         var existing = await LegacySharing.ShareOfAsync(vault, details);
         await LegacySharing.ExpireShareAsync(vault, existing.Id);
@@ -271,7 +271,7 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
         var username = $"it-request-invalid-{addressSuffix}";
         await vault.SignInNewAccountAsync(username, IPAddress.Parse($"198.51.100.{addressSuffix}"), project: "IT-REQUESTERS");
         var details = await LegacySharing.CreateSecretAsync(reviewer, $"it-request-invalid-{addressSuffix}");
-        var pending = await LegacyAccessRequests.PendingAsync(vault, details, username);
+        var pending = await LegacyAccessRequests.InsertPendingAsync(vault, details, username);
         var token = await UiApiRequest.AntiforgeryTokenAsync(reviewer);
         var before = await AuditTrail.HeadAsync(vault);
 
@@ -288,7 +288,7 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
     private async Task<AccessRequest> PendingWithStoredNoteAsync(HttpClient admin, string requester, string secretName)
     {
         var details = await LegacySharing.CreateSecretAsync(admin, secretName);
-        var pending = await LegacyAccessRequests.PendingAsync(vault, details, requester);
+        var pending = await LegacyAccessRequests.InsertPendingAsync(vault, details, requester);
         using var scope = vault.Services.CreateScope();
         await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().AccessRequests.Where(r => r.Id == pending.Id)
             .ExecuteUpdateAsync(set => set.SetProperty(r => r.DecisionNote, "A previously stored note"));

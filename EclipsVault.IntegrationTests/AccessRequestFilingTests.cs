@@ -83,7 +83,7 @@ public sealed class AccessRequestFilingTests(VaultFixture vault)
         var requester = await vault.SignInNewAccountAsync(
             "it-filing-pending", IPAddress.Parse("203.0.113.215"), ClearanceLevel.Elevated, "IT-FILING");
         var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-filing-pending-secret", sensitivity: "Confidential");
-        await LegacyAccessRequests.PendingAsync(vault, details, "it-filing-pending");
+        await LegacyAccessRequests.InsertPendingAsync(vault, details, "it-filing-pending");
         var before = await AuditTrail.HeadAsync(vault);
 
         var response = await LegacyAccessRequests.FileAsync(
@@ -186,7 +186,7 @@ public sealed class AccessRequestFilingTests(VaultFixture vault)
         var requester = await vault.SignInNewAccountAsync(
             "it-denied-pending", IPAddress.Parse("203.0.113.219"), ClearanceLevel.Elevated, "IT-FILING");
         var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-denied-pending-secret", sensitivity: "Confidential");
-        await LegacyAccessRequests.PendingAsync(vault, details, "it-denied-pending");
+        await LegacyAccessRequests.InsertPendingAsync(vault, details, "it-denied-pending");
 
         var page = await requester.Client.GetStringAsync($"/Account/Denied?secretId={LegacySharing.SecretIdOf(details)}");
 

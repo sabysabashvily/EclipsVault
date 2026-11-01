@@ -73,7 +73,7 @@ The vault account a share was given to.
 _Avoid_: Grantee
 
 **Expired share**:
-A share past its expiry. It confers no access and is shown nowhere, and a new share to the same recipient replaces it.
+A share past its expiry. It confers no access, Shared with me and Shared by me leave it out, and a new share to the same recipient replaces it.
 _Avoid_: Revoked share (nobody revoked it)
 
 **Access request**:
@@ -85,7 +85,7 @@ The vault account that filed an access request, identified by its account. Only 
 _Avoid_: Applicant
 
 **Reviewer**:
-A vault account that may decide an access request: anyone who could issue the share from the secret itself at that moment. Approving issues the share, with the reviewer as its issuer.
+A vault account that may decide an access request: anyone other than its requester who could issue the share from the secret itself at that moment. Approving issues the share, with the reviewer as its issuer.
 _Avoid_: Approver (a reviewer may also reject), owner
 
 ### The two APIs

@@ -1,7 +1,7 @@
 # Area 4 Sharing: decision record
 
-Status: all 18 recommendations accepted by the owner (rounds 1 and 2, 2026-10-30). Awaiting the
-owner's "confirmed" on this table and the delivery outline. No code, branch, commit or issue exists.
+Status: all 18 recommendations accepted by the owner (rounds 1 and 2, 2026-10-30), then confirmed with
+the delivery outline and published as #96. Delivery is recorded in [checkpoint.md](checkpoint.md).
 
 Survey and findings F1–F10: [survey.md](survey.md). Glossary: `CONTEXT.md` (Expired share, Access
 request, Requester, Reviewer). ADRs: 0017 (Area 4 joins security review), 0027 (new).
