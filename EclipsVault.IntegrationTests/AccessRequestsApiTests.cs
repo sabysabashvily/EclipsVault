@@ -182,6 +182,24 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
         Assert.False(await LegacySharing.HasAnyShareAsync(vault, details));
     }
 
+    // No reviewer can decide such a request any more, so withdrawing is its only way out of Pending.
+    [Fact]
+    public async Task The_requester_withdraws_a_request_on_a_secret_since_made_a_decoy_without_tripping_it()
+    {
+        var admin = await vault.AdminClientAsync();
+        var requester = await vault.SignInNewAccountAsync("it-arapi-decoy-withdraw", IPAddress.Parse("198.18.101.47"), ClearanceLevel.Elevated, "IT-ARAPI");
+        var details = await LegacySharing.CreateSecretAsync(admin, "it-arapi-decoy-withdraw");
+        var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-arapi-decoy-withdraw");
+        await LegacySharing.MakeDecoyAsync(vault, details);
+        var before = await AuditTrail.HeadAsync(vault);
+
+        var response = await AccessRequestsApi.WithdrawAsync(requester.Client, pending.Id);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal(AccessRequestStatus.Cancelled, await AccessRequestsApi.StatusOfAsync(vault, pending.Id));
+        Assert.Equal([AuditAction.AccessRequestCancelled], (await AuditTrail.RowsAfterAsync(vault, before)).Select(row => row.Action));
+    }
+
     [Fact]
     public async Task A_share_saved_first_by_another_request_answers_share_exists()
     {
