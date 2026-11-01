@@ -23,7 +23,8 @@ public sealed class ConcurrentShareRevocationTests(VaultFixture vault)
         using var scope = vault.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
         await using var transaction = await db.Database.BeginTransactionAsync();
-        await new SqlServerAuditChainLocker().AcquireAsync(db, "EclipsVault:AuditChain", TimeSpan.FromSeconds(5), default);
+        await scope.ServiceProvider.GetRequiredService<IAuditChainLocker>()
+            .AcquireAsync(db, "EclipsVault:AuditChain", TimeSpan.FromSeconds(5), default);
 
         var first = UiApiRequest.WriteWithAntiforgeryAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.Id}");
         var second = UiApiRequest.WriteWithAntiforgeryAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.Id}");
@@ -51,13 +52,24 @@ public sealed class ConcurrentShareRevocationTests(VaultFixture vault)
         // Each request reads the share before it asks for this lock. Waiting for both writers
         // makes the overlap deterministic without replacing services or altering the host.
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        while (await db.Database.SqlQueryRaw<int>("""
-            SELECT COUNT(*) AS [Value] FROM sys.dm_tran_locks
-            WHERE resource_type = 'APPLICATION' AND resource_database_id = DB_ID()
-                AND request_status = 'WAIT' AND resource_description LIKE '%EclipsVault:AuditChain%'
-            """).SingleAsync(deadline.Token) < 2)
+        var queuedChainWriters = db.Database.IsNpgsql() ? PostgresQueuedChainWriters : SqlServerQueuedChainWriters;
+        while (await db.Database.SqlQueryRaw<int>(queuedChainWriters).SingleAsync(deadline.Token) < 2)
         {
             await Task.Delay(TimeSpan.FromMilliseconds(25), deadline.Token);
         }
     }
+
+    private const string SqlServerQueuedChainWriters = """
+        SELECT COUNT(*) AS [Value] FROM sys.dm_tran_locks
+        WHERE resource_type = 'APPLICATION' AND resource_database_id = DB_ID()
+            AND request_status = 'WAIT' AND resource_description LIKE '%EclipsVault:AuditChain%'
+        """;
+
+    // An advisory lock's key is a hash of its name, so count the lock requests this connection
+    // blocks: its transaction holds the chain lock and nothing else. pg_locks is read live, where
+    // pg_stat_activity would be read once per transaction and never see a request that came later.
+    private const string PostgresQueuedChainWriters = """
+        SELECT COUNT(*)::int AS "Value" FROM pg_locks
+        WHERE NOT granted AND pg_backend_pid() = ANY(pg_blocking_pids(pid))
+        """;
 }
