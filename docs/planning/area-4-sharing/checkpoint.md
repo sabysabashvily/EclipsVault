@@ -154,3 +154,45 @@ Checks:
   The package files and response types have not changed since.
 
 To restart: check out `area-4-sharing`, read `logs/ticket-100/final-report.md`, then start ticket 5 (#101).
+
+## Delivery: ticket 5 (#101) done locally, 2026-11-01
+
+Same branch, on top of `4ac9e3d`; not pushed, no PR, #101 stays open for the owner.
+
+- `e279e09` serves Access requests in Angular and decides requests through the UI API.
+  - `GET /api/ui/access-requests` and `POST …/{requestId}/approve|reject|withdraw` are session-only,
+    no-store and anti-forgery protected. Authorization goes only through `AccessRequestReviewers`, and
+    withdraw is the requester's own. Anything the caller cannot decide is `404 request_not_found`,
+    like an unknown id, with no audit row.
+  - Legacy keeps only `POST /AccessRequests/Create`, which redirects to `/AccessRequests?filed=1` or
+    `?refused=<code>`. The page shows only known codes and then removes the parameter.
+  - The route table, both sidebars and the palette open the Angular page.
+- `f4e57f3` answers the Spec review: a requester deleted mid-approval is `409 request_ineligible`
+  "That requester account no longer exists.", not `share_exists`.
+- `d6e0d42` and `382ab5c` answer the Standards review and the re-check (test names, page objects,
+  visual parity tests).
+
+Owner follow-ups:
+- The StatusLine has no info style, so Legacy's info flashes "Request rejected." and "Request
+  withdrawn." use the success style. This is not in decisions.md.
+- `f4e57f3`'s body places the deletion race up to the save; it is only before the requester lookup.
+  `382ab5c`'s body corrects it. Amending was not allowed.
+- `share_exists` and the deleted-requester answer are pinned through test-only endpoints, because only
+  races produce them.
+
+Behaviour later tickets inherit:
+- The Playwright chain is now `shared-by-me` → `shared-with-me` → `access-requests` → `mailbox`.
+- `e2e/denied.ts` is a page object for the Legacy Denied page.
+- `EmptyState` has an `inbox` icon.
+
+Checks on `382ab5c`:
+- locked restore, Release build with 0 warnings, format verify;
+- unit tests 730/730;
+- integration tests 810/810;
+- lint, format check, build, build checks 15/15, `check:api-types`;
+- Vitest 329/329;
+- `npm audit` exit 0 (21 moderate);
+- both pending-model checks, guardrail tests 6/6;
+- e2e 139/139, guards 8/8.
+
+To restart: check out `area-4-sharing`, read `logs/ticket-101/final-report.md`, then start ticket 6 (#102).
