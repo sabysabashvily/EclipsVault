@@ -44,6 +44,12 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
     [InlineData("/DATA/index")]
     [InlineData("/Secrets/SharedByMe")]
     [InlineData("/secrets/sharedbyme")]
+    [InlineData("/Secrets/SharedWithMe")]
+    [InlineData("/secrets/sharedwithme")]
+    [InlineData("/AccessRequests")]
+    [InlineData("/AccessRequests/Index")]
+    [InlineData("/accessrequests")]
+    [InlineData("/ACCESSREQUESTS/index")]
     public async Task Angular_documents_add_only_the_two_Trusted_Types_directives(string path)
     {
         var client = await vault.AdminClientAsync();
@@ -66,7 +72,6 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
     [InlineData("/Account/Login", HttpStatusCode.Redirect)]
     [InlineData("/Account/Denied", HttpStatusCode.OK)]
     [InlineData("/Secrets", HttpStatusCode.OK)]
-    [InlineData("/Secrets/SharedWithMe", HttpStatusCode.OK)]
     [InlineData("/Access/NotAnAngularRoute", HttpStatusCode.NotFound)]
     [InlineData("/api/ui/me", HttpStatusCode.OK)]
     [InlineData("/css/site.css", HttpStatusCode.OK)]

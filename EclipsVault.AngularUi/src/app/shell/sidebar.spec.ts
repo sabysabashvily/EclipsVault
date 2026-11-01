@@ -39,7 +39,7 @@ describe('sidebar mapping', () => {
                 label: 'Shared with me',
                 icon: 'shared-with-me',
                 url: '/Secrets/SharedWithMe',
-                angular: false,
+                angular: true,
               },
               {
                 label: 'Shared by me',
@@ -63,7 +63,7 @@ describe('sidebar mapping', () => {
                 label: 'Access requests',
                 icon: 'access-requests',
                 url: '/AccessRequests',
-                angular: false,
+                angular: true,
               },
             ],
           },

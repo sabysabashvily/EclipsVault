@@ -63,6 +63,7 @@ try
     builder.Services.Configure<AbacOptions>(builder.Configuration.GetSection(AbacOptions.SectionName));
     builder.Services.AddScoped<IAccessContextProvider, AccessContextProvider>();
     builder.Services.AddScoped<IAuthorizationHandler, SecretAccessHandler>();
+    builder.Services.AddScoped<AccessRequestReviewers>();
 
     builder.Services
         .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)

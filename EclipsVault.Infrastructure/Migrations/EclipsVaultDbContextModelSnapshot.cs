@@ -73,6 +73,7 @@ namespace EclipsVault.Infrastructure.Migrations
                         .HasColumnType("nvarchar(128)");
 
                     b.Property<int>("Status")
+                        .IsConcurrencyToken()
                         .HasColumnType("int");
 
                     b.HasKey("Id");

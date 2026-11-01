@@ -5,24 +5,28 @@ using EclipsVault.Core.Domain.Exceptions;
 namespace EclipsVault.Core.Application.Secrets;
 
 /// <summary>
-/// Orchestrates secret access grants: resolves grantees, prevents duplicates and
-/// self-grants. Persistence audits each change atomically. The ABAC handler calls
-/// <see cref="HasActiveGrantAsync"/> to let a grant satisfy the project rule.
+/// Orchestrates shares: resolves recipients, refuses sharing with oneself, active duplicates and
+/// recipients a share could not help, and replaces expired shares. Persistence audits each change
+/// atomically. The ABAC handler calls <see cref="HasActiveGrantAsync"/> to let a share satisfy the
+/// project rule.
 /// </summary>
 public sealed class SecretGrantService : ISecretGrantService
 {
     private readonly ISecretGrantRepository _grants;
+    private readonly ISecretRepository _secrets;
     private readonly IUserRepository _users;
     private readonly IAuditContext _actor;
     private readonly TimeProvider _clock;
 
     public SecretGrantService(
         ISecretGrantRepository grants,
+        ISecretRepository secrets,
         IUserRepository users,
         IAuditContext actor,
         TimeProvider clock)
     {
         _grants = grants;
+        _secrets = secrets;
         _users = users;
         _actor = actor;
         _clock = clock;
@@ -47,33 +51,28 @@ public sealed class SecretGrantService : ISecretGrantService
 
     public async Task GrantAsync(Guid secretId, string granteeUsernameOrEmail, int? ttlDays, CancellationToken ct)
     {
+        var secret = await _secrets.FindAsync(secretId, ct) ?? throw new SecretNotFoundException(secretId);
         var grantee = await _users.FindByUsernameOrEmailAsync(granteeUsernameOrEmail.Trim(), ct)
                       ?? throw new SharingException($"No user found for '{granteeUsernameOrEmail}'.");
 
-        if (grantee.Id == _actor.UserId)
-        {
-            throw new SharingException("You already have access — you cannot share a secret with yourself.");
-        }
+        ShareRecipient.EnsureCanReceive(secret, grantee, _actor.UserId);
 
-        if (await _grants.ExistsAsync(grantee.Id, secretId, ct))
+        var now = _clock.GetUtcNow();
+        var existing = await _grants.FindForRecipientAsync(grantee.Id, secretId, ct);
+        if (existing is not null && existing.IsActive(now))
         {
             throw new SharingException($"'{grantee.Username}' already has a grant on this secret.");
         }
 
-        var now = _clock.GetUtcNow();
-        var grant = new SecretGrant
-        {
-            Id = Guid.NewGuid(),
-            SecretId = secretId,
-            GranteeUserId = grantee.Id,
-            GranteeUsername = grantee.Username,
-            IssuerUserId = _actor.UserId,
-            GrantedBy = _actor.Username ?? "system",
-            CreatedAtUtc = now,
-            ExpiresAtUtc = ttlDays is > 0 ? now.AddDays(ttlDays.Value) : null
-        };
+        var grant = ShareRecipient.NewShare(secret, grantee, _actor, now, ttlDays);
 
-        await _grants.AddAsync(grant, ct);
+        var saved = existing is null
+            ? await _grants.AddAsync(grant, ct)
+            : await _grants.ReplaceExpiredAsync(existing, grant, ct);
+        if (!saved)
+        {
+            throw new SharingException("They already have a share on this secret.");
+        }
     }
 
     public async Task<bool> RevokeAsync(Guid grantId, Guid secretId, CancellationToken ct)

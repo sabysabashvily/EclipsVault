@@ -154,6 +154,7 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
         }
 
         Inject<Secret>(context, DescribeSecretChange);
+        Inject<AccessRequest>(context, DescribeAccessRequestChange);
         Inject<TrustedNetwork>(context, DescribeTrustedNetworkChange);
         Inject<DynamicSecretLease>(context, DescribeLeaseChange);
         InjectOperationEvents(context);
@@ -243,21 +244,69 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
             secretNames[secretId] = secret?.Name ?? "secret";
         }
 
-        Inject<SecretGrant>(context, entry => DescribeShareChange(entry, secretNames[entry.Entity.SecretId]));
+        var replaced = ReplacedExpiredShares(shares);
+        Inject<SecretGrant>(context, entry => DescribeShareChange(
+            entry, secretNames[entry.Entity.SecretId], replaced.Contains((entry.Entity.SecretId, entry.Entity.GranteeUserId))));
     }
 
-    private static AuditRow? DescribeShareChange(EntityEntry<SecretGrant> entry, string secretName)
+    /// <summary>
+    /// The (secret, recipient) pairs whose expired share is deleted and whose new share is added in
+    /// this save. Nobody revoked that expired share, so the pair is recorded as one share event.
+    /// </summary>
+    private HashSet<(Guid SecretId, Guid RecipientId)> ReplacedExpiredShares(List<EntityEntry<SecretGrant>> shares)
+    {
+        var now = _clock.GetUtcNow();
+        var added = shares
+            .Where(entry => entry.State == EntityState.Added)
+            .Select(entry => (entry.Entity.SecretId, entry.Entity.GranteeUserId));
+        return shares
+            .Where(entry => entry.State == EntityState.Deleted && !entry.Entity.IsActive(now))
+            .Select(entry => (entry.Entity.SecretId, entry.Entity.GranteeUserId))
+            .Intersect(added)
+            .ToHashSet();
+    }
+
+    private static AuditRow? DescribeShareChange(EntityEntry<SecretGrant> entry, string secretName, bool replacesExpiredShare)
     {
         var share = entry.Entity;
         return entry.State switch
         {
             EntityState.Added => new AuditRow(
                 AuditAction.SecretShared, nameof(Secret), share.SecretId, secretName,
-                $"Shared with '{share.GranteeUsername}'" + (share.ExpiresAtUtc is { } expiry ? $" until {expiry:u}" : "")),
+                $"Shared with '{share.GranteeUsername}'"
+                + (share.ExpiresAtUtc is { } expiry ? $" until {expiry:u}" : "")
+                + (replacesExpiredShare ? ", replacing an expired share" : "")),
+            EntityState.Deleted when replacesExpiredShare => null,
             EntityState.Deleted => new AuditRow(
                 AuditAction.SecretShareRevoked, nameof(Secret), share.SecretId, secretName,
                 $"Revoked access for '{share.GranteeUsername}'"),
             _ => null
+        };
+    }
+
+    private static AuditRow? DescribeAccessRequestChange(EntityEntry<AccessRequest> entry)
+    {
+        var request = entry.Entity;
+        if (entry.State == EntityState.Added)
+        {
+            return new AuditRow(AuditAction.AccessRequested, nameof(Secret), request.SecretId, request.SecretName,
+                $"Access to '{request.SecretName}' requested");
+        }
+
+        if (entry.State != EntityState.Modified || !entry.Property(r => r.Status).IsModified)
+        {
+            return null;
+        }
+
+        return request.Status switch
+        {
+            AccessRequestStatus.Approved => new AuditRow(AuditAction.AccessRequestApproved, nameof(Secret), request.SecretId, request.SecretName,
+                $"Access to '{request.SecretName}' approved for {request.RequesterUsername}"),
+            AccessRequestStatus.Rejected => new AuditRow(AuditAction.AccessRequestRejected, nameof(Secret), request.SecretId, request.SecretName,
+                $"Access to '{request.SecretName}' rejected for {request.RequesterUsername}"),
+            AccessRequestStatus.Cancelled => new AuditRow(AuditAction.AccessRequestCancelled, nameof(Secret), request.SecretId, request.SecretName,
+                $"Request for '{request.SecretName}' withdrawn"),
+            _ => null,
         };
     }
 
@@ -340,7 +389,6 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
     private static bool IsShredTransition(EntityEntry<Secret> entry)
         => entry.Property(s => s.IsShredded) is { OriginalValue: false, CurrentValue: true };
 
-    /// <summary>True when <paramref name="propertyName"/> is the only modified property on the entry.</summary>
     private static bool OnlyChanged(EntityEntry entry, string propertyName)
     {
         var modified = entry.Properties.Where(p => p.IsModified).Select(p => p.Metadata.Name).ToList();

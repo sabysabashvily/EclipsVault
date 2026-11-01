@@ -219,7 +219,7 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         await UiApiFailureContractTests.AssertProblemAsync(revoke, 404, "share_not_found");
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         Assert.Equal(HttpStatusCode.OK, (await recipient.Client.GetAsync(details)).StatusCode);
-        Assert.Contains(secretName, await recipient.Client.GetStringAsync("/Secrets/SharedWithMe"));
+        Assert.Contains(secretName, await recipient.Client.GetStringAsync("/api/ui/shared-with-me"));
     }
 
     [Fact]
@@ -249,6 +249,24 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         var list = await issuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me");
 
         Assert.Equal("it-shares-live", Assert.Single(list!.Shares).SecretName);
+    }
+
+    [Fact]
+    public async Task A_share_on_a_decoy_secret_is_left_out()
+    {
+        var issuer = await vault.SignInNewAccountAsync("it-shares-decoy", IPAddress.Parse("192.0.2.99"));
+        await vault.SignInNewAccountAsync("it-shares-decoy-recipient", IPAddress.Parse("192.0.2.100"));
+        var admin = await vault.AdminClientAsync();
+        var decoy = await LegacySharing.CreateSecretAsync(admin, "it-shares-decoy-flagged");
+        var genuine = await LegacySharing.CreateSecretAsync(admin, "it-shares-decoy-genuine");
+        await LegacySharing.ShareAsync(issuer.Client, decoy, "it-shares-decoy-recipient");
+        await LegacySharing.ShareAsync(issuer.Client, genuine, "it-shares-decoy-recipient");
+
+        await LegacySharing.MakeDecoyAsync(vault, decoy);
+
+        var list = await issuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me");
+
+        Assert.Equal("it-shares-decoy-genuine", Assert.Single(list!.Shares).SecretName);
     }
 
     [Fact]

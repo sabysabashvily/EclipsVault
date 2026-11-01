@@ -1,5 +1,6 @@
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Core.Domain.Exceptions;
 using Microsoft.EntityFrameworkCore;
 
 namespace EclipsVault.Infrastructure.Persistence.Repositories;
@@ -13,7 +14,14 @@ public sealed class AccessRequestRepository : IAccessRequestRepository
     public async Task AddAsync(AccessRequest request, CancellationToken ct)
     {
         _context.AccessRequests.Add(request);
-        await _context.SaveChangesAsync(ct);
+        try
+        {
+            await _context.SaveChangesAsync(ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            throw new AuditWriteFailedException("The access request and its audit row could not be persisted.", ex);
+        }
     }
 
     public Task<AccessRequest?> FindAsync(Guid id, CancellationToken ct)
@@ -29,21 +37,26 @@ public sealed class AccessRequestRepository : IAccessRequestRepository
             .OrderByDescending(r => r.CreatedAtUtc)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<AccessRequest>> ListPendingAsync(CancellationToken ct)
-        => await _context.AccessRequests.AsNoTracking()
-            .Where(r => r.Status == AccessRequestStatus.Pending)
-            .OrderByDescending(r => r.CreatedAtUtc)
-            .ToListAsync(ct);
+    // Sorted after loading: the projection builds its DTOs in memory, so SQL cannot order by their fields.
+    public async Task<IReadOnlyList<AccessRequestForReview>> ListPendingForReviewAsync(CancellationToken ct)
+        => (await ForReview(_context.AccessRequests.Where(r => r.Status == AccessRequestStatus.Pending)).ToListAsync(ct))
+            .OrderByDescending(r => r.Request.CreatedAtUtc)
+            .ToList();
 
-    public async Task<IReadOnlyList<AccessRequest>> ListPendingForProjectAsync(string projectKey, CancellationToken ct)
-        => await _context.AccessRequests.AsNoTracking()
-            .Where(r => r.Status == AccessRequestStatus.Pending && r.ProjectKey == projectKey)
-            .OrderByDescending(r => r.CreatedAtUtc)
-            .ToListAsync(ct);
+    public Task<AccessRequestForReview?> FindForReviewAsync(Guid id, CancellationToken ct)
+        => ForReview(_context.AccessRequests.Where(r => r.Id == id)).SingleOrDefaultAsync(ct);
 
-    public async Task UpdateAsync(AccessRequest request, CancellationToken ct)
-    {
-        _context.AccessRequests.Update(request);
-        await _context.SaveChangesAsync(ct);
-    }
+    // The secret is projected column by column so its ciphertext is never read. A decoy is left out, as the
+    // Secrets list leaves it out: a request filed before its secret became one names nothing to a reviewer.
+    private IQueryable<AccessRequestForReview> ForReview(IQueryable<AccessRequest> requests)
+        => from request in requests.AsNoTracking()
+           join secret in _context.Secrets.AsNoTracking() on request.SecretId equals secret.Id
+           where !secret.IsHoneyToken
+           select new AccessRequestForReview(
+               AccessRequestDto.From(request),
+               new SecretSummaryDto(secret.Id, secret.Name, secret.ProjectKey, secret.Environment, secret.Sensitivity,
+                   secret.CreatedAtUtc, secret.ExpiresAtUtc));
+
+    public Task<bool> UpdateAsync(AccessRequest request, CancellationToken ct)
+        => new AccessRequestCommitter(_context).DecideAsync(request, ct);
 }

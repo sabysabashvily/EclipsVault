@@ -1,46 +1,67 @@
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Core.Domain.Exceptions;
 
 namespace EclipsVault.Core.Application.AccessRequests;
 
-/// <summary>
-/// Drives the access-request workflow. Approval delegates to <see cref="ISecretGrantService"/>,
-/// so an approved request becomes an ordinary grant governed by the same ABAC engine — the
-/// project boundary is crossed, but clearance, network, and time rules still apply.
-/// </summary>
 public sealed class AccessRequestService : IAccessRequestService
 {
     private const int MinReasonLength = 3;
     private const int MaxReasonLength = 500;
 
+    public const int LongestExpiryDays = 3650;
+    public static readonly string ExpiryOutOfRange = $"Grant expiry must be between 0 and {LongestExpiryDays} days.";
+
     private readonly IAccessRequestRepository _requests;
-    private readonly ISecretGrantService _grants;
+    private readonly ISecretGrantRepository _grants;
+    private readonly ISecretRepository _secrets;
+    private readonly IUserRepository _users;
+    private readonly IAccessRequestCommitter _committer;
+    private readonly IIntrusionResponseService _intrusion;
+    private readonly IAuditContext _actor;
     private readonly INotificationService _notifications;
-    private readonly IAuditSink _audit;
     private readonly TimeProvider _clock;
 
     public AccessRequestService(
-        IAccessRequestRepository requests,
-        ISecretGrantService grants,
-        INotificationService notifications,
-        IAuditSink audit,
-        TimeProvider clock)
+        IAccessRequestRepository requests, ISecretGrantRepository grants, ISecretRepository secrets,
+        IUserRepository users, IAccessRequestCommitter committer, IIntrusionResponseService intrusion, IAuditContext actor,
+        INotificationService notifications, TimeProvider clock)
     {
         _requests = requests;
         _grants = grants;
+        _secrets = secrets;
+        _users = users;
+        _committer = committer;
+        _intrusion = intrusion;
+        _actor = actor;
         _notifications = notifications;
-        _audit = audit;
         _clock = clock;
     }
 
-    public async Task<AccessRequestCreateResult> CreateAsync(
-        Guid secretId, string secretName, string projectKey,
-        Guid requesterUserId, string requesterUsername, string reason, string? deniedReasons, CancellationToken ct)
+    public async Task<AccessRequestRefusal?> FilingRefusalAsync(Guid secretId, Guid requesterUserId, CancellationToken ct)
+        => await FilingRefusalAsync(await LiveSecretTrippingDecoysAsync(secretId, ct), requesterUserId, ct);
+
+    public async Task<SecretSummaryDto> SecretToRequestAsync(Guid secretId, CancellationToken ct)
     {
+        var secret = await LiveSecretTrippingDecoysAsync(secretId, ct);
+        return new SecretSummaryDto(
+            secret.Id, secret.Name, secret.ProjectKey, secret.Environment, secret.Sensitivity, secret.CreatedAtUtc, secret.ExpiresAtUtc);
+    }
+
+    public async Task<AccessRequestCreateResult> CreateAsync(
+        Guid secretId, Guid requesterUserId, string requesterUsername, string reason,
+        IReadOnlyList<string> denialReasons, CancellationToken ct)
+    {
+        var secret = await LiveSecretTrippingDecoysAsync(secretId, ct);
+        if (await FilingRefusalAsync(secret, requesterUserId, ct) is { } refusal)
+        {
+            return new AccessRequestCreateResult(refusal);
+        }
+
         reason = reason.Trim();
         if (reason.Length < MinReasonLength)
         {
-            return AccessRequestCreateResult.Failed("Add a short reason so a reviewer can decide.");
+            return new AccessRequestCreateResult(AccessRequestRefusal.ReasonTooShort);
         }
 
         if (reason.Length > MaxReasonLength)
@@ -48,72 +69,71 @@ public sealed class AccessRequestService : IAccessRequestService
             reason = reason[..MaxReasonLength];
         }
 
-        if (await _requests.HasPendingAsync(secretId, requesterUserId, ct))
-        {
-            return AccessRequestCreateResult.Failed("You already have a pending request for this secret.");
-        }
-
         var request = new AccessRequest
         {
             Id = Guid.NewGuid(),
-            SecretId = secretId,
-            SecretName = secretName,
-            ProjectKey = projectKey,
+            SecretId = secret.Id,
+            SecretName = secret.Name,
+            ProjectKey = secret.ProjectKey,
             RequesterUserId = requesterUserId,
             RequesterUsername = requesterUsername,
             Reason = reason,
-            DeniedReasons = string.IsNullOrWhiteSpace(deniedReasons) ? null : deniedReasons,
+            DeniedReasons = denialReasons.Count == 0 ? null : string.Join('\n', denialReasons),
             Status = AccessRequestStatus.Pending,
             CreatedAtUtc = _clock.GetUtcNow()
         };
 
         await _requests.AddAsync(request, ct);
-        await AuditAsync(AuditAction.AccessRequested, request, $"Access to '{secretName}' requested", ct);
         return AccessRequestCreateResult.Ok;
     }
 
     public async Task<IReadOnlyList<AccessRequestDto>> ListMineAsync(Guid requesterUserId, CancellationToken ct)
-        => (await _requests.ListByRequesterAsync(requesterUserId, ct)).Select(Map).ToList();
+        => (await _requests.ListByRequesterAsync(requesterUserId, ct)).Select(AccessRequestDto.From).ToList();
 
-    public async Task<IReadOnlyList<AccessRequestDto>> ListToReviewAsync(bool isAdmin, string reviewerProject, CancellationToken ct)
-    {
-        var pending = isAdmin
-            ? await _requests.ListPendingAsync(ct)
-            : await _requests.ListPendingForProjectAsync(reviewerProject, ct);
-        return pending.Select(Map).ToList();
-    }
+    public Task<IReadOnlyList<AccessRequestForReview>> ListPendingForReviewAsync(CancellationToken ct)
+        => _requests.ListPendingForReviewAsync(ct);
 
-    public async Task<AccessRequestDto?> GetAsync(Guid id, CancellationToken ct)
-    {
-        var request = await _requests.FindAsync(id, ct);
-        return request is null ? null : Map(request);
-    }
+    public Task<AccessRequestForReview?> FindForReviewAsync(Guid id, CancellationToken ct)
+        => _requests.FindForReviewAsync(id, ct);
 
-    public async Task<bool> ApproveAsync(Guid id, string reviewerUsername, int? ttlDays, string? note, CancellationToken ct)
+    public async Task<bool> ApproveAsync(Guid id, int expiresInDays, CancellationToken ct)
     {
+        if (expiresInDays is < 0 or > LongestExpiryDays)
+        {
+            throw new SharingException(ExpiryOutOfRange);
+        }
+
         var request = await _requests.FindAsync(id, ct);
         if (request is null || request.Status != AccessRequestStatus.Pending)
         {
             return false;
         }
 
-        // Skip re-granting if a live grant already covers them; otherwise create it. A failure
-        // here (SharingException) propagates so the reviewer sees it and the request stays pending.
-        if (!await _grants.HasActiveGrantAsync(request.RequesterUserId, request.SecretId, ct))
+        var secret = await LiveSecretAsync(request.SecretId, ct);
+        var recipient = await _users.FindByIdAsync(request.RequesterUserId, ct)
+            ?? throw new RequesterNotFoundException();
+        var now = _clock.GetUtcNow();
+        var existing = await _grants.FindForRecipientAsync(recipient.Id, secret.Id, ct);
+        if (AccessRequestRules.ShareRefusal(SubjectOf(recipient), AttributesOf(secret), existing?.IsActive(now) == true) is { } refusal)
         {
-            await _grants.GrantAsync(request.SecretId, request.RequesterUsername, ttlDays, ct);
+            throw new AccessRequestIneligibleException(refusal, AccessRequestRules.ExplainToReviewer(refusal));
         }
 
-        Decide(request, AccessRequestStatus.Approved, reviewerUsername, note);
-        await _requests.UpdateAsync(request, ct);
-        await AuditAsync(AuditAction.AccessRequestApproved, request,
-            $"Access to '{request.SecretName}' approved for {request.RequesterUsername}", ct);
+        ShareRecipient.EnsureCanReceive(secret, recipient, _actor.UserId);
+        var share = ShareRecipient.NewShare(secret, recipient, _actor, now, expiresInDays);
+
+        Decide(request, AccessRequestStatus.Approved, _actor.Username ?? "system");
+        if (!await _committer.ApproveAsync(request, share, expiredShare: existing, ct))
+        {
+            return false;
+        }
+
         await _notifications.NotifyAccessRequestDecidedAsync(
-            request.RequesterUserId, request.SecretName, approved: true, reviewerUsername, note, ct);
+            request.RequesterUserId, request.SecretName, approved: true, request.DecidedBy!, note: null, ct);
         return true;
     }
 
-    public async Task<bool> RejectAsync(Guid id, string reviewerUsername, string? note, CancellationToken ct)
+    public async Task<bool> RejectAsync(Guid id, CancellationToken ct)
     {
         var request = await _requests.FindAsync(id, ct);
         if (request is null || request.Status != AccessRequestStatus.Pending)
@@ -121,12 +141,14 @@ public sealed class AccessRequestService : IAccessRequestService
             return false;
         }
 
-        Decide(request, AccessRequestStatus.Rejected, reviewerUsername, note);
-        await _requests.UpdateAsync(request, ct);
-        await AuditAsync(AuditAction.AccessRequestRejected, request,
-            $"Access to '{request.SecretName}' rejected for {request.RequesterUsername}", ct);
+        Decide(request, AccessRequestStatus.Rejected, _actor.Username ?? "system");
+        if (!await _requests.UpdateAsync(request, ct))
+        {
+            return false;
+        }
+
         await _notifications.NotifyAccessRequestDecidedAsync(
-            request.RequesterUserId, request.SecretName, approved: false, reviewerUsername, note, ct);
+            request.RequesterUserId, request.SecretName, approved: false, request.DecidedBy!, note: null, ct);
         return true;
     }
 
@@ -138,31 +160,56 @@ public sealed class AccessRequestService : IAccessRequestService
             return false;
         }
 
-        Decide(request, AccessRequestStatus.Cancelled, request.RequesterUsername, null);
-        await _requests.UpdateAsync(request, ct);
-        await AuditAsync(AuditAction.AccessRequestCancelled, request, $"Request for '{request.SecretName}' withdrawn", ct);
-        return true;
+        Decide(request, AccessRequestStatus.Cancelled, request.RequesterUsername);
+        return await _requests.UpdateAsync(request, ct);
     }
 
-    private void Decide(AccessRequest request, AccessRequestStatus status, string by, string? note)
+    private void Decide(AccessRequest request, AccessRequestStatus status, string by)
     {
         request.Status = status;
         request.DecidedAtUtc = _clock.GetUtcNow();
         request.DecidedBy = by;
-        request.DecisionNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
     }
 
-    private Task AuditAsync(AuditAction action, AccessRequest request, string details, CancellationToken ct)
-        => _audit.WriteAsync(new AuditEntry
+    /// <summary>
+    /// A live secret that is not a decoy. A decoy trips its trap here, before any rule runs, so no lookup a
+    /// requester can make tells a decoy from a real secret without setting it off.
+    /// </summary>
+    private async Task<Secret> LiveSecretTrippingDecoysAsync(Guid secretId, CancellationToken ct)
+    {
+        var secret = await LiveSecretAsync(secretId, ct);
+        if (secret.IsHoneyToken)
         {
-            Action = action,
-            ResourceType = nameof(Secret),
-            ResourceId = request.SecretId,
-            ResourceName = request.SecretName,
-            Details = details
-        }, ct);
+            await _intrusion.TriggerHoneyTokenAsync(secret.Id, secret.Name, ct);
+            throw new HoneyTokenTrippedException(secret.Id, secret.Name);
+        }
 
-    private static AccessRequestDto Map(AccessRequest r) => new(
-        r.Id, r.SecretId, r.SecretName, r.ProjectKey, r.RequesterUsername, r.Reason, r.DeniedReasons,
-        r.Status, r.CreatedAtUtc, r.DecidedAtUtc, r.DecidedBy, r.DecisionNote);
+        return secret;
+    }
+
+    /// <summary>A secret anyone could still open: not shredded and not expired.</summary>
+    private async Task<Secret> LiveSecretAsync(Guid secretId, CancellationToken ct)
+    {
+        var secret = await _secrets.FindAsync(secretId, ct);
+        return secret is null || secret.IsShredded || secret.ExpiresAtUtc <= _clock.GetUtcNow()
+            ? throw new SecretNotFoundException(secretId)
+            : secret;
+    }
+
+    private async Task<AccessRequestRefusal?> FilingRefusalAsync(Secret secret, Guid requesterUserId, CancellationToken ct)
+    {
+        var requester = await _users.FindByIdAsync(requesterUserId, ct)
+            ?? throw new InvalidOperationException("The signed-in account no longer exists.");
+        var holdsActiveShare = await _grants.HasActiveGrantAsync(requester.Id, secret.Id, _clock.GetUtcNow(), ct);
+        if (AccessRequestRules.ShareRefusal(SubjectOf(requester), AttributesOf(secret), holdsActiveShare) is { } refusal)
+        {
+            return refusal;
+        }
+
+        return await _requests.HasPendingAsync(secret.Id, requester.Id, ct) ? AccessRequestRefusal.AlreadyPending : null;
+    }
+
+    private static SubjectAttributes SubjectOf(User account) => new(account.Clearance, account.ProjectKey);
+
+    private static ResourceAttributes AttributesOf(Secret secret) => new(secret.Environment, secret.Sensitivity, secret.ProjectKey);
 }

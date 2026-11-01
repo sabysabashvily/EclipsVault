@@ -73,6 +73,7 @@ namespace EclipsVault.Migrations.Postgres.Migrations
                         .HasColumnType("character varying(128)");
 
                     b.Property<int>("Status")
+                        .IsConcurrencyToken()
                         .HasColumnType("integer");
 
                     b.HasKey("Id");

@@ -3,7 +3,9 @@ import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
 import { createSecret, openPalette } from './palette';
+import { SecretsList } from './secrets-list';
 import { SharedByMe } from './shared-by-me';
+import { SharedWithMe } from './shared-with-me';
 import { freshTotp } from './totp';
 
 test.describe.configure({ mode: 'serial' });
@@ -148,7 +150,7 @@ test('with nothing shared, Go to your secrets opens the Secrets page', async ({ 
   await page.goto('/Secrets/SharedByMe');
   const shares = new SharedByMe(page);
   await shares.goToSecrets.click();
-  await expect(page.getByRole('heading', { name: 'Secrets', exact: true })).toBeVisible();
+  await expect(new SecretsList(page).heading).toBeVisible();
   await expect(page).toHaveURL(/\/Secrets$/);
 });
 
@@ -218,7 +220,35 @@ test('the palette opens Shared by me without a document load', async ({ page }) 
   expect(documents).toEqual([]);
 });
 
-test('Shared with me opens Legacy on the same session from Shared by me', async ({ page }) => {
+test('the Legacy sidebar loads Shared by me into Angular', async ({ page }) => {
+  await openAsIssuer(page, '/Secrets');
+  const documents: string[] = [];
+  page.on('request', (request) => {
+    if (request.isNavigationRequest() && request.resourceType() === 'document')
+      documents.push(new URL(request.url()).pathname);
+  });
+  await page.getByText('Sharing', { exact: true }).click();
+  await page.getByRole('link', { name: 'Shared by me', exact: true }).click();
+  await expect(new SharedByMe(page).heading).toBeVisible();
+  await expect(page).toHaveTitle('Shared by me — EclipsVault');
+  expect(documents).toEqual(['/Secrets/SharedByMe']);
+});
+
+test('the Legacy palette loads Shared by me into Angular', async ({ page }) => {
+  await openAsIssuer(page, '/Secrets');
+  const documents: string[] = [];
+  page.on('request', (request) => {
+    if (request.isNavigationRequest() && request.resourceType() === 'document')
+      documents.push(new URL(request.url()).pathname);
+  });
+  await openPalette(page);
+  await page.getByRole('combobox').fill('Shared by me');
+  await page.getByRole('option', { name: /Shared by me/ }).click();
+  await expect(new SharedByMe(page).heading).toBeVisible();
+  expect(documents).toEqual(['/Secrets/SharedByMe']);
+});
+
+test('Shared with me opens in-app on the same session from Shared by me', async ({ page }) => {
   await openAsIssuer(page);
   const documents: string[] = [];
   page.on('request', (request) => {
@@ -226,8 +256,9 @@ test('Shared with me opens Legacy on the same session from Shared by me', async 
       documents.push(new URL(request.url()).pathname);
   });
   await page.getByRole('link', { name: 'Shared with me', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Shared with me', exact: true })).toBeVisible();
-  expect(documents).toEqual(['/Secrets/SharedWithMe']);
+  await expect(new SharedWithMe(page).heading).toBeVisible();
+  await expect(page).toHaveURL(/\/Secrets\/SharedWithMe$/);
+  expect(documents).toEqual([]);
   await expect(page.getByRole('link', { name: 'Sign in', exact: true })).toHaveCount(0);
 });
 
@@ -342,11 +373,12 @@ test('revoking a real share ends the recipient browser access on its next reques
   await expect(
     recipient.getByRole('heading', { name: 'E2e_Shared_No_Expiry', exact: true }),
   ).toHaveCount(0);
+  // The served page fetches its rows, so the remaining share is seen before the revoked one's absence.
   await recipient.goto('/Secrets/SharedWithMe');
+  await expect(recipient.getByRole('row').filter({ hasText: 'E2e_Shared_Expiring' })).toBeVisible();
   await expect(recipient.getByRole('row').filter({ hasText: 'E2e_Shared_No_Expiry' })).toHaveCount(
     0,
   );
-  await expect(recipient.getByRole('row').filter({ hasText: 'E2e_Shared_Expiring' })).toBeVisible();
 });
 
 test('signed out, Shared by me bookmarks return through sign-in', async ({ page }) => {

@@ -7,7 +7,9 @@ namespace EclipsVault.IntegrationTests;
 
 internal static class LegacySharing
 {
-    public static async Task<string> CreateSecretAsync(HttpClient admin, string name, string value = "it-share-audit-value")
+    public static async Task<string> CreateSecretAsync(
+        HttpClient admin, string name, string value = "it-share-audit-value", string sensitivity = "Internal",
+        string environment = "Development")
     {
         var page = await admin.GetStringAsync("/Secrets/Create");
         var response = await admin.PostAsync("/Secrets/Create", new FormUrlEncodedContent(new Dictionary<string, string>
@@ -16,8 +18,8 @@ internal static class LegacySharing
             ["Name"] = name,
             ["Value"] = value,
             ["ProjectKey"] = "GLOBAL",
-            ["Environment"] = "Development",
-            ["Sensitivity"] = "Internal",
+            ["Environment"] = environment,
+            ["Sensitivity"] = sensitivity,
         }));
         return response.Headers.Location?.OriginalString is { } details && details.StartsWith("/Secrets/Details/", StringComparison.Ordinal)
             ? details
@@ -55,5 +57,52 @@ internal static class LegacySharing
         var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
         var secretId = SecretIdOf(details);
         return await db.SecretGrants.AsNoTracking().SingleAsync(share => share.SecretId == secretId);
+    }
+
+    public static async Task<bool> HasAnyShareAsync(VaultFixture vault, string details)
+    {
+        using var scope = vault.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+        var secretId = SecretIdOf(details);
+        return await db.SecretGrants.AsNoTracking().AnyAsync(share => share.SecretId == secretId);
+    }
+
+    /// <summary>
+    /// Stores a share from the administrator directly, for shares the Share panel refuses to make: one
+    /// to a recipient whose clearance is too low, or one on a secret its issuer cannot open right now.
+    /// </summary>
+    public static async Task InsertShareAsync(VaultFixture vault, string details, string recipient)
+    {
+        using var scope = vault.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+        var recipientAccount = await db.Users.SingleAsync(user => user.Username == recipient);
+        var issuer = await db.Users.SingleAsync(user => user.Username == VaultFixture.AdminUsername);
+        db.SecretGrants.Add(new SecretGrant
+        {
+            Id = Guid.NewGuid(),
+            SecretId = SecretIdOf(details),
+            GranteeUserId = recipientAccount.Id,
+            GranteeUsername = recipient,
+            IssuerUserId = issuer.Id,
+            GrantedBy = issuer.Username,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>Flags a secret as a decoy the way an operator does, in the database: no screen makes one.</summary>
+    public static async Task MakeDecoyAsync(VaultFixture vault, string details)
+    {
+        using var scope = vault.Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().Secrets.Where(secret => secret.Id == SecretIdOf(details))
+            .ExecuteUpdateAsync(set => set.SetProperty(secret => secret.IsHoneyToken, true));
+    }
+
+    /// <summary>Moves a share's expiry into the past directly, since no page can make time pass.</summary>
+    public static async Task ExpireShareAsync(VaultFixture vault, Guid shareId)
+    {
+        using var scope = vault.Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().SecretGrants.Where(share => share.Id == shareId)
+            .ExecuteUpdateAsync(set => set.SetProperty(share => share.ExpiresAtUtc, DateTimeOffset.UtcNow.AddMinutes(-1)));
     }
 }

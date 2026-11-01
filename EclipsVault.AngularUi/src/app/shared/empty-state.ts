@@ -32,6 +32,11 @@ import { Component, input } from '@angular/core';
               <path d="M8 10V7a4 4 0 0 1 8 0v3" />
               <circle cx="12" cy="15" r="1.4" />
             }
+            @case ('inbox') {
+              <path d="M4 13h4l1.6 3h4.8L20 13h0" />
+              <path d="M5 13V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v7" />
+              <path d="M4 13v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5" />
+            }
           }
         </svg>
       </div>
@@ -42,7 +47,7 @@ import { Component, input } from '@angular/core';
   `,
 })
 export class EmptyState {
-  readonly icon = input.required<'clipboard' | 'lock' | 'share'>();
+  readonly icon = input.required<'clipboard' | 'inbox' | 'lock' | 'share'>();
   readonly heading = input.required<string>();
   readonly message = input.required<string>();
 }

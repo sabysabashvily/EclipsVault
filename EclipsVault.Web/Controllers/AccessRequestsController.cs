@@ -1,45 +1,39 @@
+using System.Diagnostics;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Web.Authorization;
-using EclipsVault.Web.Extensions;
-using EclipsVault.Web.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EclipsVault.Web.Controllers;
 
 /// <summary>
-/// Self-service access requests. Any signed-in user can file a request for a secret they were
-/// denied; a reviewer (an administrator, or a member of the secret's project) approves it —
-/// which creates an ordinary grant — or rejects it. Everything here is audited.
+/// Filing an access request from the Legacy Denied page's form. The Access requests page itself is the
+/// Angular UI's, with its UI API in <see cref="Ui.AccessRequestsController"/>; this action sends the
+/// browser there with the outcome in the query string, which the page shows and then removes.
 /// </summary>
 public sealed class AccessRequestsController : VaultController
 {
     private readonly IAccessRequestService _requests;
-    private readonly ISecretService _secrets;
+    private readonly IAuthorizationService _authorization;
 
-    public AccessRequestsController(IAccessRequestService requests, ISecretService secrets)
+    public AccessRequestsController(IAccessRequestService requests, IAuthorizationService authorization)
     {
         _requests = requests;
-        _secrets = secrets;
-    }
-
-    [HttpGet]
-    public async Task<IActionResult> Index(CancellationToken ct)
-    {
-        var toReview = await _requests.ListToReviewAsync(IsAdmin(), CurrentProject(), ct);
-        var mine = await _requests.ListMineAsync(CurrentUserId(), ct);
-        return View(new AccessRequestsViewModel { ToReview = toReview, Mine = mine, CanReviewAll = IsAdmin() });
+        _authorization = authorization;
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create(Guid secretId, string reason, string? deniedReasons, CancellationToken ct)
+    public async Task<IActionResult> Create(Guid secretId, string reason, CancellationToken ct)
     {
-        // Look up the authoritative name/project (never trust posted values); a honey-token id
-        // trips the trap here just as it would anywhere else.
-        SecretDetailsDto secret;
+        AccessRequestCreateResult result;
         try
         {
-            secret = await _secrets.GetDetailsAsync(secretId, ct);
+            // The reviewer reads why this account was refused, so the vault's own access check says it.
+            var secret = await _requests.SecretToRequestAsync(secretId, ct);
+            var access = await _authorization.AuthorizeAsync(User, secret, VaultPolicies.SecretAccess);
+            var denialReasons = access.Failure?.FailureReasons.Select(r => r.Message).ToList() ?? [];
+            result = await _requests.CreateAsync(secretId, CurrentUserId(), CurrentUsername(), reason ?? string.Empty, denialReasons, ct);
         }
         catch (HoneyTokenTrippedException)
         {
@@ -47,102 +41,19 @@ public sealed class AccessRequestsController : VaultController
         }
         catch (SecretNotFoundException)
         {
-            this.FlashError("That secret no longer exists.");
-            return RedirectToAction(nameof(Index));
+            return Redirect("/AccessRequests?refused=secret_not_found");
         }
 
-        var result = await _requests.CreateAsync(
-            secretId, secret.Name, secret.ProjectKey, CurrentUserId(), CurrentUsername(), reason ?? string.Empty, deniedReasons, ct);
-
-        if (result.Created)
-        {
-            this.FlashSuccess("Access request submitted. A reviewer for this secret will decide.");
-        }
-        else
-        {
-            this.FlashError(result.Error ?? "The request could not be submitted.");
-        }
-
-        return RedirectToAction(nameof(Index));
+        return Redirect(result.Refusal is { } refusal ? $"/AccessRequests?refused={CodeOf(refusal)}" : "/AccessRequests?filed=1");
     }
 
-    [HttpPost]
-    public async Task<IActionResult> Approve(Guid id, int ttlDays, string? note, CancellationToken ct)
+    /// <summary>The refusal's code in the redirect. The Angular page holds the sentence for each one.</summary>
+    private static string CodeOf(AccessRequestRefusal refusal) => refusal switch
     {
-        if (await AuthorizeReviewAsync(id, ct) is { } forbidden)
-        {
-            return forbidden;
-        }
-
-        try
-        {
-            if (await _requests.ApproveAsync(id, CurrentUsername(), ttlDays > 0 ? ttlDays : null, note, ct))
-            {
-                this.FlashSuccess("Request approved — a grant was created for the requester.");
-            }
-            else
-            {
-                this.FlashError("That request is no longer pending.");
-            }
-        }
-        catch (SharingException ex)
-        {
-            this.FlashError(ex.Message);
-        }
-
-        return RedirectToAction(nameof(Index));
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> Reject(Guid id, string? note, CancellationToken ct)
-    {
-        if (await AuthorizeReviewAsync(id, ct) is { } forbidden)
-        {
-            return forbidden;
-        }
-
-        if (await _requests.RejectAsync(id, CurrentUsername(), note, ct))
-        {
-            this.FlashInfo("Request rejected.");
-        }
-        else
-        {
-            this.FlashError("That request is no longer pending.");
-        }
-
-        return RedirectToAction(nameof(Index));
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> Cancel(Guid id, CancellationToken ct)
-    {
-        if (await _requests.CancelAsync(id, CurrentUserId(), ct))
-        {
-            this.FlashInfo("Request withdrawn.");
-        }
-        else
-        {
-            this.FlashError("That request could not be withdrawn.");
-        }
-
-        return RedirectToAction(nameof(Index));
-    }
-
-    /// <summary>Null when the caller may review the request; a Forbid/redirect otherwise.</summary>
-    private async Task<IActionResult?> AuthorizeReviewAsync(Guid id, CancellationToken ct)
-    {
-        var request = await _requests.GetAsync(id, ct);
-        if (request is null)
-        {
-            this.FlashError("That request was not found.");
-            return RedirectToAction(nameof(Index));
-        }
-
-        var canReview = IsAdmin() || string.Equals(CurrentProject(), request.ProjectKey, StringComparison.OrdinalIgnoreCase);
-        return canReview ? null : Forbid();
-    }
-
-    private bool IsAdmin() => User.IsAdmin();
-
-    private string CurrentProject() => User.GetProject();
+        AccessRequestRefusal.ShareCannotHelp => "share_cannot_help",
+        AccessRequestRefusal.AlreadyAbleToOpen => "already_able_to_open",
+        AccessRequestRefusal.AlreadyPending => "already_pending",
+        AccessRequestRefusal.ReasonTooShort => "reason_too_short",
+        _ => throw new UnreachableException($"No code for {refusal}."),
+    };
 }
