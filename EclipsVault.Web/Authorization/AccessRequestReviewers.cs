@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using EclipsVault.Core.Application.Abac;
 using EclipsVault.Web.Extensions;
 using Microsoft.AspNetCore.Authorization;
 
@@ -20,7 +21,10 @@ public sealed class AccessRequestReviewers(IAccessRequestService requests, IAuth
         var queue = new List<AccessRequestDto>();
         foreach (var candidate in await requests.ListPendingForReviewAsync(ct))
         {
-            if (await MayDecideAsync(caller, candidate))
+            // Listing the queue enumerates secrets, as the Secrets list does, so the access check does not log
+            // a denied read for each request it hides. The two kinds differ only for metadata-only API keys,
+            // which never reach this page.
+            if (await MayDecideAsync(caller, candidate, AccessKind.Enumerate))
             {
                 queue.Add(candidate.Request);
             }
@@ -31,9 +35,9 @@ public sealed class AccessRequestReviewers(IAccessRequestService requests, IAuth
 
     /// <summary>False for an unknown request too, so a refusal reveals nothing about the id.</summary>
     public async Task<bool> MayDecideAsync(ClaimsPrincipal caller, Guid requestId, CancellationToken ct)
-        => await requests.FindForReviewAsync(requestId, ct) is { } candidate && await MayDecideAsync(caller, candidate);
+        => await requests.FindForReviewAsync(requestId, ct) is { } candidate && await MayDecideAsync(caller, candidate, AccessKind.Read);
 
-    public async Task<bool> MayDecideAsync(ClaimsPrincipal caller, AccessRequestForReview candidate)
+    private async Task<bool> MayDecideAsync(ClaimsPrincipal caller, AccessRequestForReview candidate, AccessKind access)
     {
         var isSomeoneElse = caller.GetUserIdOrNull() is { } callerId && callerId != candidate.Request.RequesterUserId;
         var mayShareFromProject = caller.IsAdmin()
@@ -41,6 +45,6 @@ public sealed class AccessRequestReviewers(IAccessRequestService requests, IAuth
 
         return isSomeoneElse
             && mayShareFromProject
-            && (await authorization.AuthorizeAsync(caller, candidate.Secret, VaultPolicies.SecretAccess)).Succeeded;
+            && (await authorization.AuthorizeAsync(caller, candidate.Secret, new SecretAccessRequirement(access))).Succeeded;
     }
 }

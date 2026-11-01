@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using EclipsVault.Core.Application.Abac;
 using EclipsVault.Core.Application.AccessRequests;
 using EclipsVault.Core.Application.Secrets;
 using EclipsVault.Core.Domain.Enums;
@@ -35,26 +36,88 @@ public sealed class AccessRequestReviewersTests
     public async Task A_reviewer_is_someone_else_who_could_share_the_secret_from_its_page(
         string caller, ClearanceLevel clearance, string project, bool passesAccessCheck, bool mayDecide)
     {
-        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+        var reviewers = new AccessRequestReviewers(new PendingRequests(Candidate), new AccessCheck(Candidate.Secret, passesAccessCheck));
+
+        Assert.Equal(mayDecide, await reviewers.MayDecideAsync(Caller(caller, clearance, project), Candidate.Request.Id, default));
+    }
+
+    [Fact]
+    public async Task The_queue_asks_the_access_check_as_a_listing_so_a_hidden_request_is_no_denied_read()
+    {
+        var access = new AccessCheck(Candidate.Secret, passes: false);
+        var reviewers = new AccessRequestReviewers(new PendingRequests(Candidate), access);
+
+        await reviewers.QueueAsync(Caller(SomeoneElse, ClearanceLevel.TopSecret, "TEAM-B"), default);
+
+        Assert.Equal([AccessKind.Enumerate], access.Asked);
+    }
+
+    [Fact]
+    public async Task Deciding_one_request_asks_the_access_check_as_a_read()
+    {
+        var access = new AccessCheck(Candidate.Secret, passes: false);
+        var reviewers = new AccessRequestReviewers(new PendingRequests(Candidate), access);
+
+        await reviewers.MayDecideAsync(Caller(SomeoneElse, ClearanceLevel.TopSecret, "TEAM-B"), Candidate.Request.Id, default);
+
+        Assert.Equal([AccessKind.Read], access.Asked);
+    }
+
+    private static ClaimsPrincipal Caller(string id, ClearanceLevel clearance, string project)
+        => new(new ClaimsIdentity(
         [
-            new Claim(ClaimTypes.NameIdentifier, caller),
+            new Claim(ClaimTypes.NameIdentifier, id),
             new Claim(VaultClaimTypes.Clearance, ((int)clearance).ToString()),
             new Claim(VaultClaimTypes.Project, project),
         ], "test"));
-        var reviewers = new AccessRequestReviewers(requests: null!, new AccessCheck(Candidate.Secret, passesAccessCheck));
 
-        Assert.Equal(mayDecide, await reviewers.MayDecideAsync(principal, Candidate));
-    }
-
-    /// <summary>Answers the secret-access policy for one secret; refuses every other question.</summary>
+    /// <summary>
+    /// Answers the secret's access check for one secret, and records how it was asked: as a listing
+    /// (Enumerate) or as a read. The <see cref="VaultPolicies.SecretAccess"/> policy is the Read requirement.
+    /// </summary>
     private sealed class AccessCheck(SecretSummaryDto secret, bool passes) : IAuthorizationService
     {
+        public List<AccessKind> Asked { get; } = [];
+
         public Task<AuthorizationResult> AuthorizeAsync(ClaimsPrincipal user, object? resource, string policyName)
-            => Task.FromResult(passes && policyName == VaultPolicies.SecretAccess && Equals(resource, secret)
-                ? AuthorizationResult.Success()
-                : AuthorizationResult.Failed());
+        {
+            Asked.Add(AccessKind.Read);
+            return Answer(policyName == VaultPolicies.SecretAccess && Equals(resource, secret));
+        }
 
         public Task<AuthorizationResult> AuthorizeAsync(ClaimsPrincipal user, object? resource, IEnumerable<IAuthorizationRequirement> requirements)
-            => Task.FromResult(AuthorizationResult.Failed());
+        {
+            var requirement = Assert.IsType<SecretAccessRequirement>(Assert.Single(requirements));
+            Asked.Add(requirement.Kind);
+            return Answer(Equals(resource, secret));
+        }
+
+        private Task<AuthorizationResult> Answer(bool askedAboutTheSecret)
+            => Task.FromResult(passes && askedAboutTheSecret ? AuthorizationResult.Success() : AuthorizationResult.Failed());
+    }
+
+    /// <summary>One pending request, the only thing the reviewer rule reads from Core.</summary>
+    private sealed class PendingRequests(AccessRequestForReview pending) : IAccessRequestService
+    {
+        public Task<IReadOnlyList<AccessRequestForReview>> ListPendingForReviewAsync(CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<AccessRequestForReview>>([pending]);
+
+        public Task<AccessRequestForReview?> FindForReviewAsync(Guid id, CancellationToken ct)
+            => Task.FromResult(id == pending.Request.Id ? pending : null);
+
+        public Task<AccessRequestRefusal?> FilingRefusalAsync(Guid secretId, Guid requesterUserId, CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<SecretSummaryDto> SecretToRequestAsync(Guid secretId, CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<AccessRequestCreateResult> CreateAsync(Guid secretId, Guid requesterUserId, string requesterUsername, string reason,
+            IReadOnlyList<string> denialReasons, CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<AccessRequestDto>> ListMineAsync(Guid requesterUserId, CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<bool> ApproveAsync(Guid id, int expiresInDays, CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<bool> RejectAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<bool> CancelAsync(Guid id, Guid requesterUserId, CancellationToken ct) => throw new NotSupportedException();
     }
 }
