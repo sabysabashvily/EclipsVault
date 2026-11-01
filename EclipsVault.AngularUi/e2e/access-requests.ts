@@ -61,6 +61,10 @@ export class AccessRequests {
     return row.getByRole('cell');
   }
 
+  statusOf(row: Locator): Locator {
+    return row.getByRole('cell').nth(1);
+  }
+
   expiryOf(row: Locator): Locator {
     return row.getByLabel('Grant expiry in days');
   }

@@ -2,6 +2,7 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { AccessRequests } from './access-requests';
+import { Denied } from './denied';
 import { test, expect } from './fixtures';
 import { lookOf } from './look';
 import { createSecret, openPalette } from './palette';
@@ -50,9 +51,10 @@ async function fileRequest(page: Page, secret: string, why = reason): Promise<Ac
   await page.context().addCookies(requesterCookies);
   await page.goto(detailsPaths.get(secret)!);
   await expect(page).toHaveURL(/\/Account\/Denied\?secretId=[0-9a-f-]{36}$/);
-  await expect(page.getByRole('heading', { name: 'Access denied', exact: true })).toBeVisible();
-  await page.getByLabel('Reason').fill(why);
-  await page.getByRole('button', { name: 'Submit request', exact: true }).click();
+  const denied = new Denied(page);
+  await expect(denied.heading).toBeVisible();
+  await denied.reason.fill(why);
+  await denied.submit.click();
   // The page shows the outcome once, then drops it from the address.
   await expect(page).toHaveURL(/\/AccessRequests$/);
   return new AccessRequests(page);
@@ -114,10 +116,8 @@ test('a requester in another project is denied, files from the Denied page and s
   await requester.getByRole('button', { name: 'Confirm enrollment', exact: true }).click();
   await expect(requester).toHaveURL(/\/Secrets$/);
   requesterCookies = await requester.context().cookies();
-
-  const refused = await fileRequest(requester, approved, '');
-  await expect(refused.error).toHaveText('Add a short reason so a reviewer can decide.');
-  await expect(refused.noRequests).toBeVisible();
+  const before = await openAsRequester(requester);
+  await expect(before.noRequests).toBeVisible();
 
   const requests = await fileRequest(requester, approved);
   await expect(requests.announcement(filedMessage)).toBeVisible();
@@ -143,14 +143,21 @@ test('an under-cleared requester is told a share would not help and offered no f
 }) => {
   await page.context().addCookies(requesterCookies);
   await page.goto(detailsPaths.get(aboveClearance)!);
-  await expect(page.getByRole('heading', { name: 'Request access', exact: true })).toBeVisible();
+  const denied = new Denied(page);
+  await expect(denied.requestAccess).toBeVisible();
   await expect(
-    page.getByText("A share would not help: your clearance is below this secret's sensitivity.", {
-      exact: true,
-    }),
+    denied.refusal("A share would not help: your clearance is below this secret's sensitivity."),
   ).toBeVisible();
-  await expect(page.getByLabel('Reason')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Submit request', exact: true })).toHaveCount(0);
+  await expect(denied.reason).toHaveCount(0);
+  await expect(denied.submit).toHaveCount(0);
+});
+
+test('an empty reason is refused with the Legacy words and files nothing', async ({ page }) => {
+  const refused = await fileRequest(page, rejected, '');
+
+  await expect(refused.error).toHaveText('Add a short reason so a reviewer can decide.');
+  await expect(refused.myRequest(approved)).toBeVisible();
+  await expect(refused.myRequest(rejected)).toHaveCount(0);
 });
 
 test('a reviewer approves with an expiry and the requester finds it in Shared with me', async ({
@@ -226,7 +233,7 @@ test('a reviewer rejects through the confirmation dialog, after cancelling once'
 
   await requester.reload();
   const mine = new AccessRequests(requester);
-  await expect(mine.cellsOf(mine.myRequest(rejected)).nth(1)).toHaveText('Rejected');
+  await expect(mine.statusOf(mine.myRequest(rejected))).toHaveText('Rejected');
   await expect(mine.withdrawOf(mine.myRequest(rejected))).toHaveCount(0);
 });
 
@@ -285,7 +292,7 @@ for (const [theme, accent, accentBackground] of [
     await page.context().addCookies(requesterCookies);
     await legacy.open();
     await expect(legacy.heading).toBeVisible();
-    // The removed Legacy page used the Secrets list's own heading, introduction and table classes.
+    // Legacy's Access requests page used the Secrets list's own heading, introduction and table classes.
     const expected = {
       heading: await lookOf(legacy.heading),
       introduction: await lookOf(legacy.introduction),

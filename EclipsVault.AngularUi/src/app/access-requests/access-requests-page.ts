@@ -31,7 +31,7 @@ const refusals = new Map<string, string>([
   ['secret_not_found', 'That secret no longer exists.'],
 ]);
 
-const decided: Record<Decision, string> = {
+const decisionAnnouncements: Record<Decision, string> = {
   approve: 'Request approved — a grant was created for the requester.',
   reject: 'Request rejected.',
   withdraw: 'Request withdrawn.',
@@ -54,7 +54,8 @@ export class AccessRequestsPage {
   private readonly destroyRef = inject(DestroyRef);
   private readonly locale = inject(LOCALE_ID);
   private readonly confirmation = viewChild.required(ConfirmationDialog);
-  private pending: { decision: 'reject' | 'withdraw'; requestId: string } | null = null;
+  private awaitingConfirmation: { decision: 'reject' | 'withdraw'; requestId: string } | null =
+    null;
 
   protected readonly requests = httpResource<AccessRequests>(() => '/api/ui/access-requests');
   protected readonly busy = signal(false);
@@ -87,7 +88,7 @@ export class AccessRequestsPage {
 
   // Formatted here so the cell holds only this text, as Legacy's did; a template expression this
   // long is wrapped onto its own lines, and the cell would gain the spaces around it.
-  protected requested(request: RequestToReview | FiledRequest): string {
+  protected requestedAt(request: RequestToReview | FiledRequest): string {
     return formatDate(request.requestedAtUtc, 'yyyy-MM-dd HH:mm', this.locale, 'UTC');
   }
 
@@ -122,14 +123,14 @@ export class AccessRequestsPage {
   }
 
   protected decide(confirmed: boolean): void {
-    const pending = this.pending;
-    this.pending = null;
-    if (confirmed && pending !== null) this.send(pending.decision, pending.requestId, null);
+    const awaiting = this.awaitingConfirmation;
+    this.awaitingConfirmation = null;
+    if (confirmed && awaiting !== null) this.send(awaiting.decision, awaiting.requestId, null);
   }
 
-  private ask(pending: NonNullable<typeof this.pending>, message: string): void {
+  private ask(awaiting: NonNullable<typeof this.awaitingConfirmation>, message: string): void {
     if (this.busy()) return;
-    this.pending = pending;
+    this.awaitingConfirmation = awaiting;
     this.confirmation().open(message);
   }
 
@@ -144,7 +145,7 @@ export class AccessRequestsPage {
         finalize(() => this.busy.set(false)),
       )
       .subscribe({
-        next: () => this.decided({ message: decided[decision], error: false }),
+        next: () => this.decided({ message: decisionAnnouncements[decision], error: false }),
         error: (error: unknown) =>
           this.decided({
             message:

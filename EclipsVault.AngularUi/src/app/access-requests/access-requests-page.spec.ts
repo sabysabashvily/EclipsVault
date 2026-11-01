@@ -87,13 +87,13 @@ describe('AccessRequestsPage', () => {
     );
   }
 
-  /** The text of every cell that holds only text, exactly as written: secret, muted and strong cells. */
+  /** The text of every secret, muted and plain-text cell, exactly as written. */
   function textCells(scope: ParentNode): (string | null)[] {
     return [
-      ...scope.querySelectorAll('tbody td.cell-strong, tbody td.muted, tbody td:not([class])'),
-    ]
-      .filter((cell) => cell.children.length === 0 || cell.classList.contains('cell-strong'))
-      .map((cell) => cell.textContent);
+      ...scope.querySelectorAll(
+        'tbody td.cell-strong, tbody td.muted, tbody td:not([class]):not(:has(*))',
+      ),
+    ].map((cell) => cell.textContent);
   }
 
   function announced(page: HTMLElement) {
@@ -129,7 +129,7 @@ describe('AccessRequestsPage', () => {
     expect(page.textContent).not.toContain('Could not load');
   });
 
-  it('explains both empty panels and links to the secrets', async () => {
+  it('shows the Legacy empty state in each panel', async () => {
     const { page } = await loaded(empty);
     const review = panel(page, 'To review');
     expect(review.querySelector('.panel-header .muted')?.textContent?.trim()).toBe('Your project');
@@ -146,10 +146,14 @@ describe('AccessRequestsPage', () => {
     );
     expect(mine.querySelector('a')?.textContent).toBe('Browse secrets');
     expect(mine.querySelector('a')?.getAttribute('href')).toBe('/Secrets');
-    expect(mine.querySelectorAll('.empty-icon path')).toHaveLength(3);
   });
 
-  it('lists requests to review with the expiry box and a dash for a missing reason', async () => {
+  it('visual parity: an empty My requests panel draws the Legacy inbox icon', async () => {
+    const { page } = await loaded(empty);
+    expect(panel(page, 'My requests').querySelectorAll('.empty-icon path')).toHaveLength(3);
+  });
+
+  it('lists each request to review as Legacy did', async () => {
     const { page } = await loaded({ ...empty, reviewScope: 'all', toReview: [toReview, noDenial] });
     const review = panel(page, 'To review');
     expect(review.querySelector('.panel-header .muted')?.textContent?.trim()).toBe('All projects');
@@ -200,7 +204,7 @@ describe('AccessRequestsPage', () => {
     expect(expiry.getAttribute('aria-label')).toBe('Grant expiry in days');
   });
 
-  it('shows each of your requests with its status badge and decision', async () => {
+  it('shows each of your requests as Legacy did', async () => {
     const decided = { decidedBy: 'reviewer', decidedAtUtc: '2026-10-22T17:45:00Z' };
     const { page } = await loaded({
       ...empty,
@@ -244,9 +248,6 @@ describe('AccessRequestsPage', () => {
       ],
       ['Billing_key FINANCE', 'Withdrawn', '2026-10-21 08:30', 'requester · 2026-10-21', ''],
     ]);
-    expect(
-      [...mine.querySelectorAll('td:nth-child(2) .badge')].map((badge) => badge.className),
-    ).toEqual(['badge tone-warn', 'badge tone-ok', 'badge tone-danger', 'badge tone-muted']);
     expect(textCells(mine)).toEqual([
       'Billing_key FINANCE',
       '2026-10-21 08:30',
@@ -263,7 +264,22 @@ describe('AccessRequestsPage', () => {
     ]);
   });
 
-  it('approves without confirmation, with the typed expiry and antiforgery, then reloads', async () => {
+  it('visual parity: each status badge takes its Legacy tone', async () => {
+    const { page } = await loaded({
+      ...empty,
+      mine: [
+        filed,
+        { ...filed, requestId: 'a', status: 'Approved' },
+        { ...filed, requestId: 'b', status: 'Rejected' },
+        { ...filed, requestId: 'c', status: 'Cancelled' },
+      ],
+    });
+    expect(
+      [...page.querySelectorAll('td:nth-child(2) .badge')].map((badge) => badge.className),
+    ).toEqual(['badge tone-warn', 'badge tone-ok', 'badge tone-danger', 'badge tone-muted']);
+  });
+
+  it('sends an approval at once with the typed expiry', async () => {
     document.cookie = 'XSRF-TOKEN=access-requests-token; path=/';
     const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
     const expiry = page.querySelector('input')!;
@@ -316,7 +332,7 @@ describe('AccessRequestsPage', () => {
     },
   );
 
-  it('asks before rejecting, and Cancel sends nothing', async () => {
+  it('sends no rejection when the dialog is cancelled', async () => {
     const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
     button(page, 'Reject').click();
     await fixture.whenStable();
@@ -329,7 +345,7 @@ describe('AccessRequestsPage', () => {
     expect(rows(panel(page, 'To review'))).toHaveLength(1);
   });
 
-  it('rejects after confirmation and announces it once the lists reload', async () => {
+  it('announces a confirmed rejection once the lists reload', async () => {
     const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
     button(page, 'Reject').click();
     await fixture.whenStable();
@@ -346,7 +362,7 @@ describe('AccessRequestsPage', () => {
     expect(announced(page)).toEqual({ success: 'Request rejected.', error: '' });
   });
 
-  it('asks before withdrawing your request and announces it', async () => {
+  it('announces a withdrawal once it is confirmed', async () => {
     const { fixture, page } = await loaded({ ...empty, mine: [filed] });
     button(page, 'Withdraw').click();
     await fixture.whenStable();
@@ -375,7 +391,7 @@ describe('AccessRequestsPage', () => {
     [409, 'share_exists', 'They already have a share on this secret.'],
     [503, 'audit_unavailable', 'The audit trail is unavailable, so the vault refused the request.'],
   ])(
-    'announces a %i %s refusal as an error and reloads both lists',
+    'announces a %i %s refusal as an error over freshly loaded lists',
     async (status, code, title) => {
       const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
       button(page, 'Approve').click();
@@ -402,7 +418,7 @@ describe('AccessRequestsPage', () => {
     expect(announced(page).error).toBe('The vault could not complete the request.');
   });
 
-  it('announces a filed request and removes the parameter', async () => {
+  it('announces a filed request once', async () => {
     const { page } = await loaded(empty, { filed: '1' });
     expect(announced(page)).toEqual({
       success: 'Access request submitted. A reviewer for this secret will decide.',
@@ -440,7 +456,7 @@ describe('AccessRequestsPage', () => {
     { refused: 'constructor' },
     { refused: 'unknown_code' },
     { filed: 'yes' },
-  ])('shows nothing for %j but still removes it', async (query) => {
+  ])('removes %j without showing anything', async (query) => {
     const { page } = await loaded(empty, query);
     expect(announced(page)).toEqual({ success: '', error: '' });
     expect(navigate).toHaveBeenCalledTimes(1);

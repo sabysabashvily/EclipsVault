@@ -47,7 +47,7 @@
                 <td>{{ request.requester }}</td>
                 <td class="muted">{{ request.reason }}</td>
                 <td class="muted">{{ request.deniedBecause ?? '—' }}</td>
-                <td class="muted">{{ requested(request) }}</td>
+                <td class="muted">{{ requestedAt(request) }}</td>
                 <td class="cell-actions">
                   <form
                     class="inline-form review-approve"
@@ -118,7 +118,7 @@
                     badges[request.status].label
                   }}</span>
                 </td>
-                <td class="muted">{{ requested(request) }}</td>
+                <td class="muted">{{ requestedAt(request) }}</td>
                 <td class="muted">{{ decision(request) }}</td>
                 <td class="cell-actions">
                   @if (request.status === 'Pending') {
