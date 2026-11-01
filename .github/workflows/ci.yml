@@ -70,13 +70,21 @@ jobs:
       - name: C# formatting
         run: dotnet format EclipsVault.slnx --verify-no-changes --no-restore
 
-  # The HTTP integration tests (ADR-0010): the unmodified app in Production against a real SQL Server
+  # The HTTP integration tests (ADR-0010): the unmodified app in Production against a real database
   # that Testcontainers starts on the runner's Docker, signed in through the real sign-in. Kept out of
   # build-test so the unit suite stays Docker-free and fast. The hang timeout is longer than the unit
-  # job's because it also covers pulling and starting SQL Server before the first test.
+  # job's because it also covers pulling and starting the databases before the first test.
+  #
+  # The vault runs on SQL Server or PostgreSQL, so the suite runs once on each, as separate checks:
+  # a failure on one engine shows as that engine's, and never cancels the other's run. The migration
+  # and race tests start both engines themselves, so both legs run those.
   integration:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [SqlServer, Postgres]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -106,13 +114,15 @@ jobs:
           npm run build
 
       - name: Integration tests
+        env:
+          ECLIPSVAULT_TEST_DATABASE_PROVIDER: ${{ matrix.database }}
         run: dotnet test EclipsVault.IntegrationTests --configuration Release --no-build --verbosity normal --blame-hang-timeout 10m --blame-hang-dump-type mini
 
       - name: Upload hang evidence
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: integration-hang-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          name: integration-hang-evidence-${{ matrix.database }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: EclipsVault.IntegrationTests/TestResults/**
           if-no-files-found: ignore
           retention-days: 30

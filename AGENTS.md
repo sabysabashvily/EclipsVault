@@ -16,15 +16,19 @@ file, tests and commit messages included, and the code-review Standards axis che
 - Integration tests: `dotnet test EclipsVault.IntegrationTests -c Release --no-build --blame-hang-timeout 10m --blame-hang-dump-type mini`.
   First build the Angular UI (`npm ci --ignore-scripts` then `npm run build` in `EclipsVault.AngularUi`,
   on its `.nvmrc` Node version): header tests serve its real document through the route table.
-  They need Docker running: session-registry tests start real Redis, and migration tests also start
-  PostgreSQL. Images are digest-pinned in their fixtures. HTTP tests start SQL Server with
-  Testcontainers and boot the unmodified `Program` in Production, signing in through the real
-  sign-in. SQL Server is pinned in `VaultFixture`; its first download is about 2.5 GB.
+  They need Docker running: session-registry tests start real Redis, and migration and race tests
+  start both SQL Server and PostgreSQL. Images are digest-pinned in their fixtures. HTTP tests start
+  one database with Testcontainers and boot the unmodified `Program` in Production on it, signing in
+  through the real sign-in. That database is SQL Server unless `ECLIPSVAULT_TEST_DATABASE_PROVIDER`
+  is `Postgres`; to run the suite on PostgreSQL, put
+  `ECLIPSVAULT_TEST_DATABASE_PROVIDER=Postgres` before the command above. CI runs the `integration`
+  job once per database. SQL Server is pinned in `VaultFixture` (its first download is about
+  2.5 GB), PostgreSQL in `PostgresShareIssuerBackfill`.
   `dotnet test EclipsVault.slnx` runs both suites, so it needs Docker too.
   The endpoints that throw each domain exception, to pin the UI API's error mapping, live in
   `EclipsVault.IntegrationTests/TestOnlyEndpoints.cs`. Only `VaultFixture` adds them to the host
   under test; never put such an endpoint in `EclipsVault.Web`.
-  `AuditFailureFixture` owns a second Production vault and SQL Server, in a collection that runs
+  `AuditFailureFixture` owns a second Production vault and database, in a collection that runs
   alone because startup uses process-wide environment variables. It starts and signs in normally,
   then `RejectAuditWritesAsync` installs a database constraint that rejects every audit insert,
   including interceptor rows and standalone group commits. Tests restore writes in `finally`.
