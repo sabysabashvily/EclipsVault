@@ -196,3 +196,57 @@ Checks on `382ab5c`:
 - e2e 139/139, guards 8/8.
 
 To restart: check out `area-4-sharing`, read `logs/ticket-101/final-report.md`, then start ticket 6 (#102).
+
+## Delivery: ticket 6 (#102) done in a Claude Code cloud session, 2026-11-01
+
+Finished in a Claude Code cloud session, not in T3 Code on the owner's Mac. Branch
+`claude/area-4-102-finish` from `origin/area-4-sharing` at `753530e`; pushed, no PR, #102 stays open for
+the owner. `area-4-sharing` and `main` were not pushed.
+
+A local #102 attempt made the first eight commits (`9599533`…`753530e`): the retired-routes test, link
+tests from both shells, the doc corrections, and the r1 fixes, among them a real defect: requests on
+secrets later flagged as decoys stayed in the review queue, and approving one shared the decoy without
+tripping it (`27e3c11`). The cloud session then added:
+
+- `0c3e223` proves over HTTP that each account's My activity lists only its own Sharing rows, which the
+  browser tests cannot show (they find rows, not their absence).
+- `cc079fd` proves a requester can still withdraw a request on a secret since made a decoy, its only way
+  out of Pending now that no reviewer sees it (r2 finding R2-4; failing first with a mutant).
+- `2218049` answers the r2 re-check's small findings: CONTEXT.md's Reviewer excludes the requester;
+  `PendingAsync`, the race test's direct insert and two test oddities say why; two headings use their
+  page objects.
+
+Reviews: r1 (security, Standards, Spec) in the local attempt, r2 re-check in the cloud session, all on
+Claude Opus 5.5 at effort high in fresh sessions. **The Area had no cross-model review:** GPT Sol 6.1 is
+out until 2026-11-04 and the owner chose not to wait. r2 confirmed every r1 fix, found no regression and
+no weakened security invariant.
+
+Owner follow-ups:
+- The StatusLine has no info style, so "Request rejected." and "Request withdrawn." show as success.
+- The copied Legacy wording "a grant was created" (and "Grant expiry…", "already has a grant").
+- `share_exists` and the deleted-requester answer are pinned only through test-only endpoints.
+- ST-6: the notifier's note parameter and "Reviewer note" branch are dead.
+- SP-3: no unit test for the Shared with me filter; one is feasible with the real `SecretAccessHandler`.
+- SP-5: sign-off on ADR-0027's changed wording (the reviewer rule lives in Web).
+- SP-d2: the stale status line in `decisions.md`.
+- C-8: ticket 3 (Q4) superseded #98's AC5; #98's checkbox is unannotated.
+- C-9: withdrawing a decided request says "That request is no longer pending." where Legacy said "That
+  request could not be withdrawn." (Q16 versus Q11).
+- C-11: My activity says "Cancelled an access request" where CONTEXT.md says withdrawn.
+
+Checks on `2218049` (later commits change only this file), in the cloud session:
+- Angular production build first, locked restore, Release build with 0 warnings, format verify;
+- unit tests 732/732;
+- integration tests 824/824;
+- lint, format check, Vitest 329/329, build checks 15/15, `check:api-types`, build;
+- `npm audit` exit 0 (21 moderate);
+- both pending-model checks, guardrail tests 6/6;
+- e2e 146/146, guards 8/8.
+
+The cloud browser runs used Playwright 1.64.1's own Chromium build 1248, copied from Microsoft's
+Playwright image because the session's network blocks Playwright's download host. Their production
+image was the root Dockerfile with the session's network-proxy CA trusted in its two build stages only;
+the runtime stage was unchanged.
+
+To restart: the Area is complete. Fast-forward `area-4-sharing` to `claude/area-4-102-finish` if the
+owner accepts it, then open the single Area 4 PR with the prepared body.
