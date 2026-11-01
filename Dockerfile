@@ -47,7 +47,7 @@ WORKDIR /app
 COPY --from=build --chown=$APP_UID:$APP_UID /app .
 COPY --from=ui --chown=$APP_UID:$APP_UID /src/EclipsVault.Web/wwwroot/ui ./wwwroot/ui
 COPY --from=ui --chown=$APP_UID:$APP_UID /src/EclipsVault.Web/AngularUi ./AngularUi
-# The licence notices of every NuGet package published above (#95). notices.py check keeps the file in
+# The licence notices of every NuGet package published above. notices.py check keeps the file in
 # step with the SBOM; .github/notices/test-image.sh confirms it and the other notices are in the image.
 COPY --chown=$APP_UID:$APP_UID THIRD-PARTY-NOTICES.txt ./
 USER $APP_UID

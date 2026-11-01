@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Checks that a built EclipsVault image carries the licence notices of everything it redistributes (#95):
+# Checks that a built EclipsVault image carries the licence notices of everything it redistributes:
 # its own third-party notices file, byte for byte as committed, the Angular UI's and the fonts' licence
 # files, the .NET runtime's notices, and a copyright file for every OS package the base image installs.
 #
@@ -8,8 +8,9 @@ set -euo pipefail
 
 image=${1:?usage: test-image.sh <image>}
 
-# The image's entrypoint is the vault itself, so each check runs through sh instead.
-docker run --rm --entrypoint sh "$image" -c '
+# The image's entrypoint is the vault itself, so each check runs through sh instead. No network and no pull:
+# the checks read only the image that was just built.
+docker run --rm --network none --pull never --entrypoint sh "$image" -c '
   failed=0
   for file in \
       /app/THIRD-PARTY-NOTICES.txt \
@@ -40,7 +41,8 @@ docker run --rm --entrypoint sh "$image" -c '
 '
 
 # The file in the image must be the committed one that notices.py check keeps in step with the SBOM.
-if docker run --rm --entrypoint cat "$image" /app/THIRD-PARTY-NOTICES.txt | cmp -s - THIRD-PARTY-NOTICES.txt; then
+if docker run --rm --network none --pull never --entrypoint cat "$image" /app/THIRD-PARTY-NOTICES.txt \
+    | cmp -s - THIRD-PARTY-NOTICES.txt; then
   echo "identical: /app/THIRD-PARTY-NOTICES.txt and the committed THIRD-PARTY-NOTICES.txt"
 else
   echo "DIFFERENT: /app/THIRD-PARTY-NOTICES.txt is not the committed THIRD-PARTY-NOTICES.txt"
