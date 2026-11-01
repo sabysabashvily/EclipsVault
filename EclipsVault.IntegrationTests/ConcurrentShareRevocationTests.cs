@@ -1,7 +1,6 @@
 using System.Net;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
-using EclipsVault.Infrastructure.Persistence.Locking;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -23,8 +22,7 @@ public sealed class ConcurrentShareRevocationTests(VaultFixture vault)
         using var scope = vault.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
         await using var transaction = await db.Database.BeginTransactionAsync();
-        await scope.ServiceProvider.GetRequiredService<IAuditChainLocker>()
-            .AcquireAsync(db, "EclipsVault:AuditChain", TimeSpan.FromSeconds(5), default);
+        await scope.ServiceProvider.GetRequiredService<AuditChain>().AcquireAsync(db, default);
 
         var first = UiApiRequest.WriteWithAntiforgeryAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.Id}");
         var second = UiApiRequest.WriteWithAntiforgeryAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.Id}");

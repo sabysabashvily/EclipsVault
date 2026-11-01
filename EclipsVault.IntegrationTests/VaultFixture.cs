@@ -4,12 +4,14 @@ using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Infrastructure.Persistence;
 using EclipsVault.Infrastructure.Security;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Mvc.Testing.Handlers;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -132,6 +134,16 @@ public sealed partial class VaultFixture : IAsyncLifetime
         if (environment != Environments.Production)
         {
             throw new InvalidOperationException($"The vault under test runs as {environment}, not Production.");
+        }
+
+        // A run on one engine must never pass while the vault quietly uses the other.
+        using var scope = services.CreateScope();
+        var engine = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().Database.IsNpgsql()
+            ? DatabaseProvider.Postgres
+            : DatabaseProvider.SqlServer;
+        if (engine != _database.Provider)
+        {
+            throw new InvalidOperationException($"The vault under test runs on {engine}, not {_database.Provider}.");
         }
     }
 
