@@ -64,7 +64,7 @@ public sealed class AccessRequestServiceTests
     }
 
     [Fact]
-    public async Task Approval_for_a_requester_deleted_after_the_request_was_read_is_refused_and_changes_nothing()
+    public async Task Approval_for_a_requester_deleted_after_the_request_was_read_is_refused_without_a_change()
     {
         await using var setup = await ApprovalSetup.CreateAsync();
         // Deleting an account deletes its requests; with the foreign key off, the request stays as approval read it.

@@ -75,7 +75,7 @@ function useTheme(page: Page, theme: string) {
     .addCookies([{ name: 'EclipsVault.Theme', value: theme, url: process.env['E2E_BASE_URL']! }]);
 }
 
-test('a requester in another project is denied, files from the Denied page and sees it filed', async ({
+test('a requester denied in another project sees the request they filed from the Denied page', async ({
   page,
   browserHealth,
 }) => {
@@ -152,7 +152,7 @@ test('an under-cleared requester is told a share would not help and offered no f
   await expect(denied.submit).toHaveCount(0);
 });
 
-test('an empty reason is refused with the Legacy words and files nothing', async ({ page }) => {
+test('an empty reason is refused in the Legacy words without filing', async ({ page }) => {
   const refused = await fileRequest(page, rejected, '');
 
   await expect(refused.error).toHaveText('Add a short reason so a reviewer can decide.');
@@ -160,7 +160,7 @@ test('an empty reason is refused with the Legacy words and files nothing', async
   await expect(refused.myRequest(rejected)).toHaveCount(0);
 });
 
-test('a reviewer approves with an expiry and the requester finds it in Shared with me', async ({
+test("an approval with an expiry reaches the requester's Shared with me", async ({
   page,
   browserHealth,
 }) => {
@@ -256,10 +256,7 @@ test('the requester withdraws a pending request through the confirmation dialog'
   ]);
 });
 
-test('the keyboard reaches the expiry box and approves without a pointer', async ({
-  page,
-  browserHealth,
-}) => {
+test('the keyboard alone approves through the expiry box', async ({ page, browserHealth }) => {
   const requester = await (await browserHealth.newContext()).newPage();
   await expect((await fileRequest(requester, byKeyboard)).announcement(filedMessage)).toBeVisible();
 

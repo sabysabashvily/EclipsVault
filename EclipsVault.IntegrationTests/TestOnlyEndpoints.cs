@@ -74,8 +74,8 @@ public sealed class TestOnlyUiApiController(IIntrusionResponseService intrusion)
     public IActionResult AccessRequestShareExists() => throw new SharingException(TestOnlyFailures.Detail);
 
     /// <summary>
-    /// What approval throws when the requester's account is deleted between reading the request and saving the
-    /// share. Deleting the account deletes its requests too, so only that race produces it.
+    /// What approval throws when the requester's account is deleted between reading the request and looking up
+    /// its requester. Deleting the account deletes its requests too, so only that race produces it.
     /// </summary>
     [HttpGet("access-request-requester-gone")]
     [TypeFilter(typeof(AccessRequestProblemFilter))]

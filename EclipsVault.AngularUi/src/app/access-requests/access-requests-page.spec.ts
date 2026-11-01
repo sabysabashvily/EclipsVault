@@ -279,11 +279,10 @@ describe('AccessRequestsPage', () => {
     ).toEqual(['badge tone-warn', 'badge tone-ok', 'badge tone-danger', 'badge tone-muted']);
   });
 
-  it('sends an approval at once with the typed expiry', async () => {
+  it('sends the typed expiry with the antiforgery token, without asking first', async () => {
     document.cookie = 'XSRF-TOKEN=access-requests-token; path=/';
     const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
-    const expiry = page.querySelector('input')!;
-    expiry.value = '7';
+    page.querySelector('input')!.value = '7';
     button(page, 'Approve').click();
     fixture.detectChanges();
     expect(page.querySelector('dialog')?.hasAttribute('open')).toBe(false);
@@ -293,9 +292,30 @@ describe('AccessRequestsPage', () => {
     });
     expect(approval.request.body).toEqual({ expiresInDays: 7 });
     expect(approval.request.headers.get('RequestVerificationToken')).toBe('access-requests-token');
+    approval.flush(null, { status: 204, statusText: 'No Content' });
+    fixture.detectChanges();
+    backend.expectOne(path).flush(empty);
+  });
+
+  it('disables every decision while one is in flight', async () => {
+    const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
+    button(page, 'Approve').click();
+    fixture.detectChanges();
     expect(button(page, 'Approve').disabled).toBe(true);
     expect(button(page, 'Reject').disabled).toBe(true);
-    approval.flush(null, { status: 204, statusText: 'No Content' });
+    backend
+      .expectOne(`${path}/${toReview.requestId}/approve`)
+      .flush(null, { status: 204, statusText: 'No Content' });
+    fixture.detectChanges();
+    backend.expectOne(path).flush(empty);
+  });
+
+  it('announces an approval once the lists reload', async () => {
+    const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
+    button(page, 'Approve').click();
+    backend
+      .expectOne(`${path}/${toReview.requestId}/approve`)
+      .flush(null, { status: 204, statusText: 'No Content' });
     fixture.detectChanges();
     backend.expectOne(path).flush(empty);
     await fixture.whenStable();
