@@ -92,6 +92,15 @@ reference below in place of a locally-built tag.
 Put your reverse proxy in front, terminating TLS and forwarding `X-Forwarded-For` /
 `X-Forwarded-Proto` to the container.
 
+The image carries the licence notices of the third-party software it redistributes:
+`/app/THIRD-PARTY-NOTICES.txt` (the NuGet packages, including the native libraries inside SkiaSharp),
+`/app/wwwroot/ui/3rdpartylicenses.txt` (the Angular UI's packages), `/app/wwwroot/fonts/OFL.txt` (the
+fonts), `/usr/share/dotnet/LICENSE.txt` and `/usr/share/dotnet/ThirdPartyNotices.txt` (.NET), and
+`/usr/share/doc/*/copyright` (the Ubuntu base packages). Read one with
+`docker run --rm --entrypoint cat <image> /app/THIRD-PARTY-NOTICES.txt`.
+
+Portions of this software are copyright © The FreeType Project (www.freetype.org). All rights reserved.
+
 ## 6. Verify
 
 - The app starts and logs `License check: Valid — Licensed to …` (or, unlicensed, a warning line —
