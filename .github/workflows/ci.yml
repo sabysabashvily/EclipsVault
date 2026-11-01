@@ -366,7 +366,8 @@ jobs:
   # Build only: no push, no registry credentials, no cosign. Signing needs the tag's OIDC identity
   # and a real digest in GHCR, so it stays in release.yml — this job de-risks the step that has no
   # such requirement. Kept deliberately identical to release.yml's build (same context, same action)
-  # so it is a rehearsal and not merely a similar-looking build.
+  # so it is a rehearsal and not merely a similar-looking build. Loading the result into the runner's
+  # Docker changes nothing that is built; it only lets the next step look inside the image.
   image:
     runs-on: ubuntu-latest
     steps:
@@ -384,10 +385,16 @@ jobs:
         with:
           context: .
           push: false
+          load: true
+          tags: eclipsvault:ci
           # GitHub's action cache keeps the restore/publish layers warm across runs; without it
           # every PR pays a full NuGet restore and publish.
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Every licence obligation the image carries has to be met by a file inside it (#95).
+      - name: The image carries every licence notice
+        run: bash .github/notices/test-image.sh eclipsvault:ci
 
   sbom:
     runs-on: ubuntu-latest
