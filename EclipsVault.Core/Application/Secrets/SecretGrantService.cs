@@ -5,9 +5,9 @@ using EclipsVault.Core.Domain.Exceptions;
 namespace EclipsVault.Core.Application.Secrets;
 
 /// <summary>
-/// Orchestrates secret access grants: resolves grantees, refuses self-grants, active duplicates and
+/// Orchestrates shares: resolves recipients, refuses sharing with oneself, active duplicates and
 /// recipients a share could not help, and replaces expired shares. Persistence audits each change
-/// atomically. The ABAC handler calls <see cref="HasActiveGrantAsync"/> to let a grant satisfy the
+/// atomically. The ABAC handler calls <see cref="HasActiveGrantAsync"/> to let a share satisfy the
 /// project rule.
 /// </summary>
 public sealed class SecretGrantService : ISecretGrantService

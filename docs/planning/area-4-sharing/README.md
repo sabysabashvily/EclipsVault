@@ -1,7 +1,7 @@
 # Area 4 Sharing planning records
 
-Shared with me and Access requests (ADR-0017 step 4). These records stay uncommitted until the first
-implementation ticket commits them.
+Shared with me and Access requests (ADR-0017 step 4). The first implementation ticket (#97)
+committed these records; the checkpoint records each ticket's delivery.
 
 - [Legacy survey and findings F1–F10](survey.md).
 - [Grill checkpoint](checkpoint.md): rounds, questions and answers.

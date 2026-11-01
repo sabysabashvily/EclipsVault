@@ -16,5 +16,9 @@ public interface IAccessRequestRepository
 
     Task<AccessRequestForReview?> FindForReviewAsync(Guid id, CancellationToken ct);
 
+    /// <summary>
+    /// Commits a reject or withdraw decision with its audit row. False when the request was no longer
+    /// pending: another decision won.
+    /// </summary>
     Task<bool> UpdateAsync(AccessRequest request, CancellationToken ct);
 }
