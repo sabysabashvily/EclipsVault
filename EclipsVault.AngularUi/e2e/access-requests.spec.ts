@@ -211,6 +211,17 @@ test("an approval with an expiry reaches the requester's Shared with me", async 
   ]);
 });
 
+test("the requester opens the approved share's Legacy Details from Shared with me", async ({
+  page,
+}) => {
+  await page.context().addCookies(requesterCookies);
+  await page.goto('/Secrets/SharedWithMe');
+  const shared = new SharedWithMe(page);
+  await shared.openOf(shared.secret(approved)).click();
+  await expect(page).toHaveURL(new RegExp(`${detailsPaths.get(approved)}$`));
+  await expect(page.getByRole('heading', { name: approved, exact: true })).toBeVisible();
+});
+
 test('a reviewer rejects through the confirmation dialog, after cancelling once', async ({
   page,
   browserHealth,
@@ -277,9 +288,7 @@ test('the keyboard alone approves through the expiry box', async ({ page, browse
   await expect(request).toHaveCount(0);
 });
 
-test("the requester's My activity lists each request they filed and the one they withdrew", async ({
-  page,
-}) => {
+test("the requester's My activity lists their access requests by secret", async ({ page }) => {
   await openAsRequester(page, '/Activity');
   await expect(feedEntry(page, 'Requested access to a secret', approved)).toBeVisible();
   await expect(feedEntry(page, 'Requested access to a secret', rejected)).toBeVisible();
@@ -288,9 +297,7 @@ test("the requester's My activity lists each request they filed and the one they
   await expect(feedEntry(page, 'Cancelled an access request', withdrawn)).toBeVisible();
 });
 
-test("the reviewer's My activity lists each decision and the share an approval issued", async ({
-  page,
-}) => {
+test("the reviewer's My activity lists their decisions by secret", async ({ page }) => {
   await signInAsAdministrator(page);
   await page.goto('/Activity');
   await expect(feedEntry(page, 'Approved an access request', approved)).toBeVisible();
@@ -305,7 +312,7 @@ test('with no requests of their own, Browse secrets opens the Legacy Secrets pag
   const requests = await openAsAdministrator(page);
   await expect(requests.noRequests).toBeVisible();
   await requests.browseSecrets.click();
-  await expect(page.getByRole('heading', { name: 'Secrets', exact: true })).toBeVisible();
+  await expect(new SecretsList(page).heading).toBeVisible();
   await expect(page).toHaveURL(/\/Secrets$/);
 });
 

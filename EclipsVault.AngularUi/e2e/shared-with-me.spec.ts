@@ -5,6 +5,7 @@ import { test, expect } from './fixtures';
 import { lookOf } from './look';
 import { createSecret, openPalette } from './palette';
 import { SecretsList } from './secrets-list';
+import { SharedByMe } from './shared-by-me';
 import { SharedWithMe } from './shared-with-me';
 import { freshTotp } from './totp';
 
@@ -312,7 +313,7 @@ test('Shared by me opens in-app on the same session from Shared with me', async 
   await expect(new SharedWithMe(page).rows).toHaveCount(2);
   const documents = recordDocuments(page);
   await page.getByRole('link', { name: 'Shared by me', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Shared by me', exact: true })).toBeVisible();
+  await expect(new SharedByMe(page).heading).toBeVisible();
   await expect(page).toHaveURL(/\/Secrets\/SharedByMe$/);
   expect(documents).toEqual([]);
   await expect(page.getByRole('link', { name: 'Sign in', exact: true })).toHaveCount(0);
