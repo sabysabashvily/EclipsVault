@@ -330,6 +330,16 @@ test('a mixed-case Access requests bookmark serves the titled Angular page', asy
   await expect(page).toHaveTitle('Access requests — EclipsVault');
 });
 
+test('with no requests of their own, Browse secrets opens the Legacy Secrets page', async ({
+  page,
+}) => {
+  const requests = await openAsAdministrator(page);
+  await expect(requests.noRequests).toBeVisible();
+  await requests.browseSecrets.click();
+  await expect(new SecretsList(page).heading).toBeVisible();
+  await expect(page).toHaveURL(/\/Secrets$/);
+});
+
 test('the sidebar opens Access requests in-app with its Access group active', async ({ page }) => {
   await openAsRequester(page, '/Access');
   const documents = recordDocuments(page);

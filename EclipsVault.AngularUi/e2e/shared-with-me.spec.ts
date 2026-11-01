@@ -5,6 +5,7 @@ import { test, expect } from './fixtures';
 import { lookOf } from './look';
 import { createSecret, openPalette } from './palette';
 import { SecretsList } from './secrets-list';
+import { SharedByMe } from './shared-by-me';
 import { SharedWithMe } from './shared-with-me';
 import { freshTotp } from './totp';
 
@@ -274,6 +275,16 @@ test('the sidebar opens Shared with me in-app with its Sharing group active', as
   await expect(new SharedWithMe(page).rows).toHaveCount(2);
   await expect(link).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('group').filter({ has: link })).toHaveJSProperty('open', true);
+  expect(documents).toEqual([]);
+});
+
+test('Shared by me opens in-app on the same session from Shared with me', async ({ page }) => {
+  const shared = await openAsRecipient(page);
+  await expect(shared.rows).toHaveCount(2);
+  const documents = recordDocuments(page);
+  await page.getByRole('link', { name: 'Shared by me', exact: true }).click();
+  await expect(new SharedByMe(page).heading).toBeVisible();
+  await expect(page).toHaveURL(/\/Secrets\/SharedByMe$/);
   expect(documents).toEqual([]);
 });
 
