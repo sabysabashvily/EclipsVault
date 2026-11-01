@@ -111,7 +111,7 @@ public sealed class AccessRequestService : IAccessRequestService
 
         var secret = await LiveSecretAsync(request.SecretId, ct);
         var recipient = await _users.FindByIdAsync(request.RequesterUserId, ct)
-            ?? throw new SharingException("That requester account no longer exists.");
+            ?? throw new RequesterNotFoundException();
         var now = _clock.GetUtcNow();
         var existing = await _grants.FindForRecipientAsync(recipient.Id, secret.Id, ct);
         if (AccessRequestRules.ShareRefusal(SubjectOf(recipient), AttributesOf(secret), existing?.IsActive(now) == true) is { } refusal)

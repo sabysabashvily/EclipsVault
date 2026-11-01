@@ -163,6 +163,16 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
         Assert.Equal("They already have a share on this secret.", problem.RootElement.GetProperty("title").GetString());
     }
 
+    [Fact]
+    public async Task A_requester_deleted_during_approval_makes_the_request_ineligible()
+    {
+        var response = await (await vault.AdminClientAsync()).GetAsync("/api/ui/test-only/access-request-requester-gone");
+
+        await UiApiFailureContractTests.AssertProblemAsync(response, 409, "request_ineligible");
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("That requester account no longer exists.", problem.RootElement.GetProperty("title").GetString());
+    }
+
     [Theory]
     [InlineData(AccessRequestStatus.Approved, "reject", "198.18.101.10")]
     [InlineData(AccessRequestStatus.Rejected, "approve", "198.18.101.11")]

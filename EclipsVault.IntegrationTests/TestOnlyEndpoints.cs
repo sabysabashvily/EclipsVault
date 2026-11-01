@@ -72,6 +72,14 @@ public sealed class TestOnlyUiApiController(IIntrusionResponseService intrusion)
     [HttpGet("access-request-share-exists")]
     [TypeFilter(typeof(AccessRequestProblemFilter))]
     public IActionResult AccessRequestShareExists() => throw new SharingException(TestOnlyFailures.Detail);
+
+    /// <summary>
+    /// What approval throws when the requester's account is deleted between reading the request and saving the
+    /// share. Deleting the account deletes its requests too, so only that race produces it.
+    /// </summary>
+    [HttpGet("access-request-requester-gone")]
+    [TypeFilter(typeof(AccessRequestProblemFilter))]
+    public IActionResult AccessRequestRequesterGone() => throw new RequesterNotFoundException();
 }
 
 /// <summary>The same failures on a Legacy UI path, which must keep its redirects.</summary>

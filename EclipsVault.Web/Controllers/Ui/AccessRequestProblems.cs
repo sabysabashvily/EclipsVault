@@ -41,10 +41,10 @@ public static class AccessRequestProblems
 /// <list type="bullet">
 /// <item>A request a share can no longer help is <c>request_ineligible</c> with the reviewer's reason.</item>
 /// <item>One whose secret was shredded or has expired is <c>request_ineligible</c> too: it can still be rejected.</item>
+/// <item>One whose requester was deleted during the approval is <c>request_ineligible</c>: it can never be approved.</item>
 /// <item>
 /// A <see cref="SharingException"/> is <c>share_exists</c>. The controller has already checked the expiry, and
-/// the reviewer is never the requester, so what remains is the share another request saved first; a
-/// requester deleted during the approval is answered the same way.
+/// the reviewer is never the requester, so what remains is the share another request saved first.
 /// </item>
 /// </list>
 /// </summary>
@@ -56,6 +56,7 @@ public sealed class AccessRequestProblemFilter : IExceptionFilter
         {
             AccessRequestIneligibleException ineligible => AccessRequestProblems.Ineligible(AccessRequestRules.ExplainToReviewer(ineligible.Refusal)),
             SecretNotFoundException => AccessRequestProblems.Ineligible("That secret no longer exists."),
+            RequesterNotFoundException => AccessRequestProblems.Ineligible("That requester account no longer exists."),
             SharingException => AccessRequestProblems.ShareExists(),
             _ => null,
         };

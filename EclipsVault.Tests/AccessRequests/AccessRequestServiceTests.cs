@@ -63,6 +63,21 @@ public sealed class AccessRequestServiceTests
         Assert.Equal(active.Id, (await setup.Context.SecretGrants.AsNoTracking().SingleAsync()).Id);
     }
 
+    [Fact]
+    public async Task Approval_for_a_requester_deleted_after_the_request_was_read_is_refused_and_changes_nothing()
+    {
+        await using var setup = await ApprovalSetup.CreateAsync();
+        // Deleting an account deletes its requests; with the foreign key off, the request stays as approval read it.
+        await setup.Context.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = OFF");
+        await setup.Context.Users.Where(u => u.Id == setup.Request.RequesterUserId).ExecuteDeleteAsync();
+        setup.Context.ChangeTracker.Clear();
+
+        await Assert.ThrowsAsync<RequesterNotFoundException>(() => setup.Service.ApproveAsync(setup.Request.Id, 7, default));
+
+        Assert.Equal(AccessRequestStatus.Pending, (await setup.Context.AccessRequests.AsNoTracking().SingleAsync()).Status);
+        Assert.Empty(await setup.Context.SecretGrants.AsNoTracking().ToListAsync());
+    }
+
     private sealed class ApprovalSetup(SqliteConnection connection, EclipsVaultDbContext context, AccessRequest request) : IAsyncDisposable
     {
         public EclipsVaultDbContext Context { get; } = context;
