@@ -81,7 +81,7 @@ Checking is not applying, so the app still verifies: a schema behind the code **
 ## Prerequisites
 
 - .NET 10 SDK
-- Docker (for the dependencies below)
+- Docker with Compose v2 (`docker compose`), for the dependencies below
 - Trusted dev cert: `dotnet dev-certs https --trust` (recommended)
 
 ## Run it
@@ -90,21 +90,29 @@ The dependencies are all real, open-source (or first-party) services — brought
 command rather than mocked in-process:
 
 ```bash
-docker compose up -d      # SQL Server + Vault + Mailpit + Redis
+docker compose up -d --wait   # PostgreSQL + Vault + Mailpit + Redis + Keycloak; returns once all run and PostgreSQL is healthy
 (cd EclipsVault.AngularUi && npm ci && npm run build)   # the Angular UI's pages (Node: see its .nvmrc)
+Database__Provider=Postgres \
+ConnectionStrings__DefaultConnection="Host=localhost;Port=5432;Database=EclipsVaultUmbraDb;Username=eclipsvault;Password=dev-postgres-password" \
 dotnet run --project EclipsVault.Web
 # → https://localhost:7443
 ```
 
+The two variables point the vault at the compose file's PostgreSQL. A settings file copied from
+`appsettings.Development.json.template` says the same, and the variables override an older copy
+that still names SQL Server.
+
 | Service | Purpose | UI |
 |---|---|---|
-| **SQL Server** | persistence (or PostgreSQL — see below) | — |
+| **PostgreSQL** | persistence (or SQL Server — see below) | 127.0.0.1:5432 (`eclipsvault` / `dev-postgres-password`) |
 | **Mailpit** | captures notification emails (real SMTP) | http://127.0.0.1:8025 |
 | **HashiCorp Vault** | holds the master key when `Crypto:Engine=VaultTransit` | http://127.0.0.1:8200 (`dev-root`) |
 | **Redis** | shared distributed state when `Redis:Enabled=true` (opt-in) | 127.0.0.1:6379 (`dev-redis-password`) |
 | **Keycloak** | a real OpenID Connect provider for SSO | http://127.0.0.1:8081 (`admin` / `dev-admin`) |
 
-**`docker-compose.yml` is a developer's laptop, not a deployment.** The passwords are in the file and therefore public, Vault runs in dev mode (in-memory, unsealed, known root token), and nothing speaks TLS. Two things it does do properly, because they are free: every port is published to **`127.0.0.1`** rather than Docker's default of every interface — otherwise a laptop on a café or office network hands SQL Server, Vault and Redis to that network, silently, with the credentials above — and every image is pinned to an exact version, since a floating `:latest` means what starts tomorrow is not what you tested and a supply-chain compromise arrives with nothing in the diff.
+**`docker-compose.yml` is a developer's laptop, not a deployment.** The passwords are in the file and therefore public, Vault runs in dev mode (in-memory, unsealed, known root token), and nothing speaks TLS. Two things it does do properly, because they are free: every port is published to **`127.0.0.1`** rather than Docker's default of every interface — otherwise a laptop on a café or office network hands PostgreSQL, Vault and Redis to that network, silently, with the credentials above — and every image is pinned to an exact version, since a floating `:latest` means what starts tomorrow is not what you tested and a supply-chain compromise arrives with nothing in the diff.
+
+**The local database survives a cleanup.** PostgreSQL's data lives in the named volume `eclipsvault-postgres`, and Redis's in `eclipsvault-redis`. Compose prefixes each name with the project, which is the checkout's folder in lower case, so `docker volume ls` shows `eclipsvault_eclipsvault-postgres` for a folder named `EclipsVault`. Removing stopped containers and images leaves volumes alone, and so does `docker compose down`; `docker compose up -d` then recreates everything else. Only a command that removes volumes deletes the data, such as `docker compose down -v`, `docker volume rm` or `docker volume prune --all`.
 
 **Redis requires a password even locally.** It holds the answers to "is this session revoked?" and "is this address blocked?", so anyone who can write it can restore a session its owner signed out of and lift an intrusion block — the vault's kill switches become advisory to whoever reaches port 6379. Startup refuses a passwordless connection string (`Redis:AllowUnauthenticated=true` to override, for an instance genuinely unreachable by anything else). Developing against an authenticated Redis also means the production configuration is the one that has been exercised.
 
@@ -116,14 +124,21 @@ The Keycloak realm is **imported from `keycloak/eclipsvault-realm.json`**, not c
 
 **Choosing the database** — `Database:Provider` selects the engine: `SqlServer` (default) or `Postgres`. An unrecognised value fails at startup rather than falling back, because silently starting on a database nobody chose is how secrets end up somewhere their operator is not looking.
 
-```bash
-# PostgreSQL — no licence, and the schema is created for you on first run
-docker run -d --name ev_pg -e POSTGRES_PASSWORD=... -e POSTGRES_DB=EclipsVaultUmbraDb -p 5432:5432 postgres:17
+Local development runs on PostgreSQL, from `docker-compose.yml` as above. To develop against SQL Server instead, start one and point the vault at it. SQL Server refuses an `sa` password shorter than 8 characters or drawn from fewer than three of: upper case, lower case, digits and symbols. Leave out `$`, quotes and `;`, which the shell or the connection string would misread.
 
-Database__Provider=Postgres \
-ConnectionStrings__DefaultConnection="Host=localhost;Port=5432;Database=EclipsVaultUmbraDb;Username=postgres;Password=..." \
+```bash
+# SQL Server: x86-64 only, so it runs under emulation on Apple Silicon
+docker run -d --platform linux/amd64 --name eclipsvault-sqlserver \
+  -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD='<a local password>' \
+  -p 127.0.0.1:1433:1433 -v eclipsvault-sqlserver:/var/opt/mssql \
+  mcr.microsoft.com/mssql/server:2022-CU26-ubuntu-22.04
+
+Database__Provider=SqlServer \
+ConnectionStrings__DefaultConnection="Server=localhost,1433;Database=EclipsVaultUmbraDb;User Id=sa;Password=<a local password>;Encrypt=True;TrustServerCertificate=True" \
 dotnet run --project EclipsVault.Web
 ```
+
+**The SQL Server volume from before PostgreSQL.** The compose file used to run SQL Server with its data in the volume `eclipsvault-db`: `eclipsvault_eclipsvault-db` for a folder named `EclipsVault`, and `docker volume ls --filter label=com.docker.compose.volume=eclipsvault-db` finds it under any folder name. PostgreSQL cannot read SQL Server's files, so the compose file no longer mentions that volume, and no compose command starts, changes or removes it, not even `docker compose down -v`. To keep it, do nothing. To read it, run the SQL Server commands above with `-v eclipsvault_eclipsvault-db:/var/opt/mssql` in place of `-v eclipsvault-sqlserver:/var/opt/mssql`, and with `Vision1889Academy`, the password the old file set, in place of `<a local password>`. Once nothing in it is needed, remove it with `docker volume rm eclipsvault_eclipsvault-db`.
 
 First launch creates and seeds the `EclipsVaultUmbraDb` database ("umbra" — the darkest part of an eclipse's shadow).
 
