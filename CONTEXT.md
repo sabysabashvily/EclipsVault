@@ -73,7 +73,7 @@ The vault account a share was given to.
 _Avoid_: Grantee
 
 **Expired share**:
-A share past its expiry. It confers no access and is shown nowhere, and a new share to the same recipient replaces it.
+A share past its expiry. It confers no access and is left out of Shared with me and Shared by me, though the secret's sharing panel still lists it. A new share to the same recipient replaces it.
 _Avoid_: Revoked share (nobody revoked it)
 
 **Access request**:
