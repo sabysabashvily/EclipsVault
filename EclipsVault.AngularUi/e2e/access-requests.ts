@@ -48,6 +48,7 @@ export class AccessRequests {
     await this.page.goto(path);
   }
 
+  // The Secret cell holds the name and its project badge; every secret these specs create is in GLOBAL.
   requestToReview(secret: string): Locator {
     return this.toReview.getByRole('row').filter({ hasText: `${secret} GLOBAL` });
   }
