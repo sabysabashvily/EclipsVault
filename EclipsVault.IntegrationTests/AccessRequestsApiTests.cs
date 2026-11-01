@@ -154,6 +154,35 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
     }
 
     [Fact]
+    public async Task A_request_on_a_secret_since_made_a_decoy_is_left_out_of_the_queue()
+    {
+        var admin = await vault.AdminClientAsync();
+        await vault.SignInNewAccountAsync("it-arapi-decoy-queue", IPAddress.Parse("198.18.101.45"), ClearanceLevel.Elevated, "IT-ARAPI");
+        var details = await LegacySharing.CreateSecretAsync(admin, "it-arapi-decoy-queue");
+        await LegacyAccessRequests.PendingAsync(vault, details, "it-arapi-decoy-queue");
+        await LegacySharing.MakeDecoyAsync(vault, details);
+
+        var toReview = await AccessRequestsApi.ToReviewAsync(admin);
+
+        Assert.DoesNotContain("it-arapi-decoy-queue", toReview);
+    }
+
+    [Fact]
+    public async Task Approving_a_request_on_a_secret_since_made_a_decoy_answers_not_found_and_shares_nothing()
+    {
+        var admin = await vault.AdminClientAsync();
+        await vault.SignInNewAccountAsync("it-arapi-decoy-approve", IPAddress.Parse("198.18.101.46"), ClearanceLevel.Elevated, "IT-ARAPI");
+        var details = await LegacySharing.CreateSecretAsync(admin, "it-arapi-decoy-approve");
+        var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-arapi-decoy-approve");
+        await LegacySharing.MakeDecoyAsync(vault, details);
+
+        var response = await AccessRequestsApi.ApproveAsync(admin, pending.Id);
+
+        await UiApiFailureContractTests.AssertProblemAsync(response, 404, "request_not_found");
+        Assert.False(await LegacySharing.HasAnyShareAsync(vault, details));
+    }
+
+    [Fact]
     public async Task A_share_saved_first_by_another_request_answers_share_exists()
     {
         var response = await (await vault.AdminClientAsync()).GetAsync("/api/ui/test-only/access-request-share-exists");

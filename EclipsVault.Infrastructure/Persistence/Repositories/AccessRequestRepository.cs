@@ -46,10 +46,12 @@ public sealed class AccessRequestRepository : IAccessRequestRepository
     public Task<AccessRequestForReview?> FindForReviewAsync(Guid id, CancellationToken ct)
         => ForReview(_context.AccessRequests.Where(r => r.Id == id)).SingleOrDefaultAsync(ct);
 
-    // The secret is projected column by column so its ciphertext is never read.
+    // The secret is projected column by column so its ciphertext is never read. A decoy is left out, as the
+    // Secrets list leaves it out: a request filed before its secret became one names nothing to a reviewer.
     private IQueryable<AccessRequestForReview> ForReview(IQueryable<AccessRequest> requests)
         => from request in requests.AsNoTracking()
            join secret in _context.Secrets.AsNoTracking() on request.SecretId equals secret.Id
+           where !secret.IsHoneyToken
            select new AccessRequestForReview(
                AccessRequestDto.From(request),
                new SecretSummaryDto(secret.Id, secret.Name, secret.ProjectKey, secret.Environment, secret.Sensitivity,

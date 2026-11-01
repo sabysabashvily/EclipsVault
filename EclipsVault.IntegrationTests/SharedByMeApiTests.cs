@@ -262,13 +262,7 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         await LegacySharing.ShareAsync(issuer.Client, decoy, "it-shares-decoy-recipient");
         await LegacySharing.ShareAsync(issuer.Client, genuine, "it-shares-decoy-recipient");
 
-        // No screen makes a decoy: an operator flags one in the database, and its shares remain.
-        using (var scope = vault.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
-            (await db.Secrets.SingleAsync(secret => secret.Id == LegacySharing.SecretIdOf(decoy))).IsHoneyToken = true;
-            await db.SaveChangesAsync();
-        }
+        await LegacySharing.MakeDecoyAsync(vault, decoy);
 
         var list = await issuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me");
 

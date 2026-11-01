@@ -65,10 +65,13 @@ public interface IAccessRequestService
     /// <summary>Requests filed by this user, newest first.</summary>
     Task<IReadOnlyList<AccessRequestDto>> ListMineAsync(Guid requesterUserId, CancellationToken ct);
 
-    /// <summary>Every pending request, newest first, for the host to narrow to those its caller may review.</summary>
+    /// <summary>
+    /// Every pending request except those on a decoy, newest first, for the host to narrow to those its
+    /// caller may review.
+    /// </summary>
     Task<IReadOnlyList<AccessRequestForReview>> ListPendingForReviewAsync(CancellationToken ct);
 
-    /// <summary>One request in any status, for the host to check its caller may review it.</summary>
+    /// <summary>One request in any status, for the host to check its caller may review it. Null for one on a decoy.</summary>
     Task<AccessRequestForReview?> FindForReviewAsync(Guid id, CancellationToken ct);
 
     /// <summary>

@@ -90,6 +90,14 @@ internal static class LegacySharing
         await db.SaveChangesAsync();
     }
 
+    /// <summary>Flags a secret as a decoy the way an operator does, in the database: no screen makes one.</summary>
+    public static async Task MakeDecoyAsync(VaultFixture vault, string details)
+    {
+        using var scope = vault.Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().Secrets.Where(secret => secret.Id == SecretIdOf(details))
+            .ExecuteUpdateAsync(set => set.SetProperty(secret => secret.IsHoneyToken, true));
+    }
+
     /// <summary>Moves a share's expiry into the past directly, since no page can make time pass.</summary>
     public static async Task ExpireShareAsync(VaultFixture vault, Guid shareId)
     {
