@@ -33,8 +33,8 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
         var token = await UiApiRequest.AntiforgeryTokenAsync(reviewer);
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await AccessRequestsApi.DecideAsync(reviewer, token, pending.Id, action,
-            action == "approve" ? JsonContent.Create(new { expiresInDays = 0 }) : null);
+        // Reject ignores the body, so both reviews send the one approval needs.
+        var response = await AccessRequestsApi.DecideAsync(reviewer, token, pending.Id, action, JsonContent.Create(new { expiresInDays = 0 }));
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         var rows = await AuditTrail.RowsAfterAsync(vault, before);

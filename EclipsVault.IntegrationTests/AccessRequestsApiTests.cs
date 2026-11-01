@@ -202,28 +202,26 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
         Assert.Equal("That requester account no longer exists.", problem.RootElement.GetProperty("title").GetString());
     }
 
+    // Reject ignores the body, so every decision sends the one approval needs.
     [Theory]
     [InlineData(AccessRequestStatus.Approved, "reject", "198.18.101.10")]
     [InlineData(AccessRequestStatus.Rejected, "approve", "198.18.101.11")]
     [InlineData(AccessRequestStatus.Cancelled, "approve", "198.18.101.12")]
-    [InlineData(AccessRequestStatus.Approved, "withdraw", "198.18.101.13")]
-    public async Task A_request_no_longer_pending_refuses_every_later_decision(AccessRequestStatus decided, string decision, string requesterAddress)
+    public async Task A_request_no_longer_pending_refuses_every_later_review(AccessRequestStatus decided, string decision, string requesterAddress)
     {
         var admin = await vault.AdminClientAsync();
         var username = $"it-arapi-decided-{decided}-{decision}".ToLowerInvariant();
-        var requester = await vault.SignInNewAccountAsync(username, IPAddress.Parse(requesterAddress), ClearanceLevel.Elevated, "IT-ARAPI");
+        await vault.SignInNewAccountAsync(username, IPAddress.Parse(requesterAddress), ClearanceLevel.Elevated, "IT-ARAPI");
         var pending = await LegacyAccessRequests.PendingAsync(vault, await LegacySharing.CreateSecretAsync(admin, username), username);
         using (var scope = vault.Services.CreateScope())
         {
             await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().AccessRequests.Where(r => r.Id == pending.Id)
                 .ExecuteUpdateAsync(set => set.SetProperty(r => r.Status, decided).SetProperty(r => r.DecidedAtUtc, DateTimeOffset.UtcNow));
         }
-        var caller = decision == "withdraw" ? requester.Client : admin;
-        var token = await UiApiRequest.AntiforgeryTokenAsync(caller);
+        var token = await UiApiRequest.AntiforgeryTokenAsync(admin);
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await AccessRequestsApi.DecideAsync(caller, token, pending.Id, decision,
-            decision == "approve" ? JsonContent.Create(new { expiresInDays = 0 }) : null);
+        var response = await AccessRequestsApi.DecideAsync(admin, token, pending.Id, decision, JsonContent.Create(new { expiresInDays = 0 }));
 
         var problem = await ProfileApi.AssertProblemAsync(response, 409, "request_not_pending");
         Assert.Equal("That request is no longer pending.", problem.GetProperty("title").GetString());
@@ -231,20 +229,55 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
+    [Fact]
+    public async Task A_request_no_longer_pending_refuses_its_withdrawal()
+    {
+        var admin = await vault.AdminClientAsync();
+        var requester = await vault.SignInNewAccountAsync("it-arapi-decided-approved-withdraw", IPAddress.Parse("198.18.101.13"), ClearanceLevel.Elevated, "IT-ARAPI");
+        var pending = await LegacyAccessRequests.PendingAsync(vault, await LegacySharing.CreateSecretAsync(admin, "it-arapi-decided-approved-withdraw"),
+            "it-arapi-decided-approved-withdraw");
+        using (var scope = vault.Services.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().AccessRequests.Where(r => r.Id == pending.Id)
+                .ExecuteUpdateAsync(set => set.SetProperty(r => r.Status, AccessRequestStatus.Approved).SetProperty(r => r.DecidedAtUtc, DateTimeOffset.UtcNow));
+        }
+        var before = await AuditTrail.HeadAsync(vault);
+
+        var response = await AccessRequestsApi.WithdrawAsync(requester.Client, pending.Id);
+
+        var problem = await ProfileApi.AssertProblemAsync(response, 409, "request_not_pending");
+        Assert.Equal("That request is no longer pending.", problem.GetProperty("title").GetString());
+        Assert.Equal(AccessRequestStatus.Approved, await AccessRequestsApi.StatusOfAsync(vault, pending.Id));
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
+    }
+
     [Theory]
     [InlineData("approve", "198.18.101.30")]
     [InlineData("reject", "198.18.101.31")]
-    [InlineData("withdraw", "198.18.101.32")]
-    public async Task A_decision_without_the_antiforgery_header_changes_nothing(string decision, string requesterAddress)
+    public async Task A_review_without_the_antiforgery_header_changes_nothing(string decision, string requesterAddress)
     {
         var admin = await vault.AdminClientAsync();
         var username = $"it-arapi-csrf-{decision}";
-        var requester = await vault.SignInNewAccountAsync(username, IPAddress.Parse(requesterAddress), ClearanceLevel.Elevated, "IT-ARAPI");
+        await vault.SignInNewAccountAsync(username, IPAddress.Parse(requesterAddress), ClearanceLevel.Elevated, "IT-ARAPI");
         var pending = await LegacyAccessRequests.PendingAsync(vault, await LegacySharing.CreateSecretAsync(admin, username), username);
-        var caller = decision == "withdraw" ? requester.Client : admin;
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await caller.PostAsync($"{AccessRequestsApi.Path}/{pending.Id}/{decision}", JsonContent.Create(new { expiresInDays = 0 }));
+        var response = await admin.PostAsync($"{AccessRequestsApi.Path}/{pending.Id}/{decision}", JsonContent.Create(new { expiresInDays = 0 }));
+
+        await UiApiFailureContractTests.AssertProblemAsync(response, 400, "antiforgery_rejected");
+        Assert.Equal(AccessRequestStatus.Pending, await AccessRequestsApi.StatusOfAsync(vault, pending.Id));
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
+    }
+
+    [Fact]
+    public async Task A_withdrawal_without_the_antiforgery_header_changes_nothing()
+    {
+        var admin = await vault.AdminClientAsync();
+        var requester = await vault.SignInNewAccountAsync("it-arapi-csrf-withdraw", IPAddress.Parse("198.18.101.32"), ClearanceLevel.Elevated, "IT-ARAPI");
+        var pending = await LegacyAccessRequests.PendingAsync(vault, await LegacySharing.CreateSecretAsync(admin, "it-arapi-csrf-withdraw"), "it-arapi-csrf-withdraw");
+        var before = await AuditTrail.HeadAsync(vault);
+
+        var response = await requester.Client.PostAsync($"{AccessRequestsApi.Path}/{pending.Id}/withdraw", null);
 
         await UiApiFailureContractTests.AssertProblemAsync(response, 400, "antiforgery_rejected");
         Assert.Equal(AccessRequestStatus.Pending, await AccessRequestsApi.StatusOfAsync(vault, pending.Id));

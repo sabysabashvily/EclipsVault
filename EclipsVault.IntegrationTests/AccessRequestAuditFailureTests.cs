@@ -46,8 +46,8 @@ public sealed class AccessRequestAuditFailureTests(AuditFailureFixture failure)
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await AccessRequestsApi.DecideAsync(caller, token, pending.Id, decision,
-                decision == "approve" ? JsonContent.Create(new { expiresInDays = 0 }) : null);
+            // Reject and withdraw ignore the body, so every decision sends the one approval needs.
+            var response = await AccessRequestsApi.DecideAsync(caller, token, pending.Id, decision, JsonContent.Create(new { expiresInDays = 0 }));
             await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
             using var scope = vault.Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
