@@ -218,6 +218,34 @@ test('the palette opens Shared by me without a document load', async ({ page }) 
   expect(documents).toEqual([]);
 });
 
+test('the Legacy sidebar loads Shared by me into Angular', async ({ page }) => {
+  await openAsIssuer(page, '/Secrets');
+  const documents: string[] = [];
+  page.on('request', (request) => {
+    if (request.isNavigationRequest() && request.resourceType() === 'document')
+      documents.push(new URL(request.url()).pathname);
+  });
+  await page.getByText('Sharing', { exact: true }).click();
+  await page.getByRole('link', { name: 'Shared by me', exact: true }).click();
+  await expect(new SharedByMe(page).heading).toBeVisible();
+  await expect(page).toHaveTitle('Shared by me — EclipsVault');
+  expect(documents).toEqual(['/Secrets/SharedByMe']);
+});
+
+test('the Legacy palette loads Shared by me into Angular', async ({ page }) => {
+  await openAsIssuer(page, '/Secrets');
+  const documents: string[] = [];
+  page.on('request', (request) => {
+    if (request.isNavigationRequest() && request.resourceType() === 'document')
+      documents.push(new URL(request.url()).pathname);
+  });
+  await openPalette(page);
+  await page.getByRole('combobox').fill('Shared by me');
+  await page.getByRole('option', { name: /Shared by me/ }).click();
+  await expect(new SharedByMe(page).heading).toBeVisible();
+  expect(documents).toEqual(['/Secrets/SharedByMe']);
+});
+
 test('Shared with me opens in-app on the same session from Shared by me', async ({ page }) => {
   await openAsIssuer(page);
   const documents: string[] = [];

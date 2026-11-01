@@ -307,6 +307,17 @@ test('the Legacy palette loads Shared with me into Angular', async ({ page }) =>
   expect(documents).toEqual(['/Secrets/SharedWithMe']);
 });
 
+test('Shared by me opens in-app on the same session from Shared with me', async ({ page }) => {
+  await openAsRecipient(page);
+  await expect(new SharedWithMe(page).rows).toHaveCount(2);
+  const documents = recordDocuments(page);
+  await page.getByRole('link', { name: 'Shared by me', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Shared by me', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/Secrets\/SharedByMe$/);
+  expect(documents).toEqual([]);
+  await expect(page.getByRole('link', { name: 'Sign in', exact: true })).toHaveCount(0);
+});
+
 test('Shared with me reports a failed fetch and retries without a document load', async ({
   page,
   browserHealth,

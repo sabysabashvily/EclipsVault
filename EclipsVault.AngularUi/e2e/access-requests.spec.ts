@@ -2,6 +2,7 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { AccessRequests } from './access-requests';
+import { feedEntry } from './activity';
 import { Denied } from './denied';
 import { test, expect } from './fixtures';
 import { lookOf } from './look';
@@ -274,6 +275,38 @@ test('the keyboard alone approves through the expiry box', async ({ page, browse
     requests.announcement('Request approved — a grant was created for the requester.'),
   ).toBeVisible();
   await expect(request).toHaveCount(0);
+});
+
+test("the requester's My activity lists each request they filed and the one they withdrew", async ({
+  page,
+}) => {
+  await openAsRequester(page, '/Activity');
+  await expect(feedEntry(page, 'Requested access to a secret', approved)).toBeVisible();
+  await expect(feedEntry(page, 'Requested access to a secret', rejected)).toBeVisible();
+  await expect(feedEntry(page, 'Requested access to a secret', withdrawn)).toBeVisible();
+  await expect(feedEntry(page, 'Requested access to a secret', byKeyboard)).toBeVisible();
+  await expect(feedEntry(page, 'Cancelled an access request', withdrawn)).toBeVisible();
+});
+
+test("the reviewer's My activity lists each decision and the share an approval issued", async ({
+  page,
+}) => {
+  await signInAsAdministrator(page);
+  await page.goto('/Activity');
+  await expect(feedEntry(page, 'Approved an access request', approved)).toBeVisible();
+  await expect(feedEntry(page, 'Shared a secret', approved)).toBeVisible();
+  await expect(feedEntry(page, 'Rejected an access request', rejected)).toBeVisible();
+  await expect(feedEntry(page, 'Approved an access request', byKeyboard)).toBeVisible();
+});
+
+test('with no requests of their own, Browse secrets opens the Legacy Secrets page', async ({
+  page,
+}) => {
+  const requests = await openAsAdministrator(page);
+  await expect(requests.noRequests).toBeVisible();
+  await requests.browseSecrets.click();
+  await expect(page.getByRole('heading', { name: 'Secrets', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/Secrets$/);
 });
 
 for (const [theme, accent, accentBackground] of [

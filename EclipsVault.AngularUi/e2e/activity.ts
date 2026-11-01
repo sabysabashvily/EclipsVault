@@ -46,6 +46,15 @@ export async function feedRows(page: Page): Promise<FeedRow[]> {
   );
 }
 
+/** The feed row that records `title` for the resource named `resource`. */
+export function feedEntry(page: Page, title: string, resource: string): Locator {
+  return page
+    .getByRole('main')
+    .getByRole('listitem')
+    .filter({ hasText: title })
+    .filter({ hasText: resource });
+}
+
 /** The geometry inside each matched SVG, one `tag:name=value,…` string per shape, for literal comparison. */
 export async function svgShapes(icons: Locator): Promise<string[][]> {
   return icons.evaluateAll((svgs) =>
