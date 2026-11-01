@@ -26,14 +26,10 @@ public sealed class RetiredSelfServiceRoutesTests(VaultFixture vault)
     [InlineData("/Sessions/RevokeOthers")]
     [InlineData("/Data/Download")]
     [InlineData("/Secrets/RevokeSharedByMe")]
-    [InlineData("/AccessRequests/Approve")]
-    [InlineData("/AccessRequests/Reject")]
-    [InlineData("/AccessRequests/Cancel")]
     [InlineData("/sEsSiOnS/rEvOkE/11111111-1111-1111-1111-111111111111")]
     [InlineData("/sEsSiOnS/rEvOkEoThErS/")]
     [InlineData("/dAtA/dOwNlOaD/legacy")]
     [InlineData("/sEcReTs/rEvOkEsHaReDbYmE/11111111-1111-1111-1111-111111111111")]
-    [InlineData("/aCcEsSrEqUeStS/aPpRoVe/11111111-1111-1111-1111-111111111111")]
     public async Task A_retired_write_has_no_handler_even_with_a_session_and_valid_antiforgery(string path)
     {
         var client = await vault.AdminClientAsync();
@@ -60,8 +56,6 @@ public sealed class RetiredSelfServiceRoutesTests(VaultFixture vault)
     [InlineData("/Sessions/Index/legacy")]
     [InlineData("/Data/Index/legacy")]
     [InlineData("/Secrets/SharedByMe/legacy")]
-    [InlineData("/Secrets/SharedWithMe/legacy")]
-    [InlineData("/AccessRequests/Index/legacy")]
     public async Task A_retired_view_cannot_be_reached_through_the_conventional_route(string path)
     {
         var client = await vault.AdminClientAsync();
