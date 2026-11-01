@@ -1,10 +1,11 @@
-"""Third-party notices for the NuGet packages the image ships (issue #95).
+"""Third-party notices for the NuGet packages the image ships.
 
     fetch     download, at the commit each package's nuspec records, the upstream licence of every package that
               carries no licence file, and the NOTICE of every Apache-2.0 package, into upstream/
     generate  write THIRD-PARTY-NOTICES.txt at the repository root and sources.tsv beside this script
-    check     fail when either committed file differs from what generate would write, when the SBOM lists a
-              package the notices file does not cover, or when a licence text is missing and not a known gap
+    check     fail when either committed file differs from what generate would write, when the SBOM and the
+              notices file list different packages, when an Apache-2.0 NOTICE was never looked for, or when a
+              licence text or copyright line is missing and not listed in known-gaps.tsv
 
 Every text comes from the restored package or from an upstream file fetched at a recorded commit; nothing
 here writes a licence or copyright line of its own. Needs sbom/sbom.json (bash .github/sbom/sbom.sh) and the
@@ -21,6 +22,7 @@ import re
 import sys
 import urllib.error
 import urllib.request
+import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,7 +35,7 @@ UPSTREAM = HERE / "upstream"
 FETCHED = UPSTREAM / "fetched.tsv"
 KNOWN_GAPS = HERE / "known-gaps.tsv"
 
-# The credit FreeType's licence (FTL) asks the documentation to carry; issue #95 quotes it.
+# The credit FreeType's licence (FTL) asks the documentation to carry, word for word.
 FREETYPE_CREDIT = (
     "Portions of this software are copyright © The FreeType Project (www.freetype.org). "
     "All rights reserved."
@@ -47,6 +49,9 @@ LICENCE_FILE = re.compile(r"(?i)^licen[cs]e")
 OTHER_NOTICE_FILE = re.compile(r"(?i)^(third.?party.?notices?|notice)")
 PACKAGE_LINE = re.compile(r"^Package: (\S+) (\S+)$", re.MULTILINE)
 COPYRIGHT_LINE = re.compile(r"(?i)^(copyright\s*(\(c\)|©|\d{4})|(\(c\)|©)\s*\d{4})")
+# A name fetch puts in a path: GitHub's own character set, and never "." or "..".
+PATH_NAME = re.compile(r"^(?!\.\.?$)[A-Za-z0-9_.-]+$")
+COMMIT = re.compile(r"^[0-9a-f]{40}$")
 RULE = "=" * 78
 THIN_RULE = "-" * 78
 
@@ -56,6 +61,10 @@ class Component:
     name: str
     version: str
     licence: str
+
+    @property
+    def key(self) -> str:
+        return f"{self.name} {self.version}"
 
 
 @dataclass(frozen=True)
@@ -72,14 +81,25 @@ class Text:
 
 
 @dataclass(frozen=True)
+class Lookup:
+    """What a search for one upstream file found: its text, or why there is none.
+
+    `settled` is False when nobody has looked yet or the fetch failed, so the answer is still unknown.
+    """
+
+    text: Text | None
+    note: str | None
+    settled: bool
+
+
+@dataclass(frozen=True)
 class Notice:
     component: Component
+    licence_label: str
     copyright: str | None
     copyright_origin: str
-    licence: Text | None
-    gap: str | None
-    apache_notice: Text | None
-    apache_notice_absent: str | None
+    licence: Lookup
+    apache_notice: Lookup | None
     other_notices: tuple[Text, ...]
 
 
@@ -94,7 +114,8 @@ def nuget_components(sbom_path: Path) -> list[Component]:
             continue
         licences = [item.get("license", {}).get("id") or item.get("license", {}).get("name") or item.get("expression")
                     for item in entry.get("licenses", [])]
-        components.append(Component(entry["name"], entry["version"], " OR ".join(filter(None, licences)) or "none stated"))
+        licence = " OR ".join(filter(None, licences)) or "none stated in the SBOM"
+        components.append(Component(entry["name"], entry["version"], licence))
     return sorted(components, key=lambda c: (c.name.casefold(), c.version))
 
 
@@ -104,24 +125,28 @@ def package_directory(component: Component) -> Path:
 
 
 def nuspec_of(directory: Path) -> dict[str, str]:
-    path = next(directory.glob("*.nuspec"))
-    text = path.read_text(encoding="utf-8-sig")
+    """The nuspec metadata notices.py uses. Parsed as XML, so entities such as &amp; come out decoded."""
+    root = ElementTree.parse(next(directory.glob("*.nuspec"))).getroot()
     facts = {}
-    if licence := re.search(r'<license\s+type="(\w+)"[^>]*>([^<]*)</license>', text):
-        facts["licence_type"], facts["licence_value"] = licence.group(1), licence.group(2).strip()
-    if copyright_ := re.search(r"<copyright>([^<]*)</copyright>", text):
-        facts["copyright"] = copyright_.group(1).strip()
-    if repository := re.search(r"<repository\b([^>]*)/?>", text):
-        attributes = dict(re.findall(r'(\w+)="([^"]*)"', repository.group(1)))
-        facts["repository"] = attributes.get("url", "")
-        facts["commit"] = attributes.get("commit", "")
+    for element in root.iter():
+        tag = element.tag.rsplit("}", 1)[-1]
+        if tag == "license":
+            facts["licence_type"] = element.get("type", "")
+            facts["licence_value"] = (element.text or "").strip()
+        elif tag == "copyright" and (element.text or "").strip():
+            facts["copyright"] = element.text.strip()
+        elif tag == "repository":
+            facts["repository"] = element.get("url", "")
+            facts["commit"] = element.get("commit", "")
     return facts
 
 
 def github_repository(url: str) -> str | None:
-    """owner/repo for a GitHub URL, or None when the nuspec points anywhere else."""
+    """owner/repo for a GitHub URL, or None when the nuspec points anywhere else or names an unsafe path."""
     match = re.match(r"https://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$", url or "")
-    return f"{match.group(1)}/{match.group(2)}" if match else None
+    if not match or not all(PATH_NAME.match(part) for part in match.groups()):
+        return None
+    return f"{match.group(1)}/{match.group(2)}"
 
 
 def package_files(directory: Path) -> list[Path]:
@@ -139,9 +164,9 @@ def read_text_file(path: Path, origin: str, location: str) -> Text:
 
 def assembly_copyright(directory: Path, name: str) -> str | None:
     """The LegalCopyright string of the package's own assembly, from its Win32 version resource."""
+    key = "LegalCopyright".encode("utf-16-le") + b"\x00\x00"
     for dll in sorted(directory.glob(f"lib/*/{name}.dll")):
         data = dll.read_bytes()
-        key = "LegalCopyright".encode("utf-16-le") + b"\x00\x00"
         at = data.find(key)
         if at < 0:
             continue
@@ -165,8 +190,7 @@ def licence_copyright(licence: Text) -> str | None:
     one, and neither is its appendix template ("Copyright [yyyy] [name of copyright owner]").
     """
     lines = [line.strip() for line in licence.data.decode("utf-8", errors="replace").splitlines()]
-    found = [line for line in lines
-             if COPYRIGHT_LINE.match(line) and "yyyy" not in line]
+    found = [line for line in lines if COPYRIGHT_LINE.match(line) and "yyyy" not in line]
     return "; ".join(found) or None
 
 
@@ -182,75 +206,94 @@ def fetched_records() -> dict[tuple[str, str, str], list[dict[str, str]]]:
     return records
 
 
-def known_gaps() -> dict[str, str]:
-    if not KNOWN_GAPS.exists():
+def known_gaps(path: Path = KNOWN_GAPS) -> dict[tuple[str, str], str]:
+    """Accepted gaps, keyed by (package and version, licence or copyright)."""
+    if not path.exists():
         return {}
     gaps = {}
-    for line in KNOWN_GAPS.read_text(encoding="utf-8").splitlines()[1:]:
-        package, reason = line.split("\t", 1)
-        gaps[package] = reason
+    for line in path.read_text(encoding="utf-8").splitlines()[1:]:
+        package, item, reason = line.split("\t", 2)
+        gaps[(package, item)] = reason
     return gaps
 
 
 # ---- Resolving one package -----------------------------------------------------------------------
 
 
-def upstream_text(records, repository: str, commit: str, kind: str) -> tuple[Text | None, str | None]:
-    """The fetched upstream file, or None with the reason no text exists or could be fetched."""
+def upstream_lookup(records, repository: str, commit: str, kind: str) -> Lookup:
     rows = records.get((repository, commit, kind))
     if not rows:
-        return None, f"no upstream {kind} fetched for {repository} at {commit}; run notices.py fetch"
+        return Lookup(None, f"no upstream {kind} fetched for {repository} at {commit}; run notices.py fetch", False)
     for row in rows:
         if row["status"] == "200":
-            path = UPSTREAM / row["file"]
-            return read_text_file(path, "upstream", row["url"]), None
+            return Lookup(read_text_file(UPSTREAM / row["file"], "upstream", row["url"]), None, True)
     statuses = ", ".join(f"{row['url'].rsplit('/', 1)[1]} {row['status']}" for row in rows)
     if all(row["status"] == "404" for row in rows):
-        return None, f"none at the root of {repository} at {commit} ({statuses})"
-    return None, f"could not fetch from {repository} at {commit} ({statuses})"
+        return Lookup(None, f"none at the root of {repository} at {commit} ({statuses})", True)
+    return Lookup(None, f"could not fetch from {repository} at {commit} ({statuses}); run notices.py fetch", False)
+
+
+def licence_of(directory: Path, facts: dict[str, str], files: list[Path], records) -> Lookup:
+    """The package's own licence file, else its repository's at the recorded commit."""
+    declared = directory / facts["licence_value"] if facts.get("licence_type") == "file" else None
+    in_package = [p for p in files if LICENCE_FILE.match(p.relative_to(directory).parts[0])]
+    if declared and declared.is_file():
+        return Lookup(read_text_file(declared, "package", declared.relative_to(directory).as_posix()), None, True)
+    if in_package:
+        return Lookup(read_text_file(in_package[0], "package", in_package[0].relative_to(directory).as_posix()),
+                      None, True)
+    repository = github_repository(facts.get("repository", ""))
+    commit = facts.get("commit", "")
+    if repository and COMMIT.match(commit):
+        return upstream_lookup(records, repository, commit, "licence")
+    return Lookup(None, "no licence file in the package and no repository commit in its nuspec to fetch one from",
+                  True)
+
+
+def apache_notice_of(component: Component, facts: dict[str, str], records) -> Lookup | None:
+    """Apache-2.0 asks redistributors to pass on the work's NOTICE, which lives in its repository."""
+    if "Apache-2.0" not in component.licence:
+        return None
+    repository = github_repository(facts.get("repository", ""))
+    commit = facts.get("commit", "")
+    if repository and COMMIT.match(commit):
+        return upstream_lookup(records, repository, commit, "notice")
+    return Lookup(None, "no repository commit in the nuspec to look for a NOTICE at", False)
+
+
+def other_notices_of(directory: Path, files: list[Path], licence: Lookup) -> tuple[Text, ...]:
+    """The third-party notices a package carries besides its licence, such as SkiaSharp's native ones."""
+    licence_location = licence.text.location if licence.text and licence.text.origin == "package" else None
+    return tuple(read_text_file(p, "package", p.relative_to(directory).as_posix()) for p in files
+                 if OTHER_NOTICE_FILE.match(p.name) and p.relative_to(directory).as_posix() != licence_location)
+
+
+def copyright_of(component: Component, directory: Path, facts: dict[str, str],
+                 licence: Lookup) -> tuple[str | None, str]:
+    """The copyright line the package states, and which part of it states it."""
+    if facts.get("copyright"):
+        return facts["copyright"], "nuspec <copyright>"
+    if (from_assembly := assembly_copyright(directory, component.name)):
+        return from_assembly, f"LegalCopyright of {component.name}.dll"
+    if licence.text and (from_licence := licence_copyright(licence.text)):
+        return from_licence, "licence text"
+    return None, "none stated by the nuspec, the assembly or the licence text"
+
+
+def licence_label_of(component: Component, facts: dict[str, str]) -> str:
+    if component.licence == "none stated in the SBOM" and facts.get("licence_type") == "file":
+        return f"none stated in the SBOM; the package declares the file {facts['licence_value']}"
+    return component.licence
 
 
 def resolve(component: Component, records) -> Notice:
     directory = package_directory(component)
     facts = nuspec_of(directory)
     files = package_files(directory)
-    relative = {p: p.relative_to(directory).as_posix() for p in files}
-    repository = github_repository(facts.get("repository", ""))
-    commit = facts.get("commit", "")
-
-    licence, gap = None, None
-    declared = directory / facts["licence_value"] if facts.get("licence_type") == "file" else None
-    in_package = [p for p in files if LICENCE_FILE.match(relative[p].split("/")[0])]
-    if declared and declared.is_file():
-        licence = read_text_file(declared, "package", relative[declared])
-    elif in_package:
-        licence = read_text_file(in_package[0], "package", relative[in_package[0]])
-    elif repository and commit:
-        licence, gap = upstream_text(records, repository, commit, "licence")
-    else:
-        gap = "no licence file in the package and no repository commit in its nuspec to fetch one from"
-
-    apache_notice, apache_absent = None, None
-    if "Apache-2.0" in component.licence:
-        if repository and commit:
-            apache_notice, apache_absent = upstream_text(records, repository, commit, "notice")
-        else:
-            apache_absent = "no repository commit in the nuspec to look for a NOTICE at"
-
-    licence_path = next((p for p in files if licence and licence.origin == "package" and relative[p] == licence.location), None)
-    others = tuple(read_text_file(p, "package", relative[p]) for p in files
-                   if p != licence_path and OTHER_NOTICE_FILE.match(p.name))
-
-    if facts.get("copyright"):
-        copyright_, origin = facts["copyright"], "nuspec <copyright>"
-    elif (from_assembly := assembly_copyright(directory, component.name)):
-        copyright_, origin = from_assembly, f"LegalCopyright of {component.name}.dll"
-    elif licence and (from_licence := licence_copyright(licence)):
-        copyright_, origin = from_licence, "licence text"
-    else:
-        copyright_, origin = None, "none stated by the nuspec, the assembly or the licence text"
-
-    return Notice(component, copyright_, origin, licence, gap, apache_notice, apache_absent, others)
+    licence = licence_of(directory, facts, files, records)
+    copyright_, origin = copyright_of(component, directory, facts, licence)
+    return Notice(component, licence_label_of(component, facts), copyright_, origin, licence,
+                  apache_notice_of(component, facts, records), other_notices_of(directory, files, licence))
 
 
 # ---- Output --------------------------------------------------------------------------------------
@@ -260,6 +303,10 @@ def describe(text: Text) -> str:
     if text.origin == "package":
         return f"{text.location} in the package"
     return f"upstream {text.location}"
+
+
+def source_row(c: Component, item: str, origin: str, location: str, sha256: str = "-") -> str:
+    return "\t".join([c.name, c.version, c.licence, item, origin, location, sha256])
 
 
 def render(notices: list[Notice]) -> tuple[bytes, str]:
@@ -277,39 +324,41 @@ def render(notices: list[Notice]) -> tuple[bytes, str]:
     sources = ["package\tversion\tlicence\titem\torigin\tlocation\tsha256"]
     for notice in notices:
         c = notice.component
-        lines = [RULE, f"Package: {c.name} {c.version}", RULE, f"Licence: {c.licence}"]
+        lines = [RULE, f"Package: {c.name} {c.version}", RULE, f"Licence: {notice.licence_label}"]
         if notice.copyright:
             lines.append(f"Copyright: {notice.copyright} (from the {notice.copyright_origin})")
         else:
             lines.append(f"Copyright: {notice.copyright_origin}")
-        sources.append(f"{c.name}\t{c.version}\t{c.licence}\tcopyright\t{notice.copyright_origin}\t{notice.copyright or '-'}\t-")
-        if notice.licence:
-            lines.append(f"Licence text: text {number(notice.licence)} below ({describe(notice.licence)})")
-            sources.append(f"{c.name}\t{c.version}\t{c.licence}\tlicence\t{notice.licence.origin}\t{notice.licence.location}\t{notice.licence.sha256}")
+        sources.append(source_row(c, "copyright", notice.copyright_origin, notice.copyright or "-"))
+        if notice.licence.text:
+            text = notice.licence.text
+            lines.append(f"Licence text: text {number(text)} below ({describe(text)})")
+            sources.append(source_row(c, "licence", text.origin, text.location, text.sha256))
         else:
-            lines.append(f"Licence text: NOT YET SOURCED: {notice.gap}")
-            sources.append(f"{c.name}\t{c.version}\t{c.licence}\tlicence\tgap\t{notice.gap}\t-")
-        if notice.apache_notice:
-            lines.append(f"Apache-2.0 NOTICE: text {number(notice.apache_notice)} below ({describe(notice.apache_notice)})")
-            sources.append(f"{c.name}\t{c.version}\t{c.licence}\tnotice\tupstream\t{notice.apache_notice.location}\t{notice.apache_notice.sha256}")
-        elif notice.apache_notice_absent:
-            lines.append(f"Apache-2.0 NOTICE: {notice.apache_notice_absent}")
-            sources.append(f"{c.name}\t{c.version}\t{c.licence}\tnotice\tnone\t{notice.apache_notice_absent}\t-")
+            lines.append(f"Licence text: NOT YET SOURCED: {notice.licence.note}")
+            sources.append(source_row(c, "licence", "gap", notice.licence.note))
+        if notice.apache_notice and notice.apache_notice.text:
+            text = notice.apache_notice.text
+            lines.append(f"Apache-2.0 NOTICE: text {number(text)} below ({describe(text)})")
+            sources.append(source_row(c, "notice", "upstream", text.location, text.sha256))
+        elif notice.apache_notice:
+            lines.append(f"Apache-2.0 NOTICE: {notice.apache_notice.note}")
+            sources.append(source_row(c, "notice", "none", notice.apache_notice.note))
         for other in notice.other_notices:
             lines.append(f"Other notices: text {number(other)} below ({describe(other)})")
-            sources.append(f"{c.name}\t{c.version}\t{c.licence}\tother-notice\tpackage\t{other.location}\t{other.sha256}")
+            sources.append(source_row(c, "other-notice", "package", other.location, other.sha256))
         sections.append("\n".join(lines))
 
-    gaps = [n for n in notices if n.gap]
     header = [
         "EclipsVault third-party notices",
         "",
         "EclipsVault redistributes the third-party software listed below. This file holds, for every NuGet",
-        "package in the image's software bill of materials, its copyright line and licence text, the NOTICE of",
-        "each Apache-2.0 package that has one, and the other notices the packages themselves carry, among them",
-        "the notices for the native libraries inside SkiaSharp's libSkiaSharp. Each text is copied unchanged",
-        "from the package or from the package's source repository at the commit its package records;",
-        ".github/notices/sources.tsv says which.",
+        "package in the image's software bill of materials, its licence text, its copyright line where the",
+        "package or its licence states one, the NOTICE of each Apache-2.0 package that has one, and the other",
+        "notices the packages themselves carry, among them the notices for the native libraries inside",
+        "SkiaSharp's libSkiaSharp. Each text is copied unchanged from the package or from the package's source",
+        "repository at the commit its package records; .github/notices/sources.tsv in the EclipsVault source",
+        "repository says which.",
         "",
         FREETYPE_CREDIT,
         "",
@@ -321,12 +370,19 @@ def render(notices: list[Notice]) -> tuple[bytes, str]:
         "",
         f"Packages: {len(notices)}. Distinct texts: {len(texts)}.",
     ]
-    if gaps:
-        header += ["", "Licence texts not yet sourced:"] + [f"  {n.component.name} {n.component.version}: {n.gap}" for n in gaps]
+    unsourced = [n for n in notices if not n.licence.text]
+    if unsourced:
+        header += ["", "Licence texts not yet sourced:"]
+        header += [f"  {n.component.key}: {n.licence.note}" for n in unsourced]
+    without_copyright = [n for n in notices if not n.copyright]
+    if without_copyright:
+        header += ["", "Packages that state no copyright line in their nuspec, assembly or licence text:"]
+        header += [f"  {n.component.key}" for n in without_copyright]
 
     body = []
     for index, text in enumerate(texts, start=1):
-        body.append("\n".join([THIN_RULE, f"Text {index}: {describe(text)}", f"sha256 {text.sha256}", THIN_RULE]).encode() + b"\n")
+        banner = [THIN_RULE, f"Text {index}: {describe(text)}", f"sha256 {text.sha256}", THIN_RULE]
+        body.append("\n".join(banner).encode() + b"\n")
         body.append(text.data if text.data.endswith(b"\n") else text.data + b"\n")
     document = ("\n".join(header) + "\n\n" + "\n\n".join(sections) + "\n\n").encode("utf-8") + b"\n".join(body)
     return document, "\n".join(sources) + "\n"
@@ -352,9 +408,28 @@ def generate(sbom_path: Path) -> int:
 def disagreements(sbom_path: Path, notices_path: Path) -> list[str]:
     """Packages the SBOM lists that the notices file lacks, and packages it covers that the SBOM does not list."""
     expected = {(c.name, c.version) for c in nuget_components(sbom_path)}
-    covered = set(PACKAGE_LINE.findall(notices_path.read_text(encoding="utf-8", errors="replace"))) if notices_path.exists() else set()
+    text = notices_path.read_text(encoding="utf-8", errors="replace") if notices_path.exists() else ""
+    covered = set(PACKAGE_LINE.findall(text))
     return ([f"missing from {notices_path.name}: {name} {version}" for name, version in sorted(expected - covered)]
-            + [f"in {notices_path.name} but not in the SBOM: {name} {version}" for name, version in sorted(covered - expected)])
+            + [f"in {notices_path.name} but not in the SBOM: {name} {version}"
+               for name, version in sorted(covered - expected)])
+
+
+def unresolved(notices: list[Notice], accepted: dict[tuple[str, str], str]) -> list[str]:
+    """Licence texts, copyright lines and Apache NOTICE searches still open, apart from the accepted gaps."""
+    problems = []
+    for notice in notices:
+        key = notice.component.key
+        gaps = {"licence": not notice.licence.text, "copyright": not notice.copyright}
+        for item, missing in gaps.items():
+            if missing and (key, item) not in accepted:
+                reason = notice.licence.note if item == "licence" else notice.copyright_origin
+                problems.append(f"no {item} for {key}: {reason}")
+            if not missing and (key, item) in accepted:
+                problems.append(f"{key} has a {item} now; remove its {item} line from {KNOWN_GAPS.name}")
+        if notice.apache_notice and not notice.apache_notice.settled:
+            problems.append(f"Apache-2.0 NOTICE of {key} not looked for: {notice.apache_notice.note}")
+    return problems
 
 
 def check(sbom_path: Path) -> int:
@@ -364,63 +439,74 @@ def check(sbom_path: Path) -> int:
         problems.append(f"{NOTICES.name} is not what generate writes from the SBOM and the restored packages")
     if not SOURCES.exists() or SOURCES.read_text(encoding="utf-8") != sources:
         problems.append(f"{SOURCES.name} is not what generate writes")
-    accepted = known_gaps()
-    for notice in notices:
-        key = f"{notice.component.name} {notice.component.version}"
-        if notice.gap and key not in accepted:
-            problems.append(f"no licence text for {key}: {notice.gap}")
-        if not notice.gap and key in accepted:
-            problems.append(f"{key} is listed in {KNOWN_GAPS.name} but now has a licence text; remove it there")
+    problems += unresolved(notices, known_gaps())
     for problem in problems:
         print(problem, file=sys.stderr)
     if problems:
-        print("Fix: bash .github/sbom/sbom.sh, then python3 -I .github/notices/notices.py fetch (for a new or "
-              "upgraded package without a licence file) and generate, and commit the result.", file=sys.stderr)
+        print("Fix: bash .github/sbom/sbom.sh, then python3 -I .github/notices/notices.py fetch and generate, "
+              "and commit the result.", file=sys.stderr)
     return 1 if problems else 0
 
 
-def fetch(sbom_path: Path) -> int:
-    """Fetch what resolve would otherwise report as not fetched. Needs raw.githubusercontent.com."""
-    records = fetched_records()
-    wanted: set[tuple[str, str, str]] = set()
+def wanted_fetches(sbom_path: Path) -> set[tuple[str, str, str]]:
+    """(repository, commit, licence or notice) for every upstream file resolve would look up."""
+    wanted = set()
     for component in nuget_components(sbom_path):
         directory = package_directory(component)
         facts = nuspec_of(directory)
         repository = github_repository(facts.get("repository", ""))
         commit = facts.get("commit", "")
-        if not (repository and commit):
+        if not (repository and COMMIT.match(commit)):
             continue
         has_licence_file = (facts.get("licence_type") == "file"
-                            or any(LICENCE_FILE.match(p.relative_to(directory).parts[0]) for p in package_files(directory)))
+                            or any(LICENCE_FILE.match(p.relative_to(directory).parts[0])
+                                   for p in package_files(directory)))
         if not has_licence_file:
             wanted.add((repository, commit, "licence"))
         if "Apache-2.0" in component.licence:
             wanted.add((repository, commit, "notice"))
+    return wanted
 
-    rows = [row for group in records.values() for row in group]
-    for repository, commit, kind in sorted(wanted - set(records)):
+
+def download(url: str) -> tuple[bytes, str]:
+    try:
+        with urllib.request.urlopen(url, timeout=30) as response:
+            return response.read(), str(response.status)
+    except urllib.error.HTTPError as error:
+        return b"", str(error.code)
+    except urllib.error.URLError as error:
+        return b"", f"error:{type(error.reason).__name__}"
+
+
+def fetch(sbom_path: Path) -> int:
+    """Fetch what resolve would otherwise report as not looked for. Needs raw.githubusercontent.com."""
+    records = fetched_records()
+    settled = {key for key, rows in records.items() if all(row["status"] in ("200", "404") for row in rows)}
+    # A search that failed on the network is repeated whole: its earlier answers say nothing.
+    rows = [row for key, group in records.items() if key in settled for row in group]
+    for repository, commit, kind in sorted(wanted_fetches(sbom_path) - settled):
         for name in LICENCE_NAMES if kind == "licence" else NOTICE_NAMES:
             url = f"https://raw.githubusercontent.com/{repository}/{commit}/{name}"
-            try:
-                with urllib.request.urlopen(url, timeout=30) as response:
-                    data, status = response.read(), str(response.status)
-            except urllib.error.HTTPError as error:
-                data, status = b"", str(error.code)
-            except urllib.error.URLError as error:
-                data, status = b"", f"error:{type(error.reason).__name__}"
+            data, status = download(url)
             file = f"{repository}/{commit}/{name}" if status == "200" else "-"
             if status == "200":
-                (UPSTREAM / file).parent.mkdir(parents=True, exist_ok=True)
-                (UPSTREAM / file).write_bytes(data)
-            rows.append({"repository": repository, "commit": commit, "kind": kind, "url": url, "status": status, "file": file})
+                target = (UPSTREAM / file).resolve()
+                if not target.is_relative_to(UPSTREAM.resolve()):
+                    raise ValueError(f"refusing to write {target}, outside {UPSTREAM}")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(data)
+            rows.append({"repository": repository, "commit": commit, "kind": kind, "url": url,
+                         "status": status, "file": file})
             print(f"{status} {url}")
-            if status == "200":
+            # Only a 404 says this name is absent; after anything else a later name could stand in for it.
+            if status != "404":
                 break
 
     UPSTREAM.mkdir(parents=True, exist_ok=True)
     columns = ["repository", "commit", "kind", "url", "status", "file"]
     ordered = sorted(rows, key=lambda r: (r["repository"], r["commit"], r["kind"], r["url"]))
-    FETCHED.write_text("\n".join(["\t".join(columns)] + ["\t".join(r[c] for c in columns) for r in ordered]) + "\n", encoding="utf-8")
+    lines = ["\t".join(columns)] + ["\t".join(r[c] for c in columns) for r in ordered]
+    FETCHED.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return 0
 
 

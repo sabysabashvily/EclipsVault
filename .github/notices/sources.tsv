@@ -44,8 +44,8 @@ Microsoft.CodeAnalysis.Workspaces.MSBuild	5.0.0	MIT	licence	upstream	https://raw
 Microsoft.CodeAnalysis.Workspaces.MSBuild	5.0.0	MIT	other-notice	package	ThirdPartyNotices.rtf	ef4678850e7e3aaf9297f07e5c4060d477854e545ccf8e2ef8452d65a7b2efaf
 Microsoft.Data.SqlClient	6.1.1	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
 Microsoft.Data.SqlClient	6.1.1	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/sqlclient/eb7a9da3da429f3220a92a8a6b228a7471a884be/LICENSE	9fa73cb72fb654d029c9214f0e3eec32c301a0c23be71b50fe3910e61553fa34
-Microsoft.Data.SqlClient.SNI.runtime	6.0.2	none stated	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
-Microsoft.Data.SqlClient.SNI.runtime	6.0.2	none stated	licence	package	LICENSE.txt	9335e8bad875dd7be4eebd55d2335eb6433d1cea61aadb3817af7807bef8932a
+Microsoft.Data.SqlClient.SNI.runtime	6.0.2	none stated in the SBOM	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.Data.SqlClient.SNI.runtime	6.0.2	none stated in the SBOM	licence	package	LICENSE.txt	9335e8bad875dd7be4eebd55d2335eb6433d1cea61aadb3817af7807bef8932a
 Microsoft.EntityFrameworkCore	10.0.9	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
 Microsoft.EntityFrameworkCore	10.0.9	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/dotnet/901ca941248413c79832d2fdbd709da0c4386353/LICENSE.TXT	ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b
 Microsoft.EntityFrameworkCore.Abstractions	10.0.9	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
