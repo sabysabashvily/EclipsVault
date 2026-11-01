@@ -86,6 +86,8 @@ public abstract class ConcurrentAccessRequestTests(ShareDatabases databases)
         {
             result = approval.Requests.ApproveAsync(pending.Id, 0, default);
             await chain.WaitForQueuedWritersAsync(1);
+            // Directly, not through the sharing panel: the panel's save would queue behind the held audit
+            // chain too, leaving the order to chance. The panel losing instead is ConcurrentShareTests'.
             await databases.SaveShareDirectlyAsync(secret, issuer, recipient);
         }
 

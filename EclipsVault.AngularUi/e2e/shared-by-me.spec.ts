@@ -3,7 +3,9 @@ import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
 import { createSecret, openPalette } from './palette';
+import { SecretsList } from './secrets-list';
 import { SharedByMe } from './shared-by-me';
+import { SharedWithMe } from './shared-with-me';
 import { freshTotp } from './totp';
 
 test.describe.configure({ mode: 'serial' });
@@ -148,7 +150,7 @@ test('with nothing shared, Go to your secrets opens the Secrets page', async ({ 
   await page.goto('/Secrets/SharedByMe');
   const shares = new SharedByMe(page);
   await shares.goToSecrets.click();
-  await expect(page.getByRole('heading', { name: 'Secrets', exact: true })).toBeVisible();
+  await expect(new SecretsList(page).heading).toBeVisible();
   await expect(page).toHaveURL(/\/Secrets$/);
 });
 
@@ -254,7 +256,7 @@ test('Shared with me opens in-app on the same session from Shared by me', async 
       documents.push(new URL(request.url()).pathname);
   });
   await page.getByRole('link', { name: 'Shared with me', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Shared with me', exact: true })).toBeVisible();
+  await expect(new SharedWithMe(page).heading).toBeVisible();
   await expect(page).toHaveURL(/\/Secrets\/SharedWithMe$/);
   expect(documents).toEqual([]);
   await expect(page.getByRole('link', { name: 'Sign in', exact: true })).toHaveCount(0);

@@ -473,6 +473,7 @@ describe('AccessRequestsPage', () => {
   });
 
   it.each<Record<string, string>>([
+    // A name every plain object inherits: were the refusals map an object literal, it would be found.
     { refused: 'constructor' },
     { refused: 'unknown_code' },
     { filed: 'yes' },

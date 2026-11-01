@@ -67,8 +67,8 @@ public sealed class AccessRequestCommitter(EclipsVaultDbContext context) : IAcce
 
     private static bool MayHaveLostRace(Exception failure, Guid requestId, Guid? replacedShareId)
         => failure is DbUpdateConcurrencyException conflict
-            ? conflict.Entries.Any(entry => entry.Entity is AccessRequest r && r.Id == requestId
-                || entry.Entity is SecretGrant share && share.Id == replacedShareId)
+            ? conflict.Entries.Any(entry => (entry.Entity is AccessRequest r && r.Id == requestId)
+                || (entry.Entity is SecretGrant share && share.Id == replacedShareId))
             : failure is DbUpdateException update && UniqueIndex.IsViolatedBy(update, OneSharePerRecipient.Index);
 
     /// <summary>True when the request is no longer pending or is gone; null when the store cannot be read.</summary>

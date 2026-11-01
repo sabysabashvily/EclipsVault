@@ -85,7 +85,7 @@ The vault account that filed an access request, identified by its account. Only 
 _Avoid_: Applicant
 
 **Reviewer**:
-A vault account that may decide an access request: anyone who could issue the share from the secret itself at that moment. Approving issues the share, with the reviewer as its issuer.
+A vault account that may decide an access request: anyone other than its requester who could issue the share from the secret itself at that moment. Approving issues the share, with the reviewer as its issuer.
 _Avoid_: Approver (a reviewer may also reject), owner
 
 ### The two APIs
