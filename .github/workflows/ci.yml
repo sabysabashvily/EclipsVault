@@ -414,6 +414,15 @@ jobs:
       - name: Generate SBOM
         run: bash .github/sbom/sbom.sh
 
+      # The image ships THIRD-PARTY-NOTICES.txt, so a new or upgraded NuGet package fails here until its
+      # licence text is in it. The check regenerates the file from this SBOM and the packages restored
+      # above and compares; it fetches nothing, so it reads only what the repository already pinned.
+      - name: Notices tool tests
+        run: python3 -I -m unittest discover -s .github/notices -p 'test_*.py' -v
+
+      - name: Third-party notices match the SBOM
+        run: python3 -I .github/notices/notices.py check
+
       - name: Upload SBOM
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
