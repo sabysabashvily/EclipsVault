@@ -1,0 +1,145 @@
+{
+ "status": "published",
+ "confirmed": true,
+ "repository": "sabysabashvily/EclipsVault",
+ "placeholders": {
+  "#SPEC": "this part's parent issue number",
+  "#SPEC5A": "part 5a parent issue number",
+  "#SPEC5B": "part 5b parent issue number",
+  "#T<n>": "ticket n of the same part"
+ },
+ "parts": [
+  {
+   "key": "5a",
+   "parent": {
+    "title": "Angular migration — Area 5a: Accounts (Users, Service accounts)",
+    "file": "5a/spec.md",
+    "number": 104
+   },
+   "tickets": [
+    {
+     "order": 1,
+     "title": "Area 5a · 1/7: Commit account changes with their audit rows and end sessions durably",
+     "file": "5a/ticket-1.md",
+     "blockedByOrders": [],
+     "number": 106
+    },
+    {
+     "order": 2,
+     "title": "Area 5a · 2/7: Keep an enabled administrator and refuse own-account changes",
+     "file": "5a/ticket-2.md",
+     "blockedByOrders": [
+      1
+     ],
+     "number": 107
+    },
+    {
+     "order": 3,
+     "title": "Area 5a · 3/7: Commit service-account and key changes with their audit rows",
+     "file": "5a/ticket-3.md",
+     "blockedByOrders": [
+      2
+     ],
+     "number": 108
+    },
+    {
+     "order": 4,
+     "title": "Area 5a · 4/7: Users served by the Angular UI, with step-up for grants",
+     "file": "5a/ticket-4.md",
+     "blockedByOrders": [
+      3
+     ],
+     "number": 109
+    },
+    {
+     "order": 5,
+     "title": "Area 5a · 5/7: New user and Edit user served by the Angular UI",
+     "file": "5a/ticket-5.md",
+     "blockedByOrders": [
+      4
+     ],
+     "number": 110
+    },
+    {
+     "order": 6,
+     "title": "Area 5a · 6/7: Service accounts served by the Angular UI",
+     "file": "5a/ticket-6.md",
+     "blockedByOrders": [
+      5
+     ],
+     "number": 111
+    },
+    {
+     "order": 7,
+     "title": "Area 5a · 7/7: Verify part 5a and prepare its PR",
+     "file": "5a/ticket-7.md",
+     "blockedByOrders": [
+      6
+     ],
+     "number": 112
+    }
+   ]
+  },
+  {
+   "key": "5b",
+   "blockedByParts": [
+    "5a"
+   ],
+   "parent": {
+    "title": "Angular migration — Area 5b: Vault settings (Networks, Notifications, License)",
+    "file": "5b/spec.md",
+    "number": 105
+   },
+   "tickets": [
+    {
+     "order": 1,
+     "title": "Area 5b · 1/4: Undo a lifted block when it cannot be recorded",
+     "file": "5b/ticket-1.md",
+     "blockedByOrders": [],
+     "number": 113
+    },
+    {
+     "order": 2,
+     "title": "Area 5b · 2/4: Networks served by the Angular UI",
+     "file": "5b/ticket-2.md",
+     "blockedByOrders": [
+      1
+     ],
+     "number": 114
+    },
+    {
+     "order": 3,
+     "title": "Area 5b · 3/4: Notifications and License served by the Angular UI",
+     "file": "5b/ticket-3.md",
+     "blockedByOrders": [
+      2
+     ],
+     "number": 115
+    },
+    {
+     "order": 4,
+     "title": "Area 5b · 4/4: Verify part 5b and prepare its PR",
+     "file": "5b/ticket-4.md",
+     "blockedByOrders": [
+      3
+     ],
+     "number": 116
+    }
+   ]
+  }
+ ],
+ "followUps": [
+  {
+   "title": "Provision accounts without a password the administrator knows",
+   "file": "follow-up-initial-password.md",
+   "labels": [
+    "needs-triage"
+   ],
+   "number": 117
+  }
+ ],
+ "links": {
+  "92": "part 5a closes it"
+ },
+ "confirmedOn": "2026-11-01"
+}

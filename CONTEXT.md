@@ -23,15 +23,15 @@ The proof that must pass, after the password, before a session exists: an authen
 _Avoid_: 2FA code, OTP
 
 **Step-up**:
-A fresh second factor demanded before revealing a high-sensitivity secret on a session whose last strong sign-in is too old.
-_Avoid_: Re-login, re-auth prompt
+A fresh second factor demanded on a session whose last strong sign-in is too old, before revealing a high-sensitivity secret or before an administrator grants lasting access.
+_Avoid_: Re-login, re-auth prompt, sudo mode
 
 **Account verification**:
 Fresh proof using an existing credential of the signed-in vault account, required before changing how that account signs in.
 _Avoid_: Step-up (when an account change is meant)
 
 **Credential generation**:
-The current revision of a vault account's sign-in credentials, which identifies the sessions and pending proofs that still belong to those credentials.
+The current revision of a vault account's sign-in credentials and access, which identifies the sessions and pending proofs that still belong to them. An administrator's change of the account's clearance, project or enabled state starts a new one.
 _Avoid_: Authentication time, session age
 
 **Session revocation version**:
@@ -57,6 +57,24 @@ _Avoid_: Bot, machine user
 **API key**:
 The credential a service account presents, optionally narrowed below its account by a scope.
 _Avoid_: Token, bearer token
+
+### Administration
+
+**Administrator**:
+A vault account with Top Secret clearance. There is no separate role: raising an account to Top Secret makes it an administrator, and the vault always keeps at least one enabled administrator.
+_Avoid_: Admin role, superuser, owner
+
+**Trusted network**:
+A source address range from which Confidential and higher secrets may be opened, either configured or added at runtime by an administrator. It never decides whether a session or an administration page is allowed.
+_Avoid_: Allowlist, whitelist, safe IP
+
+**Intrusion-defence block**:
+A source range refused on every request because a decoy secret was opened from it, kept until an administrator or break-glass recovery lifts it.
+_Avoid_: Ban, IP ban
+
+**Notification outbox**:
+The record of every email the vault composed, with its delivery outcome. A delivery record, not a mailbox.
+_Avoid_: Mailbox, inbox, email log
 
 ### Sharing
 
@@ -105,7 +123,7 @@ The server-rendered pages being replaced. Shrinks to nothing by the end of the m
 _Avoid_: Old UI, MVC frontend
 
 **Area**:
-A group of related pages behind one sidebar entry (e.g. Profile, Secrets, Users), named by a stable key such as `users` in `/api/ui/me`. An area migrates as one unit; a migration step may move several at once, as the Administration step moves all the administration areas. At any moment an area belongs wholly to either the Legacy UI or the Angular UI, never both.
+A group of related pages behind one sidebar entry (e.g. Profile, Secrets, Users), named by a stable key such as `users` in `/api/ui/me`. An area migrates as one unit; a migration step may move several at once, as the Administration step moves the administration areas in two parts. At any moment an area belongs wholly to either the Legacy UI or the Angular UI, never both.
 _Avoid_: Module, feature, screen
 
 **Angular UI**:
