@@ -53,6 +53,8 @@ COPYRIGHT_LINE = re.compile(r"(?i)^(copyright\s*(\(c\)|©|\d{4})|(\(c\)|©)\s*\d
 # A name fetch puts in a path: GitHub's own character set, and never "." or "..".
 PATH_NAME = re.compile(r"^(?!\.\.?$)[A-Za-z0-9_.-]+$")
 COMMIT = re.compile(r"^[0-9a-f]{40}$")
+# SourceLink builds write an assembly's informational version as <version>+<the commit it was built from>.
+INFORMATIONAL_COMMIT = re.compile(r"\d+\.\d+\.\d+[0-9A-Za-z.\-]*\+([0-9a-f]{40})")
 RULE = "=" * 78
 THIN_RULE = "-" * 78
 
@@ -104,6 +106,8 @@ class Notice:
     other_notices: tuple[Text, ...]
     # Why the image does not carry the package's files although the SBOM lists the package, if it does not.
     not_in_image: str | None = None
+    # Where the upstream texts' commit was read, when it was not the nuspec.
+    source_commit: str | None = None
 
 
 # ---- Inputs ---------------------------------------------------------------------------------------
@@ -186,6 +190,30 @@ def assembly_copyright(directory: Path, name: str) -> str | None:
     return None
 
 
+def assembly_commit(directory: Path, name: str) -> str | None:
+    """The commit the package's own assemblies were built from, when every one of them names the same one."""
+    commits = set()
+    for dll in sorted(directory.glob(f"lib/*/{name}.dll")):
+        data = dll.read_bytes()
+        # The version resource is UTF-16 and may start at either byte alignment; metadata strings are UTF-8.
+        readings = (data.decode("latin-1"), data.decode("utf-16-le", errors="ignore"),
+                    data[1:].decode("utf-16-le", errors="ignore"))
+        found = {commit for reading in readings for commit in INFORMATIONAL_COMMIT.findall(reading)}
+        if len(found) != 1:
+            return None
+        commits |= found
+    return commits.pop() if len(commits) == 1 else None
+
+
+def source_commit(component: Component, directory: Path, facts: dict[str, str]) -> tuple[str | None, str | None]:
+    """The commit to fetch upstream files at, and where it was read: the nuspec, else the package's assemblies."""
+    if COMMIT.match(facts.get("commit", "")):
+        return facts["commit"], None
+    if (from_assembly := assembly_commit(directory, component.name)):
+        return from_assembly, f"the informational version of {component.name}.dll"
+    return None, None
+
+
 def licence_copyright(licence: Text) -> str | None:
     """The licence text's own copyright lines, joined.
 
@@ -243,8 +271,9 @@ def upstream_lookup(records, repository: str, commit: str, kind: str) -> Lookup:
     return Lookup(None, f"could not fetch from {repository} at {commit} ({statuses}); run notices.py fetch", False)
 
 
-def licence_of(directory: Path, facts: dict[str, str], files: list[Path], records) -> Lookup:
-    """The package's own licence file, else its repository's at the recorded commit."""
+def licence_of(component: Component, directory: Path, facts: dict[str, str], files: list[Path],
+               records) -> Lookup:
+    """The package's own licence file, else its repository's at the commit it was built from."""
     declared = directory / facts["licence_value"] if facts.get("licence_type") == "file" else None
     in_package = [p for p in files if LICENCE_FILE.match(p.relative_to(directory).parts[0])]
     if declared and declared.is_file():
@@ -253,22 +282,22 @@ def licence_of(directory: Path, facts: dict[str, str], files: list[Path], record
         return Lookup(read_text_file(in_package[0], "package", in_package[0].relative_to(directory).as_posix()),
                       None, True)
     repository = github_repository(facts.get("repository", ""))
-    commit = facts.get("commit", "")
-    if repository and COMMIT.match(commit):
+    commit, _ = source_commit(component, directory, facts)
+    if repository and commit:
         return upstream_lookup(records, repository, commit, "licence")
-    return Lookup(None, "no licence file in the package and no repository commit in its nuspec to fetch one from",
-                  True)
+    return Lookup(None, "no licence file in the package and no source commit in its nuspec or assemblies to "
+                        "fetch one at", True)
 
 
-def apache_notice_of(component: Component, facts: dict[str, str], records) -> Lookup | None:
+def apache_notice_of(component: Component, directory: Path, facts: dict[str, str], records) -> Lookup | None:
     """Apache-2.0 asks redistributors to pass on the work's NOTICE, which lives in its repository."""
     if "Apache-2.0" not in component.licence:
         return None
     repository = github_repository(facts.get("repository", ""))
-    commit = facts.get("commit", "")
-    if repository and COMMIT.match(commit):
+    commit, _ = source_commit(component, directory, facts)
+    if repository and commit:
         return upstream_lookup(records, repository, commit, "notice")
-    return Lookup(None, "no repository commit in the nuspec to look for a NOTICE at", False)
+    return Lookup(None, "no source commit in the nuspec or assemblies to look for a NOTICE at", False)
 
 
 def other_notices_of(directory: Path, files: list[Path], licence: Lookup) -> tuple[Text, ...]:
@@ -300,11 +329,15 @@ def resolve(component: Component, records, left_out: dict[str, str]) -> Notice:
     directory = package_directory(component)
     facts = nuspec_of(directory)
     files = package_files(directory)
-    licence = licence_of(directory, facts, files, records)
+    licence = licence_of(component, directory, facts, files, records)
     copyright_, origin = copyright_of(component, directory, facts, licence)
+    commit, commit_origin = source_commit(component, directory, facts)
+    fetched_at_assembly_commit = licence.text and licence.text.origin == "upstream" and commit_origin
     return Notice(component, licence_label_of(component, facts), copyright_, origin, licence,
-                  apache_notice_of(component, facts, records), other_notices_of(directory, files, licence),
-                  left_out.get(component.name))
+                  apache_notice_of(component, directory, facts, records), other_notices_of(directory, files, licence),
+                  left_out.get(component.name),
+                  f"{commit}, read from {commit_origin}; the nuspec records none" if fetched_at_assembly_commit
+                  else None)
 
 
 # ---- Output --------------------------------------------------------------------------------------
@@ -349,6 +382,9 @@ def render(notices: list[Notice]) -> tuple[bytes, str]:
             text = notice.licence.text
             lines.append(f"Licence text: text {number(text)} below ({describe(text)})")
             sources.append(source_row(c, "licence", text.origin, text.location, text.sha256))
+            if notice.source_commit:
+                lines.append(f"Source commit: {notice.source_commit}")
+                sources.append(source_row(c, "commit", "assembly", notice.source_commit))
         else:
             lines.append(f"Licence text: NOT YET SOURCED: {notice.licence.note}")
             sources.append(source_row(c, "licence", "gap", notice.licence.note))
@@ -471,8 +507,8 @@ def wanted_fetches(sbom_path: Path) -> set[tuple[str, str, str]]:
         directory = package_directory(component)
         facts = nuspec_of(directory)
         repository = github_repository(facts.get("repository", ""))
-        commit = facts.get("commit", "")
-        if not (repository and COMMIT.match(commit)):
+        commit, _ = source_commit(component, directory, facts)
+        if not (repository and commit):
             continue
         has_licence_file = (facts.get("licence_type") == "file"
                             or any(LICENCE_FILE.match(p.relative_to(directory).parts[0])

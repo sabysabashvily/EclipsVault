@@ -81,7 +81,8 @@ Microsoft.IdentityModel.Tokens	8.0.1	MIT	licence	upstream	https://raw.githubuser
 Microsoft.OpenApi	2.12.2	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
 Microsoft.OpenApi	2.12.2	MIT	licence	upstream	https://raw.githubusercontent.com/Microsoft/OpenAPI.NET/a24aac560adbf013ff5aa63a873e5a7babce38d2/LICENSE	5d177f23ecfeb0ea8e050b6a5a16355e1ae9a0b286436ca8f83ed08b3795be6b
 Microsoft.SqlServer.Server	1.0.0	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
-Microsoft.SqlServer.Server	1.0.0	MIT	licence	gap	no licence file in the package and no repository commit in its nuspec to fetch one from	-
+Microsoft.SqlServer.Server	1.0.0	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/sqlclient/54ab5aef2e1b74c0971a00711fecb003b624efdf/LICENSE	9fa73cb72fb654d029c9214f0e3eec32c301a0c23be71b50fe3910e61553fa34
+Microsoft.SqlServer.Server	1.0.0	MIT	commit	assembly	54ab5aef2e1b74c0971a00711fecb003b624efdf, read from the informational version of Microsoft.SqlServer.Server.dll; the nuspec records none	-
 Microsoft.VisualStudio.SolutionPersistence	1.0.52	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
 Microsoft.VisualStudio.SolutionPersistence	1.0.52	MIT	licence	upstream	https://raw.githubusercontent.com/microsoft/vs-solutionpersistence/19c3ca7dc997dba2b3a86f6c666e9f717f34c8fe/LICENSE	b5cb7ff7859e7d282d98fc43ab081b0dda5dc659dc3385cf65740c759a7e6a6c
 Microsoft.VisualStudio.SolutionPersistence	1.0.52	MIT	other-notice	package	NOTICE	2d56342544395b1cc4bb98192a439031362265125a68b8062942383b8df4309a

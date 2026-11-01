@@ -1,5 +1,4 @@
 package	item	reason
-Microsoft.SqlServer.Server 1.0.0	licence	The package carries no licence file and its nuspec records no repository commit; its licenseUrl, https://licenses.nuget.org/MIT, was not fetched. Source the MIT text at the package's tagged version, then remove this line.
 Serilog.AspNetCore 9.0.0	copyright	Its nuspec has no <copyright>, its assembly's LegalCopyright is blank, and its Apache-2.0 licence names no holder. The owner decides where its copyright line comes from.
 Serilog.Extensions.Hosting 9.0.0	copyright	Its nuspec has no <copyright>, its assembly's LegalCopyright is blank, and its Apache-2.0 licence names no holder. The owner decides where its copyright line comes from.
 Serilog.Extensions.Logging 9.0.0	copyright	Its nuspec has no <copyright>, its assembly's LegalCopyright is blank, and its Apache-2.0 licence names no holder. The owner decides where its copyright line comes from.

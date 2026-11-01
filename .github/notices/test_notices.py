@@ -117,6 +117,35 @@ class FetchPathTests(unittest.TestCase):
         self.assertFalse(notices.COMMIT.match(".."))
 
 
+class AssemblyCommitTests(unittest.TestCase):
+    COMMIT = "54ab5aef2e1b74c0971a00711fecb003b624efdf"
+
+    def write_assembly(self, directory: Path, framework: str, informational_version: str):
+        path = directory / "lib" / framework / "Example.dll"
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"MZ\x00" + "ProductVersion\x00".encode("utf-16-le") + informational_version.encode("utf-16-le"))
+
+    def test_the_commit_every_assembly_was_built_from_is_the_source_commit(self):
+        directory = Path(tempfile.mkdtemp())
+        self.write_assembly(directory, "net46", f"1.0.0-dev+{self.COMMIT}")
+        self.write_assembly(directory, "netstandard2.0", f"1.0.0-dev+{self.COMMIT}")
+
+        self.assertEqual(self.COMMIT, notices.assembly_commit(directory, "Example"))
+
+    def test_assemblies_built_from_different_commits_name_no_source_commit(self):
+        directory = Path(tempfile.mkdtemp())
+        self.write_assembly(directory, "net46", f"1.0.0+{self.COMMIT}")
+        self.write_assembly(directory, "netstandard2.0", "1.0.0+" + "0" * 40)
+
+        self.assertIsNone(notices.assembly_commit(directory, "Example"))
+
+    def test_an_assembly_without_a_commit_names_none(self):
+        directory = Path(tempfile.mkdtemp())
+        self.write_assembly(directory, "net46", "1.0.0")
+
+        self.assertIsNone(notices.assembly_commit(directory, "Example"))
+
+
 class NuspecTests(unittest.TestCase):
     def test_xml_entities_in_the_copyright_are_decoded(self):
         directory = Path(tempfile.mkdtemp())

@@ -18,9 +18,6 @@ Other notices in the image:
 
 Packages: 72. Distinct texts: 34.
 
-Licence texts not yet sourced:
-  Microsoft.SqlServer.Server 1.0.0: no licence file in the package and no repository commit in its nuspec to fetch one from
-
 Packages that state no copyright line in their nuspec, assembly or licence text:
   Serilog.AspNetCore 9.0.0
   Serilog.Extensions.Hosting 9.0.0
@@ -287,7 +284,8 @@ Package: Microsoft.SqlServer.Server 1.0.0
 ==============================================================================
 Licence: MIT
 Copyright: © Microsoft Corporation. All rights reserved. (from the nuspec <copyright>)
-Licence text: NOT YET SOURCED: no licence file in the package and no repository commit in its nuspec to fetch one from
+Licence text: text 13 below (upstream https://raw.githubusercontent.com/dotnet/sqlclient/54ab5aef2e1b74c0971a00711fecb003b624efdf/LICENSE)
+Source commit: 54ab5aef2e1b74c0971a00711fecb003b624efdf, read from the informational version of Microsoft.SqlServer.Server.dll; the nuspec records none
 
 ==============================================================================
 Package: Microsoft.VisualStudio.SolutionPersistence 1.0.52
