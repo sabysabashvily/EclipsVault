@@ -164,6 +164,7 @@ Licence text: text 13 below (upstream https://raw.githubusercontent.com/dotnet/s
 ==============================================================================
 Package: Microsoft.Data.SqlClient.SNI.runtime 6.0.2
 ==============================================================================
+In the image: no; its only files are Windows native libraries, which SqlClient never loads on Linux; the Dockerfile deletes them from the publish output, and test-image.sh fails if any is in the image. Its licence text is kept below.
 Licence: none stated in the SBOM; the package declares the file LICENSE.txt
 Copyright: © Microsoft Corporation. All rights reserved. (from the nuspec <copyright>)
 Licence text: text 14 below (LICENSE.txt in the package)

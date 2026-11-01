@@ -14,9 +14,11 @@ NO_NOTICE_AT_ROOT = notices.Lookup(None, "none at the root of serilog/serilog at
 NOTICE_NOT_LOOKED_FOR = notices.Lookup(None, "no upstream notice fetched for serilog/serilog at abc", False)
 
 
-def notice(name, copyright_="Copyright Example", licence=FOUND, apache_notice=None, licence_name="MIT"):
+def notice(name, copyright_="Copyright Example", licence=FOUND, apache_notice=None, licence_name="MIT",
+           not_in_image=None):
     return notices.Notice(notices.Component(name, "1.0.0", licence_name), licence_name, copyright_,
-                          "nuspec <copyright>" if copyright_ else "none stated", licence, apache_notice, ())
+                          "nuspec <copyright>" if copyright_ else "none stated", licence, apache_notice, (),
+                          not_in_image)
 
 
 def write_sbom(directory: Path, packages: list[tuple[str, str]]) -> Path:
@@ -155,6 +157,27 @@ class RenderTests(unittest.TestCase):
 
         self.assertIn(b"Licence text: NOT YET SOURCED: no licence file in the package", document)
         self.assertIn("C\t1.0.0\tMIT\tlicence\tgap\tno licence file in the package\t-", sources)
+
+    def test_a_package_the_image_does_not_carry_says_so_in_its_entry(self):
+        sni = notice("Microsoft.Data.SqlClient.SNI.runtime", not_in_image="the Dockerfile deletes its files")
+
+        document, _ = notices.render([sni])
+
+        self.assertIn(b"Package: Microsoft.Data.SqlClient.SNI.runtime 1.0.0\n" + notices.RULE.encode() +
+                      b"\nIn the image: no; the Dockerfile deletes its files\n", document)
+
+    def test_a_package_the_image_carries_has_no_such_line(self):
+        document, _ = notices.render([notice("QRCoder")])
+
+        self.assertNotIn(b"In the image:", document)
+
+    def test_the_packages_left_out_of_the_image_are_read_by_name(self):
+        path = Path(tempfile.mkdtemp()) / "not-in-image.tsv"
+        path.write_text("package\treason\nMicrosoft.Data.SqlClient.SNI.runtime\tthe Dockerfile deletes its files\n",
+                        encoding="utf-8")
+
+        self.assertEqual({"Microsoft.Data.SqlClient.SNI.runtime": "the Dockerfile deletes its files"},
+                         notices.not_in_image(path))
 
     def test_the_notices_file_carries_freetypes_credit_sentence_word_for_word(self):
         document, _ = notices.render([])

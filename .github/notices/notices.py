@@ -34,6 +34,7 @@ SOURCES = HERE / "sources.tsv"
 UPSTREAM = HERE / "upstream"
 FETCHED = UPSTREAM / "fetched.tsv"
 KNOWN_GAPS = HERE / "known-gaps.tsv"
+NOT_IN_IMAGE = HERE / "not-in-image.tsv"
 
 # The credit FreeType's licence (FTL) asks the documentation to carry, word for word.
 FREETYPE_CREDIT = (
@@ -101,6 +102,8 @@ class Notice:
     licence: Lookup
     apache_notice: Lookup | None
     other_notices: tuple[Text, ...]
+    # Why the image does not carry the package's files although the SBOM lists the package, if it does not.
+    not_in_image: str | None = None
 
 
 # ---- Inputs ---------------------------------------------------------------------------------------
@@ -217,6 +220,13 @@ def known_gaps(path: Path = KNOWN_GAPS) -> dict[tuple[str, str], str]:
     return gaps
 
 
+def not_in_image(path: Path = NOT_IN_IMAGE) -> dict[str, str]:
+    """Packages the SBOM lists whose files the Dockerfile deletes, by name, with the reason."""
+    if not path.exists():
+        return {}
+    return dict(line.split("\t", 1) for line in path.read_text(encoding="utf-8").splitlines()[1:])
+
+
 # ---- Resolving one package -----------------------------------------------------------------------
 
 
@@ -286,14 +296,15 @@ def licence_label_of(component: Component, facts: dict[str, str]) -> str:
     return component.licence
 
 
-def resolve(component: Component, records) -> Notice:
+def resolve(component: Component, records, left_out: dict[str, str]) -> Notice:
     directory = package_directory(component)
     facts = nuspec_of(directory)
     files = package_files(directory)
     licence = licence_of(directory, facts, files, records)
     copyright_, origin = copyright_of(component, directory, facts, licence)
     return Notice(component, licence_label_of(component, facts), copyright_, origin, licence,
-                  apache_notice_of(component, facts, records), other_notices_of(directory, files, licence))
+                  apache_notice_of(component, facts, records), other_notices_of(directory, files, licence),
+                  left_out.get(component.name))
 
 
 # ---- Output --------------------------------------------------------------------------------------
@@ -324,7 +335,11 @@ def render(notices: list[Notice]) -> tuple[bytes, str]:
     sources = ["package\tversion\tlicence\titem\torigin\tlocation\tsha256"]
     for notice in notices:
         c = notice.component
-        lines = [RULE, f"Package: {c.name} {c.version}", RULE, f"Licence: {notice.licence_label}"]
+        lines = [RULE, f"Package: {c.name} {c.version}", RULE]
+        if notice.not_in_image:
+            lines.append(f"In the image: no; {notice.not_in_image}")
+            sources.append(source_row(c, "image", "not-in-image.tsv", notice.not_in_image))
+        lines.append(f"Licence: {notice.licence_label}")
         if notice.copyright:
             lines.append(f"Copyright: {notice.copyright} (from the {notice.copyright_origin})")
         else:
@@ -393,7 +408,8 @@ def render(notices: list[Notice]) -> tuple[bytes, str]:
 
 def build(sbom_path: Path) -> tuple[list[Notice], bytes, str]:
     records = fetched_records()
-    notices = [resolve(component, records) for component in nuget_components(sbom_path)]
+    left_out = not_in_image()
+    notices = [resolve(component, records, left_out) for component in nuget_components(sbom_path)]
     document, sources = render(notices)
     return notices, document, sources
 

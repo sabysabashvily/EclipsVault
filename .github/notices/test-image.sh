@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Checks that a built EclipsVault image carries the licence notices of everything it redistributes:
 # its own third-party notices file, byte for byte as committed, the Angular UI's and the fonts' licence
-# files, the .NET runtime's notices, and a copyright file for every OS package the base image installs.
+# files, the .NET runtime's notices, and a copyright file for every OS package the base image installs;
+# and that it does not carry the Windows-only SNI runtime, which the Dockerfile deletes.
 #
 # Usage, from the repository root: bash .github/notices/test-image.sh <image>
 set -euo pipefail
@@ -19,6 +20,15 @@ docker run --rm --network none --pull never --entrypoint sh "$image" -c '
       /usr/share/dotnet/LICENSE.txt \
       /usr/share/dotnet/ThirdPartyNotices.txt; do
     if [ -s "$file" ]; then echo "present: $file"; else echo "MISSING: $file"; failed=1; fi
+  done
+
+  # Every file Microsoft.Data.SqlClient.SNI.runtime puts in the publish output: Windows native code under
+  # Microsoft Software License Terms, which SqlClient never loads on Linux.
+  for file in \
+      /app/runtimes/win-arm64/native/Microsoft.Data.SqlClient.SNI.dll \
+      /app/runtimes/win-x64/native/Microsoft.Data.SqlClient.SNI.dll \
+      /app/runtimes/win-x86/native/Microsoft.Data.SqlClient.SNI.dll; do
+    if [ -e "$file" ]; then echo "UNEXPECTED: $file"; failed=1; else echo "absent: $file"; fi
   done
 
   # A package may point its copyright at a sibling from the same source package. Ubuntu 24.04 openssl
