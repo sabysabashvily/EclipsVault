@@ -61,13 +61,14 @@ Dependency rule: `Web → Infrastructure → Core`. Nothing ever points outward.
 
 The interceptor is also the choke point through which **every** row passes on its way to the database (whether injected there or added by the sink), so it stamps each one into the tamper-evidence hash chain just before persistence. Repositories persist their own aggregate only; a service never borrows another aggregate's repository — or a `DbContext` — just to record an event.
 
-**Schema is owned by EF Core Migrations**, one set per database (`EclipsVault.Migrations.Postgres` and `EclipsVault.Infrastructure/Migrations/`); there is no `EnsureCreated` and no hand-written DDL. Every model change needs a migration in both sets. Add the SQL Server one with:
+**Schema is owned by EF Core Migrations**, one set per database (`EclipsVault.Migrations.Postgres` and `EclipsVault.Infrastructure/Migrations/`); there is no `EnsureCreated` and no hand-written DDL. Every model change needs a migration in both sets:
 
 ```bash
+ECLIPSVAULT_DESIGN_PROVIDER=Postgres dotnet ef migrations add <Name> -p EclipsVault.Migrations.Postgres -s EclipsVault.Web
 dotnet ef migrations add <Name> --project EclipsVault.Infrastructure --startup-project EclipsVault.Infrastructure
 ```
 
-A design-time `IDesignTimeDbContextFactory` lets the tooling build the context without booting the web host. Its comment shows the PostgreSQL command, which sets `ECLIPSVAULT_DESIGN_PROVIDER=Postgres`.
+A design-time `IDesignTimeDbContextFactory` lets the tooling build the context without booting the web host.
 
 **Applying them is a deploy job's work, not the vault's.** Development migrates itself on startup. Anywhere else the running service will not change the schema: a service that migrates on boot holds rights to drop and rewrite every table — the audit trail included — for its entire life, having needed them for a few seconds, and anyone who reaches its connection string inherits them. Run this from your deploy job, with a login the vault itself does not have:
 
@@ -130,7 +131,7 @@ The Keycloak realm is **imported from `keycloak/eclipsvault-realm.json`**, not c
 
 **Configuration & secrets** — the database connection string is deliberately **absent from `appsettings.json`** so credentials are never committed. Local development reads it (plus the dev KEK fallback and seed passwords) from `appsettings.Development.json`, which is git-ignored — copy `appsettings.Development.json.template` to create it. For any real deployment, supply it via the environment (`ConnectionStrings__DefaultConnection`) or a secret store, using a least-privilege login and TLS enforced (`SSL Mode=Require` on PostgreSQL, `Encrypt=True;TrustServerCertificate=False` on SQL Server). Startup fails fast with a clear message if it is missing.
 
-**Choosing the database** — EclipsVault ships no database; you provide one. We recommend PostgreSQL. SQL Server is the fully supported alternative, and a customer who chooses SQL Server licenses it from Microsoft themselves. `Database:Provider` selects the engine: `Postgres` or `SqlServer`. When it is unset the vault uses SQL Server, so a PostgreSQL install must set `Database__Provider=Postgres`. An unrecognised value fails at startup rather than falling back, because silently starting on a database nobody chose is how secrets end up somewhere their operator is not looking. [`docs/INSTALL.md`](docs/INSTALL.md) gives the supported versions and production connection strings. Dynamic secrets and managed rotation manage SQL Server logins whichever database the vault itself runs on.
+**Choosing the database** — EclipsVault ships no database; you provide one. We recommend PostgreSQL, the engine the development stack runs on; CI runs the integration tests on PostgreSQL and SQL Server alike. SQL Server is the fully supported alternative, and a customer who chooses SQL Server licenses it from Microsoft themselves. `Database:Provider` selects the engine: `Postgres` or `SqlServer`. When it is unset the vault uses SQL Server, so a PostgreSQL install must set `Database__Provider=Postgres`. An unrecognised value fails at startup rather than falling back, because silently starting on a database nobody chose is how secrets end up somewhere their operator is not looking. [`docs/INSTALL.md`](docs/INSTALL.md) gives the supported versions and production connection strings. Dynamic secrets and managed rotation manage SQL Server logins whichever database the vault itself runs on.
 
 Local development runs on PostgreSQL, from `docker-compose.yml` as above. To develop against SQL Server instead, start one and point the vault at it. SQL Server refuses an `sa` password shorter than 8 characters or drawn from fewer than three of: upper case, lower case, digits and symbols. Leave out `$`, quotes and `;`, which the shell or the connection string would misread.
 

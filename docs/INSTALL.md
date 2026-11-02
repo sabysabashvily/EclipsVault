@@ -8,8 +8,8 @@ secrets or your servers. This guide is the production runbook; for feature detai
 
 - A database, which you provide: EclipsVault ships no database. We recommend PostgreSQL 17 or
   later. SQL Server 2017 or later is the fully supported alternative; its migrations use `TRIM`,
-  `TRANSLATE` and `STRING_AGG`, which need SQL Server 2017. A customer who chooses SQL Server
-  licenses it from Microsoft themselves.
+  `TRANSLATE` and `STRING_AGG`, which need SQL Server 2017. If you choose SQL Server, you license it
+  from Microsoft yourself.
 - A TLS-terminating reverse proxy or ingress in front of the app (the container serves plain HTTP on
   port 8080 inside your network).
 - A place to hold a persistent Data Protection key ring directory, shared by every replica.
@@ -47,10 +47,11 @@ SQL Server:
     ECLIPSVAULT_DESIGN_CONNECTION="Server=…;Database=eclipsvault;User Id=<deploy login>;Password=…;Encrypt=True;TrustServerCertificate=False" \
     dotnet ef database update -p EclipsVault.Infrastructure -s EclipsVault.Web -c EclipsVaultDbContext
 
-The tool chooses the engine from `ECLIPSVAULT_DESIGN_PROVIDER`, not `Database__Provider`, and unset
-it targets SQL Server. Each engine has its own migrations project. Without
-`ECLIPSVAULT_DESIGN_CONNECTION`, the tool reads `ConnectionStrings__DefaultConnection`. The app
-verifies the schema at startup and refuses to start against a mismatched one.
+The tool chooses the engine from `ECLIPSVAULT_DESIGN_PROVIDER`, not `Database__Provider`; when that
+variable is unset, it targets SQL Server. Each engine has its own migrations project. Without
+`ECLIPSVAULT_DESIGN_CONNECTION`, the tool reads `ConnectionStrings__DefaultConnection`, and with
+neither set it targets a development database on localhost, so always set one in a deploy job. The
+app verifies the schema at startup and refuses to start against a mismatched one.
 
 ### Dynamic secrets: the managed target
 
@@ -58,9 +59,8 @@ Skip this unless you use **dynamic secrets** or **managed rotation**. Both work 
 `CREATE LOGIN`, `DROP LOGIN`, and `ALTER LOGIN` against the database whose credentials you want the
 vault to manage. That needs server-level rights there — `ALTER ANY LOGIN` on SQL Server.
 
-The managed target must be SQL Server, whichever database the vault itself runs on: those are SQL
-Server statements, and SQL Server is the only target the vault supports. A vault on PostgreSQL can
-manage a SQL Server target.
+The managed target must be SQL Server, whichever database the vault itself runs on: SQL Server is
+the only target the vault supports.
 
 Those rights are why this is a **second, separate connection string**:
 
@@ -84,7 +84,9 @@ On an empty vault, create the first admin once (screened like any password), the
 
     Seed__AdminPassword='<a password unique to this deployment>' dotnet EclipsVault.Web.dll
 
-With Docker, pass it to the first run as `-e Seed__AdminPassword=…` instead.
+With Docker, pass `-e Seed__AdminPassword=…` to the first `docker run` only. The value stays in the
+container's configuration, where `docker inspect` shows it, so once `vault-admin` exists, remove the
+container and start a new one without that variable.
 
 ## 5. Run (Docker)
 

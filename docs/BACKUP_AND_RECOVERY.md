@@ -35,6 +35,8 @@ the deploy login that applies the migrations can:
     pg_dump --format=custom --file=eclipsvault.dump \
       "host=db.example.internal dbname=eclipsvault user=<deploy login> sslmode=require"
 
+The password comes from `PGPASSWORD` or `~/.pgpass`, as for any PostgreSQL client.
+
 On SQL Server, use its own full backup and restore. Either way the result is item 1: it goes in the
 encrypted backup with the key ring, never beside the KEK.
 
@@ -48,6 +50,9 @@ encrypted backup with the key ring, never beside the KEK.
        pg_restore --exit-on-error \
          --dbname="host=db.example.internal dbname=eclipsvault user=<deploy login> sslmode=require" \
          eclipsvault.dump
+
+   On SQL Server, recreate the vault's logins on the new server and map the restored database's
+   users to them, or the app login cannot sign in.
 
 2. **Restore the key ring** directory to `DataProtection__KeyRingPath` (item 2).
 3. **Supply the same KEK.** Set `ECLIPSVAULT_KEK` to the exact key that sealed this data. If secrets
