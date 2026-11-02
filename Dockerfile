@@ -32,6 +32,13 @@ RUN dotnet publish EclipsVault.Web/EclipsVault.Web.csproj -c Release -o /app --n
 RUN rid="$(dotnet --info | awk '/^ *RID:/ { print $2; exit }')" \
  && find /app/runtimes -name 'libSkiaSharp*' -not -path "/app/runtimes/$rid/*" -delete \
  && test -f "/app/runtimes/$rid/native/libSkiaSharp.so"
+# It also carries Microsoft.Data.SqlClient.SNI.runtime's Windows native library, under Microsoft Software
+# License Terms. On Linux SqlClient uses its managed SNI and never loads it, so the image does not
+# redistribute it. These are all the package's files; rm fails the build if a new version moves them.
+RUN rm /app/runtimes/win-arm64/native/Microsoft.Data.SqlClient.SNI.dll \
+       /app/runtimes/win-x64/native/Microsoft.Data.SqlClient.SNI.dll \
+       /app/runtimes/win-x86/native/Microsoft.Data.SqlClient.SNI.dll \
+ && test -z "$(find /app/runtimes -name 'Microsoft.Data.SqlClient.SNI*')"
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:1fa23fc4872d95fd71c2833ebe65d7e84a43b2d51a31d119516852f13d9505a7 AS runtime
 WORKDIR /app
@@ -47,6 +54,9 @@ WORKDIR /app
 COPY --from=build --chown=$APP_UID:$APP_UID /app .
 COPY --from=ui --chown=$APP_UID:$APP_UID /src/EclipsVault.Web/wwwroot/ui ./wwwroot/ui
 COPY --from=ui --chown=$APP_UID:$APP_UID /src/EclipsVault.Web/AngularUi ./AngularUi
+# The licence notices of every NuGet package published above. notices.py check keeps the file in
+# step with the SBOM; .github/notices/test-image.sh confirms it and the other notices are in the image.
+COPY --chown=$APP_UID:$APP_UID THIRD-PARTY-NOTICES.txt ./
 USER $APP_UID
 
 ENV ASPNETCORE_HTTP_PORTS=8080

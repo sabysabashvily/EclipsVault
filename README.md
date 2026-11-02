@@ -447,6 +447,20 @@ This is the managed self-hosted model: the source is visible to customers, becau
 
 **Bundled third-party assets.** The UI ships the **Geist** and **Geist Mono** typefaces (`EclipsVault.Web/wwwroot/fonts`) under the **SIL Open Font License 1.1**, whose text is vendored beside them in [`fonts/OFL.txt`](EclipsVault.Web/wwwroot/fonts/OFL.txt) as that licence requires. The OFL permits bundling and redistribution within a larger work, including a commercial one, and imposes no obligation on EclipsVault's own terms above. No font file is renamed or modified.
 
+**Third-party notices in the image.** The image carries the licence notices of everything it redistributes:
+
+| In the image | Covers |
+|---|---|
+| `/app/THIRD-PARTY-NOTICES.txt` | Every NuGet package in the SBOM: its licence text, its copyright line where the package states one, the other notices it carries (among them those of the native libraries inside SkiaSharp), and where each text came from. It is this repository's [`THIRD-PARTY-NOTICES.txt`](THIRD-PARTY-NOTICES.txt), which CI checks against the SBOM. |
+| `/app/wwwroot/ui/3rdpartylicenses.txt` | The Angular UI's runtime packages |
+| `/app/wwwroot/fonts/OFL.txt` | The Geist fonts |
+| `/usr/share/dotnet/LICENSE.txt`, `/usr/share/dotnet/ThirdPartyNotices.txt` | .NET and ASP.NET Core |
+| `/usr/share/doc/*/copyright` | The OS packages of the Ubuntu base image |
+
+Read one with `docker run --rm --entrypoint cat <image> /app/THIRD-PARTY-NOTICES.txt`. After a dependency change, run `python3 -I .github/notices/notices.py fetch` and then `generate` (see that script); CI fails until the file matches the SBOM.
+
+Portions of this software are copyright © The FreeType Project (www.freetype.org). All rights reserved.
+
 ## Notes
 
 - List views show metadata only and are not per-row audited; every by-id metadata view and every reveal is audited (`SecretMetadataViewed`, `SecretRevealed`).

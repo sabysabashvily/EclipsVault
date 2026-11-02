@@ -1,0 +1,4 @@
+# Licence texts are copied byte for byte from their packages and upstream repositories, some with CRLF
+# line endings. Keep git from converting them, so notices.py check compares the bytes that were copied.
+/THIRD-PARTY-NOTICES.txt -text
+/.github/notices/upstream/** -text
