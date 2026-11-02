@@ -61,10 +61,22 @@ public sealed class ConcurrentAccountCreationTests(VaultFixture vault)
     private static async Task WaitForBothCreatesToWaitAsync(EclipsVaultDbContext db)
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        while (await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS Value FROM sys.dm_exec_requests WHERE database_id = DB_ID() AND blocking_session_id <> 0")
-            .SingleAsync(deadline.Token) < 2)
+        var waitingRequests = db.Database.IsNpgsql() ? PostgresWaitingRequests : SqlServerWaitingRequests;
+        while (await db.Database.SqlQueryRaw<int>(waitingRequests).SingleAsync(deadline.Token) < 2)
         {
             await Task.Delay(TimeSpan.FromMilliseconds(20), deadline.Token);
         }
     }
+
+    private const string SqlServerWaitingRequests = """
+        SELECT COUNT(*) AS [Value] FROM sys.dm_exec_requests
+        WHERE database_id = DB_ID() AND blocking_session_id <> 0
+        """;
+
+    // Count every waiting lock request, not only those this connection blocks: the second create can
+    // wait behind the first for the audit chain. The vault's PostgreSQL server holds only its database.
+    // pg_locks is read live, where pg_stat_activity would be read once per transaction.
+    private const string PostgresWaitingRequests = """
+        SELECT COUNT(DISTINCT pid)::int AS "Value" FROM pg_locks WHERE NOT granted
+        """;
 }
