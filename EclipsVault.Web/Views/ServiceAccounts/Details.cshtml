@@ -2,16 +2,16 @@
 @model ServiceAccountDetailsViewModel
 @{
     ViewData["Title"] = Model.Account.Name;
-    var a = Model.Account;
+    var account = Model.Account;
 }
 
 <div class="page-header">
     <div>
-        <h1 class="mono">@a.Name</h1>
+        <h1 class="mono">@account.Name</h1>
         <p class="page-sub">
-            <span class="badge sens-@((int)a.Clearance)">@a.Clearance.ToDisplayName()</span>
-            <span class="badge">@a.ProjectKey</span>
-            @if (a.IsDisabled)
+            <span class="badge sens-@((int)account.Clearance)">@account.Clearance.ToDisplayName()</span>
+            <span class="badge">@account.ProjectKey</span>
+            @if (account.IsDisabled)
             {
                 <span class="badge tone-danger">Disabled</span>
             }
@@ -38,7 +38,7 @@
     <section class="panel">
         <div class="panel-header"><h2>API keys</h2></div>
 
-        <form class="issue-key-form" asp-action="IssueKey" asp-route-id="@a.Id" method="post">
+        <form class="issue-key-form" asp-action="IssueKey" asp-route-id="@account.Id" method="post">
             <div class="field-inline-row">
                 <div class="field">
                     <label>Expires in (days)</label>
@@ -47,8 +47,8 @@
                 <div class="field">
                     <label>Clearance ceiling</label>
                     <select name="clearanceCeiling">
-                        <option value="0">No limit (account: @a.Clearance.ToDisplayName())</option>
-                        @foreach (var level in Enum.GetValues<ClearanceLevel>().Where(l => (int)l < (int)a.Clearance))
+                        <option value="0">No limit (account: @account.Clearance.ToDisplayName())</option>
+                        @foreach (var level in Enum.GetValues<ClearanceLevel>().Where(clearance => (int)clearance < (int)account.Clearance))
                         {
                             <option value="@((int)level)">at most @level.ToDisplayName()</option>
                         }
@@ -58,7 +58,7 @@
             <div class="field-inline-row">
                 <div class="field">
                     <label>Project scope</label>
-                    <input name="projectScope" maxlength="64" autocomplete="off" placeholder="blank = account (@a.ProjectKey)" />
+                    <input name="projectScope" maxlength="64" autocomplete="off" placeholder="blank = account (@account.ProjectKey)" />
                 </div>
                 <label class="check-inline">
                     <input type="checkbox" name="metadataOnly" value="true" />
@@ -75,7 +75,7 @@
             <p class="hint muted">Scopes only ever <strong>narrow</strong> a key below this account — never widen it. Leave them empty for a full-access key.</p>
         </form>
 
-        @if (a.Keys.Count == 0)
+        @if (account.Keys.Count == 0)
         {
             <p class="muted">No keys yet. Issue one so this account can authenticate.</p>
         }
@@ -85,47 +85,47 @@
                 <table class="data-table">
                     <thead><tr><th>Key</th><th>Scope</th><th>Created</th><th>Expires</th><th>Last used</th><th>Status</th><th></th></tr></thead>
                     <tbody>
-                        @foreach (var k in a.Keys)
+                        @foreach (var key in account.Keys)
                         {
-                            var active = k.Status == ApiKeyStatus.Active;
-                            <tr class="@(active ? "" : "row-muted")">
-                                <td class="mono cell-strong">@k.Prefix…</td>
+                            var isKeyActive = key.Status == ApiKeyStatus.Active;
+                            <tr class="@(isKeyActive ? "" : "row-muted")">
+                                <td class="mono cell-strong">@key.Prefix…</td>
                                 <td>
-                                    @if (!k.IsScoped)
+                                    @if (!key.IsScoped)
                                     {
                                         <span class="badge tone-muted">full access</span>
                                     }
                                     else
                                     {
                                         <span class="key-scopes">
-                                            @if (k.MetadataOnly)
+                                            @if (key.MetadataOnly)
                                             {
                                                 <span class="badge tone-warn">metadata-only</span>
                                             }
-                                            @if (k.ClearanceCeiling is { } cc)
+                                            @if (key.ClearanceCeiling is { } clearanceCeiling)
                                             {
-                                                <span class="badge tone-muted">at most @cc</span>
+                                                <span class="badge tone-muted">at most @clearanceCeiling</span>
                                             }
-                                            @if (!string.IsNullOrEmpty(k.ProjectScope))
+                                            @if (!string.IsNullOrEmpty(key.ProjectScope))
                                             {
-                                                <span class="badge tone-muted">@k.ProjectScope</span>
+                                                <span class="badge tone-muted">@key.ProjectScope</span>
                                             }
-                                            @if (k.AllowedCidrs.Count > 0)
+                                            @if (key.AllowedCidrs.Count > 0)
                                             {
-                                                <span class="badge tone-ok" title="@string.Join(", ", k.AllowedCidrs)">@k.AllowedCidrs.Count network@(k.AllowedCidrs.Count == 1 ? "" : "s")</span>
+                                                <span class="badge tone-ok" title="@string.Join(", ", key.AllowedCidrs)">@key.AllowedCidrs.Count network@(key.AllowedCidrs.Count == 1 ? "" : "s")</span>
                                             }
                                         </span>
                                     }
                                 </td>
-                                <td class="muted">@k.CreatedAtUtc.UtcDateTime.ToString("yyyy-MM-dd")</td>
-                                <td class="muted">@(k.ExpiresAtUtc?.UtcDateTime.ToString("yyyy-MM-dd") ?? "never")</td>
-                                <td class="muted">@(k.LastUsedAtUtc?.UtcDateTime.ToString("yyyy-MM-dd HH:mm") ?? "—")</td>
+                                <td class="muted">@key.CreatedAtUtc.UtcDateTime.ToString("yyyy-MM-dd")</td>
+                                <td class="muted">@(key.ExpiresAtUtc?.UtcDateTime.ToString("yyyy-MM-dd") ?? "never")</td>
+                                <td class="muted">@(key.LastUsedAtUtc?.UtcDateTime.ToString("yyyy-MM-dd HH:mm") ?? "—")</td>
                                 <td>
-                                    @if (k.Status == ApiKeyStatus.Revoked)
+                                    @if (key.Status == ApiKeyStatus.Revoked)
                                     {
                                         <span class="badge tone-danger">Revoked</span>
                                     }
-                                    else if (k.Status == ApiKeyStatus.Expired)
+                                    else if (key.Status == ApiKeyStatus.Expired)
                                     {
                                         <span class="badge tone-warn">Expired</span>
                                     }
@@ -135,10 +135,10 @@
                                     }
                                 </td>
                                 <td class="cell-actions">
-                                    @if (active)
+                                    @if (isKeyActive)
                                     {
-                                        <form class="inline-form" asp-action="RevokeKey" asp-route-id="@a.Id" asp-route-keyId="@k.Id" method="post"
-                                              data-confirm="Revoke key @k.Prefix…? Any caller using it will stop working immediately.">
+                                        <form class="inline-form" asp-action="RevokeKey" asp-route-id="@account.Id" asp-route-keyId="@key.Id" method="post"
+                                              data-confirm="Revoke key @key.Prefix…? Any caller using it will stop working immediately.">
                                             <button type="submit" class="button small danger">Revoke</button>
                                         </form>
                                     }
@@ -155,21 +155,21 @@
         <div class="panel-header"><h2>Account</h2></div>
         <dl class="detail-grid">
             <dt>Clearance</dt>
-            <dd><span class="badge sens-@((int)a.Clearance)">@a.Clearance.ToDisplayName()</span></dd>
+            <dd><span class="badge sens-@((int)account.Clearance)">@account.Clearance.ToDisplayName()</span></dd>
             <dt>Project</dt>
-            <dd>@a.ProjectKey</dd>
+            <dd>@account.ProjectKey</dd>
             <dt>Created (UTC)</dt>
-            <dd>@a.CreatedAtUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</dd>
+            <dd>@account.CreatedAtUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</dd>
         </dl>
 
         <div class="settings-row">
             <div>
-                <strong>@(a.IsDisabled ? "Enable" : "Disable") account</strong>
+                <strong>@(account.IsDisabled ? "Enable" : "Disable") account</strong>
                 <p class="muted">Disabling rejects every key without revoking them individually.</p>
             </div>
-            <form asp-action="SetEnabled" asp-route-id="@a.Id" method="post">
-                <input type="hidden" name="enabled" value="@((!a.IsDisabled).ToString().ToLowerInvariant())" />
-                <button type="submit" class="button">@(a.IsDisabled ? "Enable" : "Disable")</button>
+            <form asp-action="SetEnabled" asp-route-id="@account.Id" method="post">
+                <input type="hidden" name="enabled" value="@((!account.IsDisabled).ToString().ToLowerInvariant())" />
+                <button type="submit" class="button">@(account.IsDisabled ? "Enable" : "Disable")</button>
             </form>
         </div>
 
@@ -178,8 +178,8 @@
                 <strong>Delete this service account</strong>
                 <p class="muted">Removes the account and all its keys. Audited.</p>
             </div>
-            <form class="inline-form" asp-action="Delete" asp-route-id="@a.Id" method="post"
-                  data-confirm="Delete service account '@a.Name' and all its API keys? This cannot be undone.">
+            <form class="inline-form" asp-action="Delete" asp-route-id="@account.Id" method="post"
+                  data-confirm="Delete service account '@account.Name' and all its API keys? This cannot be undone.">
                 <button type="submit" class="button danger">Delete</button>
             </form>
         </div>

@@ -8,9 +8,8 @@ using Xunit;
 namespace EclipsVault.Tests.ServiceAccounts;
 
 /// <summary>
-/// An administrator's change to a service account or its keys reaches the database once, with its one
-/// audit event, and the change reads the account only once it holds the account's lock. Each test reads
-/// what reached the vault's ports, in order, as one line per step.
+/// Exercises the service's account and key outcomes with an in-memory repository. Database rollback
+/// and locking are covered by the integration tests against both supported engines.
 /// </summary>
 public class ServiceAccountServiceTests
 {
@@ -24,10 +23,14 @@ public class ServiceAccountServiceTests
     {
         var vault = new Vault();
 
-        await vault.Service.CreateAsync(new CreateServiceAccountRequest(" payments-ci ", ClearanceLevel.Secret, " payments "), default);
+        var id = await vault.Service.CreateAsync(new CreateServiceAccountRequest(" payments-ci ", ClearanceLevel.Secret, " payments "), default);
 
-        Assert.Equal(["lock an unknown service account", "stage new payments-ci", "commit ServiceAccountCreated"], vault.Steps);
-        Assert.Equal("Created (clearance Secret, project PAYMENTS)", Assert.Single(vault.Changes.Events).Details);
+        var created = await vault.Service.GetAsync(id, default);
+        Assert.NotNull(created);
+        Assert.Equal(("payments-ci", ClearanceLevel.Secret, "PAYMENTS", false),
+            (created.Name, created.Clearance, created.ProjectKey, created.IsDisabled));
+        var recorded = Assert.Single(vault.Changes.Events);
+        Assert.Equal((AuditAction.ServiceAccountCreated, "Created (clearance Secret, project PAYMENTS)"), (recorded.Action, recorded.Details));
     }
 
     [Fact]
@@ -40,7 +43,8 @@ public class ServiceAccountServiceTests
             vault.Service.CreateAsync(new CreateServiceAccountRequest("payments-ci", ClearanceLevel.Secret, "PAYMENTS"), default));
 
         Assert.Equal("A service account named 'payments-ci' already exists.", conflict.Message);
-        Assert.Equal(["lock an unknown service account", "stage new payments-ci"], vault.Steps);
+        Assert.Empty(vault.Accounts.Accounts);
+        Assert.Empty(vault.Changes.Events);
     }
 
     [Theory]
@@ -60,7 +64,8 @@ public class ServiceAccountServiceTests
             vault.Service.CreateAsync(new CreateServiceAccountRequest(name, (ClearanceLevel)clearance, project), default));
 
         Assert.Equal((field, message), (refusal.Field, refusal.Message));
-        Assert.Empty(vault.Steps);
+        Assert.Empty(vault.Accounts.Accounts);
+        Assert.Empty(vault.Changes.Events);
     }
 
     [Fact]
@@ -71,8 +76,8 @@ public class ServiceAccountServiceTests
 
         Assert.True(await vault.Service.SetEnabledAsync(AccountId, enabled: false, default));
 
-        Assert.Equal(["lock payments-ci", "commit ServiceAccountDisabled"], vault.Steps);
-        Assert.True(account.IsDisabled);
+        Assert.True((await vault.Service.GetAsync(AccountId, default))!.IsDisabled);
+        Assert.Equal(AuditAction.ServiceAccountDisabled, Assert.Single(vault.Changes.Events).Action);
     }
 
     [Fact]
@@ -84,8 +89,8 @@ public class ServiceAccountServiceTests
 
         Assert.True(await vault.Service.SetEnabledAsync(AccountId, enabled: true, default));
 
-        Assert.Equal(["lock payments-ci", "commit ServiceAccountEnabled"], vault.Steps);
-        Assert.False(account.IsDisabled);
+        Assert.False((await vault.Service.GetAsync(AccountId, default))!.IsDisabled);
+        Assert.Equal(AuditAction.ServiceAccountEnabled, Assert.Single(vault.Changes.Events).Action);
     }
 
     [Fact]
@@ -97,7 +102,8 @@ public class ServiceAccountServiceTests
 
         Assert.True(await vault.Service.SetEnabledAsync(AccountId, enabled: false, default));
 
-        Assert.Equal(["lock payments-ci"], vault.Steps);
+        Assert.True((await vault.Service.GetAsync(AccountId, default))!.IsDisabled);
+        Assert.Empty(vault.Changes.Events);
     }
 
     [Fact]
@@ -107,30 +113,61 @@ public class ServiceAccountServiceTests
 
         Assert.True(await vault.Service.SetEnabledAsync(AccountId, enabled: true, default));
 
-        Assert.Equal(["lock payments-ci"], vault.Steps);
+        Assert.False((await vault.Service.GetAsync(AccountId, default))!.IsDisabled);
+        Assert.Empty(vault.Changes.Events);
     }
 
     [Fact]
     public async Task Deleting_a_service_account_commits_its_removal_with_one_ServiceAccountDeleted_event()
     {
-        var vault = new Vault(Account(ClearanceLevel.Secret));
+        var vault = new Vault([Account(ClearanceLevel.Secret)], [Key(AccountId)]);
 
         Assert.True(await vault.Service.DeleteAsync(AccountId, default));
 
-        Assert.Equal(["lock payments-ci", "stage removal payments-ci", "commit ServiceAccountDeleted"], vault.Steps);
+        Assert.Null(await vault.Service.GetAsync(AccountId, default));
+        Assert.Empty(vault.Accounts.Keys);
+        Assert.Equal(AuditAction.ServiceAccountDeleted, Assert.Single(vault.Changes.Events).Action);
     }
 
     [Fact]
-    public async Task Changing_a_service_account_that_does_not_exist_records_nothing()
+    public async Task Disabling_a_service_account_that_does_not_exist_returns_false_and_records_nothing()
     {
         var vault = new Vault();
 
         Assert.False(await vault.Service.SetEnabledAsync(AccountId, enabled: false, default));
+
+        Assert.Empty(vault.Changes.Events);
+    }
+
+    [Fact]
+    public async Task Deleting_a_service_account_that_does_not_exist_returns_false_and_records_nothing()
+    {
+        var vault = new Vault();
+
         Assert.False(await vault.Service.DeleteAsync(AccountId, default));
+
+        Assert.Empty(vault.Changes.Events);
+    }
+
+    [Fact]
+    public async Task Issuing_a_key_for_a_service_account_that_does_not_exist_returns_no_key()
+    {
+        var vault = new Vault();
+
         Assert.Null(await vault.Service.IssueKeyAsync(AccountId, new IssueApiKeyRequest(0, null, null, false, null), default));
+
+        Assert.Empty(vault.Accounts.Keys);
+        Assert.Empty(vault.Changes.Events);
+    }
+
+    [Fact]
+    public async Task Revoking_a_key_for_a_service_account_that_does_not_exist_returns_false_and_records_nothing()
+    {
+        var vault = new Vault();
+
         Assert.False(await vault.Service.RevokeKeyAsync(AccountId, KeyId, default));
 
-        Assert.Equal(["lock an unknown service account", "lock an unknown service account", "lock an unknown service account", "lock an unknown service account"], vault.Steps);
+        Assert.Empty(vault.Changes.Events);
     }
 
     [Fact]
@@ -140,9 +177,10 @@ public class ServiceAccountServiceTests
 
         var issued = await vault.Service.IssueKeyAsync(AccountId, new IssueApiKeyRequest(0, null, null, false, null), default);
 
-        Assert.Equal(["lock payments-ci", "stage key evk_Ab12cd", "commit ApiKeyIssued"], vault.Steps);
-        Assert.Equal(StubKeys.RawToken, issued!.RawToken);
-        Assert.Equal("Key evk_Ab12cd… issued (unscoped)", Assert.Single(vault.Changes.Events).Details);
+        Assert.Equal("evk_Ab12cdEf34ghIj56klMn78opQr90stUv12wxYz34", issued!.RawToken);
+        Assert.Equal("evk_Ab12cd", Assert.Single((await vault.Service.GetAsync(AccountId, default))!.Keys).Prefix);
+        var recorded = Assert.Single(vault.Changes.Events);
+        Assert.Equal((AuditAction.ApiKeyIssued, "Key evk_Ab12cd… issued (unscoped)"), (recorded.Action, recorded.Details));
     }
 
     [Fact]
@@ -154,7 +192,8 @@ public class ServiceAccountServiceTests
         await Assert.ThrowsAsync<AuditWriteFailedException>(() =>
             vault.Service.IssueKeyAsync(AccountId, new IssueApiKeyRequest(0, null, null, false, null), default));
 
-        Assert.Equal(["lock payments-ci", "stage key evk_Ab12cd"], vault.Steps);
+        Assert.Empty((await vault.Service.GetAsync(AccountId, default))!.Keys);
+        Assert.Empty(vault.Changes.Events);
     }
 
     /// <summary>The service account is Secret. Ceilings are clearance levels: 1 Standard, 2 Elevated, 3 Secret, 4 Top Secret.</summary>
@@ -196,7 +235,7 @@ public class ServiceAccountServiceTests
             new IssueApiKeyRequest(expiresInDays, (ClearanceLevel?)ceiling, projectScope, false, allowedRanges), default));
 
         Assert.Equal((field, message), (refusal.Field, refusal.Message));
-        Assert.DoesNotContain(vault.Steps, step => step.StartsWith("commit", StringComparison.Ordinal));
+        Assert.Empty(vault.Changes.Events);
         Assert.Empty(vault.Accounts.Keys);
     }
 
@@ -227,9 +266,9 @@ public class ServiceAccountServiceTests
 
         Assert.True(await vault.Service.RevokeKeyAsync(AccountId, KeyId, default));
 
-        Assert.Equal(["lock payments-ci", "commit ApiKeyRevoked"], vault.Steps);
         Assert.Equal(Now, key.RevokedAtUtc);
-        Assert.Equal("Key evk_Zz99yy… revoked", Assert.Single(vault.Changes.Events).Details);
+        var recorded = Assert.Single(vault.Changes.Events);
+        Assert.Equal((AuditAction.ApiKeyRevoked, "Key evk_Zz99yy… revoked"), (recorded.Action, recorded.Details));
     }
 
     [Fact]
@@ -241,8 +280,8 @@ public class ServiceAccountServiceTests
 
         Assert.True(await vault.Service.RevokeKeyAsync(AccountId, KeyId, default));
 
-        Assert.Equal(["lock payments-ci"], vault.Steps);
-        Assert.Equal(Now.AddDays(-1), key.RevokedAtUtc);
+        Assert.Empty(vault.Changes.Events);
+        Assert.Equal(new DateTimeOffset(2026, 11, 1, 12, 0, 0, TimeSpan.Zero), key.RevokedAtUtc);
     }
 
     [Fact]
@@ -253,18 +292,18 @@ public class ServiceAccountServiceTests
 
         Assert.False(await vault.Service.RevokeKeyAsync(AccountId, KeyId, default));
 
-        Assert.Equal(["lock payments-ci"], vault.Steps);
+        Assert.Empty(vault.Changes.Events);
         Assert.Null(key.RevokedAtUtc);
     }
 
     public static TheoryData<DateTimeOffset?, DateTimeOffset?, ApiKeyStatus> KeyStates => new()
     {
         { null, null, ApiKeyStatus.Active },
-        { Now.AddHours(1), null, ApiKeyStatus.Active },
-        { Now, null, ApiKeyStatus.Expired },
-        { Now.AddHours(-1), null, ApiKeyStatus.Expired },
-        { null, Now.AddHours(-2), ApiKeyStatus.Revoked },
-        { Now.AddHours(-1), Now.AddHours(-2), ApiKeyStatus.Revoked },
+        { new(2026, 11, 2, 13, 0, 0, TimeSpan.Zero), null, ApiKeyStatus.Active },
+        { new(2026, 11, 2, 12, 0, 0, TimeSpan.Zero), null, ApiKeyStatus.Expired },
+        { new(2026, 11, 2, 11, 0, 0, TimeSpan.Zero), null, ApiKeyStatus.Expired },
+        { null, new(2026, 11, 2, 10, 0, 0, TimeSpan.Zero), ApiKeyStatus.Revoked },
+        { new(2026, 11, 2, 11, 0, 0, TimeSpan.Zero), new(2026, 11, 2, 10, 0, 0, TimeSpan.Zero), ApiKeyStatus.Revoked },
     };
 
     [Theory]
@@ -296,12 +335,10 @@ public class ServiceAccountServiceTests
 
         public Vault(ServiceAccount[] accounts, ApiKey[] keys)
         {
-            Accounts = new FakeServiceAccounts(Steps, [.. accounts], [.. keys]);
-            Changes = new RecordingChanges(Steps, Accounts);
+            Accounts = new FakeServiceAccounts([.. accounts], [.. keys]);
+            Changes = new RecordingChanges(Accounts);
             Service = new ServiceAccountService(Accounts, new StubKeys(), Changes, new FixedClock(Now));
         }
-
-        public List<string> Steps { get; } = [];
 
         public FakeServiceAccounts Accounts { get; }
 
@@ -310,8 +347,10 @@ public class ServiceAccountServiceTests
         public ServiceAccountService Service { get; }
     }
 
-    private sealed class FakeServiceAccounts(List<string> steps, List<ServiceAccount> accounts, List<ApiKey> keys) : IServiceAccountRepository
+    private sealed class FakeServiceAccounts(List<ServiceAccount> accounts, List<ApiKey> keys) : IServiceAccountRepository
     {
+        private readonly List<Action> _pendingWrites = [];
+
         public List<ServiceAccount> Accounts { get; } = accounts;
 
         public List<ApiKey> Keys { get; } = keys;
@@ -323,15 +362,26 @@ public class ServiceAccountServiceTests
         public Task<IReadOnlyList<ApiKey>> ListKeysAsync(Guid serviceAccountId, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<ApiKey>>([.. Keys.Where(key => key.ServiceAccountId == serviceAccountId)]);
 
-        public void StageAddition(ServiceAccount account) => steps.Add($"stage new {account.Name}");
+        public void StageAddition(ServiceAccount account) => _pendingWrites.Add(() => Accounts.Add(account));
 
-        public void StageRemoval(ServiceAccount account) => steps.Add($"stage removal {account.Name}");
-
-        public void StageNewKey(ApiKey key)
+        public void StageRemoval(ServiceAccount account) => _pendingWrites.Add(() =>
         {
-            steps.Add($"stage key {key.Prefix}");
-            Keys.Add(key);
+            Accounts.Remove(account);
+            Keys.RemoveAll(key => key.ServiceAccountId == account.Id);
+        });
+
+        public void StageNewKey(ApiKey key) => _pendingWrites.Add(() => Keys.Add(key));
+
+        public void SaveChanges()
+        {
+            foreach (var write in _pendingWrites)
+            {
+                write();
+            }
+            _pendingWrites.Clear();
         }
+
+        public void DiscardChanges() => _pendingWrites.Clear();
 
         public Task<IReadOnlyList<ServiceAccount>> ListAsync(CancellationToken ct) => throw new NotSupportedException();
         public Task<ApiKey?> FindKeyByHashAsync(string keyHash, CancellationToken ct) => throw new NotSupportedException();
@@ -339,7 +389,7 @@ public class ServiceAccountServiceTests
         public Task<int> CountActiveKeysAsync(Guid serviceAccountId, DateTimeOffset asOfUtc, CancellationToken ct) => throw new NotSupportedException();
     }
 
-    private sealed class RecordingChanges(List<string> steps, FakeServiceAccounts accounts) : IServiceAccountChanges, IServiceAccountChange
+    private sealed class RecordingChanges(FakeServiceAccounts accounts) : IServiceAccountChanges, IServiceAccountChange
     {
         /// <summary>The failures the next commits meet, one each, as the database reports them.</summary>
         public Queue<Exception> Failures { get; } = new();
@@ -347,11 +397,7 @@ public class ServiceAccountServiceTests
         public List<AuditEntry> Events { get; } = [];
 
         public Task<IServiceAccountChange> BeginAsync(Guid serviceAccountId, CancellationToken ct)
-        {
-            var name = accounts.Accounts.FirstOrDefault(account => account.Id == serviceAccountId)?.Name ?? "an unknown service account";
-            steps.Add($"lock {name}");
-            return Task.FromResult<IServiceAccountChange>(this);
-        }
+            => Task.FromResult<IServiceAccountChange>(this);
 
         public Task CommitAsync(AuditEntry entry, CancellationToken ct)
         {
@@ -360,12 +406,16 @@ public class ServiceAccountServiceTests
                 throw failure;
             }
 
-            steps.Add($"commit {entry.Action}");
+            accounts.SaveChanges();
             Events.Add(entry);
             return Task.CompletedTask;
         }
 
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync()
+        {
+            accounts.DiscardChanges();
+            return ValueTask.CompletedTask;
+        }
     }
 
     /// <summary>Generates one known key, so a test can tell the raw key from its prefix.</summary>

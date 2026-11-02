@@ -48,10 +48,10 @@ public sealed class ServiceAccountService : IServiceAccountService, IApiKeyAuthe
         var now = _clock.GetUtcNow();
         var accounts = await _repository.ListAsync(ct);
         var summaries = new List<ServiceAccountSummaryDto>(accounts.Count);
-        foreach (var a in accounts)
+        foreach (var account in accounts)
         {
-            var active = await _repository.CountActiveKeysAsync(a.Id, now, ct);
-            summaries.Add(new ServiceAccountSummaryDto(a.Id, a.Name, a.Clearance, a.ProjectKey, a.IsDisabled, active, a.CreatedAtUtc));
+            var activeKeyCount = await _repository.CountActiveKeysAsync(account.Id, now, ct);
+            summaries.Add(new ServiceAccountSummaryDto(account.Id, account.Name, account.Clearance, account.ProjectKey, account.IsDisabled, activeKeyCount, account.CreatedAtUtc));
         }
 
         return summaries;
@@ -68,8 +68,8 @@ public sealed class ServiceAccountService : IServiceAccountService, IApiKeyAuthe
         var now = _clock.GetUtcNow();
         var keys = await _repository.ListKeysAsync(id, ct);
         var keyDtos = keys
-            .Select(k => new ApiKeyDto(k.Id, k.Prefix, k.CreatedAtUtc, k.ExpiresAtUtc, k.RevokedAtUtc, k.LastUsedAtUtc, k.StatusAt(now),
-                k.ClearanceCeiling, k.ProjectScope, k.MetadataOnly, k.AllowedCidrList()))
+            .Select(key => new ApiKeyDto(key.Id, key.Prefix, key.CreatedAtUtc, key.ExpiresAtUtc, key.RevokedAtUtc, key.LastUsedAtUtc, key.StatusAt(now),
+                key.ClearanceCeiling, key.ProjectScope, key.MetadataOnly, key.AllowedCidrList()))
             .ToList();
 
         return new ServiceAccountDetailsDto(account.Id, account.Name, account.Clearance, account.ProjectKey,
@@ -214,7 +214,7 @@ public sealed class ServiceAccountService : IServiceAccountService, IApiKeyAuthe
         _repository.StageNewKey(key);
         // The audit row names the key by its prefix only: the raw token goes back to the caller and nowhere else.
         await change.CommitAsync(Event(AuditAction.ApiKeyIssued, account,
-            $"Key {key.Prefix}… issued" + DescribeScope(key) + (key.ExpiresAtUtc is { } e ? $", expires {e:u}" : "")), ct);
+            $"Key {key.Prefix}… issued" + DescribeScope(key) + (key.ExpiresAtUtc is { } expiresAtUtc ? $", expires {expiresAtUtc:u}" : "")), ct);
 
         return new IssuedApiKeyDto(key.Id, generated.RawToken, generated.Prefix);
     }
