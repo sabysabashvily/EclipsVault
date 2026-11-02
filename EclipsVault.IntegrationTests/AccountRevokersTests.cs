@@ -110,17 +110,20 @@ public abstract class AccountRevokersTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task A_role_change_retires_the_original_version_and_refuses_the_old_cookie()
+    public async Task A_demoted_administrators_earlier_cookie_is_refused_without_a_session_store_revocation()
     {
-        var owner = await vault.SignInNewAccountAsync("it-version-role", IPAddress.Parse("198.18.240.1"));
-        var original = SessionApi.PrincipalOf(vault, owner);
-        using var request = vault.Services.CreateScope();
+        var demoted = await vault.SignInNewAccountAsync("it-version-role", IPAddress.Parse("198.18.240.1"), ClearanceLevel.TopSecret);
+        var original = SessionApi.PrincipalOf(vault, demoted);
+        Assert.Equal(HttpStatusCode.OK, (await demoted.Client.GetAsync(LegacyUsers.UsersPage)).StatusCode);
 
-        await request.ServiceProvider.GetRequiredService<IUserAdminService>().SetRoleAsync(original.GetUserId(), ClearanceLevel.Elevated, "OTHER", default);
+        var edited = await LegacyUsers.EditRoleAsync(await vault.AdminClientAsync(), original.GetUserId(), ClearanceLevel.Elevated, "OTHER");
 
-        Assert.NotEqual(original.GetSessionStampOrNull()!.RevocationVersion,
+        Assert.Equal(LegacyUsers.UsersPage, edited.Headers.Location?.OriginalString);
+        Assert.Equal(original.GetSessionStampOrNull()!.RevocationVersion,
             await vault.Services.GetRequiredService<ISessionRevocationService>().FindAsync(original.GetUserId()));
-        Assert.Equal(HttpStatusCode.Unauthorized, (await owner.Client.GetAsync("/api/ui/me")).StatusCode);
+        var refused = await demoted.Client.GetAsync(LegacyUsers.UsersPage);
+        Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
+        Assert.Equal("/Account/Login", refused.Headers.Location?.AbsolutePath);
     }
 
     [Fact]
@@ -136,15 +139,16 @@ public abstract class AccountRevokersTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task Disabling_an_account_retires_its_original_version()
+    public async Task A_disabled_then_re_enabled_accounts_earlier_cookie_stays_refused_without_a_session_store_revocation()
     {
         var owner = await vault.SignInNewAccountAsync("it-version-disable", IPAddress.Parse("198.18.240.2"));
         var original = SessionApi.PrincipalOf(vault, owner);
-        using var request = vault.Services.CreateScope();
+        var admin = await vault.AdminClientAsync();
 
-        await request.ServiceProvider.GetRequiredService<IUserAdminService>().SetEnabledAsync(original.GetUserId(), false, default);
+        Assert.Equal(LegacyUsers.UsersPage, (await LegacyUsers.SetEnabledAsync(admin, original.GetUserId(), enabled: false)).Headers.Location?.OriginalString);
+        Assert.Equal(LegacyUsers.UsersPage, (await LegacyUsers.SetEnabledAsync(admin, original.GetUserId(), enabled: true)).Headers.Location?.OriginalString);
 
-        Assert.NotEqual(original.GetSessionStampOrNull()!.RevocationVersion,
+        Assert.Equal(original.GetSessionStampOrNull()!.RevocationVersion,
             await vault.Services.GetRequiredService<ISessionRevocationService>().FindAsync(original.GetUserId()));
         Assert.Equal(HttpStatusCode.Unauthorized, (await owner.Client.GetAsync("/api/ui/me")).StatusCode);
     }
@@ -163,14 +167,14 @@ public abstract class AccountRevokersTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task Account_deletion_retires_the_original_version()
+    public async Task Account_deletion_refuses_the_earlier_cookie_without_a_session_store_revocation()
     {
         var owner = await vault.SignInNewAccountAsync("it-version-deleted", IPAddress.Parse("198.18.240.4"));
         var original = SessionApi.PrincipalOf(vault, owner);
 
         await vault.DeleteAccountAsync("it-version-deleted");
 
-        Assert.NotEqual(original.GetSessionStampOrNull()!.RevocationVersion,
+        Assert.Equal(original.GetSessionStampOrNull()!.RevocationVersion,
             await vault.Services.GetRequiredService<ISessionRevocationService>().FindAsync(original.GetUserId()));
         Assert.Equal(HttpStatusCode.Unauthorized, (await owner.Client.GetAsync("/api/ui/me")).StatusCode);
     }

@@ -190,13 +190,21 @@ public sealed class AdminController : VaultController
     [HttpPost]
     public async Task<IActionResult> ForceLogout(Guid id, CancellationToken ct)
     {
-        if (await _userAdmin.ForceLogoutAsync(id, ct))
+        try
         {
-            this.FlashSuccess("All of the user's sessions were revoked.");
+            if (await _userAdmin.ForceLogoutAsync(id, ct))
+            {
+                this.FlashSuccess("All of the user's sessions were revoked.");
+            }
+            else
+            {
+                this.FlashError("User not found.");
+            }
         }
-        else
+        catch (AuditWriteFailedException)
         {
-            this.FlashError("User not found.");
+            // The revocation happened before the audit write failed, and it stands (ADR-0021).
+            this.FlashError("All of the user's sessions were revoked, but the vault couldn't record it in the audit trail.");
         }
 
         return RedirectToAction(nameof(Users));

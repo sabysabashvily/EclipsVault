@@ -7,7 +7,8 @@ namespace EclipsVault.Core.Application.Abstractions;
 /// <summary>
 /// Saves one change to a vault account together with the one audit event that describes it, in one
 /// transaction, so neither is stored without the other. The change is everything staged since the
-/// account was loaded: edits to the loaded account and the rows repositories staged for it.
+/// account was loaded: edits to the loaded account and the rows repositories staged for it, including
+/// the account's own addition or removal.
 /// </summary>
 public interface IAccountChangeCommitter
 {
@@ -18,6 +19,7 @@ public interface IAccountChangeCommitter
     /// <returns>False when nothing was staged: nothing changed, so nothing is recorded.</returns>
     /// <exception cref="AccountChangedException">The account changed after it was loaded; nothing was saved.</exception>
     /// <exception cref="EmailAddressTakenException">Another account took the staged email first; nothing was saved.</exception>
+    /// <exception cref="UsernameTakenException">Another account took the new account's username first; nothing was saved.</exception>
     /// <exception cref="AuditWriteFailedException">The change and its event could not be stored; neither was.</exception>
     Task<bool> CommitAsync(User account, AuditAction action, string details, CancellationToken ct);
 

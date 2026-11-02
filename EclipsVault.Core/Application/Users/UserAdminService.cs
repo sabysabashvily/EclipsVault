@@ -53,16 +53,16 @@ public sealed class UserAdminService : IUserAdminService
         _clock = clock;
     }
 
-    private Task AuditUserAsync(AuditAction action, Guid? targetUserId, string username, string? details, CancellationToken ct)
-        => _audit.WriteAsync(new AuditEntry
-        {
-            Action = action,
-            ResourceType = "User",
-            ResourceId = targetUserId,
-            ActorUserId = _actor.UserId,
-            ActorUsername = username,
-            Details = details
-        }, ct);
+    /// <summary>An administrator's action on an account, attributed to the administrator.</summary>
+    private AuditEntry AdministratorEvent(AuditAction action, User account, string details) => new()
+    {
+        Action = action,
+        ResourceType = nameof(User),
+        ResourceId = account.Id,
+        ActorUserId = _actor.UserId,
+        ActorUsername = _actor.Username ?? "system",
+        Details = details
+    };
 
     public async Task<IReadOnlyList<UserSummaryDto>> ListAsync(CancellationToken ct)
     {
@@ -104,7 +104,7 @@ public sealed class UserAdminService : IUserAdminService
 
         if (await _users.FindByUsernameAsync(username, ct) is not null)
         {
-            throw new VaultAdminException($"The username '{username}' is already taken.");
+            throw UsernameTaken(username);
         }
 
         var email = await GenerateEmailAsync(first, last, ct);
@@ -124,14 +124,33 @@ public sealed class UserAdminService : IUserAdminService
             CreatedAtUtc = _clock.GetUtcNow()
         };
 
-        await _users.AddAsync(user, ct);
-        await AuditUserAsync(
-            AuditAction.UserCreated, user.Id, _actor.Username ?? "system",
-            $"Created '{user.Username}' <{email}> (clearance {user.Clearance}, project {user.ProjectKey})", ct);
-        await _notifications.NotifyUserProvisionedAsync(email, displayName, user.Username, ct);
+        _users.StageAddition(user);
+        try
+        {
+            await _changes.CommitAsync(user, AdministratorEvent(AuditAction.UserCreated, user,
+                $"Created '{user.Username}' <{email}> (clearance {user.Clearance}, project {user.ProjectKey})"), ct);
+        }
+        catch (UsernameTakenException)
+        {
+            throw UsernameTaken(username);
+        }
+        catch (EmailAddressTakenException)
+        {
+            // The same person created twice at once gets the same generated address, and the database
+            // may report that index first. The username is what the administrator chose, so name it.
+            if (await _users.FindByUsernameAsync(username, ct) is not null)
+            {
+                throw UsernameTaken(username);
+            }
 
+            throw;
+        }
+
+        await _notifications.NotifyUserProvisionedAsync(email, displayName, user.Username, ct);
         return new CreatedUserDto(user.Id, user.Username, email, displayName);
     }
+
+    private static VaultAdminException UsernameTaken(string username) => new($"The username '{username}' is already taken.");
 
     /// <summary>
     /// Builds a unique <c>first.last.N@domain</c> email. N is the next free sequence
@@ -193,18 +212,20 @@ public sealed class UserAdminService : IUserAdminService
             throw new VaultAdminException("Cannot demote the last TopSecret administrator — the vault would become unmanageable.");
         }
 
+        var project = projectKey.Trim().ToUpperInvariant();
+        if (user.Clearance == clearance && user.ProjectKey == project)
+        {
+            return true;
+        }
+
         var previous = $"{user.Clearance}/{user.ProjectKey}";
         user.Clearance = clearance;
-        user.ProjectKey = projectKey.Trim().ToUpperInvariant();
-        await _users.UpdateAsync(user, ct);
-
-        // A clearance/project change alters what the user may reach, so drop their
-        // current sessions; the new attributes take effect at their next sign-in.
-        await _revocation.RevokeAsync(user.Id, ct);
-
-        await AuditUserAsync(
-            AuditAction.UserRoleChanged, user.Id, _actor.Username ?? "system",
-            $"Role for '{user.Username}' changed {previous} → {user.Clearance}/{user.ProjectKey}; sessions revoked", ct);
+        user.ProjectKey = project;
+        // A session carries the clearance and project it was signed in with, so every earlier session
+        // ends with the change: the new role takes effect at the account's next sign-in.
+        user.CredentialGeneration++;
+        await _changes.CommitAsync(user, AdministratorEvent(AuditAction.UserRoleChanged, user,
+            $"Role for '{user.Username}' changed {previous} → {user.Clearance}/{user.ProjectKey}; sessions revoked"), ct);
         return true;
     }
 
@@ -232,18 +253,12 @@ public sealed class UserAdminService : IUserAdminService
         }
 
         user.IsDisabled = !enabled;
-        await _users.UpdateAsync(user, ct);
+        // Both directions advance the generation (ADR-0023). Disabling ends every session in this commit;
+        // enabling also ends any that an earlier disable ended only in the session store, if the store lost it.
+        user.CredentialGeneration++;
 
-        if (!enabled)
-        {
-            // Kill active sessions immediately; new sign-ins are blocked at credential check.
-            await _revocation.RevokeAsync(user.Id, ct);
-        }
-
-        await AuditUserAsync(
-            enabled ? AuditAction.UserEnabled : AuditAction.UserDisabled,
-            user.Id, _actor.Username ?? "system",
-            $"Account '{user.Username}' {(enabled ? "enabled" : "disabled")}", ct);
+        await _changes.CommitAsync(user, AdministratorEvent(enabled ? AuditAction.UserEnabled : AuditAction.UserDisabled, user,
+            $"Account '{user.Username}' {(enabled ? "enabled" : "disabled")}"), ct);
         return true;
     }
 
@@ -255,10 +270,11 @@ public sealed class UserAdminService : IUserAdminService
             return false;
         }
 
+        // Sessions live in the session store, outside the database's transaction. Revoking first means
+        // an audit failure never leaves them open (ADR-0021).
         await _revocation.RevokeAsync(user.Id, ct);
-        await AuditUserAsync(
-            AuditAction.UserForceLoggedOut, user.Id, _actor.Username ?? "system",
-            $"All sessions for '{user.Username}' revoked by administrator", ct);
+        await _audit.WriteAsync(AdministratorEvent(AuditAction.UserForceLoggedOut, user,
+            $"All sessions for '{user.Username}' revoked by administrator"), ct);
         return true;
     }
 
@@ -277,15 +293,8 @@ public sealed class UserAdminService : IUserAdminService
         // A reset retires the account's authenticator, so it ends what the authenticator opened:
         // sessions and pending sign-ins are refused, as after the account's own reset.
         user.CredentialGeneration++;
-        await _changes.CommitAsync(user, new AuditEntry
-        {
-            Action = AuditAction.UserTotpReset,
-            ResourceType = nameof(User),
-            ResourceId = user.Id,
-            ActorUserId = _actor.UserId,
-            ActorUsername = _actor.Username ?? "system",
-            Details = $"MFA reset for '{user.Username}'; sessions revoked; TOTP re-enrollment required at next sign-in"
-        }, ct);
+        await _changes.CommitAsync(user, AdministratorEvent(AuditAction.UserTotpReset, user,
+            $"MFA reset for '{user.Username}'; sessions revoked; TOTP re-enrollment required at next sign-in"), ct);
         return true;
     }
 
@@ -307,13 +316,10 @@ public sealed class UserAdminService : IUserAdminService
             throw new VaultAdminException("Cannot delete the last TopSecret administrator — the vault would become unmanageable.");
         }
 
-        // A session carries the account's clearance and project, so one that outlived the account
-        // would keep its access. Revoked first: if the delete then fails, the account only lost its sessions.
-        await _revocation.RevokeAsync(user.Id, ct);
-        await _users.DeleteAsync(user, ct);
-        await AuditUserAsync(
-            AuditAction.UserDeleted, userId, _actor.Username ?? "system",
-            $"Deleted '{user.Username}'; sessions revoked", ct);
+        // Every request reads its session's account, so the account's sessions end when the account does.
+        _users.StageRemoval(user);
+        await _changes.CommitAsync(user, AdministratorEvent(AuditAction.UserDeleted, user,
+            $"Deleted '{user.Username}'; sessions revoked"), ct);
         return true;
     }
 
@@ -332,13 +338,19 @@ public sealed class UserAdminService : IUserAdminService
 
         user.FailedAccessCount = 0;
         user.LockedUntilUtc = null;
-        await _users.UpdateAsync(user, ct);
         // This is an authentication lifecycle event for the affected account, like AccountLockedOut;
         // keep it in that account's sign-in history. The User* administrative actions above instead
         // belong to the administrator's own activity.
-        await _audit.WriteUserEventAsync(
-            AuditAction.AccountUnlocked, user.Id, _actor.Username ?? "system",
-            $"Lockout cleared for '{user.Username}'", ct);
+        await _changes.CommitAsync(user, new AuditEntry
+        {
+            Action = AuditAction.AccountUnlocked,
+            ResourceType = nameof(User),
+            ResourceId = user.Id,
+            ActorUserId = user.Id,
+            InheritActorUserId = false,
+            ActorUsername = _actor.Username ?? "system",
+            Details = $"Lockout cleared for '{user.Username}'"
+        }, ct);
         return true;
     }
 

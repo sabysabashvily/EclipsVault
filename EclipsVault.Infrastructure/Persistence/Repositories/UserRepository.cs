@@ -10,6 +10,7 @@ namespace EclipsVault.Infrastructure.Persistence.Repositories;
 public sealed class UserRepository : IUserRepository
 {
     private const string UniqueEmailIndex = "IX_Users_NormalizedEmail";
+    private const string UniqueUsernameIndex = "IX_Users_Username";
 
     private readonly EclipsVaultDbContext _context;
     private readonly TimeProvider _clock;
@@ -100,11 +101,9 @@ public sealed class UserRepository : IUserRepository
         await SaveClaimingEmailAsync(ct);
     }
 
-    public async Task DeleteAsync(User user, CancellationToken ct)
-    {
-        _context.Users.Remove(user);
-        await _context.SaveChangesAsync(ct);
-    }
+    public void StageAddition(User user) => _context.Users.Add(user);
+
+    public void StageRemoval(User user) => _context.Users.Remove(user);
 
     public Task<byte[]?> GetAvatarPngAsync(Guid userId, CancellationToken ct)
         => _context.UserAvatars
@@ -275,4 +274,6 @@ public sealed class UserRepository : IUserRepository
     }
 
     internal static bool ViolatesUniqueEmail(DbUpdateException failure) => UniqueIndex.IsViolatedBy(failure, UniqueEmailIndex);
+
+    internal static bool ViolatesUniqueUsername(DbUpdateException failure) => UniqueIndex.IsViolatedBy(failure, UniqueUsernameIndex);
 }
