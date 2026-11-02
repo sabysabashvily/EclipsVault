@@ -1,0 +1,2 @@
+package	reason
+Microsoft.Data.SqlClient.SNI.runtime	its only files are Windows native libraries, which SqlClient never loads on Linux; the Dockerfile deletes them from the publish output, and test-image.sh fails if any is in the image. Its licence text is kept below.

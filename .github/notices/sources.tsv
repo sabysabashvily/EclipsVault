@@ -1,0 +1,186 @@
+package	version	licence	item	origin	location	sha256
+Azure.Core	1.47.1	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Azure.Core	1.47.1	MIT	licence	upstream	https://raw.githubusercontent.com/Azure/azure-sdk-for-net/8c2fc694fca7dd1f6521f89bc4facfe0579e6a07/LICENSE.txt	9b45236978bb5cd5de992021769e1eeaa79f0116d3b02cf8ba065a1ed603d5fa
+Azure.Identity	1.14.2	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Azure.Identity	1.14.2	MIT	licence	upstream	https://raw.githubusercontent.com/Azure/azure-sdk-for-net/224d7260c8a9aef1694f85d29ab14ea71f45bd9f/LICENSE.txt	9b45236978bb5cd5de992021769e1eeaa79f0116d3b02cf8ba065a1ed603d5fa
+Humanizer.Core	2.14.1	MIT	copyright	nuspec <copyright>	Copyright (c) .NET Foundation and Contributors	-
+Humanizer.Core	2.14.1	MIT	licence	upstream	https://raw.githubusercontent.com/Humanizr/Humanizer/3ebc38de585fc641a04b0e78ed69468453b0f8a1/LICENSE	e24ec7f2eea5c5f4b3e2c08308109ba99b49b4b56ea7ff0e0a178f2bdd4bbce8
+Konscious.Security.Cryptography.Argon2	1.3.1	MIT	copyright	nuspec <copyright>	(c) 2024 Keef Aragon	-
+Konscious.Security.Cryptography.Argon2	1.3.1	MIT	licence	upstream	https://raw.githubusercontent.com/kmaragon/Konscious.Security.Cryptography/4ed95a5377e411506ca6868409b5c7d7ecaa859b/LICENSE	e476e0e780e301a7e65c7b6f54b0c67e9614429ba3ac1c5b498915bf8e6a1bec
+Konscious.Security.Cryptography.Blake2	1.1.1	MIT	copyright	nuspec <copyright>	(c) 2024 Keef Aragon	-
+Konscious.Security.Cryptography.Blake2	1.1.1	MIT	licence	upstream	https://raw.githubusercontent.com/kmaragon/Konscious.Security.Cryptography/4ed95a5377e411506ca6868409b5c7d7ecaa859b/LICENSE	e476e0e780e301a7e65c7b6f54b0c67e9614429ba3ac1c5b498915bf8e6a1bec
+Microsoft.AspNetCore.Authentication.OpenIdConnect	10.0.0	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.AspNetCore.Authentication.OpenIdConnect	10.0.0	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/dotnet/b0f34d51fccc69fd334253924abd8d6853fad7aa/LICENSE.TXT	ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b
+Microsoft.AspNetCore.Authentication.OpenIdConnect	10.0.0	MIT	other-notice	package	THIRD-PARTY-NOTICES.TXT	307d014f65d8482314f1400ddeae7a0cbabb96c2207bcc77f6233cc10588e5d9
+Microsoft.AspNetCore.OpenApi	10.0.13	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.AspNetCore.OpenApi	10.0.13	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/dotnet/4099f83977f4d29604a9aeb971fb0a7bc1d5f699/LICENSE.TXT	ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b
+Microsoft.AspNetCore.OpenApi	10.0.13	MIT	other-notice	package	THIRD-PARTY-NOTICES.TXT	307d014f65d8482314f1400ddeae7a0cbabb96c2207bcc77f6233cc10588e5d9
+Microsoft.Bcl.AsyncInterfaces	8.0.0	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.Bcl.AsyncInterfaces	8.0.0	MIT	licence	package	LICENSE.TXT	d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b
+Microsoft.Bcl.AsyncInterfaces	8.0.0	MIT	other-notice	package	THIRD-PARTY-NOTICES.TXT	19c19dcac9f3ee6302cfbc6745bb8e79f08efc4c933eb8dc5509bf14b88347ec
+Microsoft.Bcl.Cryptography	9.0.4	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.Bcl.Cryptography	9.0.4	MIT	licence	package	LICENSE.TXT	d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b
+Microsoft.Bcl.Cryptography	9.0.4	MIT	other-notice	package	THIRD-PARTY-NOTICES.TXT	40686c6447a7d5b5d3693068e4571b5f483d7ed335aeee773ef662440de4c5d5
+Microsoft.Build.Framework	18.0.2	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.Build.Framework	18.0.2	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/msbuild/995a3dce41788caebf2b8ca6602a7431f08bfd06/LICENSE	9aebac42398b50e652a84a7b92d70e85cd1a9c8746558a743dc6cec11b8d7d3e
+Microsoft.Build.Framework	18.0.2	MIT	other-notice	package	notices/THIRDPARTYNOTICES.txt	74dc1c6ae57076cd6e4caf9b105f9b61508b8dfefdb5888f4e7656f948a5b8dd
+Microsoft.CodeAnalysis.Analyzers	3.11.0	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.CodeAnalysis.Analyzers	3.11.0	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/roslyn-analyzers/f2384e61845314d0e8ad74cc0fe67d1bd4e9f102/License.txt	ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b
+Microsoft.CodeAnalysis.Analyzers	3.11.0	MIT	other-notice	package	ThirdPartyNotices.txt	0eabe2880daf9bfb25ac160b1e779c5da95a88406dd06cdb570ec7edb5eabb76
+Microsoft.CodeAnalysis.Common	5.0.0	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.CodeAnalysis.Common	5.0.0	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/roslyn/6c4a46a31302167b425d5e0a31ea83c9a9aa1d09/License.txt	ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b
+Microsoft.CodeAnalysis.Common	5.0.0	MIT	other-notice	package	ThirdPartyNotices.rtf	ef4678850e7e3aaf9297f07e5c4060d477854e545ccf8e2ef8452d65a7b2efaf
+Microsoft.CodeAnalysis.CSharp	5.0.0	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.CodeAnalysis.CSharp	5.0.0	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/roslyn/6c4a46a31302167b425d5e0a31ea83c9a9aa1d09/License.txt	ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b
+Microsoft.CodeAnalysis.CSharp	5.0.0	MIT	other-notice	package	ThirdPartyNotices.rtf	ef4678850e7e3aaf9297f07e5c4060d477854e545ccf8e2ef8452d65a7b2efaf
+Microsoft.CodeAnalysis.CSharp.Workspaces	5.0.0	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.CodeAnalysis.CSharp.Workspaces	5.0.0	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/roslyn/6c4a46a31302167b425d5e0a31ea83c9a9aa1d09/License.txt	ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b
+Microsoft.CodeAnalysis.CSharp.Workspaces	5.0.0	MIT	other-notice	package	ThirdPartyNotices.rtf	ef4678850e7e3aaf9297f07e5c4060d477854e545ccf8e2ef8452d65a7b2efaf
+Microsoft.CodeAnalysis.Workspaces.Common	5.0.0	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.CodeAnalysis.Workspaces.Common	5.0.0	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/roslyn/6c4a46a31302167b425d5e0a31ea83c9a9aa1d09/License.txt	ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b
+Microsoft.CodeAnalysis.Workspaces.Common	5.0.0	MIT	other-notice	package	ThirdPartyNotices.rtf	ef4678850e7e3aaf9297f07e5c4060d477854e545ccf8e2ef8452d65a7b2efaf
+Microsoft.CodeAnalysis.Workspaces.MSBuild	5.0.0	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.CodeAnalysis.Workspaces.MSBuild	5.0.0	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/roslyn/6c4a46a31302167b425d5e0a31ea83c9a9aa1d09/License.txt	ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b
+Microsoft.CodeAnalysis.Workspaces.MSBuild	5.0.0	MIT	other-notice	package	ThirdPartyNotices.rtf	ef4678850e7e3aaf9297f07e5c4060d477854e545ccf8e2ef8452d65a7b2efaf
+Microsoft.Data.SqlClient	6.1.1	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.Data.SqlClient	6.1.1	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/sqlclient/eb7a9da3da429f3220a92a8a6b228a7471a884be/LICENSE	9fa73cb72fb654d029c9214f0e3eec32c301a0c23be71b50fe3910e61553fa34
+Microsoft.Data.SqlClient.SNI.runtime	6.0.2	none stated in the SBOM	image	not-in-image.tsv	its only files are Windows native libraries, which SqlClient never loads on Linux; the Dockerfile deletes them from the publish output, and test-image.sh fails if any is in the image. Its licence text is kept below.	-
+Microsoft.Data.SqlClient.SNI.runtime	6.0.2	none stated in the SBOM	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.Data.SqlClient.SNI.runtime	6.0.2	none stated in the SBOM	licence	package	LICENSE.txt	9335e8bad875dd7be4eebd55d2335eb6433d1cea61aadb3817af7807bef8932a
+Microsoft.EntityFrameworkCore	10.0.9	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.EntityFrameworkCore	10.0.9	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/dotnet/901ca941248413c79832d2fdbd709da0c4386353/LICENSE.TXT	ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b
+Microsoft.EntityFrameworkCore.Abstractions	10.0.9	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.EntityFrameworkCore.Abstractions	10.0.9	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/dotnet/901ca941248413c79832d2fdbd709da0c4386353/LICENSE.TXT	ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b
+Microsoft.EntityFrameworkCore.Analyzers	10.0.9	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.EntityFrameworkCore.Analyzers	10.0.9	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/dotnet/901ca941248413c79832d2fdbd709da0c4386353/LICENSE.TXT	ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b
+Microsoft.EntityFrameworkCore.Design	10.0.9	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.EntityFrameworkCore.Design	10.0.9	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/dotnet/901ca941248413c79832d2fdbd709da0c4386353/LICENSE.TXT	ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b
+Microsoft.EntityFrameworkCore.Relational	10.0.9	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.EntityFrameworkCore.Relational	10.0.9	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/dotnet/901ca941248413c79832d2fdbd709da0c4386353/LICENSE.TXT	ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b
+Microsoft.EntityFrameworkCore.SqlServer	10.0.9	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.EntityFrameworkCore.SqlServer	10.0.9	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/dotnet/901ca941248413c79832d2fdbd709da0c4386353/LICENSE.TXT	ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b
+Microsoft.Extensions.DependencyModel	10.0.9	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.Extensions.DependencyModel	10.0.9	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/dotnet/901ca941248413c79832d2fdbd709da0c4386353/LICENSE.TXT	ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b
+Microsoft.Extensions.DependencyModel	10.0.9	MIT	other-notice	package	THIRD-PARTY-NOTICES.TXT	6d15e10a101c6bfff2ab4429ed061bf76c456fc4b23ad6b03e0d0f8377148a21
+Microsoft.Identity.Client	4.73.1	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.Identity.Client	4.73.1	MIT	licence	upstream	https://raw.githubusercontent.com/AzureAD/microsoft-authentication-library-for-dotnet/07f9c3bb0dcd32a69e7eaaa4cef9dca58fdd0495/LICENSE	2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c
+Microsoft.Identity.Client.Extensions.Msal	4.73.1	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.Identity.Client.Extensions.Msal	4.73.1	MIT	licence	upstream	https://raw.githubusercontent.com/AzureAD/microsoft-authentication-library-for-dotnet/07f9c3bb0dcd32a69e7eaaa4cef9dca58fdd0495/LICENSE	2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c
+Microsoft.IdentityModel.Abstractions	8.0.1	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.IdentityModel.Abstractions	8.0.1	MIT	licence	upstream	https://raw.githubusercontent.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet/e67b25be77532af9ba405670b34b4d263d505fde/LICENSE.txt	b09ac0e46520eec4ee7b16af87d4ccbf8180551f3b2ff0f6c9b4f3ddcd585640
+Microsoft.IdentityModel.JsonWebTokens	8.0.1	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.IdentityModel.JsonWebTokens	8.0.1	MIT	licence	upstream	https://raw.githubusercontent.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet/e67b25be77532af9ba405670b34b4d263d505fde/LICENSE.txt	b09ac0e46520eec4ee7b16af87d4ccbf8180551f3b2ff0f6c9b4f3ddcd585640
+Microsoft.IdentityModel.Logging	8.0.1	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.IdentityModel.Logging	8.0.1	MIT	licence	upstream	https://raw.githubusercontent.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet/e67b25be77532af9ba405670b34b4d263d505fde/LICENSE.txt	b09ac0e46520eec4ee7b16af87d4ccbf8180551f3b2ff0f6c9b4f3ddcd585640
+Microsoft.IdentityModel.Protocols	8.0.1	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.IdentityModel.Protocols	8.0.1	MIT	licence	upstream	https://raw.githubusercontent.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet/e67b25be77532af9ba405670b34b4d263d505fde/LICENSE.txt	b09ac0e46520eec4ee7b16af87d4ccbf8180551f3b2ff0f6c9b4f3ddcd585640
+Microsoft.IdentityModel.Protocols.OpenIdConnect	8.0.1	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.IdentityModel.Protocols.OpenIdConnect	8.0.1	MIT	licence	upstream	https://raw.githubusercontent.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet/e67b25be77532af9ba405670b34b4d263d505fde/LICENSE.txt	b09ac0e46520eec4ee7b16af87d4ccbf8180551f3b2ff0f6c9b4f3ddcd585640
+Microsoft.IdentityModel.Tokens	8.0.1	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.IdentityModel.Tokens	8.0.1	MIT	licence	upstream	https://raw.githubusercontent.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet/e67b25be77532af9ba405670b34b4d263d505fde/LICENSE.txt	b09ac0e46520eec4ee7b16af87d4ccbf8180551f3b2ff0f6c9b4f3ddcd585640
+Microsoft.OpenApi	2.12.2	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.OpenApi	2.12.2	MIT	licence	upstream	https://raw.githubusercontent.com/Microsoft/OpenAPI.NET/a24aac560adbf013ff5aa63a873e5a7babce38d2/LICENSE	5d177f23ecfeb0ea8e050b6a5a16355e1ae9a0b286436ca8f83ed08b3795be6b
+Microsoft.SqlServer.Server	1.0.0	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.SqlServer.Server	1.0.0	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/sqlclient/54ab5aef2e1b74c0971a00711fecb003b624efdf/LICENSE	9fa73cb72fb654d029c9214f0e3eec32c301a0c23be71b50fe3910e61553fa34
+Microsoft.SqlServer.Server	1.0.0	MIT	commit	assembly	54ab5aef2e1b74c0971a00711fecb003b624efdf, read from the informational version of Microsoft.SqlServer.Server.dll; the nuspec records none	-
+Microsoft.VisualStudio.SolutionPersistence	1.0.52	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.VisualStudio.SolutionPersistence	1.0.52	MIT	licence	upstream	https://raw.githubusercontent.com/microsoft/vs-solutionpersistence/19c3ca7dc997dba2b3a86f6c666e9f717f34c8fe/LICENSE	b5cb7ff7859e7d282d98fc43ab081b0dda5dc659dc3385cf65740c759a7e6a6c
+Microsoft.VisualStudio.SolutionPersistence	1.0.52	MIT	other-notice	package	NOTICE	2d56342544395b1cc4bb98192a439031362265125a68b8062942383b8df4309a
+Microsoft.Win32.SystemEvents	6.0.0	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+Microsoft.Win32.SystemEvents	6.0.0	MIT	licence	package	LICENSE.TXT	d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b
+Microsoft.Win32.SystemEvents	6.0.0	MIT	other-notice	package	THIRD-PARTY-NOTICES.TXT	a6344bfb229bc08d1071cec400eea216e307439f961c5943ec1b56d2245acb95
+Mono.TextTemplating	3.0.0	MIT	copyright	licence text	Copyright (c) 2009-2011 Novell, Inc. (http://www.novell.com); Copyright (c) 2011-2016 Xamarin Inc. (http://www.xamarin.com); Copyright (c) Microsoft Corp. (http://www.microsoft.com); Copyright (c) The contributors	-
+Mono.TextTemplating	3.0.0	MIT	licence	package	LICENSE.txt/LICENSE	143c56ff6ba2dd121fa4bbf61c17aa8563378a6223c0bf7c5201e382ebd5f34a
+Newtonsoft.Json	13.0.3	MIT	copyright	nuspec <copyright>	Copyright © James Newton-King 2008	-
+Newtonsoft.Json	13.0.3	MIT	licence	package	LICENSE.md	b98a397897ff55f76cddc380041507a95a896b2946e0188703bf0496793d6516
+Npgsql	10.0.0	PostgreSQL	copyright	nuspec <copyright>	Copyright 2025 © The Npgsql Development Team	-
+Npgsql	10.0.0	PostgreSQL	licence	upstream	https://raw.githubusercontent.com/npgsql/npgsql/a18021849f244716d3b68eefd705677f131f9ace/LICENSE	2e1d9cc6ed4eb7fe6fa82091846c06b4f58571a2c3b54777db6baeca10dd2d74
+Npgsql.EntityFrameworkCore.PostgreSQL	10.0.0	PostgreSQL	copyright	nuspec <copyright>	Copyright 2025 © The Npgsql Development Team	-
+Npgsql.EntityFrameworkCore.PostgreSQL	10.0.0	PostgreSQL	licence	upstream	https://raw.githubusercontent.com/npgsql/efcore.pg/7624373747b28d693b45cea8174471d4b312e2a5/LICENSE	bc2fdab8551ca4022196dbbd3dc582ca65211209196a3459b1bab60cb71a9979
+Pipelines.Sockets.Unofficial	2.2.16	MIT	copyright	nuspec <copyright>	Marc Gravell 2018	-
+Pipelines.Sockets.Unofficial	2.2.16	MIT	licence	upstream	https://raw.githubusercontent.com/mgravell/Pipelines.Sockets.Unofficial/551f244bb90364e137f58c79a260cb916a63192a/LICENSE	162490050b74b6355c4355e981a6c0689354780fb66ce77069c6981e97dd711d
+QRCoder	1.8.0	MIT	copyright	nuspec <copyright>	Copyright © 2013-2025 Raffael Herrmann. Copyright © 2024-2025 Shane Krueger. All rights reserved.	-
+QRCoder	1.8.0	MIT	licence	package	LICENSE.txt	fde71b40fff47192a02738042cb39fa780635daa00827771bec65366ccd1e46d
+Serilog	4.2.0	Apache-2.0	copyright	nuspec <copyright>	Copyright © Serilog Contributors	-
+Serilog	4.2.0	Apache-2.0	licence	upstream	https://raw.githubusercontent.com/serilog/serilog/c00e17fdeb615d36c062569f7342f72c9ece4aa7/LICENSE	73ba74dfaa520b49a401b5d21459a8523a146f3b7518a833eea5efa85130bf68
+Serilog	4.2.0	Apache-2.0	notice	none	none at the root of serilog/serilog at c00e17fdeb615d36c062569f7342f72c9ece4aa7 (NOTICE 404, NOTICE.md 404, NOTICE.txt 404)	-
+Serilog.AspNetCore	9.0.0	Apache-2.0	copyright	none stated by the nuspec, the assembly or the licence text	-	-
+Serilog.AspNetCore	9.0.0	Apache-2.0	licence	upstream	https://raw.githubusercontent.com/serilog/serilog-aspnetcore/bf7a68d77bd3f9be5c2d62229798be9532346a19/LICENSE	b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1
+Serilog.AspNetCore	9.0.0	Apache-2.0	notice	none	none at the root of serilog/serilog-aspnetcore at bf7a68d77bd3f9be5c2d62229798be9532346a19 (NOTICE 404, NOTICE.md 404, NOTICE.txt 404)	-
+Serilog.Extensions.Hosting	9.0.0	Apache-2.0	copyright	none stated by the nuspec, the assembly or the licence text	-	-
+Serilog.Extensions.Hosting	9.0.0	Apache-2.0	licence	upstream	https://raw.githubusercontent.com/serilog/serilog-extensions-hosting/689f2d485288740e0827d2048c040744bee89e3c/LICENSE	b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1
+Serilog.Extensions.Hosting	9.0.0	Apache-2.0	notice	none	none at the root of serilog/serilog-extensions-hosting at 689f2d485288740e0827d2048c040744bee89e3c (NOTICE 404, NOTICE.md 404, NOTICE.txt 404)	-
+Serilog.Extensions.Logging	9.0.0	Apache-2.0	copyright	none stated by the nuspec, the assembly or the licence text	-	-
+Serilog.Extensions.Logging	9.0.0	Apache-2.0	licence	upstream	https://raw.githubusercontent.com/serilog/serilog-extensions-logging/b460d0ef794f018d9cd8b1768408a9a9d11ff1cf/LICENSE	c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08
+Serilog.Extensions.Logging	9.0.0	Apache-2.0	notice	none	none at the root of serilog/serilog-extensions-logging at b460d0ef794f018d9cd8b1768408a9a9d11ff1cf (NOTICE 404, NOTICE.md 404, NOTICE.txt 404)	-
+Serilog.Formatting.Compact	3.0.0	Apache-2.0	copyright	none stated by the nuspec, the assembly or the licence text	-	-
+Serilog.Formatting.Compact	3.0.0	Apache-2.0	licence	upstream	https://raw.githubusercontent.com/serilog/serilog-formatting-compact/8472ad8ccb97432ca7efbe78d8bc0eaf61db5356/LICENSE	b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1
+Serilog.Formatting.Compact	3.0.0	Apache-2.0	notice	none	none at the root of serilog/serilog-formatting-compact at 8472ad8ccb97432ca7efbe78d8bc0eaf61db5356 (NOTICE 404, NOTICE.md 404, NOTICE.txt 404)	-
+Serilog.Settings.Configuration	9.0.0	Apache-2.0	copyright	none stated by the nuspec, the assembly or the licence text	-	-
+Serilog.Settings.Configuration	9.0.0	Apache-2.0	licence	upstream	https://raw.githubusercontent.com/serilog/serilog-settings-configuration/67a3fc8f4e0b8b1cc8cbf60f847ebe6ed91d786b/LICENSE	c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08
+Serilog.Settings.Configuration	9.0.0	Apache-2.0	notice	none	none at the root of serilog/serilog-settings-configuration at 67a3fc8f4e0b8b1cc8cbf60f847ebe6ed91d786b (NOTICE 404, NOTICE.md 404, NOTICE.txt 404)	-
+Serilog.Sinks.Console	6.1.1	Apache-2.0	copyright	none stated by the nuspec, the assembly or the licence text	-	-
+Serilog.Sinks.Console	6.1.1	Apache-2.0	licence	upstream	https://raw.githubusercontent.com/serilog/serilog-sinks-console/b3cb1f042f5636161b831fa8816d70d865a5eec4/LICENSE	b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1
+Serilog.Sinks.Console	6.1.1	Apache-2.0	notice	none	none at the root of serilog/serilog-sinks-console at b3cb1f042f5636161b831fa8816d70d865a5eec4 (NOTICE 404, NOTICE.md 404, NOTICE.txt 404)	-
+Serilog.Sinks.Debug	3.0.0	Apache-2.0	copyright	none stated by the nuspec, the assembly or the licence text	-	-
+Serilog.Sinks.Debug	3.0.0	Apache-2.0	licence	upstream	https://raw.githubusercontent.com/serilog/serilog-sinks-debug/ee5eca4093be269bf3c1b609e6c2088d79a1b132/LICENSE	b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1
+Serilog.Sinks.Debug	3.0.0	Apache-2.0	notice	none	none at the root of serilog/serilog-sinks-debug at ee5eca4093be269bf3c1b609e6c2088d79a1b132 (NOTICE 404, NOTICE.md 404, NOTICE.txt 404)	-
+Serilog.Sinks.File	6.0.0	Apache-2.0	copyright	none stated by the nuspec, the assembly or the licence text	-	-
+Serilog.Sinks.File	6.0.0	Apache-2.0	licence	upstream	https://raw.githubusercontent.com/serilog/serilog-sinks-file/c7b9bc3d87f9bb98572a52286135efda1e608ad6/LICENSE	b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1
+Serilog.Sinks.File	6.0.0	Apache-2.0	notice	none	none at the root of serilog/serilog-sinks-file at c7b9bc3d87f9bb98572a52286135efda1e608ad6 (NOTICE 404, NOTICE.md 404, NOTICE.txt 404)	-
+SkiaSharp	4.153.1	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+SkiaSharp	4.153.1	MIT	licence	package	LICENSE.txt	89101e35a8c66fd4d6dffc1763259161d35cb564c169714ec227a768c89f2938
+SkiaSharp.NativeAssets.Linux.NoDependencies	4.153.1	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+SkiaSharp.NativeAssets.Linux.NoDependencies	4.153.1	MIT	licence	package	LICENSE.txt	89101e35a8c66fd4d6dffc1763259161d35cb564c169714ec227a768c89f2938
+SkiaSharp.NativeAssets.Linux.NoDependencies	4.153.1	MIT	other-notice	package	THIRD-PARTY-NOTICES.txt	21504c46c4c58aa64c1055bd2dcbc5f9a136b4b8c412ed3cc6740e22c5b127f5
+SkiaSharp.NativeAssets.macOS	4.153.1	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+SkiaSharp.NativeAssets.macOS	4.153.1	MIT	licence	package	LICENSE.txt	89101e35a8c66fd4d6dffc1763259161d35cb564c169714ec227a768c89f2938
+SkiaSharp.NativeAssets.macOS	4.153.1	MIT	other-notice	package	THIRD-PARTY-NOTICES.txt	21504c46c4c58aa64c1055bd2dcbc5f9a136b4b8c412ed3cc6740e22c5b127f5
+SkiaSharp.NativeAssets.Win32	4.153.1	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+SkiaSharp.NativeAssets.Win32	4.153.1	MIT	licence	package	LICENSE.txt	89101e35a8c66fd4d6dffc1763259161d35cb564c169714ec227a768c89f2938
+SkiaSharp.NativeAssets.Win32	4.153.1	MIT	other-notice	package	THIRD-PARTY-NOTICES.txt	21504c46c4c58aa64c1055bd2dcbc5f9a136b4b8c412ed3cc6740e22c5b127f5
+StackExchange.Redis	2.13.17	MIT	copyright	nuspec <copyright>	2014 - 2026 Stack Exchange, Inc.	-
+StackExchange.Redis	2.13.17	MIT	licence	upstream	https://raw.githubusercontent.com/StackExchange/StackExchange.Redis/6e0df970c7fefda5203b2455dd65a8da86c54540/LICENSE	f0d56d0f626cf01b8354348bdf83c2a0f20a825ba27c326951752af264be4651
+System.ClientModel	1.5.1	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+System.ClientModel	1.5.1	MIT	licence	upstream	https://raw.githubusercontent.com/Azure/azure-sdk-for-net/dff2cf0fbd46dddeda03d0fcf46442a2fc6533ce/LICENSE.txt	9b45236978bb5cd5de992021769e1eeaa79f0116d3b02cf8ba065a1ed603d5fa
+System.CodeDom	6.0.0	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+System.CodeDom	6.0.0	MIT	licence	package	LICENSE.TXT	d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b
+System.CodeDom	6.0.0	MIT	other-notice	package	THIRD-PARTY-NOTICES.TXT	a6344bfb229bc08d1071cec400eea216e307439f961c5943ec1b56d2245acb95
+System.Composition	9.0.0	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+System.Composition	9.0.0	MIT	licence	package	LICENSE.TXT	d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b
+System.Composition	9.0.0	MIT	other-notice	package	THIRD-PARTY-NOTICES.TXT	40686c6447a7d5b5d3693068e4571b5f483d7ed335aeee773ef662440de4c5d5
+System.Composition.AttributedModel	9.0.0	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+System.Composition.AttributedModel	9.0.0	MIT	licence	package	LICENSE.TXT	d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b
+System.Composition.AttributedModel	9.0.0	MIT	other-notice	package	THIRD-PARTY-NOTICES.TXT	40686c6447a7d5b5d3693068e4571b5f483d7ed335aeee773ef662440de4c5d5
+System.Composition.Convention	9.0.0	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+System.Composition.Convention	9.0.0	MIT	licence	package	LICENSE.TXT	d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b
+System.Composition.Convention	9.0.0	MIT	other-notice	package	THIRD-PARTY-NOTICES.TXT	40686c6447a7d5b5d3693068e4571b5f483d7ed335aeee773ef662440de4c5d5
+System.Composition.Hosting	9.0.0	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+System.Composition.Hosting	9.0.0	MIT	licence	package	LICENSE.TXT	d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b
+System.Composition.Hosting	9.0.0	MIT	other-notice	package	THIRD-PARTY-NOTICES.TXT	40686c6447a7d5b5d3693068e4571b5f483d7ed335aeee773ef662440de4c5d5
+System.Composition.Runtime	9.0.0	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+System.Composition.Runtime	9.0.0	MIT	licence	package	LICENSE.TXT	d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b
+System.Composition.Runtime	9.0.0	MIT	other-notice	package	THIRD-PARTY-NOTICES.TXT	40686c6447a7d5b5d3693068e4571b5f483d7ed335aeee773ef662440de4c5d5
+System.Composition.TypedParts	9.0.0	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+System.Composition.TypedParts	9.0.0	MIT	licence	package	LICENSE.TXT	d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b
+System.Composition.TypedParts	9.0.0	MIT	other-notice	package	THIRD-PARTY-NOTICES.TXT	40686c6447a7d5b5d3693068e4571b5f483d7ed335aeee773ef662440de4c5d5
+System.Configuration.ConfigurationManager	9.0.4	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+System.Configuration.ConfigurationManager	9.0.4	MIT	licence	package	LICENSE.TXT	d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b
+System.Configuration.ConfigurationManager	9.0.4	MIT	other-notice	package	THIRD-PARTY-NOTICES.TXT	40686c6447a7d5b5d3693068e4571b5f483d7ed335aeee773ef662440de4c5d5
+System.Drawing.Common	6.0.0	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+System.Drawing.Common	6.0.0	MIT	licence	package	LICENSE.TXT	d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b
+System.Drawing.Common	6.0.0	MIT	other-notice	package	THIRD-PARTY-NOTICES.TXT	a6344bfb229bc08d1071cec400eea216e307439f961c5943ec1b56d2245acb95
+System.IdentityModel.Tokens.Jwt	8.0.1	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+System.IdentityModel.Tokens.Jwt	8.0.1	MIT	licence	upstream	https://raw.githubusercontent.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet/e67b25be77532af9ba405670b34b4d263d505fde/LICENSE.txt	b09ac0e46520eec4ee7b16af87d4ccbf8180551f3b2ff0f6c9b4f3ddcd585640
+System.IO.Hashing	10.0.2	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+System.IO.Hashing	10.0.2	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/dotnet/44525024595742ebe09023abe709df51de65009b/LICENSE.TXT	ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b
+System.IO.Hashing	10.0.2	MIT	other-notice	package	THIRD-PARTY-NOTICES.TXT	6d15e10a101c6bfff2ab4429ed061bf76c456fc4b23ad6b03e0d0f8377148a21
+System.Memory.Data	8.0.1	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+System.Memory.Data	8.0.1	MIT	licence	package	LICENSE.TXT	d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b
+System.Memory.Data	8.0.1	MIT	other-notice	package	THIRD-PARTY-NOTICES.TXT	b60b2912da28eaa6518593c9e2efb5334ee062d3c42e80d8fdfa806b3dc52977
+System.Security.Cryptography.Pkcs	10.0.13	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+System.Security.Cryptography.Pkcs	10.0.13	MIT	licence	upstream	https://raw.githubusercontent.com/dotnet/dotnet/4099f83977f4d29604a9aeb971fb0a7bc1d5f699/LICENSE.TXT	ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b
+System.Security.Cryptography.Pkcs	10.0.13	MIT	other-notice	package	THIRD-PARTY-NOTICES.TXT	6d15e10a101c6bfff2ab4429ed061bf76c456fc4b23ad6b03e0d0f8377148a21
+System.Security.Cryptography.ProtectedData	9.0.4	MIT	copyright	nuspec <copyright>	© Microsoft Corporation. All rights reserved.	-
+System.Security.Cryptography.ProtectedData	9.0.4	MIT	licence	package	LICENSE.TXT	d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b
+System.Security.Cryptography.ProtectedData	9.0.4	MIT	other-notice	package	THIRD-PARTY-NOTICES.TXT	40686c6447a7d5b5d3693068e4571b5f483d7ed335aeee773ef662440de4c5d5
