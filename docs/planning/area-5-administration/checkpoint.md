@@ -159,3 +159,62 @@ Left for the owner:
 To restart: `git switch area-5a-accounts` (head is this commit). Build the Angular UI on its `.nvmrc`
 Node, then run the AGENTS.md checks, the integration suite once per engine. #108 (service accounts) is
 next, on this branch.
+
+## Delivery: ticket 3 (#108)
+
+Done locally on `area-5a-accounts` in the root checkout, on 2026-11-02, and not pushed.
+
+- `ea292b1` Save each service-account and key change with its audit row.
+  - Create, enable, disable and delete of a service account, and issue and revoke of an API key, each
+    run through `IServiceAccountChanges`: one transaction holding an `EclipsVault:ServiceAccount:{id}`
+    lock, taken before the audit chain's, with the change and its one event saved together through
+    the audit interceptor. A change that is not committed rolls back and leaves nothing staged.
+  - A create that loses the race for its name answers the form's conflict, not an audit failure.
+  - Core checks key options: expiry 0–3650 days, a ceiling that is a defined level below the account
+    or none, a project scope of at most 64 characters, and allowed ranges split and parsed once through
+    `NetworkRules`, at most 512 characters stored. Service-account names, clearance and project key
+    follow the Legacy form's rules. Each refusal names its field.
+  - The Legacy key form refuses a value that fails to bind instead of treating it as no limit.
+  - A key is revoked only under its own service account; revoking a revoked key records nothing.
+  - The Public API's last-used stamp writes only that column. Writing the whole key row undid a revoke
+    committed between the key's read and its stamp.
+- This section is the ticket's last commit.
+
+Each finding was shown failing against `e310c86` before the fix: 14 integration tests on SQL Server and
+6 on PostgreSQL, plus the two unbindable-option rows added after the security review. A suspected
+variant, the last-used stamp re-enabling a disabled account, passed on `e310c86` and was dropped.
+
+Checks passed on the final tree:
+
+- locked restore
+- Release build with 0 warnings
+- `dotnet format --verify-no-changes`
+- unit tests: 826
+- integration tests on SQL Server: 870
+- integration tests on PostgreSQL: 811 of 870 in the full run, while the machine was heavily loaded.
+  The 59 failures were 57 SQL Server execution timeouts in the `SqlServer*` race and persistence
+  classes and 2 Redis expiry checks. Those 14 classes then passed 89 of 89 on their own.
+- both pending-model checks (no migration)
+- the hook tests: 6
+
+The integration suites ran serially with a local runsettings file.
+
+Reviews: the security reviewer, then the Standards and Spec reviews.
+
+- All three ran on Claude Opus 5.5 at effort high.
+- GPT Sol 6.1 was tried for Standards and Spec and refused for its usage limit (until 2026-11-04), so
+  the ticket had no cross-model review.
+- The security reviewer found one low and one info item, both fixed.
+- The reports and the ledger are in the ignored `logs/ticket-108/`.
+
+Left for the owner:
+
+- A timed-out wait on a service account's lock is reported as the audit trail being unavailable, as
+  for accounts and administrators in #107.
+- The UI API for service accounts must bind its key options strictly and map each refusal's field.
+- A post that omits `ttlDays` still issues a key that never expires. The Legacy form always sends it.
+- The 512-character limit on stored allowed ranges is a new rule with its own message.
+- The raw key is still handed to the Details page through TempData; #111 owns that.
+
+To restart: `git switch area-5a-accounts` (head is this commit). Build the Angular UI on its `.nvmrc`
+Node, then run the AGENTS.md checks, the integration suite once per engine. #109 is next, on this branch.
