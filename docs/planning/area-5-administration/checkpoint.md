@@ -61,3 +61,43 @@ pointer on #92 to #104. Native sub-issue and blocked-by links return 404 on this
 ticket's Parent and Blocked by sections carry them, as in Area 4.
 
 #103 merged on 2026-11-01 (main `7953598`) while the issues were being published, so #106 can start.
+
+## Delivery: ticket 1 (#106)
+
+Done locally on `area-5a-accounts` in the root checkout, on 2026-11-02, and not pushed. The branch and
+the grill's records were already committed in `ced4414`.
+
+- `82d27df` Save each account change with its audit row and end sessions durably.
+  - Create, role change, enable, disable, unlock and delete commit through `IAccountChangeCommitter`,
+    each with its one audit event.
+  - Role change, disable and enable advance the credential generation instead of calling the session
+    store. Enable advances it too, because ADR-0023 covers any change to the enabled state.
+  - Delete no longer calls the store: the account read finds nothing.
+  - Force logout stays revoke-then-audit and flashes when the audit fails.
+  - A lost username race answers the form's conflict.
+- This section is the ticket's last commit.
+
+Each behaviour was shown failing against `ced4414` before the fix. Checks passed on the final tree:
+
+- locked restore
+- Release build with 0 warnings
+- `dotnet format --verify-no-changes`
+- unit tests: 748
+- integration tests: 836, run serially with a local runsettings file after a parallel run lost one
+  SQL Server fixture to memory pressure
+- both pending-model checks (no migration)
+- the hook tests: 6
+
+Reviews ran on Claude Opus 5.5 at effort high: the security reviewer on the whole diff, and the Standards
+and Spec reviews. The ticket had no cross-model review, because GPT Sol 6.1 is out until 2026-11-04.
+The evidence, the reports and the ledger are in the ignored `logs/ticket-106/`.
+
+Left for the owner:
+
+- Saving an unchanged role still flashes "Their sessions were revoked…".
+- A display name over 64 characters fails as the audit trail being unavailable.
+- Two creates of different usernames for one person's name get the generic error page.
+- `IUserRepository.AddAsync` is now used only by test fixtures.
+
+To restart: `git switch area-5a-accounts` (head is this commit). Build the Angular UI on its `.nvmrc`
+Node, then run the AGENTS.md checks. #107 (last administrator and own account) is next, on this branch.
