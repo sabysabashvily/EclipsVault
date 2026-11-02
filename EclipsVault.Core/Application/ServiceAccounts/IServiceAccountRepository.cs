@@ -2,6 +2,11 @@ using EclipsVault.Core.Domain.Entities;
 
 namespace EclipsVault.Core.Application.ServiceAccounts;
 
+/// <summary>
+/// Reads service accounts and their keys. Writes are staged here and saved by
+/// <see cref="Abstractions.IServiceAccountChanges"/> with their audit event; an edit to a found
+/// account or key is staged by changing it.
+/// </summary>
 public interface IServiceAccountRepository
 {
     Task<IReadOnlyList<ServiceAccount>> ListAsync(CancellationToken ct);
@@ -10,20 +15,24 @@ public interface IServiceAccountRepository
 
     Task<bool> ExistsByNameAsync(string name, CancellationToken ct);
 
-    Task AddAsync(ServiceAccount account, CancellationToken ct);
+    void StageAddition(ServiceAccount account);
 
-    Task UpdateAsync(ServiceAccount account, CancellationToken ct);
+    /// <summary>Stages removing the account; its keys go with it.</summary>
+    void StageRemoval(ServiceAccount account);
 
-    Task DeleteAsync(ServiceAccount account, CancellationToken ct);
+    void StageNewKey(ApiKey key);
 
-    Task AddKeyAsync(ApiKey key, CancellationToken ct);
-
-    Task<ApiKey?> FindKeyAsync(Guid keyId, CancellationToken ct);
+    /// <summary>Finds one of the service account's keys; another account's key is not found.</summary>
+    Task<ApiKey?> FindKeyAsync(Guid serviceAccountId, Guid keyId, CancellationToken ct);
 
     /// <summary>Looks up a key by its stored hash, including its parent account, for authentication.</summary>
     Task<ApiKey?> FindKeyByHashAsync(string keyHash, CancellationToken ct);
 
-    Task UpdateKeyAsync(ApiKey key, CancellationToken ct);
+    /// <summary>
+    /// Saves when the key was last used, and nothing else about it, so a revoke or other change committed
+    /// after the key was read is kept.
+    /// </summary>
+    Task RecordUseAsync(Guid keyId, DateTimeOffset usedAtUtc, CancellationToken ct);
 
     Task<IReadOnlyList<ApiKey>> ListKeysAsync(Guid serviceAccountId, CancellationToken ct);
 

@@ -18,6 +18,7 @@ public sealed record ApiKeyDto(
     DateTimeOffset? ExpiresAtUtc,
     DateTimeOffset? RevokedAtUtc,
     DateTimeOffset? LastUsedAtUtc,
+    ApiKeyStatus Status,
     ClearanceLevel? ClearanceCeiling,
     string? ProjectScope,
     bool MetadataOnly,
@@ -39,15 +40,19 @@ public sealed record ServiceAccountDetailsDto(
 public sealed record CreateServiceAccountRequest(string Name, ClearanceLevel Clearance, string ProjectKey);
 
 /// <summary>
-/// Options for issuing a key. Every field only narrows the key below its account:
-/// a lower clearance ceiling, a single permitted project, and/or metadata-only access.
+/// Options for issuing a key. Every field only narrows the key below its account: an expiry, a lower
+/// clearance ceiling, a single permitted project, metadata-only access, and the source ranges it may be
+/// presented from.
 /// </summary>
+/// <param name="ExpiresInDays">0 to 3650; 0 means the key never expires.</param>
+/// <param name="ClearanceCeiling">A level below the account's, or null for none.</param>
+/// <param name="AllowedRanges">IP addresses and CIDR ranges as typed, separated by commas, semicolons or white space; blank for any network.</param>
 public sealed record IssueApiKeyRequest(
-    int? TtlDays,
+    int ExpiresInDays,
     ClearanceLevel? ClearanceCeiling,
     string? ProjectScope,
     bool MetadataOnly,
-    IReadOnlyList<string>? AllowedCidrs = null);
+    string? AllowedRanges);
 
 /// <summary>Returned once, at issue time — carries the raw token, which is never persisted or shown again.</summary>
 public sealed record IssuedApiKeyDto(Guid Id, string RawToken, string Prefix);

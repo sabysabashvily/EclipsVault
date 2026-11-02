@@ -6,6 +6,8 @@ namespace EclipsVault.Infrastructure.Persistence.Repositories;
 
 public sealed class ServiceAccountRepository : IServiceAccountRepository
 {
+    internal const string UniqueNameIndex = "IX_ServiceAccounts_Name";
+
     private readonly EclipsVaultDbContext _context;
 
     public ServiceAccountRepository(EclipsVaultDbContext context) => _context = context;
@@ -19,41 +21,20 @@ public sealed class ServiceAccountRepository : IServiceAccountRepository
     public Task<bool> ExistsByNameAsync(string name, CancellationToken ct)
         => _context.ServiceAccounts.AnyAsync(a => a.Name == name, ct);
 
-    public async Task AddAsync(ServiceAccount account, CancellationToken ct)
-    {
-        _context.ServiceAccounts.Add(account);
-        await _context.SaveChangesAsync(ct);
-    }
+    public void StageAddition(ServiceAccount account) => _context.ServiceAccounts.Add(account);
 
-    public async Task UpdateAsync(ServiceAccount account, CancellationToken ct)
-    {
-        _context.ServiceAccounts.Update(account);
-        await _context.SaveChangesAsync(ct);
-    }
+    public void StageRemoval(ServiceAccount account) => _context.ServiceAccounts.Remove(account); // keys cascade-delete
 
-    public async Task DeleteAsync(ServiceAccount account, CancellationToken ct)
-    {
-        _context.ServiceAccounts.Remove(account); // keys cascade-delete
-        await _context.SaveChangesAsync(ct);
-    }
+    public void StageNewKey(ApiKey key) => _context.ApiKeys.Add(key);
 
-    public async Task AddKeyAsync(ApiKey key, CancellationToken ct)
-    {
-        _context.ApiKeys.Add(key);
-        await _context.SaveChangesAsync(ct);
-    }
-
-    public Task<ApiKey?> FindKeyAsync(Guid keyId, CancellationToken ct)
-        => _context.ApiKeys.FirstOrDefaultAsync(k => k.Id == keyId, ct);
+    public Task<ApiKey?> FindKeyAsync(Guid serviceAccountId, Guid keyId, CancellationToken ct)
+        => _context.ApiKeys.FirstOrDefaultAsync(k => k.Id == keyId && k.ServiceAccountId == serviceAccountId, ct);
 
     public Task<ApiKey?> FindKeyByHashAsync(string keyHash, CancellationToken ct)
         => _context.ApiKeys.Include(k => k.ServiceAccount).FirstOrDefaultAsync(k => k.KeyHash == keyHash, ct);
 
-    public async Task UpdateKeyAsync(ApiKey key, CancellationToken ct)
-    {
-        _context.ApiKeys.Update(key);
-        await _context.SaveChangesAsync(ct);
-    }
+    public Task RecordUseAsync(Guid keyId, DateTimeOffset usedAtUtc, CancellationToken ct)
+        => _context.ApiKeys.Where(k => k.Id == keyId).ExecuteUpdateAsync(k => k.SetProperty(key => key.LastUsedAtUtc, usedAtUtc), ct);
 
     public async Task<IReadOnlyList<ApiKey>> ListKeysAsync(Guid serviceAccountId, CancellationToken ct)
         => await _context.ApiKeys.AsNoTracking()

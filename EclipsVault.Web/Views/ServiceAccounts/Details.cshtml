@@ -3,7 +3,6 @@
 @{
     ViewData["Title"] = Model.Account.Name;
     var a = Model.Account;
-    var now = DateTimeOffset.UtcNow;
 }
 
 <div class="page-header">
@@ -88,9 +87,7 @@
                     <tbody>
                         @foreach (var k in a.Keys)
                         {
-                            var revoked = k.RevokedAtUtc is not null;
-                            var expired = k.ExpiresAtUtc is { } e && e <= now;
-                            var active = !revoked && !expired;
+                            var active = k.Status == ApiKeyStatus.Active;
                             <tr class="@(active ? "" : "row-muted")">
                                 <td class="mono cell-strong">@k.Prefix…</td>
                                 <td>
@@ -124,11 +121,11 @@
                                 <td class="muted">@(k.ExpiresAtUtc?.UtcDateTime.ToString("yyyy-MM-dd") ?? "never")</td>
                                 <td class="muted">@(k.LastUsedAtUtc?.UtcDateTime.ToString("yyyy-MM-dd HH:mm") ?? "—")</td>
                                 <td>
-                                    @if (revoked)
+                                    @if (k.Status == ApiKeyStatus.Revoked)
                                     {
                                         <span class="badge tone-danger">Revoked</span>
                                     }
-                                    else if (expired)
+                                    else if (k.Status == ApiKeyStatus.Expired)
                                     {
                                         <span class="badge tone-warn">Expired</span>
                                     }

@@ -72,20 +72,20 @@ public sealed class ServiceAccountsController : Controller
     public async Task<IActionResult> IssueKey(
         Guid id, int ttlDays, int? clearanceCeiling, string? projectScope, bool metadataOnly, string? allowedCidrs, CancellationToken ct)
     {
-        // A ceiling of 0/blank means "no clearance limit"; otherwise map the enum value.
-        var ceiling = clearanceCeiling is > 0 && Enum.IsDefined((ClearanceLevel)clearanceCeiling.Value)
-            ? (ClearanceLevel)clearanceCeiling.Value
-            : (ClearanceLevel?)null;
+        // A value that fails to bind arrives as 0 days or no ceiling, the widest options, so it is refused instead.
+        if (!ModelState.IsValid)
+        {
+            this.FlashError("Enter the expiry as a whole number of days and choose the clearance ceiling from the list.");
+            return RedirectToAction(nameof(Details), new { id });
+        }
 
-        // Accept ranges separated by comma, semicolon, whitespace, or newlines.
-        var cidrs = string.IsNullOrWhiteSpace(allowedCidrs)
-            ? null
-            : allowedCidrs.Split([',', ';', '\n', '\r', ' ', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        // The form's "No limit" option posts 0. Any other value goes to Core, which refuses one that is not a level below the account.
+        var ceiling = clearanceCeiling is null or 0 ? (ClearanceLevel?)null : (ClearanceLevel)clearanceCeiling.Value;
 
         IssuedApiKeyDto? issued;
         try
         {
-            var request = new IssueApiKeyRequest(ttlDays, ceiling, projectScope, metadataOnly, cidrs);
+            var request = new IssueApiKeyRequest(ttlDays, ceiling, projectScope, metadataOnly, allowedCidrs);
             issued = await _accounts.IssueKeyAsync(id, request, ct);
         }
         catch (VaultAdminException ex)
@@ -109,7 +109,7 @@ public sealed class ServiceAccountsController : Controller
     [HttpPost]
     public async Task<IActionResult> RevokeKey(Guid id, Guid keyId, CancellationToken ct)
     {
-        if (await _accounts.RevokeKeyAsync(keyId, ct))
+        if (await _accounts.RevokeKeyAsync(id, keyId, ct))
         {
             this.FlashSuccess("API key revoked.");
         }

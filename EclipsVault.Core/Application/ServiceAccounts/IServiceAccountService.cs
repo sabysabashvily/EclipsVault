@@ -1,8 +1,8 @@
 namespace EclipsVault.Core.Application.ServiceAccounts;
 
 /// <summary>
-/// Administrative lifecycle for service accounts and their API keys. Every operation
-/// is audited; raw key tokens are returned exactly once (at issue time).
+/// Administrative lifecycle for service accounts and their API keys. Every change commits with its one
+/// audit event; raw key tokens are returned exactly once (at issue time).
 /// </summary>
 public interface IServiceAccountService
 {
@@ -19,7 +19,8 @@ public interface IServiceAccountService
     /// <summary>Issues a new API key with an optional narrowing scope. Returns the raw token once, or null if the account does not exist.</summary>
     Task<IssuedApiKeyDto?> IssueKeyAsync(Guid serviceAccountId, IssueApiKeyRequest request, CancellationToken ct);
 
-    Task<bool> RevokeKeyAsync(Guid keyId, CancellationToken ct);
+    /// <summary>Revokes one of the service account's keys. Returns false when that account has no such key.</summary>
+    Task<bool> RevokeKeyAsync(Guid serviceAccountId, Guid keyId, CancellationToken ct);
 }
 
 /// <summary>Resolves and validates a presented API key into a service-account identity (used by the API auth handler).</summary>

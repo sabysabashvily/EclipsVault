@@ -8,30 +8,40 @@ namespace EclipsVault.Core.Application.ServiceAccounts;
 /// <summary>
 /// Administrative service-account lifecycle and API-key issuance. Also implements
 /// <see cref="IApiKeyAuthenticator"/> so the API layer can resolve a presented key
-/// without a second service. Every mutation is audited.
+/// without a second service. Every change commits with its one audit event.
 /// </summary>
 public sealed class ServiceAccountService : IServiceAccountService, IApiKeyAuthenticator
 {
     private const string ApiKeyPrefix = "evk_";
+
+    private const int MinimumNameLength = 3;
+    private const int MaximumNameLength = 64;
+    private const int MaximumProjectKeyLength = 64;
+    private const int MaximumExpiryDays = 3650;
+
+    /// <summary>The width of the column that stores a key's ranges, joined by semicolons.</summary>
+    private const int MaximumAllowedRangesLength = 512;
+
+    private static readonly char[] RangeSeparators = [',', ';', '\n', '\r', ' ', '\t'];
 
     /// <summary>Minimum gap between persisted "last used" updates for a key (write-amplification damper).</summary>
     private static readonly TimeSpan LastUsedWriteInterval = TimeSpan.FromMinutes(1);
 
     private readonly IServiceAccountRepository _repository;
     private readonly IApiKeyFactory _keys;
-    private readonly IAuditSink _audit;
+    private readonly IServiceAccountChanges _changes;
     private readonly TimeProvider _clock;
 
-    public ServiceAccountService(IServiceAccountRepository repository, IApiKeyFactory keys, IAuditSink audit, TimeProvider clock)
+    public ServiceAccountService(IServiceAccountRepository repository, IApiKeyFactory keys, IServiceAccountChanges changes, TimeProvider clock)
     {
         _repository = repository;
         _keys = keys;
-        _audit = audit;
+        _changes = changes;
         _clock = clock;
     }
 
-    private Task AuditAsync(AuditAction action, Guid id, string name, string? details, CancellationToken ct)
-        => _audit.WriteAsync(new AuditEntry { Action = action, ResourceType = nameof(ServiceAccount), ResourceId = id, ResourceName = name, Details = details }, ct);
+    private static AuditEntry Event(AuditAction action, ServiceAccount account, string? details)
+        => new() { Action = action, ResourceType = nameof(ServiceAccount), ResourceId = account.Id, ResourceName = account.Name, Details = details };
 
     public async Task<IReadOnlyList<ServiceAccountSummaryDto>> ListAsync(CancellationToken ct)
     {
@@ -55,9 +65,10 @@ public sealed class ServiceAccountService : IServiceAccountService, IApiKeyAuthe
             return null;
         }
 
+        var now = _clock.GetUtcNow();
         var keys = await _repository.ListKeysAsync(id, ct);
         var keyDtos = keys
-            .Select(k => new ApiKeyDto(k.Id, k.Prefix, k.CreatedAtUtc, k.ExpiresAtUtc, k.RevokedAtUtc, k.LastUsedAtUtc,
+            .Select(k => new ApiKeyDto(k.Id, k.Prefix, k.CreatedAtUtc, k.ExpiresAtUtc, k.RevokedAtUtc, k.LastUsedAtUtc, k.StatusAt(now),
                 k.ClearanceCeiling, k.ProjectScope, k.MetadataOnly, k.AllowedCidrList()))
             .ToList();
 
@@ -67,15 +78,12 @@ public sealed class ServiceAccountService : IServiceAccountService, IApiKeyAuthe
 
     public async Task<Guid> CreateAsync(CreateServiceAccountRequest request, CancellationToken ct)
     {
-        var name = request.Name.Trim();
-        if (name.Length < 3)
-        {
-            throw new VaultAdminException("Service account names must be at least 3 characters long.");
-        }
-
+        var name = CheckedName(request.Name);
+        CheckClearance(request.Clearance);
+        var project = CheckedProjectKey(request.ProjectKey);
         if (await _repository.ExistsByNameAsync(name, ct))
         {
-            throw new VaultAdminException($"A service account named '{name}' already exists.");
+            throw NameTaken(name);
         }
 
         var account = new ServiceAccount
@@ -83,18 +91,66 @@ public sealed class ServiceAccountService : IServiceAccountService, IApiKeyAuthe
             Id = Guid.NewGuid(),
             Name = name,
             Clearance = request.Clearance,
-            ProjectKey = request.ProjectKey.Trim().ToUpperInvariant(),
+            ProjectKey = project,
             CreatedAtUtc = _clock.GetUtcNow()
         };
 
-        await _repository.AddAsync(account, ct);
-        await AuditAsync(AuditAction.ServiceAccountCreated, account.Id, account.Name,
-            $"Created (clearance {account.Clearance}, project {account.ProjectKey})", ct);
+        await using var change = await _changes.BeginAsync(account.Id, ct);
+        _repository.StageAddition(account);
+        try
+        {
+            await change.CommitAsync(Event(AuditAction.ServiceAccountCreated, account,
+                $"Created (clearance {account.Clearance}, project {account.ProjectKey})"), ct);
+        }
+        catch (ServiceAccountNameTakenException)
+        {
+            throw NameTaken(name);
+        }
+
         return account.Id;
+    }
+
+    private static VaultAdminException NameTaken(string name) => new($"A service account named '{name}' already exists.");
+
+    /// <returns>The name as it is stored: trimmed.</returns>
+    private static string CheckedName(string requested)
+    {
+        var name = requested.Trim();
+        if (name.Length is < MinimumNameLength or > MaximumNameLength
+            || !name.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-' or '.'))
+        {
+            throw new AccountInputException(nameof(CreateServiceAccountRequest.Name),
+                $"Service account names are {MinimumNameLength} to {MaximumNameLength} characters: letters, digits, underscores, hyphens or dots.");
+        }
+
+        return name;
+    }
+
+    /// <summary>Any integer binds to the enum, and an undefined clearance passes sensitivity checks it should fail.</summary>
+    private static void CheckClearance(ClearanceLevel clearance)
+    {
+        if (!Enum.IsDefined(clearance))
+        {
+            throw new AccountInputException(nameof(CreateServiceAccountRequest.Clearance), "Choose one of the vault's clearance levels.");
+        }
+    }
+
+    /// <returns>The project key as it is stored: trimmed and upper case.</returns>
+    private static string CheckedProjectKey(string projectKey)
+    {
+        var project = projectKey.Trim();
+        if (project.Length is 0 or > MaximumProjectKeyLength)
+        {
+            throw new AccountInputException(nameof(CreateServiceAccountRequest.ProjectKey),
+                $"Project keys are 1 to {MaximumProjectKeyLength} characters, not counting spaces at either end.");
+        }
+
+        return project.ToUpperInvariant();
     }
 
     public async Task<bool> SetEnabledAsync(Guid id, bool enabled, CancellationToken ct)
     {
+        await using var change = await _changes.BeginAsync(id, ct);
         var account = await _repository.FindAsync(id, ct);
         if (account is null)
         {
@@ -107,41 +163,38 @@ public sealed class ServiceAccountService : IServiceAccountService, IApiKeyAuthe
         }
 
         account.IsDisabled = !enabled;
-        await _repository.UpdateAsync(account, ct);
-        await AuditAsync(
-            enabled ? AuditAction.ServiceAccountEnabled : AuditAction.ServiceAccountDisabled,
-            account.Id, account.Name, null, ct);
+        await change.CommitAsync(Event(enabled ? AuditAction.ServiceAccountEnabled : AuditAction.ServiceAccountDisabled, account, null), ct);
         return true;
     }
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken ct)
     {
+        await using var change = await _changes.BeginAsync(id, ct);
         var account = await _repository.FindAsync(id, ct);
         if (account is null)
         {
             return false;
         }
 
-        await _repository.DeleteAsync(account, ct); // keys cascade-delete
-        await AuditAsync(AuditAction.ServiceAccountDeleted, account.Id, account.Name, null, ct);
+        _repository.StageRemoval(account);
+        await change.CommitAsync(Event(AuditAction.ServiceAccountDeleted, account, null), ct);
         return true;
     }
 
     public async Task<IssuedApiKeyDto?> IssueKeyAsync(Guid serviceAccountId, IssueApiKeyRequest request, CancellationToken ct)
     {
+        CheckExpiry(request.ExpiresInDays);
+        var projectScope = CheckedProjectScope(request.ProjectScope);
+        var allowedCidrs = CheckedAllowedRanges(request.AllowedRanges);
+
+        await using var change = await _changes.BeginAsync(serviceAccountId, ct);
         var account = await _repository.FindAsync(serviceAccountId, ct);
         if (account is null)
         {
             return null;
         }
 
-        // A ceiling only counts when it is actually below the account (never a widening).
-        var ceiling = request.ClearanceCeiling is { } c && (int)c < (int)account.Clearance ? c : (ClearanceLevel?)null;
-        var projectScope = string.IsNullOrWhiteSpace(request.ProjectScope)
-            ? null
-            : request.ProjectScope.Trim().ToUpperInvariant();
-        var allowedCidrs = NormalizeCidrs(request.AllowedCidrs);
-
+        CheckCeiling(request.ClearanceCeiling, account.Clearance);
         var generated = _keys.Generate();
         var now = _clock.GetUtcNow();
         var key = new ApiKey
@@ -151,18 +204,84 @@ public sealed class ServiceAccountService : IServiceAccountService, IApiKeyAuthe
             KeyHash = generated.Hash,
             Prefix = generated.Prefix,
             CreatedAtUtc = now,
-            ExpiresAtUtc = request.TtlDays is > 0 ? now.AddDays(request.TtlDays.Value) : null,
-            ClearanceCeiling = ceiling,
+            ExpiresAtUtc = request.ExpiresInDays == 0 ? null : now.AddDays(request.ExpiresInDays),
+            ClearanceCeiling = request.ClearanceCeiling,
             ProjectScope = projectScope,
             MetadataOnly = request.MetadataOnly,
             AllowedCidrs = allowedCidrs
         };
 
-        await _repository.AddKeyAsync(key, ct);
-        await AuditAsync(AuditAction.ApiKeyIssued, account.Id, account.Name,
-            $"Key {key.Prefix}… issued" + DescribeScope(key) + (key.ExpiresAtUtc is { } e ? $", expires {e:u}" : ""), ct);
+        _repository.StageNewKey(key);
+        // The audit row names the key by its prefix only: the raw token goes back to the caller and nowhere else.
+        await change.CommitAsync(Event(AuditAction.ApiKeyIssued, account,
+            $"Key {key.Prefix}… issued" + DescribeScope(key) + (key.ExpiresAtUtc is { } e ? $", expires {e:u}" : "")), ct);
 
         return new IssuedApiKeyDto(key.Id, generated.RawToken, generated.Prefix);
+    }
+
+    private static void CheckExpiry(int expiresInDays)
+    {
+        if (expiresInDays is < 0 or > MaximumExpiryDays)
+        {
+            throw new AccountInputException(nameof(IssueApiKeyRequest.ExpiresInDays),
+                $"A key expires after 0 to {MaximumExpiryDays} days, where 0 means it never expires.");
+        }
+    }
+
+    /// <summary>A ceiling at or above the account's would not narrow the key, and an undefined one would mean nothing.</summary>
+    private static void CheckCeiling(ClearanceLevel? ceiling, ClearanceLevel accountClearance)
+    {
+        if (ceiling is { } level && (!Enum.IsDefined(level) || level >= accountClearance))
+        {
+            throw new AccountInputException(nameof(IssueApiKeyRequest.ClearanceCeiling),
+                "A clearance ceiling must be one of the vault's clearance levels below the service account's, or none.");
+        }
+    }
+
+    /// <returns>The scope as it is stored: trimmed and upper case, or null when blank.</returns>
+    private static string? CheckedProjectScope(string? projectScope)
+    {
+        if (string.IsNullOrWhiteSpace(projectScope))
+        {
+            return null;
+        }
+
+        var scope = projectScope.Trim();
+        if (scope.Length > MaximumProjectKeyLength)
+        {
+            throw new AccountInputException(nameof(IssueApiKeyRequest.ProjectScope),
+                $"A project scope is at most {MaximumProjectKeyLength} characters, not counting spaces at either end.");
+        }
+
+        return scope.ToUpperInvariant();
+    }
+
+    /// <returns>The distinct ranges in canonical form joined by semicolons, as they are stored, or null when blank.</returns>
+    private static string? CheckedAllowedRanges(string? allowedRanges)
+    {
+        var canonical = new List<string>();
+        foreach (var range in (allowedRanges ?? "").Split(RangeSeparators, StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (!NetworkRules.TryParseCidr(range, out var normalized))
+            {
+                throw new AccountInputException(nameof(IssueApiKeyRequest.AllowedRanges),
+                    $"'{range}' is not a valid IP address or CIDR range (e.g. 203.0.113.7 or 10.8.0.0/24).");
+            }
+
+            if (!canonical.Contains(normalized))
+            {
+                canonical.Add(normalized);
+            }
+        }
+
+        var stored = string.Join(';', canonical);
+        if (stored.Length > MaximumAllowedRangesLength)
+        {
+            throw new AccountInputException(nameof(IssueApiKeyRequest.AllowedRanges),
+                "There are too many allowed source ranges to store. Use fewer or wider ranges.");
+        }
+
+        return stored.Length == 0 ? null : stored;
     }
 
     private static string DescribeScope(ApiKey key)
@@ -188,39 +307,16 @@ public sealed class ServiceAccountService : IServiceAccountService, IApiKeyAuthe
         return parts.Count == 0 ? " (unscoped)" : $" scoped to {string.Join(", ", parts)}";
     }
 
-    /// <summary>Validates and canonicalises the operator-supplied ranges; throws on any bad entry.</summary>
-    private static string? NormalizeCidrs(IReadOnlyList<string>? cidrs)
+    public async Task<bool> RevokeKeyAsync(Guid serviceAccountId, Guid keyId, CancellationToken ct)
     {
-        if (cidrs is null || cidrs.Count == 0)
+        await using var change = await _changes.BeginAsync(serviceAccountId, ct);
+        var account = await _repository.FindAsync(serviceAccountId, ct);
+        if (account is null)
         {
-            return null;
+            return false;
         }
 
-        var canonical = new List<string>();
-        foreach (var raw in cidrs)
-        {
-            if (string.IsNullOrWhiteSpace(raw))
-            {
-                continue;
-            }
-
-            if (!NetworkRules.TryParseCidr(raw, out var normalized))
-            {
-                throw new VaultAdminException($"'{raw.Trim()}' is not a valid IP address or CIDR range (e.g. 203.0.113.7 or 10.8.0.0/24).");
-            }
-
-            if (!canonical.Contains(normalized))
-            {
-                canonical.Add(normalized);
-            }
-        }
-
-        return canonical.Count == 0 ? null : string.Join(';', canonical);
-    }
-
-    public async Task<bool> RevokeKeyAsync(Guid keyId, CancellationToken ct)
-    {
-        var key = await _repository.FindKeyAsync(keyId, ct);
+        var key = await _repository.FindKeyAsync(serviceAccountId, keyId, ct);
         if (key is null)
         {
             return false;
@@ -232,11 +328,7 @@ public sealed class ServiceAccountService : IServiceAccountService, IApiKeyAuthe
         }
 
         key.RevokedAtUtc = _clock.GetUtcNow();
-        await _repository.UpdateKeyAsync(key, ct);
-
-        var account = await _repository.FindAsync(key.ServiceAccountId, ct);
-        await AuditAsync(AuditAction.ApiKeyRevoked, key.ServiceAccountId, account?.Name ?? "service account",
-            $"Key {key.Prefix}… revoked", ct);
+        await change.CommitAsync(Event(AuditAction.ApiKeyRevoked, account, $"Key {key.Prefix}… revoked"), ct);
         return true;
     }
 
@@ -267,8 +359,7 @@ public sealed class ServiceAccountService : IServiceAccountService, IApiKeyAuthe
         // every request — coarse "last used" telemetry doesn't need per-call precision.
         if (key.LastUsedAtUtc is null || now - key.LastUsedAtUtc >= LastUsedWriteInterval)
         {
-            key.LastUsedAtUtc = now;
-            await _repository.UpdateKeyAsync(key, ct);
+            await _repository.RecordUseAsync(key.Id, now, ct);
         }
 
         var account = key.ServiceAccount;
