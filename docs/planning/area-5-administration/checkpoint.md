@@ -178,22 +178,28 @@ Done locally on `area-5a-accounts` in the root checkout, on 2026-11-02, and not 
   - A key is revoked only under its own service account; revoking a revoked key records nothing.
   - The Public API's last-used stamp writes only that column. Writing the whole key row undid a revoke
     committed between the key's read and its stamp.
-- This section is the ticket's last commit.
+- `c3a6569` Check account changes through saved state and audit events.
+  - Replaced unit-test staging traces with saved state and exact audit events, split the four
+    missing-account outcomes, used literal timestamps, and clarified service and template names.
+- This section's final update is the ticket's last commit.
 
 Each finding was shown failing against `e310c86` before the fix: 14 integration tests on SQL Server and
 6 on PostgreSQL, plus the two unbindable-option rows added after the security review. A suspected
 variant, the last-used stamp re-enabling a disabled account, passed on `e310c86` and was dropped.
 
-Checks passed on the final tree:
+Validation:
 
 - locked restore
 - Release build with 0 warnings
 - `dotnet format --verify-no-changes`
-- unit tests: 826
+- unit tests: 829 after the review fixes (826 before them)
 - integration tests on SQL Server: 870
-- integration tests on PostgreSQL: 811 of 870 in the full run, while the machine was heavily loaded.
-  The 59 failures were 57 SQL Server execution timeouts in the `SqlServer*` race and persistence
-  classes and 2 Redis expiry checks. Those 14 classes then passed 89 of 89 on their own.
+- integration tests on PostgreSQL: a fresh full run passed 870 of 870 in 10m 48s.
+  The earlier full run passed 811 of 870 under heavy load. Its 59 failed tests were 57 SQL Server
+  execution timeouts across 11 `SqlServer*` classes and `AuthenticationSharingTests`, plus 2 Redis
+  expiry checks. Those 14 classes then passed 89 of 89 on their own. All three logs are retained.
+- The full integration runs preceded the final test-only and local-name changes. After those changes,
+  the Release build, format, 829 unit tests and 19 affected integration tests per engine passed.
 - both pending-model checks (no migration)
 - the hook tests: 6
 
@@ -201,11 +207,13 @@ The integration suites ran serially with a local runsettings file.
 
 Reviews: the security reviewer, then the Standards and Spec reviews.
 
-- All three ran on Claude Opus 5.5 at effort high.
-- GPT Sol 6.1 was tried for Standards and Spec and refused for its usage limit (until 2026-11-04), so
-  the ticket had no cross-model review.
+- The initial three ran on Claude Opus 5.5 at effort high after GPT Sol 6.1 hit its usage limit.
+- After the handoff, fresh GPT Sol 6.1 Standards and Spec sessions ran with `reasoningEffort: xhigh`.
+  The ticket now has cross-model review. Standards found four items: three were fixed in `c3a6569`;
+  the audit-mechanism convention item is answered by the owner's explicit permission to use a committer.
+  Spec found no implementation gap; the pending full PostgreSQL check is now complete.
 - The security reviewer found one low and one info item, both fixed.
-- The reports and the ledger are in the ignored `logs/ticket-108/`.
+- The original reports and finding-by-finding ledger are in the ignored `logs/ticket-108/`.
 
 Left for the owner:
 
