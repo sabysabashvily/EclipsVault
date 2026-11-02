@@ -6,8 +6,10 @@ secrets or your servers. This guide is the production runbook; for feature detai
 
 ## 1. Prerequisites
 
-- A database: SQL Server 2017 or later, or PostgreSQL 17+ (see `Database:Provider`). The
-  migrations use `TRIM`, `TRANSLATE` and `STRING_AGG`, which need SQL Server 2017.
+- A database, which you provide: EclipsVault ships no database. We recommend PostgreSQL 17 or
+  later. SQL Server 2017 or later is the fully supported alternative; its migrations use `TRIM`,
+  `TRANSLATE` and `STRING_AGG`, which need SQL Server 2017. A customer who chooses SQL Server
+  licenses it from Microsoft themselves.
 - A TLS-terminating reverse proxy or ingress in front of the app (the container serves plain HTTP on
   port 8080 inside your network).
 - A place to hold a persistent Data Protection key ring directory, shared by every replica.
@@ -16,8 +18,8 @@ secrets or your servers. This guide is the production runbook; for feature detai
 
 | Variable | Purpose |
 |---|---|
-| `ConnectionStrings__DefaultConnection` | Database connection string. Use a least-privilege login and enforce TLS (`Encrypt=True;TrustServerCertificate=False` on SQL Server, `SSL Mode=Require` on PostgreSQL). |
-| `Database__Provider` | `SqlServer` (default) or `Postgres`. |
+| `Database__Provider` | `Postgres` for PostgreSQL, or `SqlServer`. **Set it on a PostgreSQL install:** when it is unset the vault uses SQL Server, and a PostgreSQL connection string then fails at startup. |
+| `ConnectionStrings__DefaultConnection` | Database connection string, for a least-privilege login with TLS enforced. PostgreSQL: `Host=db.example.internal;Port=5432;Database=eclipsvault;Username=eclipsvault_app;Password=…;SSL Mode=Require`. `Require` encrypts but does not check the server's certificate; `SSL Mode=VerifyFull` also verifies the certificate and the server's host name. SQL Server: `Server=db.example.internal;Database=eclipsvault;User Id=eclipsvault_app;Password=…;Encrypt=True;TrustServerCertificate=False`. |
 | `ECLIPSVAULT_KEK` | Master key: `openssl rand -base64 32`. Or use a KMS engine — set `Crypto__Engine=VaultTransit` and the `Vault` settings (see `docker-compose.yml` for the shape). |
 | `ECLIPSVAULT_AUDIT_SIGNING_KEY` | Base64 PKCS#8 P-256 private key for signing audit checkpoints. |
 | `DataProtection__KeyRingPath` | Durable directory shared by all nodes (the keys are sealed at rest with the KEK). |
@@ -29,15 +31,25 @@ secrets or your servers. This guide is the production runbook; for feature detai
 
 ## 3. Apply the schema from your deploy job (not the app)
 
-The running app does not have rights to change the schema. Run migrations once, from your deploy
-pipeline, with a login that has DDL rights (which the app's own login does not):
+The running app does not have rights to change the schema. Run the migrations for each release from
+your deploy pipeline, with a login that has DDL rights (which the app's own login does not). They
+run from a checkout of the release you deploy, with the .NET 10 SDK and the EF Core tool
+(`dotnet tool install --global dotnet-ef`).
 
-    ConnectionStrings__DefaultConnection="…" \
-    dotnet ef database update --project EclipsVault.Infrastructure --startup-project EclipsVault.Web
+PostgreSQL:
 
-For PostgreSQL, use the `EclipsVault.Migrations.Postgres` project and set
-`ECLIPSVAULT_DESIGN_PROVIDER=Postgres` (the design-time factory also reads
-`ECLIPSVAULT_DESIGN_CONNECTION` if you keep the runtime connection string out of that shell). The app
+    ECLIPSVAULT_DESIGN_PROVIDER=Postgres \
+    ECLIPSVAULT_DESIGN_CONNECTION="Host=…;Port=5432;Database=eclipsvault;Username=<deploy login>;Password=…;SSL Mode=Require" \
+    dotnet ef database update -p EclipsVault.Migrations.Postgres -s EclipsVault.Web -c EclipsVaultDbContext
+
+SQL Server:
+
+    ECLIPSVAULT_DESIGN_CONNECTION="Server=…;Database=eclipsvault;User Id=<deploy login>;Password=…;Encrypt=True;TrustServerCertificate=False" \
+    dotnet ef database update -p EclipsVault.Infrastructure -s EclipsVault.Web -c EclipsVaultDbContext
+
+The tool chooses the engine from `ECLIPSVAULT_DESIGN_PROVIDER`, not `Database__Provider`, and unset
+it targets SQL Server. Each engine has its own migrations project. Without
+`ECLIPSVAULT_DESIGN_CONNECTION`, the tool reads `ConnectionStrings__DefaultConnection`. The app
 verifies the schema at startup and refuses to start against a mismatched one.
 
 ### Dynamic secrets: the managed target
@@ -45,6 +57,10 @@ verifies the schema at startup and refuses to start against a mismatched one.
 Skip this unless you use **dynamic secrets** or **managed rotation**. Both work by issuing
 `CREATE LOGIN`, `DROP LOGIN`, and `ALTER LOGIN` against the database whose credentials you want the
 vault to manage. That needs server-level rights there — `ALTER ANY LOGIN` on SQL Server.
+
+The managed target must be SQL Server, whichever database the vault itself runs on: those are SQL
+Server statements, and SQL Server is the only target the vault supports. A vault on PostgreSQL can
+manage a SQL Server target.
 
 Those rights are why this is a **second, separate connection string**:
 
@@ -68,6 +84,8 @@ On an empty vault, create the first admin once (screened like any password), the
 
     Seed__AdminPassword='<a password unique to this deployment>' dotnet EclipsVault.Web.dll
 
+With Docker, pass it to the first run as `-e Seed__AdminPassword=…` instead.
+
 ## 5. Run (Docker)
 
 Released images are published to `ghcr.io/sabysabashvily/eclipsvault` and are **cryptographically
@@ -76,8 +94,8 @@ signed** — verify the image and pin it to the digest you verified *before* run
 reference below in place of a locally-built tag.
 
     docker run -d --name eclipsvault \
-      -e ConnectionStrings__DefaultConnection="…" \
       -e Database__Provider=Postgres \
+      -e ConnectionStrings__DefaultConnection="Host=…;Port=5432;Database=eclipsvault;Username=eclipsvault_app;Password=…;SSL Mode=Require" \
       -e ECLIPSVAULT_KEK="…" \
       -e ECLIPSVAULT_AUDIT_SIGNING_KEY="…" \
       -e DataProtection__KeyRingPath=/keyring \
@@ -88,6 +106,8 @@ reference below in place of a locally-built tag.
       -v /srv/eclipsvault/keyring:/keyring \
       -p 8080:8080 \
       eclipsvault:local
+
+On SQL Server, set `Database__Provider=SqlServer` and its connection string instead.
 
 Put your reverse proxy in front, terminating TLS and forwarding `X-Forwarded-For` /
 `X-Forwarded-Proto` to the container.
@@ -112,7 +132,8 @@ Portions of this software are copyright © The FreeType Project (www.freetype.or
 
 Back up the database **and** the Data Protection key ring directory. The key ring is sealed with your
 KEK, so a backup is inert without `ECLIPSVAULT_KEK` — keep the KEK in your secret manager, not beside
-the backup.
+the backup. [`BACKUP_AND_RECOVERY.md`](BACKUP_AND_RECOVERY.md) has the PostgreSQL commands and the
+restore procedure.
 
 ## 8. Upgrading
 
