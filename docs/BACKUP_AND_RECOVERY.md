@@ -13,7 +13,7 @@ expands on the summary in [`INSTALL.md`](INSTALL.md) §7.
 
 | # | Item | Where it is | If you lose it |
 |---|---|---|---|
-| 1 | **Database** | Your SQL Server / PostgreSQL | All secrets, versions, users, audit trail — gone. |
+| 1 | **Database** | Your PostgreSQL or SQL Server database | All secrets, versions, users, audit trail — gone. |
 | 2 | **Data Protection key ring** | `DataProtection__KeyRingPath` | Sessions/antiforgery break; sealed at rest with the KEK, so it is inert on its own. |
 | 3 | **The KEK** (`ECLIPSVAULT_KEK`) and any **retired KEKs** (`ECLIPSVAULT_KEK_RETIRED`) | Your secret manager / KMS | **Every secret is permanently unrecoverable.** There is no vendor recovery. |
 | 4 | **Audit signing key** (`ECLIPSVAULT_AUDIT_SIGNING_KEY`) | Your secret manager | You can still read the audit trail, but new checkpoints won't chain to the old ones under the same key. |
@@ -26,15 +26,41 @@ If you use the KMS engine (`Crypto:Engine=VaultTransit`), the KEK lives in Hashi
 `ECLIPSVAULT_KEK` — then item 3 is "back up / seal-and-recover your Vault Transit key" per Vault's own
 runbook, and the app never holds the master key at all.
 
+### Backing up the database
+
+On PostgreSQL, dump the vault's database with `pg_dump` at least as new as the server: an older
+`pg_dump` refuses to dump a newer server. Connect with TLS as a login that can read every table;
+the deploy login that applies the migrations can:
+
+    pg_dump --format=custom --file=eclipsvault.dump \
+      "host=db.example.internal dbname=eclipsvault user=<deploy login> sslmode=require"
+
+The password comes from `PGPASSWORD` or `~/.pgpass`, as for any PostgreSQL client.
+
+On SQL Server, use its own full backup and restore. Either way the result is item 1: it goes in the
+encrypted backup with the key ring, never beside the KEK.
+
 ## Restore procedure
 
-1. **Provision a clean database** and restore the backup (item 1).
+1. **Provision a clean database** and restore the backup (item 1). On PostgreSQL, first create the
+   vault's logins on the new server under the same names, and an empty database owned by the
+   deploy login. Then restore as that login, so the tables keep their owner and the app login's
+   grants:
+
+       pg_restore --exit-on-error \
+         --dbname="host=db.example.internal dbname=eclipsvault user=<deploy login> sslmode=require" \
+         eclipsvault.dump
+
+   On SQL Server, recreate the vault's logins on the new server and map the restored database's
+   users to them, or the app login cannot sign in.
+
 2. **Restore the key ring** directory to `DataProtection__KeyRingPath` (item 2).
 3. **Supply the same KEK.** Set `ECLIPSVAULT_KEK` to the exact key that sealed this data. If secrets
    were written under earlier keys and not yet rotated forward, also set `ECLIPSVAULT_KEK_RETIRED`
    (the `;`-separated list) so their DEKs still unwrap (item 3).
 4. **Supply the audit signing key** (`ECLIPSVAULT_AUDIT_SIGNING_KEY`, item 4).
-5. **Start the app** with `ASPNETCORE_ENVIRONMENT=Production` and the normal connection string.
+5. **Start the app** with `ASPNETCORE_ENVIRONMENT=Production`, the normal connection string, and the
+   same `Database__Provider`.
 6. **Verify** (this is the part people skip):
    - Startup logs the license line and does **not** warn about a missing/malformed KEK.
    - Sign in, complete MFA, and **reveal one secret** — proves the KEK unwraps a real DEK.

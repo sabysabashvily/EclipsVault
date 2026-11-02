@@ -61,9 +61,10 @@ Dependency rule: `Web → Infrastructure → Core`. Nothing ever points outward.
 
 The interceptor is also the choke point through which **every** row passes on its way to the database (whether injected there or added by the sink), so it stamps each one into the tamper-evidence hash chain just before persistence. Repositories persist their own aggregate only; a service never borrows another aggregate's repository — or a `DbContext` — just to record an event.
 
-**Schema is owned by EF Core Migrations** (`Infrastructure/Migrations/`); there is no `EnsureCreated` and no hand-written DDL. Add a schema change with:
+**Schema is owned by EF Core Migrations**, one set per database (`EclipsVault.Migrations.Postgres` and `EclipsVault.Infrastructure/Migrations/`); there is no `EnsureCreated` and no hand-written DDL. Every model change needs a migration in both sets:
 
 ```bash
+ECLIPSVAULT_DESIGN_PROVIDER=Postgres dotnet ef migrations add <Name> -p EclipsVault.Migrations.Postgres -s EclipsVault.Web
 dotnet ef migrations add <Name> --project EclipsVault.Infrastructure --startup-project EclipsVault.Infrastructure
 ```
 
@@ -72,9 +73,17 @@ A design-time `IDesignTimeDbContextFactory` lets the tooling build the context w
 **Applying them is a deploy job's work, not the vault's.** Development migrates itself on startup. Anywhere else the running service will not change the schema: a service that migrates on boot holds rights to drop and rewrite every table — the audit trail included — for its entire life, having needed them for a few seconds, and anyone who reaches its connection string inherits them. Run this from your deploy job, with a login the vault itself does not have:
 
 ```bash
-ConnectionStrings__DefaultConnection="…" \
-dotnet ef database update --project EclipsVault.Infrastructure --startup-project EclipsVault.Web
+# PostgreSQL
+ECLIPSVAULT_DESIGN_PROVIDER=Postgres \
+ECLIPSVAULT_DESIGN_CONNECTION="Host=…;Port=5432;Database=eclipsvault;Username=<deploy login>;Password=…;SSL Mode=Require" \
+dotnet ef database update -p EclipsVault.Migrations.Postgres -s EclipsVault.Web -c EclipsVaultDbContext
+
+# SQL Server
+ECLIPSVAULT_DESIGN_CONNECTION="Server=…;Database=eclipsvault;User Id=<deploy login>;Password=…;Encrypt=True;TrustServerCertificate=False" \
+dotnet ef database update -p EclipsVault.Infrastructure -s EclipsVault.Web -c EclipsVaultDbContext
 ```
+
+[`docs/INSTALL.md`](docs/INSTALL.md) §3 has the details.
 
 Checking is not applying, so the app still verifies: a schema behind the code **fails startup** rather than serving against it. For a single-node install with no deploy pipeline, `Database:MigrateOnStartup=true` restores the old behaviour — and the trade is explicit, since the app's login then needs DDL rights.
 
@@ -116,13 +125,13 @@ that still names SQL Server.
 
 **Redis requires a password even locally.** It holds the answers to "is this session revoked?" and "is this address blocked?", so anyone who can write it can restore a session its owner signed out of and lift an intrusion block — the vault's kill switches become advisory to whoever reaches port 6379. Startup refuses a passwordless connection string (`Redis:AllowUnauthenticated=true` to override, for an instance genuinely unreachable by anything else). Developing against an authenticated Redis also means the production configuration is the one that has been exercised.
 
-(You can still point the app at your own SQL Server / PostgreSQL / SMTP / KMS / IdP via configuration.)
+(You can still point the app at your own PostgreSQL / SQL Server / SMTP / KMS / IdP via configuration.)
 
 The Keycloak realm is **imported from `keycloak/eclipsvault-realm.json`**, not clicked together in a UI, so every developer gets the same IdP. It ships two users, both with the dev-user password: `devon@eclipsvault.local`, which matches the seeded dev-user account and signs in; and `idp-only-user@eclipsvault.local`, which is genuine to the IdP and unknown to the vault — it exists to prove the vault refuses it. **The IdP proves who you are; it does not decide whether you are allowed in.**
 
-**Configuration & secrets** — the database connection string is deliberately **absent from `appsettings.json`** so credentials are never committed. Local development reads it (plus the dev KEK fallback and seed passwords) from `appsettings.Development.json`, which is git-ignored — copy `appsettings.Development.json.template` to create it. For any real deployment, supply it via the environment (`ConnectionStrings__DefaultConnection`) or a secret store, using a least-privilege login and TLS enforced (`Encrypt=True;TrustServerCertificate=False` on SQL Server, `SSL Mode=Require` on PostgreSQL). Startup fails fast with a clear message if it is missing.
+**Configuration & secrets** — the database connection string is deliberately **absent from `appsettings.json`** so credentials are never committed. Local development reads it (plus the dev KEK fallback and seed passwords) from `appsettings.Development.json`, which is git-ignored — copy `appsettings.Development.json.template` to create it. For any real deployment, supply it via the environment (`ConnectionStrings__DefaultConnection`) or a secret store, using a least-privilege login and TLS enforced (`SSL Mode=Require` on PostgreSQL, `Encrypt=True;TrustServerCertificate=False` on SQL Server). Startup fails fast with a clear message if it is missing.
 
-**Choosing the database** — `Database:Provider` selects the engine: `SqlServer` (default) or `Postgres`. An unrecognised value fails at startup rather than falling back, because silently starting on a database nobody chose is how secrets end up somewhere their operator is not looking.
+**Choosing the database** — EclipsVault ships no database; you provide one. We recommend PostgreSQL, the engine the development stack runs on; CI runs the integration tests on PostgreSQL and SQL Server alike. SQL Server is the fully supported alternative, and a customer who chooses SQL Server licenses it from Microsoft themselves. `Database:Provider` selects the engine: `Postgres` or `SqlServer`. When it is unset the vault uses SQL Server, so a PostgreSQL install must set `Database__Provider=Postgres`. An unrecognised value fails at startup rather than falling back, because silently starting on a database nobody chose is how secrets end up somewhere their operator is not looking. [`docs/INSTALL.md`](docs/INSTALL.md) gives the supported versions and production connection strings. Dynamic secrets and managed rotation manage SQL Server logins whichever database the vault itself runs on.
 
 Local development runs on PostgreSQL, from `docker-compose.yml` as above. To develop against SQL Server instead, start one and point the vault at it. SQL Server refuses an `sa` password shorter than 8 characters or drawn from fewer than three of: upper case, lower case, digits and symbols. Leave out `$`, quotes and `;`, which the shell or the connection string would misread.
 
@@ -305,7 +314,7 @@ The mechanisms above are the *what*. These documents are the *boundary* and the 
 - **Cloud KMS** — implement `ICryptoEngine`, register it in `CryptoEngineFactory`, set `Crypto:Engine`. The `VaultTransit` engine is the reference implementation; an AWS KMS or Azure Key Vault engine follows the same shape (wrap/unwrap the DEK via the provider's SDK).
 - **Passkey relying party** — the WebAuthn ceremonies live behind the Core `IPasskeyService` port (implemented in `Infrastructure/Security/WebAuthn`); a managed FIDO2 service could replace the built-in verifier without touching the domain, controllers, or views.
 - **Multi-node** — set `Redis:Enabled=true` to back the IP blacklist, session revocation, and envelope cache with Redis (see [Horizontal scale-out](#horizontal-scale-out-redis)); the `Redis*`/`InMemory*` pairs implement the same Core interfaces, so adding another distributed store (e.g. the rate-limiter partition) is the same swap.
-- **Migrations** — schema is managed by EF Core Migrations (`Infrastructure/Migrations/`), applied at startup via `MigrateAsync()`. The existing dev database was baselined onto the initial migration, so no data was lost in the switch-over.
+- **Migrations** — schema is managed by EF Core Migrations, one set per database (`EclipsVault.Migrations.Postgres` and `EclipsVault.Infrastructure/Migrations/`). Development applies them on startup; anywhere else a deploy job does (see [Solution layout](#solution-layout) and [`docs/INSTALL.md`](docs/INSTALL.md) §3).
 
 ## Proposed roadmap
 
