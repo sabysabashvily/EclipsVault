@@ -4,25 +4,26 @@ using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Infrastructure.Persistence;
 using EclipsVault.Infrastructure.Security;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Mvc.Testing.Handlers;
 using Microsoft.AspNetCore.TestHost;
-using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
-using Testcontainers.MsSql;
 using Xunit;
 
 namespace EclipsVault.IntegrationTests;
 
 /// <summary>
 /// One real vault per test run: the unmodified <c>Program</c> entry point, in Production, against a
-/// SQL Server container (ADR-0010). Authentication and persistence are real. It is configured the way a container
+/// SQL Server or PostgreSQL container, whichever the run chose (ADR-0010, <see cref="VaultDatabase"/>).
+/// Authentication and persistence are real. It is configured the way a container
 /// deployment configures it, through environment variables, so startup runs its real tasks: the
 /// crypto check, migrations, the bootstrap administrator, the legacy-blob upgrade and the audit chain.
 /// Only the auth throttle's clock is frozen, so HTTP budget assertions cannot cross a rate window.
@@ -44,12 +45,7 @@ public sealed partial class VaultFixture : IAsyncLifetime
 
     private static readonly Uri BaseAddress = new("https://localhost");
 
-    // The vault signs in to its database as sa, so the password is per run rather than Testcontainers'
-    // published default. SQL Server requires upper and lower case, a digit and a symbol.
-    private readonly MsSqlContainer _sql = new MsSqlBuilder(SqlServerImage)
-        .WithName($"{Environment.GetEnvironmentVariable("ECLIPSVAULT_TEST_RESOURCE_PREFIX") ?? "eclipsvault-it"}-sql-{Guid.NewGuid():N}")
-        .WithPassword("Sa1!" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16)))
-        .Build();
+    private readonly VaultDatabase _database = VaultDatabase.ForThisRun();
 
     private readonly DirectoryInfo _keyRing = Directory.CreateTempSubdirectory("eclipsvault-it-keys-");
     private readonly List<string> _environment = [];
@@ -70,7 +66,7 @@ public sealed partial class VaultFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _sql.StartAsync();
+        await _database.StartAsync();
         if (Mailbox is not null)
         {
             await Mailbox.StartAsync();
@@ -81,8 +77,8 @@ public sealed partial class VaultFixture : IAsyncLifetime
         }
 
         using var signingKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        SetEnvironment("ConnectionStrings__DefaultConnection",
-            new SqlConnectionStringBuilder(_sql.GetConnectionString()) { InitialCatalog = "EclipsVault" }.ConnectionString);
+        SetEnvironment("Database__Provider", _database.Provider);
+        SetEnvironment("ConnectionStrings__DefaultConnection", _database.ConnectionString());
         SetEnvironment("ECLIPSVAULT_KEK", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
         SetEnvironment("ECLIPSVAULT_AUDIT_SIGNING_KEY", Convert.ToBase64String(signingKey.ExportPkcs8PrivateKey()));
         SetEnvironment("DataProtection__KeyRingPath", _keyRing.FullName);
@@ -139,6 +135,16 @@ public sealed partial class VaultFixture : IAsyncLifetime
         {
             throw new InvalidOperationException($"The vault under test runs as {environment}, not Production.");
         }
+
+        // A run on one engine must never pass while the vault quietly uses the other.
+        using var scope = services.CreateScope();
+        var engine = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().Database.IsNpgsql()
+            ? DatabaseProvider.Postgres
+            : DatabaseProvider.SqlServer;
+        if (engine != _database.Provider)
+        {
+            throw new InvalidOperationException($"The vault under test runs on {engine}, not {_database.Provider}.");
+        }
     }
 
     public async Task DisposeAsync()
@@ -148,7 +154,7 @@ public sealed partial class VaultFixture : IAsyncLifetime
             await _factory.DisposeAsync();
         }
 
-        await _sql.DisposeAsync();
+        await _database.DisposeAsync();
         if (Mailbox is not null)
         {
             await Mailbox.DisposeAsync();
@@ -392,7 +398,7 @@ public sealed record VaultSession(HttpClient Client, CookieContainer Cookies)
     public Cookie? SessionCookie => Cookies.GetCookies(Client.BaseAddress!)[VaultFixture.SessionCookie];
 }
 
-/// <summary>Ordinary HTTP tests share one vault: starting SQL Server per test would take minutes.</summary>
+/// <summary>Ordinary HTTP tests share one vault: starting a database server per test would take minutes.</summary>
 [CollectionDefinition(Name)]
 public sealed class VaultCollection : ICollectionFixture<VaultFixture>
 {

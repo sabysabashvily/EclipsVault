@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Hosts the real vault over HTTP against a real SQL Server that Testcontainers starts per run
-       (ADR-0010), and runs data migrations on real SQL Server and PostgreSQL databases, so it needs
+  <!-- Hosts the real vault over HTTP against a real SQL Server or PostgreSQL that Testcontainers starts
+       per run (ADR-0010), and runs data migrations on real SQL Server and PostgreSQL databases, so it needs
        Docker, including a Redis container for session-registry tests. The unit suite in EclipsVault.Tests stays Docker-free. -->
   <PropertyGroup>
     <IsPackable>false</IsPackable>

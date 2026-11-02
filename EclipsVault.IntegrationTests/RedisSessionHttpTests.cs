@@ -35,7 +35,7 @@ public sealed class RedisSessionHttpTests(RedisVaultFixture fixture)
         using var blocker = fixture.Vault.Services.CreateScope();
         var database = blocker.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
         await using var transaction = await database.Database.BeginTransactionAsync();
-        var connectionId = await database.Database.SqlQuery<int>($"SELECT CAST(@@SPID AS int) AS Value").SingleAsync();
+        var connectionId = await ConnectionIdAsync(database);
         // Holding the account lock stops the request before its locked recheck of the store.
         await blocker.ServiceProvider.GetRequiredService<IAuditChainLocker>().AcquireAsync(database,
             $"EclipsVault:Account:{original.GetUserId():D}", TimeSpan.FromSeconds(15), default);
@@ -78,10 +78,13 @@ public sealed class RedisSessionHttpTests(RedisVaultFixture fixture)
         using var blocker = fixture.Vault.Services.CreateScope();
         var database = blocker.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
         await using var transaction = await database.Database.BeginTransactionAsync();
-        var connectionId = await database.Database.SqlQuery<int>($"SELECT CAST(@@SPID AS int) AS Value").SingleAsync();
+        var connectionId = await ConnectionIdAsync(database);
         // Holding the account's row, not its lock, lets the request pass its locked recheck of the
         // store and stop at the write, so the store fails only after the change can commit.
-        await database.Database.ExecuteSqlAsync($"SELECT Id FROM Users WITH (UPDLOCK, ROWLOCK) WHERE Id = {original.GetUserId()}");
+        // Each engine's lock blocks writers of the row and lets readers through.
+        await (database.Database.IsNpgsql()
+            ? database.Database.ExecuteSqlAsync($"""SELECT "Id" FROM "Users" WHERE "Id" = {original.GetUserId()} FOR NO KEY UPDATE""")
+            : database.Database.ExecuteSqlAsync($"SELECT Id FROM Users WITH (UPDLOCK, ROWLOCK) WHERE Id = {original.GetUserId()}"));
         var change = ProfileApi.SendAsync(owner, HttpMethod.Post, "/api/ui/profile/password", new { operationId });
         try
         {
@@ -219,11 +222,18 @@ public sealed class RedisSessionHttpTests(RedisVaultFixture fixture)
                 ["Redis:SessionIncarnation"] = "after-recovery",
             })));
 
+    private static Task<int> ConnectionIdAsync(EclipsVaultDbContext database) => database.Database.IsNpgsql()
+        ? database.Database.SqlQuery<int>($"SELECT pg_backend_pid() AS \"Value\"").SingleAsync()
+        : database.Database.SqlQuery<int>($"SELECT CAST(@@SPID AS int) AS Value").SingleAsync();
+
     private static async Task WaitForBlockedRequestAsync(EclipsVaultDbContext database, int connectionId)
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        while (await database.Database.SqlQuery<int>($"SELECT COUNT(*) AS Value FROM sys.dm_exec_requests WHERE blocking_session_id = {connectionId}")
-            .SingleAsync(deadline.Token) == 0)
+        // On PostgreSQL, pg_locks is read live; pg_stat_activity would be read once per transaction.
+        var blockedRequests = database.Database.IsNpgsql()
+            ? database.Database.SqlQuery<int>($"""SELECT COUNT(*)::int AS "Value" FROM pg_locks WHERE NOT granted AND {connectionId} = ANY(pg_blocking_pids(pid))""")
+            : database.Database.SqlQuery<int>($"SELECT COUNT(*) AS Value FROM sys.dm_exec_requests WHERE blocking_session_id = {connectionId}");
+        while (await blockedRequests.SingleAsync(deadline.Token) == 0)
         {
             await Task.Delay(TimeSpan.FromMilliseconds(20), deadline.Token);
         }
