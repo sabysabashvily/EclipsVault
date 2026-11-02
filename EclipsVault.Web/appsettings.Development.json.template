@@ -1,7 +1,11 @@
 {
   "//": "Copy this file to appsettings.Development.json (which is git-ignored) and fill in local values. Nothing here should ever be a real/production secret.",
   "ConnectionStrings": {
-    "DefaultConnection": "Server=localhost,1433;Database=EclipsVaultUmbraDb;User Id=sa;Password=<your-local-sql-password>;Encrypt=True;TrustServerCertificate=True"
+    "DefaultConnection": "Host=localhost;Port=5432;Database=EclipsVaultUmbraDb;Username=eclipsvault;Password=dev-postgres-password"
+  },
+  "Database": {
+    "//": "Matches the PostgreSQL db container from docker-compose, whose password is public in that file. To develop against SQL Server instead, see 'Choosing the database' in README.md.",
+    "Provider": "Postgres"
   },
   "AllowedHosts": "localhost;127.0.0.1;[::1]",
   "Crypto": {

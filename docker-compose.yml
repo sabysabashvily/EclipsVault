@@ -7,7 +7,7 @@
 # indefensible anywhere else.
 #
 # Every port is published to 127.0.0.1 rather than 0.0.0.0. Docker publishes to all interfaces by
-# default, which on a laptop on a café or office network hands SQL Server, Vault and Redis — with
+# default, which on a laptop on a café or office network hands PostgreSQL, Vault and Redis — with
 # the credentials written below — to everyone on that network, and does it silently. Binding to
 # loopback keeps these reachable from this machine only.
 #
@@ -15,25 +15,43 @@
 # not necessarily the thing that starts tomorrow, and a supply-chain compromise arrives on the next
 # `docker compose pull` with nothing in the diff to show for it.
 #
-#   docker compose up -d
+# Data worth keeping lives in named volumes (PostgreSQL and Redis). A cleanup that removes stopped
+# containers and images leaves volumes alone, and `docker compose up -d` recreates everything else.
+# The other services keep nothing worth keeping: Vault runs in memory by design, Mailpit's captured
+# mail is disposable, and Keycloak imports its realm from source into every new container.
+#
+#   docker compose up -d --wait     # returns once every service runs and PostgreSQL is healthy
 #   # one-time: enable Vault's Transit engine + create the master key (only if using VaultTransit)
 #   curl -s -H "X-Vault-Token: dev-root" -X POST -d '{"type":"transit"}' http://127.0.0.1:8200/v1/sys/mounts/transit
 #   curl -s -H "X-Vault-Token: dev-root" -X POST http://127.0.0.1:8200/v1/transit/keys/eclipsvault
+#   Database__Provider=Postgres \
+#   ConnectionStrings__DefaultConnection="Host=localhost;Port=5432;Database=EclipsVaultUmbraDb;Username=eclipsvault;Password=dev-postgres-password" \
 #   dotnet run --project EclipsVault.Web
 #
 # UIs:  Mailpit  http://127.0.0.1:8025   ·   Vault  http://127.0.0.1:8200 (token: dev-root)
 
 services:
+  # PostgreSQL, pinned by digest to the image the integration tests run, so a local vault and the
+  # tests exercise the same server build.
   db:
-    image: mcr.microsoft.com/mssql/server:2022-CU26-ubuntu-22.04
-    container_name: eclipsvault-db
+    image: postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
+    container_name: eclipsvault-postgres
     environment:
-      ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "Vision1889Academy"
+      POSTGRES_USER: "eclipsvault"
+      POSTGRES_PASSWORD: "dev-postgres-password"
+      POSTGRES_DB: "EclipsVaultUmbraDb"
     ports:
-      - "127.0.0.1:1433:1433"
+      - "127.0.0.1:5432:5432"
     volumes:
-      - eclipsvault-db:/var/opt/mssql
+      - eclipsvault-postgres:/var/lib/postgresql/data
+    healthcheck:
+      # Over TCP rather than the default socket: on first start the image creates the database with
+      # a temporary server that listens on the socket only, which would pass the check before
+      # PostgreSQL accepts the vault's connections.
+      test: ["CMD", "pg_isready", "--host=127.0.0.1", "--username=eclipsvault", "--dbname=EclipsVaultUmbraDb"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
   # HashiCorp Vault (dev mode) — holds the master key when Crypto:Engine=VaultTransit,
   # so the KEK never lives in the app process.
@@ -101,5 +119,5 @@ services:
       - ./keycloak/eclipsvault-realm.json:/opt/keycloak/data/import/eclipsvault-realm.json:ro
 
 volumes:
-  eclipsvault-db:
+  eclipsvault-postgres:
   eclipsvault-redis:
