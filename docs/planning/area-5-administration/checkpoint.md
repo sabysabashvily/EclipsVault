@@ -101,3 +101,61 @@ Left for the owner:
 
 To restart: `git switch area-5a-accounts` (head is this commit). Build the Angular UI on its `.nvmrc`
 Node, then run the AGENTS.md checks. #107 (last administrator and own account) is next, on this branch.
+
+## Delivery: ticket 2 (#107)
+
+Done locally on `area-5a-accounts` in the root checkout, on 2026-11-02, and not pushed.
+
+- `5bb792a` Merge main so part 5a's tests also run on PostgreSQL.
+  - Brings in #66: the integration suite runs on PostgreSQL when
+    `ECLIPSVAULT_TEST_DATABASE_PROVIDER=Postgres`.
+- `2a65a15` Run the concurrent account-creation test on PostgreSQL as well.
+  - Its wait read `sys.dm_exec_requests`, which only SQL Server has; on PostgreSQL it reads `pg_locks`.
+  - With that, the suite passed 836 of 836 on each engine. No other PostgreSQL-only failure.
+- `1c14c04` Keep an enabled administrator and refuse own-account admin changes.
+  - Demote, disable and delete of an enabled Top Secret account recheck, under a vault-wide
+    `EclipsVault:Administrators` lock, that another enabled administrator remains. The lock is taken
+    through `IAuditChainLocker` after the account's lock and before the audit chain's, inside the change's
+    own transaction.
+  - Own Reset MFA, Disable and Delete are refused; the reset points to Profile.
+  - Core enforces the New user and Edit user form rules, plus defined clearances, "First Last" ≤ 64 and
+    a project key of 1–64 after trimming. Each refusal names its field.
+  - A create that loses its generated address takes the next free one once, then asks to try again.
+- This section is the ticket's last commit.
+
+Each finding was shown failing against the code before the fix: 36 unit cases and 12 integration tests,
+with the races on both databases. The undefined clearance never reached Core over the Legacy forms,
+because MVC's enum binding refuses it first. Core's own rule is proven by the unit tests.
+
+Checks passed on the final tree:
+
+- locked restore
+- Release build with 0 warnings
+- `dotnet format --verify-no-changes`
+- unit tests: 788
+- integration tests on SQL Server: 851
+- integration tests on PostgreSQL: 851
+- both pending-model checks (no migration)
+- the hook tests: 6
+
+The integration suites ran serially with a local runsettings file. A new `SingleAdministratorFixture`
+host proves the last-administrator refusal over HTTP.
+
+Reviews: the security reviewer, then the Standards and Spec reviews.
+
+- All three ran on Claude Opus 5.5 at effort high.
+- GPT Sol 6.1 was tried for Standards and Spec and refused for its usage limit (until 2026-11-04), so
+  the ticket had no cross-model review.
+- The security reviewer found no defects, only one info item.
+- The reports and the ledger are in the ignored `logs/ticket-107/`.
+
+Left for the owner:
+
+- A timed-out wait on the administrators lock or an account lock is reported as the audit trail being
+  unavailable. This is the shared locker's message.
+- The Legacy forms show no message when a posted clearance is undefined; they re-render and change
+  nothing.
+
+To restart: `git switch area-5a-accounts` (head is this commit). Build the Angular UI on its `.nvmrc`
+Node, then run the AGENTS.md checks, the integration suite once per engine. #108 (service accounts) is
+next, on this branch.
