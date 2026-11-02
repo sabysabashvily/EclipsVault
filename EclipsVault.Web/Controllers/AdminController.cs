@@ -80,13 +80,20 @@ public sealed class AdminController : VaultController
     [HttpPost]
     public async Task<IActionResult> ResetTotp(Guid id, CancellationToken ct)
     {
-        if (await _userAdmin.ResetTotpAsync(id, ct))
+        try
         {
-            this.FlashSuccess("MFA was reset — the user will enroll a new authenticator at their next sign-in.");
+            if (await _userAdmin.ResetTotpAsync(id, ct))
+            {
+                this.FlashSuccess("MFA was reset — the user will enroll a new authenticator at their next sign-in.");
+            }
+            else
+            {
+                this.FlashError("User not found.");
+            }
         }
-        else
+        catch (VaultAdminException ex)
         {
-            this.FlashError("User not found.");
+            this.FlashError(ex.Message);
         }
 
         return RedirectToAction(nameof(Users));

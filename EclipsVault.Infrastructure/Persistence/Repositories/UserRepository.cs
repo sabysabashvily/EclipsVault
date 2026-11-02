@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using EclipsVault.Core.Domain;
 using EclipsVault.Core.Domain.Entities;
+using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Infrastructure.Persistence.Configurations;
 using Microsoft.EntityFrameworkCore;
@@ -81,6 +82,9 @@ public sealed class UserRepository : IUserRepository
 
     public async Task<IReadOnlyList<User>> ListAsync(CancellationToken ct)
         => await _context.Users.AsNoTracking().OrderBy(u => u.Username).ToListAsync(ct);
+
+    public Task<bool> AnyOtherEnabledAdministratorAsync(Guid accountId, CancellationToken ct)
+        => _context.Users.AnyAsync(u => u.Id != accountId && u.Clearance == ClearanceLevel.TopSecret && !u.IsDisabled, ct);
 
     public async Task AddAsync(User user, CancellationToken ct)
     {

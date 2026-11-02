@@ -35,6 +35,9 @@ public interface IUserRepository
 
     Task<IReadOnlyList<User>> ListAsync(CancellationToken ct);
 
+    /// <summary>Whether an enabled administrator other than <paramref name="accountId"/> exists, as committed now.</summary>
+    Task<bool> AnyOtherEnabledAdministratorAsync(Guid accountId, CancellationToken ct);
+
     /// <exception cref="EmailAddressTakenException">Another account took the user's email first.</exception>
     Task AddAsync(User user, CancellationToken ct);
 

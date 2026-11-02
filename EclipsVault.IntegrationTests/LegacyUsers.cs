@@ -46,6 +46,9 @@ internal static class LegacyUsers
     public static async Task<HttpResponseMessage> ForceLogoutAsync(HttpClient admin, Guid accountId)
         => await admin.PostAsync($"/Admin/ForceLogout/{accountId}", await FormAsync(admin, new()));
 
+    public static async Task<HttpResponseMessage> ResetMfaAsync(HttpClient admin, Guid accountId)
+        => await admin.PostAsync($"/Admin/ResetTotp/{accountId}", await FormAsync(admin, new()));
+
     public static async Task<HttpResponseMessage> DeleteAsync(HttpClient admin, Guid accountId)
         => await admin.PostAsync($"/Admin/DeleteUser/{accountId}", await FormAsync(admin, new()));
 

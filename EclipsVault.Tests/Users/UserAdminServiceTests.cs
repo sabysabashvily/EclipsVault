@@ -36,7 +36,7 @@ public class UserAdminServiceTests
     public async Task A_create_whose_commit_fails_emails_no_one_and_reports_the_audit_trail_unavailable()
     {
         var vault = new Vault();
-        vault.Changes.Failure = new AuditWriteFailedException("rejected");
+        vault.Changes.Failures.Enqueue(new AuditWriteFailedException("rejected"));
 
         await Assert.ThrowsAsync<AuditWriteFailedException>(() => vault.Service.CreateAsync(NewPerson("it-unrecorded"), default));
 
@@ -59,7 +59,7 @@ public class UserAdminServiceTests
     public async Task A_create_that_loses_the_username_race_answers_the_checks_conflict_and_emails_no_one()
     {
         var vault = new Vault();
-        vault.Changes.Failure = new UsernameTakenException();
+        vault.Changes.Failures.Enqueue(new UsernameTakenException());
 
         var conflict = await Assert.ThrowsAsync<VaultAdminException>(() => vault.Service.CreateAsync(NewPerson("it-raced"), default));
 
@@ -72,7 +72,7 @@ public class UserAdminServiceTests
     {
         var vault = new Vault();
         vault.Changes.SavedFirstByAnother = new User { Id = Guid.NewGuid(), Username = "it-raced", Email = "new.person.1@example.test" };
-        vault.Changes.Failure = new EmailAddressTakenException();
+        vault.Changes.Failures.Enqueue(new EmailAddressTakenException());
 
         var conflict = await Assert.ThrowsAsync<VaultAdminException>(() => vault.Service.CreateAsync(NewPerson("it-raced"), default));
 
@@ -80,13 +80,30 @@ public class UserAdminServiceTests
     }
 
     [Fact]
-    public async Task A_create_that_loses_only_its_address_reports_the_address_conflict()
+    public async Task A_create_that_loses_only_its_address_takes_the_next_free_address()
     {
         var vault = new Vault();
         vault.Changes.SavedFirstByAnother = new User { Id = Guid.NewGuid(), Username = "it-other-person", Email = "new.person.1@example.test" };
-        vault.Changes.Failure = new EmailAddressTakenException();
+        vault.Changes.Failures.Enqueue(new EmailAddressTakenException());
 
-        await Assert.ThrowsAsync<EmailAddressTakenException>(() => vault.Service.CreateAsync(NewPerson("it-raced"), default));
+        var created = await vault.Service.CreateAsync(NewPerson("it-raced"), default);
+
+        Assert.Equal(["stage new it-raced", "stage new it-raced", "commit UserCreated (generation 0)", "email new.person.2@example.test"], vault.Steps);
+        Assert.Equal("new.person.2@example.test", created.Email);
+    }
+
+    [Fact]
+    public async Task A_create_that_loses_its_address_twice_asks_the_administrator_to_try_again()
+    {
+        var vault = new Vault();
+        vault.Changes.SavedFirstByAnother = new User { Id = Guid.NewGuid(), Username = "it-other-person", Email = "new.person.1@example.test" };
+        vault.Changes.Failures.Enqueue(new EmailAddressTakenException());
+        vault.Changes.Failures.Enqueue(new EmailAddressTakenException());
+
+        var refusal = await Assert.ThrowsAsync<VaultAdminException>(() => vault.Service.CreateAsync(NewPerson("it-raced"), default));
+
+        Assert.Equal("Another account for the same name was created at the same moment. Try again.", refusal.Message);
+        Assert.Equal(["stage new it-raced", "stage new it-raced"], vault.Steps);
     }
 
     [Fact]
@@ -97,7 +114,7 @@ public class UserAdminServiceTests
 
         Assert.True(await vault.Service.SetRoleAsync(TargetId, ClearanceLevel.Standard, " payments ", default));
 
-        Assert.Equal(["commit UserRoleChanged (generation 1)"], vault.Steps);
+        Assert.Equal(["lock administrators", "commit UserRoleChanged (generation 1)"], vault.Steps);
         Assert.Equal(ClearanceLevel.Standard, target.Clearance);
         Assert.Equal("PAYMENTS", target.ProjectKey);
     }
@@ -215,6 +232,196 @@ public class UserAdminServiceTests
         Assert.Equal(["revoke sessions"], vault.Steps);
     }
 
+    private const string LastToDemote = "Cannot demote the last TopSecret administrator — the vault would become unmanageable.";
+    private const string LastToDisable = "Cannot disable the last TopSecret administrator.";
+    private const string LastToDelete = "Cannot delete the last TopSecret administrator — the vault would become unmanageable.";
+
+    private static readonly string[] Demoted = ["lock administrators", "commit UserRoleChanged (generation 1)"];
+    private static readonly string[] Disabled = ["lock administrators", "commit UserDisabled (generation 1)"];
+    private static readonly string[] Deleted = ["stage removal it-target", "lock administrators", "commit UserDeleted (generation 0)"];
+
+    /// <summary>
+    /// The enabled administrator it-target is demoted, disabled or deleted while the vault holds one other
+    /// account. The administrator signed in is not an account here, so only that other account decides
+    /// whether an enabled administrator would remain.
+    /// </summary>
+    public static TheoryData<Guid, Func<UserAdminService, Task>, User[], string[]> LastAdministratorCases => new()
+    {
+        // signed in as, change to it-target, the other account, what reached the vault
+        { AdministratorId, Demote, [OtherAdministrator(enabled: true)], Demoted },
+        { AdministratorId, Demote, [OtherAdministrator(enabled: false)], ["lock administrators", $"refused: {LastToDemote}"] },
+        { AdministratorId, Demote, [], ["lock administrators", $"refused: {LastToDemote}"] },
+        { TargetId, Demote, [OtherAdministrator(enabled: true)], Demoted },
+        { TargetId, Demote, [OtherAdministrator(enabled: false)], ["lock administrators", $"refused: {LastToDemote}"] },
+        { TargetId, Demote, [], ["lock administrators", $"refused: {LastToDemote}"] },
+        { AdministratorId, Disable, [OtherAdministrator(enabled: true)], Disabled },
+        { AdministratorId, Disable, [OtherAdministrator(enabled: false)], ["lock administrators", $"refused: {LastToDisable}"] },
+        { AdministratorId, Disable, [], ["lock administrators", $"refused: {LastToDisable}"] },
+        { AdministratorId, Delete, [OtherAdministrator(enabled: true)], Deleted },
+        { AdministratorId, Delete, [OtherAdministrator(enabled: false)], ["stage removal it-target", "lock administrators", $"refused: {LastToDelete}"] },
+        { AdministratorId, Delete, [], ["stage removal it-target", "lock administrators", $"refused: {LastToDelete}"] },
+    };
+
+    [Theory]
+    [MemberData(nameof(LastAdministratorCases))]
+    public async Task Removing_an_enabled_administrator_is_refused_under_the_lock_unless_another_enabled_one_remains(
+        Guid signedInAs, Func<UserAdminService, Task> change, User[] otherAccounts, string[] expected)
+    {
+        var vault = new Vault(signedInAs, [Target(ClearanceLevel.TopSecret), .. otherAccounts]);
+
+        await Record.ExceptionAsync(() => change(vault.Service));
+
+        Assert.Equal(expected, vault.Steps);
+    }
+
+    [Fact]
+    public async Task Demoting_a_disabled_administrator_takes_no_lock_and_needs_no_other_administrator()
+    {
+        var target = Target(ClearanceLevel.TopSecret);
+        target.IsDisabled = true;
+        var vault = new Vault(target);
+
+        Assert.True(await vault.Service.SetRoleAsync(TargetId, ClearanceLevel.Standard, "GLOBAL", default));
+
+        Assert.Equal(["commit UserRoleChanged (generation 1)"], vault.Steps);
+    }
+
+    [Fact]
+    public async Task Deleting_a_disabled_administrator_takes_no_lock_and_needs_no_other_administrator()
+    {
+        var target = Target(ClearanceLevel.TopSecret);
+        target.IsDisabled = true;
+        var vault = new Vault(target);
+
+        Assert.True(await vault.Service.DeleteAsync(TargetId, default));
+
+        Assert.Equal(["stage removal it-target", "commit UserDeleted (generation 0)"], vault.Steps);
+    }
+
+    public static TheoryData<Func<UserAdminService, Task>, string> OwnAccountChanges => new()
+    {
+        { service => service.ResetTotpAsync(AdministratorId, default), "You cannot reset your own MFA here. Reset it from Profile, which first confirms it is you." },
+        { service => service.SetEnabledAsync(AdministratorId, enabled: false, default), "You cannot disable your own account while signed in with it." },
+        { service => service.DeleteAsync(AdministratorId, default), "You cannot delete your own account while signed in with it." },
+    };
+
+    [Theory]
+    [MemberData(nameof(OwnAccountChanges))]
+    public async Task An_administrator_cannot_reset_disable_or_delete_the_account_they_are_signed_in_with(
+        Func<UserAdminService, Task> change, string refusal)
+    {
+        var vault = new Vault(Administrator(), OtherAdministrator(enabled: true));
+
+        var refused = await Assert.ThrowsAsync<OwnAccountException>(() => change(vault.Service));
+
+        Assert.Equal(refusal, refused.Message);
+        Assert.Empty(vault.Steps);
+    }
+
+    [Fact]
+    public async Task An_administrator_can_still_force_their_own_sessions_to_end()
+    {
+        var vault = new Vault(Administrator());
+
+        Assert.True(await vault.Service.ForceLogoutAsync(AdministratorId, default));
+
+        Assert.Equal(["revoke sessions", "audit UserForceLoggedOut"], vault.Steps);
+    }
+
+    private const string UsernameRule = "Usernames are 3 to 64 characters. Use letters, digits, underscores, hyphens or dots.";
+    private const string ClearanceRule = "Choose one of the vault's clearance levels.";
+    private const string ProjectRule = "Project keys are 1 to 64 characters, not counting spaces at either end.";
+
+    public static TheoryData<CreateUserRequest, string, string> RefusedNewAccounts => new()
+    {
+        // request, the field named, the message
+        { NewPerson("ab"), "Username", UsernameRule },
+        { NewPerson("it new person"), "Username", UsernameRule },
+        { NewPerson("it-new-person") with { FirstName = "   " }, "FirstName", "First name is required." },
+        { NewPerson("it-new-person") with { FirstName = new string('f', 65) }, "FirstName", "First name can be at most 64 characters." },
+        { NewPerson("it-new-person") with { LastName = "" }, "LastName", "Last name is required." },
+        { NewPerson("it-new-person") with { LastName = new string('l', 65) }, "LastName", "Last name can be at most 64 characters." },
+        { NewPerson("it-new-person") with { FirstName = new string('f', 32), LastName = new string('l', 32) }, "LastName", "First and last name together can be at most 64 characters, counting the space between them." },
+        { NewPerson("it-new-person") with { Password = "eleven-char" }, "Password", "Passwords must be at least 12 characters long." },
+        { NewPerson("it-new-person") with { Password = new string('p', 257) }, "Password", "Passwords can be at most 256 characters long." },
+        { NewPerson("it-new-person") with { Clearance = (ClearanceLevel)7 }, "Clearance", ClearanceRule },
+        { NewPerson("it-new-person") with { Clearance = 0 }, "Clearance", ClearanceRule },
+        { NewPerson("it-new-person") with { ProjectKey = "   " }, "ProjectKey", ProjectRule },
+        { NewPerson("it-new-person") with { ProjectKey = new string('p', 65) }, "ProjectKey", ProjectRule },
+    };
+
+    [Theory]
+    [MemberData(nameof(RefusedNewAccounts))]
+    public async Task A_new_account_that_breaks_an_input_rule_is_refused_naming_its_field(CreateUserRequest request, string field, string message)
+    {
+        var vault = new Vault();
+
+        var refused = await Assert.ThrowsAsync<AccountInputException>(() => vault.Service.CreateAsync(request, default));
+
+        Assert.Equal((field, message), (refused.Field, refused.Message));
+        Assert.Empty(vault.Steps);
+    }
+
+    public static TheoryData<CreateUserRequest, string> NewAccountsAtTheLimits => new()
+    {
+        // request, the display name it gets
+        { NewPerson("it-new-person") with { FirstName = new string('f', 31), LastName = new string('l', 32) }, "fffffffffffffffffffffffffffffff llllllllllllllllllllllllllllllll" },
+        { NewPerson("it-new-person") with { FirstName = "  Ann ", LastName = " Lee  " }, "Ann Lee" },
+        { NewPerson("it-new-person") with { Password = new string('p', 256), ProjectKey = new string('p', 64) }, "New Person" },
+        { NewPerson("it-new-person") with { ProjectKey = " x " }, "New Person" },
+    };
+
+    [Theory]
+    [MemberData(nameof(NewAccountsAtTheLimits))]
+    public async Task A_new_account_at_the_limits_of_the_input_rules_is_created(CreateUserRequest request, string displayName)
+    {
+        var vault = new Vault();
+
+        var created = await vault.Service.CreateAsync(request, default);
+
+        Assert.Equal(displayName, created.DisplayName);
+    }
+
+    public static TheoryData<ClearanceLevel, string, string, string> RefusedRoles => new()
+    {
+        // clearance, project, the field named, the message
+        { (ClearanceLevel)7, "GLOBAL", "Clearance", ClearanceRule },
+        { 0, "GLOBAL", "Clearance", ClearanceRule },
+        { ClearanceLevel.Secret, " ", "ProjectKey", ProjectRule },
+        { ClearanceLevel.Secret, new string('p', 65), "ProjectKey", ProjectRule },
+    };
+
+    [Theory]
+    [MemberData(nameof(RefusedRoles))]
+    public async Task A_role_that_breaks_an_input_rule_is_refused_naming_its_field(ClearanceLevel clearance, string project, string field, string message)
+    {
+        var target = Target(ClearanceLevel.Standard);
+        var vault = new Vault(target);
+
+        var refused = await Assert.ThrowsAsync<AccountInputException>(() => vault.Service.SetRoleAsync(TargetId, clearance, project, default));
+
+        Assert.Equal((field, message), (refused.Field, refused.Message));
+        Assert.Empty(vault.Steps);
+        Assert.Equal(ClearanceLevel.Standard, target.Clearance);
+    }
+
+    private static Task Demote(UserAdminService service) => service.SetRoleAsync(TargetId, ClearanceLevel.Secret, "GLOBAL", default);
+
+    private static Task Disable(UserAdminService service) => service.SetEnabledAsync(TargetId, enabled: false, default);
+
+    private static Task Delete(UserAdminService service) => service.DeleteAsync(TargetId, default);
+
+    private static User OtherAdministrator(bool enabled) => new()
+    {
+        Id = Guid.Parse("0a000000-0000-0000-0000-000000000002"),
+        Username = "it-other-administrator",
+        DisplayName = "Other Administrator",
+        Email = "other@example.test",
+        Clearance = ClearanceLevel.TopSecret,
+        ProjectKey = "GLOBAL",
+        IsDisabled = !enabled,
+    };
+
     private static CreateUserRequest NewPerson(string username)
         => new(username, "New", "Person", "a-long-enough-initial-password", ClearanceLevel.Standard, "global");
 
@@ -242,11 +449,21 @@ public class UserAdminServiceTests
     private sealed class Vault
     {
         public Vault(params User[] accounts)
-            : this(null, accounts)
+            : this(null, AdministratorId, accounts)
+        {
+        }
+
+        public Vault(Guid signedInAs, params User[] accounts)
+            : this(null, signedInAs, accounts)
         {
         }
 
         public Vault(INotificationService? notifications, params User[] accounts)
+            : this(notifications, AdministratorId, accounts)
+        {
+        }
+
+        private Vault(INotificationService? notifications, Guid signedInAs, User[] accounts)
         {
             Users = new FakeUsers(Steps, [.. accounts]);
             Changes = new RecordingChanges(Steps, Users);
@@ -261,7 +478,7 @@ public class UserAdminServiceTests
                 notifications ?? new RecordingNotifications(Steps),
                 Audit,
                 Changes,
-                new SignedInAdministrator(),
+                new SignedInAdministrator(signedInAs),
                 TimeProvider.System);
         }
 
@@ -283,7 +500,11 @@ public class UserAdminServiceTests
         public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult(Accounts.FirstOrDefault(account => account.Id == id));
         public Task<User?> FindByUsernameAsync(string username, CancellationToken ct) => Task.FromResult(Accounts.FirstOrDefault(account => account.Username == username));
         public Task<IReadOnlyList<User>> ListAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<User>>(Accounts);
-        public Task<IReadOnlyList<string>> FindEmailsWithPrefixAsync(string localPrefix, string domain, CancellationToken ct) => Task.FromResult<IReadOnlyList<string>>([]);
+        public Task<IReadOnlyList<string>> FindEmailsWithPrefixAsync(string localPrefix, string domain, CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<string>>([.. Accounts.Select(account => account.Email).Where(email => email.StartsWith($"{localPrefix}.", StringComparison.Ordinal))]);
+
+        public Task<bool> AnyOtherEnabledAdministratorAsync(Guid accountId, CancellationToken ct)
+            => Task.FromResult(Accounts.Any(account => account.Id != accountId && account.Clearance == ClearanceLevel.TopSecret && !account.IsDisabled));
         public Task<bool> IsEmailTakenAsync(string email, Guid accountId, CancellationToken ct) => Task.FromResult(false);
 
         public void StageAddition(User user) => steps.Add($"stage new {user.Username}");
@@ -316,9 +537,10 @@ public class UserAdminServiceTests
 
     private sealed class RecordingChanges(List<string> steps, FakeUsers users) : IAccountChangeCommitter
     {
-        public Exception? Failure { get; set; }
+        /// <summary>The failures the next commits meet, one each, as the database reports them.</summary>
+        public Queue<Exception> Failures { get; } = new();
 
-        /// <summary>An account another administrator saves just before this commit fails, as when a race is lost.</summary>
+        /// <summary>An account another administrator saves just before the next commit, as when a race is lost.</summary>
         public User? SavedFirstByAnother { get; set; }
 
         public List<AuditEntry> Events { get; } = [];
@@ -328,16 +550,33 @@ public class UserAdminServiceTests
             if (SavedFirstByAnother is not null)
             {
                 users.Accounts.Add(SavedFirstByAnother);
+                SavedFirstByAnother = null;
             }
 
-            if (Failure is not null)
+            if (Failures.TryDequeue(out var failure))
             {
-                throw Failure;
+                throw failure;
             }
 
             steps.Add($"commit {entry.Action} (generation {account.CredentialGeneration})");
             Events.Add(entry);
             return Task.FromResult(true);
+        }
+
+        public async Task<bool> CommitAdministratorChangeAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct)
+        {
+            steps.Add("lock administrators");
+            try
+            {
+                await recheck(ct);
+            }
+            catch (LastAdministratorException refusal)
+            {
+                steps.Add($"refused: {refusal.Message}");
+                throw;
+            }
+
+            return await CommitAsync(account, entry, ct);
         }
 
         public Task<bool> CommitAsync(User account, AuditAction action, string details, CancellationToken ct) => throw new NotSupportedException();
@@ -419,9 +658,9 @@ public class UserAdminServiceTests
         public Task<bool> TryRedeemAsync(MfaRecoveryCode code, DateTimeOffset usedAtUtc, CancellationToken ct) => throw new NotSupportedException();
     }
 
-    private sealed class SignedInAdministrator : IAuditContext
+    private sealed class SignedInAdministrator(Guid accountId) : IAuditContext
     {
-        public Guid? UserId => AdministratorId;
+        public Guid? UserId => accountId;
         public string? Username => "vault-admin";
         public string? SourceIp => "::1";
     }

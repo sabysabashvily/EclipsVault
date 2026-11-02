@@ -33,4 +33,12 @@ public interface IAccountChangeCommitter
 
     /// <summary>Preserves explicit event attribution for an administrator changing another account.</summary>
     Task<bool> CommitAsync(User account, AuditEntry entry, CancellationToken ct);
+
+    /// <summary>
+    /// Like <see cref="CommitAsync(User, AuditEntry, CancellationToken)"/>, for a change that could leave
+    /// the vault without an enabled administrator. After the account's lock it takes the vault-wide
+    /// administrators lock, so such changes take effect one at a time, and runs <paramref name="recheck"/>
+    /// under both: it reads every change that committed before this one. A refusal it throws saves nothing.
+    /// </summary>
+    Task<bool> CommitAdministratorChangeAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct);
 }

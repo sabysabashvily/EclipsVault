@@ -73,6 +73,7 @@ public class DashboardServiceTests
         public Task<IReadOnlyList<User>> ListAsync(CancellationToken ct)
             => Task.FromResult<IReadOnlyList<User>>([]);
 
+        public Task<bool> AnyOtherEnabledAdministratorAsync(Guid accountId, CancellationToken ct) => throw new NotSupportedException();
         public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task<bool> ReloadAsync(User user, CancellationToken ct) => throw new NotSupportedException();
         public Task<User?> FindByUsernameAsync(string username, CancellationToken ct) => throw new NotSupportedException();

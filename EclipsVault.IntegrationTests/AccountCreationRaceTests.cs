@@ -14,9 +14,9 @@ using Xunit;
 namespace EclipsVault.IntegrationTests;
 
 /// <summary>
-/// Two administrators create the same username at once on each database. Both pass the username
-/// check before either saves, so the database's unique index decides, and the loser hears the same
-/// conflict the check gives.
+/// Two administrators create accounts at once on each database. Both pass the checks before either
+/// saves, so the database's unique indexes decide. A lost username is the check's conflict; a lost
+/// generated address is replaced by the next free one.
 /// </summary>
 public abstract class AccountCreationRaceTests(AccountChangeDatabases databases)
 {
@@ -41,6 +41,29 @@ public abstract class AccountCreationRaceTests(AccountChangeDatabases databases)
             .Where(row => row.Action == AuditAction.UserCreated && row.Details!.Contains(username))
             .ToListAsync();
         Assert.Equal(account.Id, Assert.Single(created).ResourceId);
+    }
+
+    [Fact]
+    public async Task Two_creates_for_one_name_with_different_usernames_make_both_accounts_with_the_next_free_addresses()
+    {
+        using var bothChecked = new Barrier(participantCount: 2);
+        await using var first = databases.NewRequest();
+        await using var second = databases.NewRequest();
+
+        var failures = await Task.WhenAll(
+            Task.Run(() => Record.ExceptionAsync(() => UserAdmin(first, bothChecked).CreateAsync(
+                new CreateUserRequest("it-race-address-one", "Address", "Race", "It-race-initial-password", ClearanceLevel.Standard, "GLOBAL"), default))),
+            Task.Run(() => Record.ExceptionAsync(() => UserAdmin(second, bothChecked).CreateAsync(
+                new CreateUserRequest("it-race-address-two", "Address", "Race", "It-race-initial-password", ClearanceLevel.Standard, "GLOBAL"), default))));
+
+        Assert.Equal([null, null], failures);
+        await using var check = databases.NewRequest();
+        var addresses = await check.Context.Users.AsNoTracking()
+            .Where(user => user.Username == "it-race-address-one" || user.Username == "it-race-address-two")
+            .Select(user => user.Email)
+            .OrderBy(email => email)
+            .ToListAsync();
+        Assert.Equal(["address.race.1@eclipsvault.local", "address.race.2@eclipsvault.local"], addresses);
     }
 
     private static UserAdminService UserAdmin(AccountRequest request, Barrier bothChecked) => new(
