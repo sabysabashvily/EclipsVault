@@ -226,3 +226,87 @@ Left for the owner:
 
 To restart: `git switch area-5a-accounts` (head is this commit). Build the Angular UI on its `.nvmrc`
 Node, then run the AGENTS.md checks, the integration suite once per engine. #109 is next, on this branch.
+
+## Delivery: ticket 4 (#109)
+
+Done locally on `area-5a-accounts` in the root checkout, on 2026-11-03, and not pushed.
+Work continued in the separate implementation thread from the authorized uncommitted changes at
+`94b5eee`. The coordinator stopped implementation; this ticket had one implementation worker.
+#108 had already been pushed at that starting commit, with verified green CI run `41459789943`;
+#108 and #92 were already closed.
+
+- `418cd525` serves Users in Angular with fresh proof for row grants.
+  - `/Admin/Users` is AdminOnly, with both sidebars and palettes pointing to Angular. The MVC Users
+    view, model and row handlers are retired. Create/Edit stay Legacy for #110.
+  - Cookie-session-only typed endpoints list users and apply the six row actions, with antiforgery,
+    no-store responses and Problem Details. Enable, unlock and another account's MFA reset demand
+    freshness before target lookup, independently of secret sensitivity. Removing access does not.
+  - Real authenticator proof uses shared lockout, replay protection and source throttling. Renewal
+    changes freshness while retaining the original session stamp, revocation version and lifetime.
+  - Shared filtering, keyboard menus, confirmation and proof dialogs retain Legacy wording. Cancel
+    writes nothing; successful proof retries once. Sign-in proof ends the stale session before Login.
+    Own Force logout clears its cookie even when recording fails and retains the sign-in warning.
+  - A separate typed notice endpoint preserves Legacy Create/Edit outcomes without changing the
+    agreed Users list schema.
+- This section's final update is the ticket's last commit.
+
+The three stale-grant regressions were first shown failing against the Legacy handlers. The red
+evidence, handoff files and all interrupted/failed checks remain in `logs/ticket-109/`.
+
+Validation:
+
+- locked restore and Release build with 0 warnings and 0 errors
+- .NET format verification
+- unit tests: 836
+- full integration tests on SQL Server: 912, no failures or skips
+- full integration tests on PostgreSQL: 912, no failures or skips
+- both pending-model checks: no changes, no migrations
+- hook tests: 6
+- Angular lint and browser type checks, including 6 lint guard tests
+- Vitest: 361 tests in 28 files
+- Prettier, 15 build checks, generated API-type verification and production Angular build
+- npm high/critical audit gate: passed, with 21 moderate findings still visible
+- production browser tests: 159 passed, no failures or skips, in 50.0 minutes
+- browser-health guard verification: all 8 intentional failures detected; verification exited 0
+
+The database suites ran serially with four available .NET processors. Browser tests used one worker
+and the unmodified production Dockerfile, built with a bounded CPU quota. The owner allowed 80–90%
+total CPU and asked to avoid 90–100%; the earlier excessive throttling was removed.
+
+An early slow PostgreSQL run exposed the shared administrator's aged proof. The fixture now refreshes
+through the real proof endpoint using its real enrollment, without changing clocks or explicitly
+stale cookies. A subsequent SQL Server run passed 911/912 because a history test assumed the shared
+administrator had only one event. That test now enrolls its own account and preserves exact isolation
+assertions. Both complete suites then passed 912/912. The first browser run was interrupted after
+128 passes when its process and Docker stopped; its evidence was preserved and the full suite rerun.
+A subsequent browser run passed 145 tests and timed out locating the open verification dialog in
+Profile's last test, so all 13 Users tests were unrun. Its trace and log are retained. The captured
+DOM had correct unique labels, and 100 replacements with production CSS passed in a diagnostic
+probe. No speculative source change, timeout increase or retry was added; a fresh full unchanged
+run passed all 146 inherited tests, including that case, and 12 Users tests. Its final Users test
+failed because a bare status locator also matched an empty passkey region. Narrowing the page object
+by the visible warning text fixed the reproduced ambiguity; a real production own-logout probe
+passed, including the cookie and warning assertions. Post-fix lint/type/format gates passed. The
+post-fix full rerun was interrupted after 145 passes when its runner and Docker stopped. The final
+runner used an independent process session and sleep prevention; it passed all 159 tests, verified
+all 8 guard probes and removed its own image. All interrupted evidence remains preserved.
+
+Reviews covered the complete diff available from `94b5eee` at review time, including inherited work
+and new source files. Review fixes and validation-only repairs were made directly afterward.
+
+- Security, Standards and Spec each completed in a fresh GPT Sol 6.1 xhigh session. Claude Opus 5.5
+  high attempts were rate-limited; the approved fallback gives same-model review, not cross-model.
+- Security found no demonstrable defects.
+- Standards findings were resolved with named test controls, separate filter/theme keyboard tests,
+  accurate comments and a separate database-state helper.
+- Spec findings were resolved by ending the stale session before sign-in and asserting the unlocked
+  account's reloaded state. Small fixes were made directly, without more review delegates.
+- Reports, exact commands/counts, the resolution ledger and readability excerpts are in the ignored
+  `logs/ticket-109/final-report.md` and its linked evidence.
+
+Left for the owner:
+
+- #110 owns Create/Edit migration and their grant freshness; #111 owns service-account UI; #112 owns
+  the whole-part PR. No later ticket was started.
+- The npm audit's moderate findings remain visible. No gate or advisory was suppressed.
+- #109 is committed locally only. No push, PR, issue comment/closure or #109 CI claim was made.
