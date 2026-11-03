@@ -4,6 +4,7 @@ import { ChangePasswordPage } from './profile/change-password-page';
 import { AccessPage } from './access/access-page';
 import { AccessRequestsPage } from './access-requests/access-requests-page';
 import { ActivityPage } from './activity/activity-page';
+import { UsersPage } from './users/users-page';
 import { routes } from './app.routes';
 import { SignInsPage } from './sign-ins/sign-ins-page';
 import { SecurityPage } from './security/security-page';
@@ -23,6 +24,11 @@ function routeFor(url: string): Route | undefined {
 }
 
 describe('routes', () => {
+  it.each(['/Admin/Users', '/admin/users'])('opens Users at %s', async (url) => {
+    const route = routeFor(url);
+    expect(route?.title).toBe('Users — EclipsVault');
+    expect(await route?.loadComponent?.()).toBe(UsersPage);
+  });
   it.each(['/Profile', '/Profile/Index', '/pRoFiLe', '/PROFILE/index'])(
     'opens Profile at %s',
     async (url) => {

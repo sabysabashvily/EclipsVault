@@ -513,13 +513,21 @@ button {
   font-size: 0.8rem;
 }
 
-.avatar-img {
-  width: 34px;
-  height: 34px;
+.avatar-img,
+.avatar-sm {
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
   background: var(--bg-inset);
+}
+
+.avatar-img {
+  width: 34px;
+  height: 34px;
+}
+.avatar-sm {
+  width: 30px;
+  height: 30px;
 }
 
 .user-meta {
@@ -1948,4 +1956,62 @@ fieldset {
 }
 .field-note.status-ok {
   color: var(--ok);
+}
+
+.table-toolbar {
+  margin-bottom: 1rem;
+}
+.table-search {
+  max-width: 340px;
+}
+
+.user-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+.user-cell-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.user-cell-sub {
+  font-size: 0.76rem;
+}
+.data-table tr.row-muted td {
+  opacity: 0.55;
+}
+
+/* ---- Row overflow menu (details/summary) ---------------------------------------- */
+.row-menu {
+  position: relative;
+  display: inline-block;
+}
+.row-menu > summary {
+  list-style: none;
+  display: inline-flex;
+}
+.row-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.row-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 30;
+  min-width: 160px;
+  padding: 0.3rem;
+  background: var(--bg-raised-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: left;
+}
+
+#users-table .cell-actions > .button + .button,
+#users-table .cell-actions > app-row-menu {
+  margin-left: 0.4rem;
 }

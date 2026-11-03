@@ -15,9 +15,11 @@ public interface IStepUpService
     /// </summary>
     bool IsRequired(SensitivityLevel sensitivity, DateTimeOffset lastStrongAuthUtc, DateTimeOffset nowUtc);
 
+    bool IsRequired(AdministratorAction action, DateTimeOffset lastStrongAuthUtc, DateTimeOffset nowUtc);
+
     /// <summary>
     /// Validates the user's current authenticator code for a step-up of a session issued under
-    /// <paramref name="credentialGeneration"/>. Audited. Returns true on success.
+    /// <paramref name="stamp"/>. Audited. Returns true on success.
     /// </summary>
     /// <exception cref="Domain.Exceptions.StaleProofException">The account's credentials changed after the session was issued.</exception>
     Task<bool> VerifyAsync(Guid userId, SessionStamp stamp, string code, CancellationToken ct);

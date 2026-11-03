@@ -61,6 +61,16 @@ public sealed class TestOnlyUiApiController(IIntrusionResponseService intrusion)
     [Authorize(AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme, Roles = TestOnlyFailures.UnheldRole)]
     public IActionResult Forbidden() => NoContent();
 
+    // These conflicts need concurrent requests in production. The actual races are covered against
+    // both databases; this endpoint pins their HTTP mapping without a scheduler-dependent request race.
+    [HttpGet("administrator-conflict/{kind}")]
+    [TypeFilter(typeof(AdministratorProblemFilter))]
+    public IActionResult AdministratorConflict(string kind) => kind switch
+    {
+        "last-administrator" => throw new LastAdministratorException("Cannot disable the last TopSecret administrator."),
+        _ => throw new AccountChangedException()
+    };
+
     /// <summary>An unsafe UI API request that changes nothing, so the antiforgery check alone decides its answer.</summary>
     [HttpPost("unsafe")]
     public IActionResult Unsafe() => NoContent();

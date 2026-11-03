@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
@@ -71,16 +72,16 @@ public sealed class AdministratorAuditFailureTests(AuditFailureFixture failure)
         var vault = failure.Vault;
         var admin = await vault.AdminClientAsync();
         var account = await CreateAccountAsync(admin, "it-unrecorded-enable");
-        await LegacyUsers.SetEnabledAsync(admin, account.Id, enabled: false);
+        await UserActions.SetEnabledAsync(admin, account.Id, enabled: false);
         var disabled = await FindAccountAsync("it-unrecorded-enable");
         var before = await AuditTrail.HeadAsync(vault);
 
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await LegacyUsers.SetEnabledAsync(admin, account.Id, enabled: true);
+            var response = await UserActions.SetEnabledAsync(admin, account.Id, enabled: true);
 
-            Assert.Equal(AuditUnavailablePage, response.Headers.Location?.OriginalString);
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
             var stored = await FindAccountAsync("it-unrecorded-enable");
             Assert.True(stored!.IsDisabled);
             Assert.Equal(disabled!.CredentialGeneration, stored.CredentialGeneration);
@@ -103,9 +104,9 @@ public sealed class AdministratorAuditFailureTests(AuditFailureFixture failure)
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await LegacyUsers.SetEnabledAsync(admin, account.Id, enabled: false);
+            var response = await UserActions.SetEnabledAsync(admin, account.Id, enabled: false);
 
-            Assert.Equal(AuditUnavailablePage, response.Headers.Location?.OriginalString);
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
             var stored = await FindAccountAsync("it-unrecorded-disable");
             Assert.False(stored!.IsDisabled);
             Assert.Equal(account.CredentialGeneration, stored.CredentialGeneration);
@@ -137,9 +138,9 @@ public sealed class AdministratorAuditFailureTests(AuditFailureFixture failure)
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await LegacyUsers.UnlockAsync(admin, account.Id);
+            var response = await UserActions.UnlockAsync(admin, account.Id);
 
-            Assert.Equal(AuditUnavailablePage, response.Headers.Location?.OriginalString);
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
             var stored = await FindAccountAsync("it-unrecorded-unlock");
             Assert.Equal(2, stored!.FailedAccessCount);
             Assert.NotNull(stored.LockedUntilUtc);
@@ -162,9 +163,9 @@ public sealed class AdministratorAuditFailureTests(AuditFailureFixture failure)
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await LegacyUsers.DeleteAsync(admin, account.Id);
+            var response = await UserActions.DeleteAsync(admin, account.Id);
 
-            Assert.Equal(AuditUnavailablePage, response.Headers.Location?.OriginalString);
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
             Assert.Equal(account.Id, (await FindAccountAsync("it-unrecorded-delete"))?.Id);
             Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         }
@@ -186,13 +187,59 @@ public sealed class AdministratorAuditFailureTests(AuditFailureFixture failure)
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await LegacyUsers.ForceLogoutAsync(admin, account!.Id);
+            var response = await UserActions.ForceLogoutAsync(admin, account!.Id);
 
-            Assert.Equal(LegacyUsers.UsersPage, response.Headers.Location?.OriginalString);
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "revoked_unrecorded");
             Assert.Contains("All of the user's sessions were revoked, but the vault couldn't record it in the audit trail.",
-                WebUtility.HtmlDecode(await admin.GetStringAsync(LegacyUsers.UsersPage)), StringComparison.Ordinal);
+                (await response.Content.ReadFromJsonAsync<Microsoft.AspNetCore.Mvc.ProblemDetails>())!.Title!, StringComparison.Ordinal);
             Assert.Equal(HttpStatusCode.Unauthorized, (await owner.Client.GetAsync("/api/ui/me")).StatusCode);
             Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
+        }
+        finally
+        {
+            await failure.RestoreAuditWritesAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Own_force_logout_clears_the_cookie_and_keeps_the_unrecorded_warning_at_sign_in()
+    {
+        var vault = failure.Vault;
+        var admin = await vault.SignInNewAccountAsync("it-unrecorded-own-logout", IPAddress.Parse("198.18.109.30"), ClearanceLevel.TopSecret);
+        var account = await ProfileHttp.AccountAsync(vault, "it-unrecorded-own-logout");
+        var token = await UiApiRequest.AntiforgeryTokenAsync(admin.Client);
+        await failure.RejectAuditWritesAsync();
+        try
+        {
+            var response = await UiApiRequest.SendWithTokenAsync(admin.Client, token, HttpMethod.Post, $"/api/ui/users/{account.Id}/sign-out");
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "revoked_unrecorded");
+            Assert.Null(admin.SessionCookie);
+            Assert.Contains("All of the user's sessions were revoked, but the vault couldn't record it in the audit trail.",
+                WebUtility.HtmlDecode(await admin.Client.GetStringAsync("/Account/Login")));
+            Assert.Equal(HttpStatusCode.Unauthorized, (await admin.Client.GetAsync("/api/ui/me")).StatusCode);
+        }
+        finally
+        {
+            await failure.RestoreAuditWritesAsync();
+        }
+    }
+
+    [Fact]
+    public async Task A_step_up_that_cannot_be_recorded_leaves_the_original_cookie_and_authenticator_step()
+    {
+        var vault = failure.Vault;
+        var owner = await vault.SignInNewAccountAsync("it-unrecorded-step-up", IPAddress.Parse("198.18.109.31"));
+        var account = await ProfileHttp.AccountAsync(vault, "it-unrecorded-step-up");
+        var cookie = owner.SessionCookie!.Value;
+        var token = await UiApiRequest.AntiforgeryTokenAsync(owner.Client);
+        await failure.RejectAuditWritesAsync();
+        try
+        {
+            var response = await UiApiRequest.SendWithTokenAsync(owner.Client, token, HttpMethod.Post, "/api/ui/step-up",
+                JsonContent.Create(new { code = Totp.Code(account.TotpSecret!, Totp.CurrentStep() + 1) }));
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
+            Assert.Equal(cookie, owner.SessionCookie!.Value);
+            Assert.Equal(account.LastTotpStep, (await ProfileHttp.AccountAsync(vault, "it-unrecorded-step-up")).LastTotpStep);
         }
         finally
         {

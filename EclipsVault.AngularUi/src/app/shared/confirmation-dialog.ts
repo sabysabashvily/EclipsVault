@@ -47,7 +47,8 @@ export class ConfirmationDialog {
 
   open(message: string): void {
     if (this.dialog().nativeElement.open) return;
-    this.opener = this.document.activeElement;
+    const active = this.document.activeElement;
+    this.opener = active?.closest('details')?.querySelector('summary') ?? active;
     this.message.set(message);
     // Render its accessible name before opening. The browser then makes the rest of the page inert.
     afterNextRender(

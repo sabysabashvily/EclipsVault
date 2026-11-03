@@ -105,19 +105,15 @@ public sealed class ProfileAuditFailureTests(AuditFailureFixture failure)
         var account = await ProfileHttp.AccountAsync(vault, "it-failure-admin-reset");
         var codes = await ProfileHttp.RecoveryCodesAsync(vault, account.Id);
         var admin = await vault.AdminClientAsync();
-        var users = await admin.GetStringAsync("/Admin/Users");
         var generation = (await ProfileHttp.AccountAsync(vault, account.Username)).CredentialGeneration;
         var before = await AuditTrail.HeadAsync(vault);
 
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await admin.PostAsync($"/Admin/ResetTotp/{account.Id}", new FormUrlEncodedContent(new Dictionary<string, string>
-            {
-                ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(users, "/Admin/Users"),
-            }));
+            var response = await UserActions.ResetMfaAsync(admin, account.Id);
 
-            Assert.Equal(AuditUnavailablePage, response.Headers.Location?.OriginalString);
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
             var stored = await ProfileHttp.AccountAsync(vault, "it-failure-admin-reset");
             Assert.Equal(account.TotpSecret, stored.TotpSecret);
             Assert.True(stored.TotpEnabled);

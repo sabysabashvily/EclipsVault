@@ -145,8 +145,8 @@ public abstract class AccountRevokersTests(VaultFixture vault)
         var original = SessionApi.PrincipalOf(vault, owner);
         var admin = await vault.AdminClientAsync();
 
-        Assert.Equal(LegacyUsers.UsersPage, (await LegacyUsers.SetEnabledAsync(admin, original.GetUserId(), enabled: false)).Headers.Location?.OriginalString);
-        Assert.Equal(LegacyUsers.UsersPage, (await LegacyUsers.SetEnabledAsync(admin, original.GetUserId(), enabled: true)).Headers.Location?.OriginalString);
+        Assert.Equal(HttpStatusCode.NoContent, (await UserActions.SetEnabledAsync(admin, original.GetUserId(), enabled: false)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await UserActions.SetEnabledAsync(admin, original.GetUserId(), enabled: true)).StatusCode);
 
         Assert.Equal(original.GetSessionStampOrNull()!.RevocationVersion,
             await vault.Services.GetRequiredService<ISessionRevocationService>().FindAsync(original.GetUserId()));

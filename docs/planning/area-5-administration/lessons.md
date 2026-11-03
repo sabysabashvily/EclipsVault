@@ -35,3 +35,8 @@ what Area 4 taught, read from its checkpoint, the #102 reports and `logs/area-4/
 14. **Settle presentation gaps in the grill.** Area 4 ended with owner follow-ups that a grill question
     could have closed: no info style in the StatusLine, copied "grant" wording, and a dead note
     parameter.
+15. **Keep each ticket in its own implementation thread.** The coordinator checks the prior ticket's
+    delivery and CI, then launches the next ticket with a brief and pinned starting state, following
+    the previous ticket's launch record. Implementation does not continue in the coordinator thread.
+    When transferring existing work, keep one worker on the checkout and pass its uncommitted state
+    and test evidence explicitly.

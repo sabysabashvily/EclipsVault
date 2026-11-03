@@ -11,6 +11,11 @@ import {
   switchMap,
   throwError,
 } from 'rxjs';
+import type { components } from './schema.generated';
+
+export type StepUpProof = NonNullable<
+  components['schemas']['AdministratorProblemResponse']['proof']
+>;
 
 /** A failed UI API call, carrying the Problem Details `code` the server chose (ADR-0006). */
 export class UiApiError extends Error {
@@ -19,6 +24,7 @@ export class UiApiError extends Error {
     readonly code: string,
     readonly title: string,
     readonly signedOut: number | null = null,
+    readonly proof: StepUpProof | null = null,
   ) {
     super(title);
     this.name = 'UiApiError';
@@ -36,17 +42,22 @@ export function signInUrl(location: Pick<Location, 'pathname' | 'search'>): stri
 }
 
 function toUiApiError(response: HttpErrorResponse): UiApiError {
-  const problem = response.error as { code?: unknown; title?: unknown; signedOut?: unknown } | null;
+  const body: unknown = response.error;
+  const problem = typeof body === 'object' && body !== null ? body : {};
   return new UiApiError(
     response.status,
-    typeof problem?.code === 'string' ? problem.code : 'unknown',
-    typeof problem?.title === 'string'
+    'code' in problem && typeof problem.code === 'string' ? problem.code : 'unknown',
+    'title' in problem && typeof problem.title === 'string'
       ? problem.title
       : 'The vault could not complete the request.',
-    typeof problem?.signedOut === 'number' &&
+    'signedOut' in problem &&
+      typeof problem.signedOut === 'number' &&
       Number.isSafeInteger(problem.signedOut) &&
       problem.signedOut >= 0
       ? problem.signedOut
+      : null,
+    'proof' in problem && (problem.proof === 'code' || problem.proof === 'sign_in')
+      ? problem.proof
       : null,
   );
 }

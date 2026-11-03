@@ -143,13 +143,9 @@ public sealed class ProfileAuditTests(VaultFixture vault)
         await ProfileHttp.GenerateRecoveryCodesAsync(owner);
         var account = await ProfileHttp.AccountAsync(vault, "it-profile-admin-reset");
         var admin = await vault.AdminClientAsync();
-        var users = await admin.GetStringAsync("/Admin/Users");
         var before = await AuditTrail.HeadAsync(vault);
 
-        await admin.PostAsync($"/Admin/ResetTotp/{account.Id}", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(users, "/Admin/Users"),
-        }));
+        await UserActions.ResetMfaAsync(admin, account.Id);
 
         Assert.Equal([AuditAction.UserTotpReset], await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
         var stored = await ProfileHttp.AccountAsync(vault, "it-profile-admin-reset");

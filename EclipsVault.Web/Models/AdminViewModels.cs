@@ -4,13 +4,6 @@ using EclipsVault.Core.Domain.Enums;
 
 namespace EclipsVault.Web.Models;
 
-public sealed class UsersViewModel
-{
-    public IReadOnlyList<UserSummaryDto> Users { get; init; } = [];
-
-    public Guid CurrentUserId { get; init; }
-}
-
 public sealed class EditUserViewModel
 {
     public Guid Id { get; set; }

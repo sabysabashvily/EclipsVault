@@ -38,7 +38,14 @@ export default defineConfig({
             '**/access-requests.spec.ts',
             '**/mailbox.spec.ts',
             '**/profile.spec.ts',
+            '**/users.spec.ts',
           ],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          name: 'users',
+          testMatch: '**/users.spec.ts',
+          dependencies: ['profile'],
           use: { ...devices['Desktop Chrome'] },
         },
         {

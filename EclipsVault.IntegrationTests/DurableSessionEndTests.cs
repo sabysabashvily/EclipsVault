@@ -43,10 +43,10 @@ public sealed class DurableSessionEndTests(RedisVaultFixture fixture)
         var earlierVersion = (await fixture.Redis.Database.KeyDumpAsync(versionKey))!;
         var admin = await vault.AdminClientAsync();
 
-        await LegacyUsers.SetEnabledAsync(admin, account.Id, enabled: false);
+        await UserActions.SetEnabledAsync(admin, account.Id, enabled: false);
         await fixture.Redis.Database.KeyDeleteAsync(versionKey);
         await fixture.Redis.Database.KeyRestoreAsync(versionKey, earlierVersion, TimeSpan.FromHours(24));
-        await LegacyUsers.SetEnabledAsync(admin, account.Id, enabled: true);
+        await UserActions.SetEnabledAsync(admin, account.Id, enabled: true);
 
         Assert.Equal(HttpStatusCode.Unauthorized, (await owner.Client.GetAsync("/api/ui/me")).StatusCode);
     }

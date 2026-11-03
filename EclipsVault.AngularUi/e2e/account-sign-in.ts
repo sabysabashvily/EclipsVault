@@ -3,6 +3,12 @@ import type { Page } from '@playwright/test';
 export class AccountSignIn {
   constructor(private readonly page: Page) {}
 
+  get warning() {
+    return this.page
+      .getByRole('status')
+      .filter({ hasText: "couldn't record it in the audit trail" });
+  }
+
   async open(): Promise<void> {
     await this.page.goto('/Account/Login');
   }

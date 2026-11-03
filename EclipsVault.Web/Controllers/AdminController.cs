@@ -10,8 +10,7 @@ using Microsoft.Extensions.Options;
 namespace EclipsVault.Web.Controllers;
 
 /// <summary>
-/// Administration console (TopSecret clearance only): staff provisioning, MFA
-/// resets, runtime trusted networks, and intrusion-defence block management.
+/// Legacy staff provisioning and role forms, trusted networks and intrusion-defence blocks.
 /// </summary>
 [Authorize(Policy = VaultPolicies.AdminOnly)]
 public sealed class AdminController : VaultController
@@ -42,14 +41,6 @@ public sealed class AdminController : VaultController
     // ---- Users -------------------------------------------------------------------
 
     [HttpGet]
-    public async Task<IActionResult> Users(CancellationToken ct)
-        => View(new UsersViewModel
-        {
-            Users = await _userAdmin.ListAsync(ct),
-            CurrentUserId = CurrentUserId()
-        });
-
-    [HttpGet]
     public IActionResult CreateUser() => View(new CreateUserViewModel());
 
     [HttpPost]
@@ -73,52 +64,8 @@ public sealed class AdminController : VaultController
             return View(model);
         }
 
-        this.FlashSuccess($"User '{created.Username}' created with email {created.Email}. They can sign in with either and will set up their authenticator on first sign-in.");
-        return RedirectToAction(nameof(Users));
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> ResetTotp(Guid id, CancellationToken ct)
-    {
-        try
-        {
-            if (await _userAdmin.ResetTotpAsync(id, ct))
-            {
-                this.FlashSuccess("MFA was reset — the user will enroll a new authenticator at their next sign-in.");
-            }
-            else
-            {
-                this.FlashError("User not found.");
-            }
-        }
-        catch (VaultAdminException ex)
-        {
-            this.FlashError(ex.Message);
-        }
-
-        return RedirectToAction(nameof(Users));
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> DeleteUser(Guid id, CancellationToken ct)
-    {
-        try
-        {
-            if (await _userAdmin.DeleteAsync(id, ct))
-            {
-                this.FlashSuccess("User deleted.");
-            }
-            else
-            {
-                this.FlashError("User not found.");
-            }
-        }
-        catch (VaultAdminException ex)
-        {
-            this.FlashError(ex.Message);
-        }
-
-        return RedirectToAction(nameof(Users));
+        UsersSuccess($"User '{created.Username}' created with email {created.Email}. They can sign in with either and will set up their authenticator on first sign-in.");
+        return Redirect("/Admin/Users");
     }
 
     [HttpGet]
@@ -127,8 +74,8 @@ public sealed class AdminController : VaultController
         var user = await _userAdmin.GetAsync(id, ct);
         if (user is null)
         {
-            this.FlashError("User not found.");
-            return RedirectToAction(nameof(Users));
+            UsersError("User not found.");
+            return Redirect("/Admin/Users");
         }
 
         return View(new EditUserViewModel
@@ -153,13 +100,20 @@ public sealed class AdminController : VaultController
 
         try
         {
+            var account = await _userAdmin.GetAsync(model.Id, ct);
+            if (account is null)
+            {
+                UsersError("User not found.");
+                return Redirect("/Admin/Users");
+            }
+
             if (await _userAdmin.SetRoleAsync(model.Id, model.Clearance, model.ProjectKey, ct))
             {
-                this.FlashSuccess($"Role updated for '{model.Username}'. Their sessions were revoked so the change takes effect at next sign-in.");
+                UsersSuccess($"Role updated for '{account.Username}'. Their sessions were revoked so the change takes effect at next sign-in.");
             }
             else
             {
-                this.FlashError("User not found.");
+                UsersError("User not found.");
             }
         }
         catch (VaultAdminException ex)
@@ -169,67 +123,19 @@ public sealed class AdminController : VaultController
             return View(model);
         }
 
-        return RedirectToAction(nameof(Users));
+        return Redirect("/Admin/Users");
     }
 
-    [HttpPost]
-    public async Task<IActionResult> SetEnabled(Guid id, bool enabled, CancellationToken ct)
+    private void UsersSuccess(string message)
     {
-        try
-        {
-            if (await _userAdmin.SetEnabledAsync(id, enabled, ct))
-            {
-                this.FlashSuccess(enabled ? "Account enabled." : "Account disabled and its sessions revoked.");
-            }
-            else
-            {
-                this.FlashError("User not found.");
-            }
-        }
-        catch (VaultAdminException ex)
-        {
-            this.FlashError(ex.Message);
-        }
-
-        return RedirectToAction(nameof(Users));
+        TempData["UsersMessage"] = message;
+        TempData["UsersError"] = false;
     }
 
-    [HttpPost]
-    public async Task<IActionResult> ForceLogout(Guid id, CancellationToken ct)
+    private void UsersError(string message)
     {
-        try
-        {
-            if (await _userAdmin.ForceLogoutAsync(id, ct))
-            {
-                this.FlashSuccess("All of the user's sessions were revoked.");
-            }
-            else
-            {
-                this.FlashError("User not found.");
-            }
-        }
-        catch (AuditWriteFailedException)
-        {
-            // The revocation happened before the audit write failed, and it stands (ADR-0021).
-            this.FlashError("All of the user's sessions were revoked, but the vault couldn't record it in the audit trail.");
-        }
-
-        return RedirectToAction(nameof(Users));
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> Unlock(Guid id, CancellationToken ct)
-    {
-        if (await _userAdmin.UnlockAsync(id, ct))
-        {
-            this.FlashSuccess("Lockout cleared. The user can sign in again.");
-        }
-        else
-        {
-            this.FlashError("User not found.");
-        }
-
-        return RedirectToAction(nameof(Users));
+        TempData["UsersMessage"] = message;
+        TempData["UsersError"] = true;
     }
 
     // ---- Networks ----------------------------------------------------------------

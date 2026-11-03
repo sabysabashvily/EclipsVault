@@ -98,7 +98,7 @@ describe('sidebar mapping', () => {
       {
         label: 'Administration',
         items: [
-          { label: 'Users', icon: 'users', url: '/Admin/Users', angular: false },
+          { label: 'Users', icon: 'users', url: '/Admin/Users', angular: true },
           { label: 'Networks', icon: 'networks', url: '/Admin/Networks', angular: false },
           {
             label: 'Service accounts',

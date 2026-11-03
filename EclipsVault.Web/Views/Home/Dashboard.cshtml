@@ -40,7 +40,7 @@
             <span class="stat-label">Critical alerts (24 h)</span>
             <span class="stat-detail">@(Model.CriticalEventsLast24h > 0 ? "Review the audit log →" : "All quiet")</span>
         </a>
-        <a class="stat-card" asp-controller="Admin" asp-action="Users">
+        <a class="stat-card" href="/Admin/Users">
             <span class="stat-value">@Model.UserCount</span>
             <span class="stat-label">Staff accounts</span>
             <span class="stat-detail">Manage users →</span>

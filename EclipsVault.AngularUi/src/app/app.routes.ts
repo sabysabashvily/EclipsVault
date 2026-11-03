@@ -32,6 +32,11 @@ const profile = () => import('./profile/profile-page').then((m) => m.ProfilePage
 const password = () => import('./profile/change-password-page').then((m) => m.ChangePasswordPage);
 
 export const routes: Routes = [
+  {
+    matcher: legacyPath('Admin/Users'),
+    loadComponent: () => import('./users/users-page').then((m) => m.UsersPage),
+    title: 'Users — EclipsVault',
+  },
   { matcher: legacyPath('Profile'), loadComponent: profile, title: 'Profile — EclipsVault' },
   { matcher: legacyPath('Profile/Index'), loadComponent: profile, title: 'Profile — EclipsVault' },
   {

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -8,7 +9,7 @@ using Xunit;
 namespace EclipsVault.IntegrationTests;
 
 /// <summary>
-/// The Legacy Users forms refuse what Core refuses: changes to the administrator's own account that
+/// The Users endpoints and Legacy forms refuse what Core refuses: changes to the administrator's own account that
 /// Profile governs, and values outside the account input rules. A refusal shows its message and
 /// changes nothing, not even the audit trail.
 /// </summary>
@@ -22,15 +23,15 @@ public sealed class AdministratorRuleTests(VaultFixture vault)
         var before = await ProfileHttp.AccountAsync(vault, "it-rules-own-mfa");
         var head = await AuditTrail.HeadAsync(vault);
 
-        var response = await LegacyUsers.ResetMfaAsync(administrator.Client, before.Id);
+        var response = await UserActions.ResetMfaAsync(administrator.Client, before.Id);
 
-        Assert.Equal(LegacyUsers.UsersPage, response.Headers.Location?.OriginalString);
+        await UiApiFailureContractTests.AssertProblemAsync(response, 409, "own_account");
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, head));
         var after = await ProfileHttp.AccountAsync(vault, "it-rules-own-mfa");
         Assert.True(after.TotpEnabled);
         Assert.Equal(before.CredentialGeneration, after.CredentialGeneration);
         Assert.Contains("You cannot reset your own MFA here. Reset it from Profile, which first confirms it is you.",
-            await PageTextAsync(administrator.Client, LegacyUsers.UsersPage), StringComparison.Ordinal);
+            (await response.Content.ReadFromJsonAsync<Microsoft.AspNetCore.Mvc.ProblemDetails>())!.Title!, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -40,13 +41,13 @@ public sealed class AdministratorRuleTests(VaultFixture vault)
         var account = await ProfileHttp.AccountAsync(vault, "it-rules-own-disable");
         var head = await AuditTrail.HeadAsync(vault);
 
-        var response = await LegacyUsers.SetEnabledAsync(administrator.Client, account.Id, enabled: false);
+        var response = await UserActions.SetEnabledAsync(administrator.Client, account.Id, enabled: false);
 
-        Assert.Equal(LegacyUsers.UsersPage, response.Headers.Location?.OriginalString);
+        await UiApiFailureContractTests.AssertProblemAsync(response, 409, "own_account");
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, head));
         Assert.False((await ProfileHttp.AccountAsync(vault, "it-rules-own-disable")).IsDisabled);
         Assert.Contains("You cannot disable your own account while signed in with it.",
-            await PageTextAsync(administrator.Client, LegacyUsers.UsersPage), StringComparison.Ordinal);
+            (await response.Content.ReadFromJsonAsync<Microsoft.AspNetCore.Mvc.ProblemDetails>())!.Title!, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -56,13 +57,13 @@ public sealed class AdministratorRuleTests(VaultFixture vault)
         var account = await ProfileHttp.AccountAsync(vault, "it-rules-own-delete");
         var head = await AuditTrail.HeadAsync(vault);
 
-        var response = await LegacyUsers.DeleteAsync(administrator.Client, account.Id);
+        var response = await UserActions.DeleteAsync(administrator.Client, account.Id);
 
-        Assert.Equal(LegacyUsers.UsersPage, response.Headers.Location?.OriginalString);
+        await UiApiFailureContractTests.AssertProblemAsync(response, 409, "own_account");
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, head));
         Assert.True(await AccountExistsAsync("it-rules-own-delete"));
         Assert.Contains("You cannot delete your own account while signed in with it.",
-            await PageTextAsync(administrator.Client, LegacyUsers.UsersPage), StringComparison.Ordinal);
+            (await response.Content.ReadFromJsonAsync<Microsoft.AspNetCore.Mvc.ProblemDetails>())!.Title!, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -131,9 +132,6 @@ public sealed class AdministratorRuleTests(VaultFixture vault)
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, head));
         Assert.False(await AccountExistsAsync("it-rules-long-name"));
     }
-
-    private static async Task<string> PageTextAsync(HttpClient client, string page)
-        => WebUtility.HtmlDecode(await client.GetStringAsync(page));
 
     private static async Task<string> ContentTextAsync(HttpResponseMessage response)
         => WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());

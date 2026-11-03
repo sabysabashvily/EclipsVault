@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net;
+using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using EclipsVault.Core.Application.Abstractions;
@@ -55,6 +56,9 @@ public sealed partial class VaultFixture : IAsyncLifetime
 
     private WebApplicationFactory<Program>? _factory;
     private Task<HttpClient>? _adminClient;
+    private string? _adminAuthenticatorSecret;
+    private DateTimeOffset _adminAuthenticatedAt;
+    private readonly SemaphoreSlim _administratorProof = new(1, 1);
 
     public bool TrustIdpMfa { get; init; }
 
@@ -178,11 +182,37 @@ public sealed partial class VaultFixture : IAsyncLifetime
     public Task<HttpContext> SendAsync(Action<HttpContext> configure) => _factory!.Server.SendAsync(configure);
 
     /// <summary>
-    /// The bootstrap administrator's session, signed in once per run through the vault's real sign-in:
-    /// the password, then enrolling an authenticator and confirming it with a real code, as the first
-    /// sign-in of a new vault does. There is no test-only authentication scheme.
+    /// The real bootstrap session, keeping its proof fresh through the same step-up endpoint as the UI.
+    /// Slow suites can outlast a proof window; explicitly stale sessions are built separately.
     /// </summary>
-    public Task<HttpClient> AdminClientAsync() => _adminClient ??= SignInAdministratorAsync();
+    public async Task<HttpClient> AdminClientAsync()
+    {
+        var client = await (_adminClient ??= SignInAdministratorAsync());
+        await _administratorProof.WaitAsync();
+        try
+        {
+            var refreshInterval = TimeSpan.FromMinutes(5);
+            if (DateTimeOffset.UtcNow - _adminAuthenticatedAt < refreshInterval)
+            {
+                return client;
+            }
+
+            if (Totp.SecondsLeftInStep() < 5)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(Totp.SecondsLeftInStep() + 1));
+            }
+            var secret = _adminAuthenticatorSecret ?? throw new InvalidOperationException("The administrator did not enroll an authenticator.");
+            var response = await UiApiRequest.SendWithTokenAsync(client, await UiApiRequest.AntiforgeryTokenAsync(client),
+                HttpMethod.Post, "/api/ui/step-up", JsonContent.Create(new { code = Totp.Code(secret, Totp.CurrentStep()) }));
+            response.EnsureSuccessStatusCode();
+            _adminAuthenticatedAt = DateTimeOffset.UtcNow;
+            return client;
+        }
+        finally
+        {
+            _administratorProof.Release();
+        }
+    }
 
     /// <summary>
     /// Issues a real API key the way an administrator does: create a service account, issue it a key,
@@ -262,32 +292,18 @@ public sealed partial class VaultFixture : IAsyncLifetime
     public async Task RevokeAllSessionsOfAsync(string username)
     {
         var admin = await AdminClientAsync();
-        var users = await admin.GetStringAsync("/Admin/Users");
-        var forceLogout = ForceLogoutForm().Matches(users)
-            .FirstOrDefault(m => WebUtility.HtmlDecode(m.Value).Contains($"Revoke all active sessions for '{username}'?", StringComparison.Ordinal))?.Groups[1].Value
-            ?? throw new InvalidOperationException($"The Users page offered no way to revoke {username}'s sessions.");
-
-        var response = await PostFormAsync(admin, forceLogout, new(), formPage: "/Admin/Users");
-        if (response.StatusCode != HttpStatusCode.Redirect)
-        {
-            throw new InvalidOperationException($"Revoking {username}'s sessions answered {(int)response.StatusCode}, not a redirect.");
-        }
+        var users = await admin.GetFromJsonAsync<EclipsVault.Web.Models.Ui.UsersResponse>("/api/ui/users");
+        var account = users!.Users.Single(user => user.Username == username);
+        (await UserActions.ForceLogoutAsync(admin, account.UserId)).EnsureSuccessStatusCode();
     }
 
-    /// <summary>Deletes an account the way an administrator does, from the Users page.</summary>
+    /// <summary>Deletes an account through the Users UI API.</summary>
     public async Task DeleteAccountAsync(string username)
     {
         var admin = await AdminClientAsync();
-        var users = await admin.GetStringAsync("/Admin/Users");
-        var delete = DeleteUserForm().Matches(users)
-            .FirstOrDefault(m => WebUtility.HtmlDecode(m.Value).Contains($"Delete user '{username}' permanently?", StringComparison.Ordinal))?.Groups[1].Value
-            ?? throw new InvalidOperationException($"The Users page offered no way to delete {username}.");
-
-        var response = await PostFormAsync(admin, delete, new(), formPage: "/Admin/Users");
-        if (response.StatusCode != HttpStatusCode.Redirect)
-        {
-            throw new InvalidOperationException($"Deleting {username} answered {(int)response.StatusCode}, not a redirect.");
-        }
+        var users = await admin.GetFromJsonAsync<EclipsVault.Web.Models.Ui.UsersResponse>("/api/ui/users");
+        var account = users!.Users.Single(user => user.Username == username);
+        (await UserActions.DeleteAsync(admin, account.UserId)).EnsureSuccessStatusCode();
     }
 
     /// <summary>
@@ -315,7 +331,8 @@ public sealed partial class VaultFixture : IAsyncLifetime
     private async Task<HttpClient> SignInAdministratorAsync()
     {
         var client = CreateClient();
-        await SignInFirstTimeAsync(client, AdminUsername, _adminPassword);
+        _adminAuthenticatorSecret = await SignInFirstTimeAsync(client, AdminUsername, _adminPassword);
+        _adminAuthenticatedAt = DateTimeOffset.UtcNow;
         return client;
     }
 
@@ -323,7 +340,7 @@ public sealed partial class VaultFixture : IAsyncLifetime
     /// The first sign-in of a new account: the password, then enrolling an authenticator and confirming
     /// it with a real code.
     /// </summary>
-    private static async Task SignInFirstTimeAsync(HttpClient client, string username, string password)
+    private static async Task<string> SignInFirstTimeAsync(HttpClient client, string username, string password)
     {
         var afterPassword = await PostFormAsync(client, "/Account/Login", new() { ["Username"] = username, ["Password"] = password });
         var next = afterPassword.Headers.Location?.OriginalString;
@@ -350,6 +367,7 @@ public sealed partial class VaultFixture : IAsyncLifetime
         {
             throw new InvalidOperationException($"Enrollment did not create a session ({(int)response.StatusCode}, '{landed}').");
         }
+        return secret;
     }
 
     /// <summary>Posts a form as a browser does: with the antiforgery token from the page that renders it.</summary>
@@ -381,12 +399,6 @@ public sealed partial class VaultFixture : IAsyncLifetime
     [GeneratedRegex("<code class=\"secret-code\" id=\"new-token\">([^<]+)</code>")]
     private static partial Regex IssuedApiKey();
 
-    // The form tag helper writes action after the view's own attributes, so match the whole tag.
-    [GeneratedRegex("<form\\b[^>]*\\baction=\"(/Admin/ForceLogout/[0-9a-fA-F-]{36})\"[^>]*>")]
-    private static partial Regex ForceLogoutForm();
-
-    [GeneratedRegex("<form\\b[^>]*\\baction=\"(/Admin/DeleteUser/[0-9a-fA-F-]{36})\"[^>]*>")]
-    private static partial Regex DeleteUserForm();
 }
 
 /// <summary>A client and the cookies it holds, so a test can inspect or copy its session cookie.</summary>

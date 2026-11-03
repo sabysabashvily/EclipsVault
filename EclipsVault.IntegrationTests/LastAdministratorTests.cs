@@ -19,7 +19,7 @@ public sealed class LastAdministratorTests(SingleAdministratorFixture fixture)
         await LegacyUsers.CreateAsync(admin, "it-last-disabled-admin");
         var disabled = await ProfileHttp.AccountAsync(vault, "it-last-disabled-admin");
         await LegacyUsers.EditRoleAsync(admin, disabled.Id, ClearanceLevel.TopSecret, "GLOBAL");
-        await LegacyUsers.SetEnabledAsync(admin, disabled.Id, enabled: false);
+        await UserActions.SetEnabledAsync(admin, disabled.Id, enabled: false);
         var self = await ProfileHttp.AccountAsync(vault, VaultFixture.AdminUsername);
         var head = await AuditTrail.HeadAsync(vault);
 

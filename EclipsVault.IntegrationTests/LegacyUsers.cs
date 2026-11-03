@@ -4,7 +4,7 @@ using EclipsVault.Core.Domain.Enums;
 
 namespace EclipsVault.IntegrationTests;
 
-/// <summary>The Legacy Users pages' forms, posted the way an administrator's browser posts them.</summary>
+/// <summary>The Legacy New user and Edit user forms, posted as an administrator's browser does.</summary>
 internal static class LegacyUsers
 {
     public const string UsersPage = "/Admin/Users";
@@ -34,28 +34,10 @@ internal static class LegacyUsers
             ["ProjectKey"] = project,
         }));
 
-    public static async Task<HttpResponseMessage> SetEnabledAsync(HttpClient admin, Guid accountId, bool enabled)
-        => await admin.PostAsync($"/Admin/SetEnabled/{accountId}", await FormAsync(admin, new()
-        {
-            ["enabled"] = enabled ? "true" : "false",
-        }));
-
-    public static async Task<HttpResponseMessage> UnlockAsync(HttpClient admin, Guid accountId)
-        => await admin.PostAsync($"/Admin/Unlock/{accountId}", await FormAsync(admin, new()));
-
-    public static async Task<HttpResponseMessage> ForceLogoutAsync(HttpClient admin, Guid accountId)
-        => await admin.PostAsync($"/Admin/ForceLogout/{accountId}", await FormAsync(admin, new()));
-
-    public static async Task<HttpResponseMessage> ResetMfaAsync(HttpClient admin, Guid accountId)
-        => await admin.PostAsync($"/Admin/ResetTotp/{accountId}", await FormAsync(admin, new()));
-
-    public static async Task<HttpResponseMessage> DeleteAsync(HttpClient admin, Guid accountId)
-        => await admin.PostAsync($"/Admin/DeleteUser/{accountId}", await FormAsync(admin, new()));
-
-    /// <summary>The form's fields with the antiforgery token the Users page renders for this session.</summary>
+    /// <summary>The form's fields with the antiforgery token the New user page renders for this session.</summary>
     public static async Task<FormUrlEncodedContent> FormAsync(HttpClient admin, Dictionary<string, string> fields)
     {
-        fields["__RequestVerificationToken"] = VaultFixture.FormTokenOf(await admin.GetStringAsync(UsersPage), UsersPage);
+        fields["__RequestVerificationToken"] = VaultFixture.FormTokenOf(await admin.GetStringAsync(CreateUserPage), CreateUserPage);
         return new FormUrlEncodedContent(fields);
     }
 }
