@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -11,12 +12,12 @@ namespace EclipsVault.IntegrationTests;
 public sealed class ConcurrentAccountCreationTests(VaultFixture vault)
 {
     [Fact]
-    public async Task A_username_created_twice_at_once_makes_one_account_and_shows_the_other_form_the_conflict()
+    public async Task A_username_created_twice_at_once_makes_one_account_and_answers_the_other_request_the_conflict()
     {
         const string username = "it-race-http-username";
         var admin = await vault.AdminClientAsync();
-        var firstForm = await LegacyUsers.CreateFormAsync(admin, username, "Race", "Person");
-        var secondForm = await LegacyUsers.CreateFormAsync(admin, username, "Race", "Person");
+        var firstForm = UserAccounts.CreateContent(username, "Race", "Person");
+        var secondForm = UserAccounts.CreateContent(username, "Race", "Person");
         using var scope = vault.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
         await using var transaction = await db.Database.BeginTransactionAsync();
@@ -35,8 +36,8 @@ public sealed class ConcurrentAccountCreationTests(VaultFixture vault)
         });
         await db.SaveChangesAsync();
 
-        var first = admin.PostAsync(LegacyUsers.CreateUserPage, firstForm);
-        var second = admin.PostAsync(LegacyUsers.CreateUserPage, secondForm);
+        var first = UserAccounts.CreateAsync(admin, firstForm);
+        var second = UserAccounts.CreateAsync(admin, secondForm);
         try
         {
             await WaitingRequests.AtLeastAsync(db, 2);
@@ -47,9 +48,10 @@ public sealed class ConcurrentAccountCreationTests(VaultFixture vault)
         }
         var responses = await Task.WhenAll(first, second);
 
-        Assert.Equal(LegacyUsers.UsersPage, Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Redirect).Headers.Location?.OriginalString);
-        var conflict = Assert.Single(responses, response => response.StatusCode == HttpStatusCode.OK);
-        Assert.Contains($"The username '{username}' is already taken.", WebUtility.HtmlDecode(await conflict.Content.ReadAsStringAsync()), StringComparison.Ordinal);
+        Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Created);
+        var conflict = Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Conflict);
+        await UiApiFailureContractTests.AssertProblemAsync(conflict, 409, "username_taken");
+        Assert.Contains($"The username '{username}' is already taken.", (await conflict.Content.ReadFromJsonAsync<Microsoft.AspNetCore.Mvc.ProblemDetails>())!.Title!, StringComparison.Ordinal);
         db.ChangeTracker.Clear();
         Assert.Equal(1, await db.Users.CountAsync(user => user.Username == username));
     }
@@ -58,8 +60,8 @@ public sealed class ConcurrentAccountCreationTests(VaultFixture vault)
     public async Task One_name_created_twice_at_once_makes_both_accounts_with_the_next_free_addresses()
     {
         var admin = await vault.AdminClientAsync();
-        var firstForm = await LegacyUsers.CreateFormAsync(admin, "it-race-http-address-one", "Http", "Twin");
-        var secondForm = await LegacyUsers.CreateFormAsync(admin, "it-race-http-address-two", "Http", "Twin");
+        var firstForm = UserAccounts.CreateContent("it-race-http-address-one", "Http", "Twin");
+        var secondForm = UserAccounts.CreateContent("it-race-http-address-two", "Http", "Twin");
         using var scope = vault.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
         await using var transaction = await db.Database.BeginTransactionAsync();
@@ -78,8 +80,8 @@ public sealed class ConcurrentAccountCreationTests(VaultFixture vault)
         });
         await db.SaveChangesAsync();
 
-        var first = admin.PostAsync(LegacyUsers.CreateUserPage, firstForm);
-        var second = admin.PostAsync(LegacyUsers.CreateUserPage, secondForm);
+        var first = UserAccounts.CreateAsync(admin, firstForm);
+        var second = UserAccounts.CreateAsync(admin, secondForm);
         try
         {
             await WaitingRequests.AtLeastAsync(db, 2);
@@ -90,7 +92,7 @@ public sealed class ConcurrentAccountCreationTests(VaultFixture vault)
         }
         var responses = await Task.WhenAll(first, second);
 
-        Assert.All(responses, response => Assert.Equal(LegacyUsers.UsersPage, response.Headers.Location?.OriginalString));
+        Assert.All(responses, response => Assert.Equal(HttpStatusCode.Created, response.StatusCode));
         db.ChangeTracker.Clear();
         var addresses = await db.Users
             .Where(user => user.Username == "it-race-http-address-one" || user.Username == "it-race-http-address-two")

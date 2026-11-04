@@ -24,11 +24,11 @@ public sealed class DurableSessionEndTests(RedisVaultFixture fixture)
         var versionKey = RevocationVersionKey(account.Id);
         var earlierVersion = (await fixture.Redis.Database.KeyDumpAsync(versionKey))!;
 
-        await LegacyUsers.EditRoleAsync(await vault.AdminClientAsync(), account.Id, ClearanceLevel.Standard, "GLOBAL");
+        await UserAccounts.EditRoleAsync(await vault.AdminClientAsync(), account.Id, ClearanceLevel.Standard, "GLOBAL");
         await fixture.Redis.Database.KeyDeleteAsync(versionKey);
         await fixture.Redis.Database.KeyRestoreAsync(versionKey, earlierVersion, TimeSpan.FromHours(24));
 
-        var refused = await demoted.Client.GetAsync(LegacyUsers.UsersPage);
+        var refused = await demoted.Client.GetAsync(UserAccounts.UsersPage);
         Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
         Assert.Equal("/Account/Login", refused.Headers.Location?.AbsolutePath);
     }

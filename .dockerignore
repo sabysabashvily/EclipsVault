@@ -21,6 +21,7 @@ EclipsVault.AngularUi/playwright-report/
 .github/
 logs/
 docs/
+graphify-out/
 **/*.md
 
 # Local key rings / license files

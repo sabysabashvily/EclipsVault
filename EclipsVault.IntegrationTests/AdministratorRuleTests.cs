@@ -9,7 +9,7 @@ using Xunit;
 namespace EclipsVault.IntegrationTests;
 
 /// <summary>
-/// The Users endpoints and Legacy forms refuse what Core refuses: changes to the administrator's own account that
+/// The Users endpoints refuse what Core refuses: changes to the administrator's own account that
 /// Profile governs, and values outside the account input rules. A refusal shows its message and
 /// changes nothing, not even the audit trail.
 /// </summary>
@@ -72,61 +72,51 @@ public sealed class AdministratorRuleTests(VaultFixture vault)
         var administrator = await vault.SignInNewAccountAsync("it-rules-self-demote", IPAddress.Parse("198.18.107.4"), ClearanceLevel.TopSecret);
         var account = await ProfileHttp.AccountAsync(vault, "it-rules-self-demote");
 
-        var response = await LegacyUsers.EditRoleAsync(administrator.Client, account.Id, ClearanceLevel.Secret, "GLOBAL");
+        var response = await UserAccounts.EditRoleAsync(administrator.Client, account.Id, ClearanceLevel.Secret, "GLOBAL");
 
-        Assert.Equal(LegacyUsers.UsersPage, response.Headers.Location?.OriginalString);
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         Assert.Equal(ClearanceLevel.Secret, (await ProfileHttp.AccountAsync(vault, "it-rules-self-demote")).Clearance);
     }
 
-    // MVC's enum binding refuses an undefined clearance before Core sees it. The form's select offers only
-    // defined levels, so the page has no place for that message; Core's own rule covers every other caller.
     [Fact]
-    public async Task A_new_account_with_an_undefined_clearance_is_refused_by_the_form_and_changes_nothing()
+    public async Task A_new_account_with_an_undefined_clearance_is_refused_by_the_API_and_changes_nothing()
     {
         var admin = await vault.AdminClientAsync();
         var head = await AuditTrail.HeadAsync(vault);
 
-        var response = await admin.PostAsync(LegacyUsers.CreateUserPage, await LegacyUsers.FormAsync(admin, new()
-        {
-            ["Username"] = "it-rules-clearance-7",
-            ["FirstName"] = "Undefined",
-            ["LastName"] = "Clearance",
-            ["Password"] = "It-rules-initial-password",
-            ["Clearance"] = "7",
-            ["ProjectKey"] = "GLOBAL",
-        }));
+        var response = await UserAccounts.CreateAsync(admin, "it-rules-clearance-7", "Undefined", "Clearance",
+            password: "It-rules-initial-password", clearance: (ClearanceLevel)7);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await UserFormsApiTests.AssertFieldProblemAsync(response, "clearance", "Choose one of the vault's clearance levels.");
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, head));
         Assert.False(await AccountExistsAsync("it-rules-clearance-7"));
     }
 
     [Fact]
-    public async Task A_role_with_an_undefined_clearance_is_refused_by_the_form_and_keeps_the_role()
+    public async Task A_role_with_an_undefined_clearance_is_refused_by_the_API_and_keeps_the_role()
     {
         var admin = await vault.AdminClientAsync();
-        await LegacyUsers.CreateAsync(admin, "it-rules-role-7");
+        await UserAccounts.CreateAsync(admin, "it-rules-role-7");
         var account = await ProfileHttp.AccountAsync(vault, "it-rules-role-7");
         var head = await AuditTrail.HeadAsync(vault);
 
-        var response = await LegacyUsers.EditRoleAsync(admin, account.Id, (ClearanceLevel)7, "OTHER");
+        var response = await UserAccounts.EditRoleAsync(admin, account.Id, (ClearanceLevel)7, "OTHER");
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await UserFormsApiTests.AssertFieldProblemAsync(response, "clearance", "Choose one of the vault's clearance levels.");
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, head));
         var stored = await ProfileHttp.AccountAsync(vault, "it-rules-role-7");
         Assert.Equal((ClearanceLevel.Standard, "GLOBAL", account.CredentialGeneration), (stored.Clearance, stored.ProjectKey, stored.CredentialGeneration));
     }
 
     [Fact]
-    public async Task A_name_too_long_for_the_display_name_is_refused_on_the_form()
+    public async Task A_name_too_long_for_the_display_name_is_refused_by_the_API()
     {
         var admin = await vault.AdminClientAsync();
         var head = await AuditTrail.HeadAsync(vault);
 
-        var response = await admin.PostAsync(LegacyUsers.CreateUserPage,
-            await LegacyUsers.CreateFormAsync(admin, "it-rules-long-name", new string('F', 40), new string('L', 40)));
+        var response = await UserAccounts.CreateAsync(admin, "it-rules-long-name", new string('F', 40), new string('L', 40));
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await UserFormsApiTests.AssertFieldProblemAsync(response, "lastName", "First and last name together can be at most 64 characters, counting the space between them.");
         Assert.Contains("First and last name together can be at most 64 characters, counting the space between them.",
             await ContentTextAsync(response), StringComparison.Ordinal);
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, head));

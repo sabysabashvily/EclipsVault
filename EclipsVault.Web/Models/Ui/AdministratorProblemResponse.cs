@@ -11,4 +11,7 @@ public sealed class AdministratorProblemResponse : ProblemDetails
     [AllowedValues("code", "sign_in")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Proof { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, string[]>? Errors { get; init; }
 }

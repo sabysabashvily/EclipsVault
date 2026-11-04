@@ -33,7 +33,7 @@ public abstract class AccountCreationRaceTests(AccountChangeDatabases databases)
             Task.Run(() => Record.ExceptionAsync(() => UserAdmin(first, bothChecked).CreateAsync(request, default))),
             Task.Run(() => Record.ExceptionAsync(() => UserAdmin(second, bothChecked).CreateAsync(request, default))));
 
-        var conflict = Assert.IsType<VaultAdminException>(Assert.Single(failures, failure => failure is not null));
+        var conflict = Assert.IsType<UsernameTakenException>(Assert.Single(failures, failure => failure is not null));
         Assert.Equal($"The username '{username}' is already taken.", conflict.Message);
         await using var check = databases.NewRequest();
         var account = await check.Context.Users.AsNoTracking().SingleAsync(user => user.Username == username);

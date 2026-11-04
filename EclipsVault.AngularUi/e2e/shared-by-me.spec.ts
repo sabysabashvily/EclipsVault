@@ -1,3 +1,5 @@
+import { refreshAdministratorProof } from './administrator-proof';
+import { AccountCreation } from './account-creation';
 import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -34,13 +36,17 @@ test('an issuer shares two real secrets with a colleague outside their project',
   test.setTimeout(210_000);
   const password = `E2e-${randomBytes(24).toString('hex')}`;
   await openAsIssuer(page, '/Admin/CreateUser');
-  await page.getByLabel('First name').fill('Share');
-  await page.getByLabel('Last name').fill('Recipient');
-  await page.getByLabel('Username').fill(recipientUsername);
-  await page.getByLabel('Initial password', { exact: true }).fill(password);
-  await page.getByLabel('Clearance').selectOption({ label: 'Standard' });
-  await page.getByLabel('Project').fill('E2E-RECIPIENT');
-  await page.getByRole('button', { name: 'Create user', exact: true }).click();
+  const creation = new AccountCreation(page);
+  await refreshAdministratorProof(page);
+  await creation.open();
+  await creation.create({
+    firstName: 'Share',
+    lastName: 'Recipient',
+    username: recipientUsername,
+    password,
+    clearance: 'Standard',
+    project: 'E2E-RECIPIENT',
+  });
   await expect(page).toHaveURL(/\/Admin\/Users$/);
 
   // Earlier sign-in scenarios use the same proxy source; keep the production limiter enabled.

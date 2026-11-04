@@ -3,12 +3,14 @@ import { openPalette } from './palette';
 
 export class Users {
   readonly heading;
+  readonly newUser;
   readonly filter;
   readonly confirmation;
   readonly stepUp;
   readonly status;
   readonly rows;
   constructor(private readonly page: Page) {
+    this.newUser = page.getByRole('link', { name: 'New user', exact: true });
     this.heading = page.getByRole('heading', { name: 'Users', exact: true });
     this.filter = page.getByRole('searchbox', { name: 'Filter users' });
     this.confirmation = page.getByRole('alertdialog');

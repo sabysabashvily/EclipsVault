@@ -6,7 +6,7 @@ namespace EclipsVault.Core.Domain.Exceptions;
 /// </summary>
 public sealed class UsernameTakenException : DomainException
 {
-    public UsernameTakenException() : base("That username is already taken.")
+    public UsernameTakenException(string? username = null) : base(username is null ? "That username is already taken." : $"The username '{username}' is already taken.")
     {
     }
 }

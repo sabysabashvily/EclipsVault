@@ -4,6 +4,8 @@ import { ChangePasswordPage } from './profile/change-password-page';
 import { AccessPage } from './access/access-page';
 import { AccessRequestsPage } from './access-requests/access-requests-page';
 import { ActivityPage } from './activity/activity-page';
+import { NewUserPage } from './users/new-user-page';
+import { EditUserPage } from './users/edit-user-page';
 import { UsersPage } from './users/users-page';
 import { routes } from './app.routes';
 import { SignInsPage } from './sign-ins/sign-ins-page';
@@ -24,6 +26,22 @@ function routeFor(url: string): Route | undefined {
 }
 
 describe('routes', () => {
+  it.each(['/Admin/CreateUser', '/aDmIn/cReAtEuSeR'])('opens New user at %s', async (url) => {
+    expect(await routeFor(url)?.loadComponent?.()).toBe(NewUserPage);
+  });
+  it.each([
+    '/Admin/EditUser/11111111-1111-1111-1111-111111111111',
+    '/aDmIn/eDiTuSeR/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA',
+  ])('opens Edit user at %s', async (url) => {
+    expect(await routeFor(url)?.loadComponent?.()).toBe(EditUserPage);
+  });
+  it.each([
+    '/Admin/EditUser/new',
+    '/Admin/EditUser',
+    '/Admin/EditUser/11111111-1111-1111-1111-111111111111/extra',
+  ])('leaves an invalid Edit user path %s unmatched', (url) => {
+    expect(routeFor(url)).toBeUndefined();
+  });
   it.each(['/Admin/Users', '/admin/users'])('opens Users at %s', async (url) => {
     const route = routeFor(url);
     expect(route?.title).toBe('Users — EclipsVault');

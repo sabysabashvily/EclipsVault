@@ -7,8 +7,8 @@ namespace EclipsVault.Web.Controllers.Ui;
 
 public static class AdministratorProblems
 {
-    public static JsonResult Problem(int status, string code, string title, string? proof = null)
-        => new(new AdministratorProblemResponse { Status = status, Code = code, Title = title, Proof = proof })
+    public static JsonResult Problem(int status, string code, string title, string? proof = null, IReadOnlyDictionary<string, string[]>? errors = null)
+        => new(new AdministratorProblemResponse { Status = status, Code = code, Title = title, Proof = proof, Errors = errors })
         {
             StatusCode = status,
             ContentType = "application/problem+json"
@@ -23,6 +23,9 @@ public sealed class AdministratorProblemFilter : IExceptionFilter
     {
         context.Result = context.Exception switch
         {
+            AccountInputException invalid => AdministratorProblems.Problem(StatusCodes.Status400BadRequest, "validation_failed", invalid.Message,
+                errors: new Dictionary<string, string[]> { [FieldName(invalid.Field)] = [invalid.Message] }),
+            UsernameTakenException conflict => AdministratorProblems.Problem(StatusCodes.Status409Conflict, "username_taken", conflict.Message),
             OwnAccountException refused => AdministratorProblems.Problem(StatusCodes.Status409Conflict, "own_account", refused.Message),
             LastAdministratorException refused => AdministratorProblems.Problem(StatusCodes.Status409Conflict, "last_administrator", refused.Message),
             AccountChangedException => AdministratorProblems.Problem(StatusCodes.Status409Conflict, "account_changed",
@@ -31,4 +34,6 @@ public sealed class AdministratorProblemFilter : IExceptionFilter
         };
         context.ExceptionHandled = context.Result is not null;
     }
+
+    private static string FieldName(string field) => field == "ProjectKey" ? "project" : char.ToLowerInvariant(field[0]) + field[1..];
 }

@@ -61,7 +61,7 @@ public class UserAdminServiceTests
         var vault = new Vault();
         vault.Changes.Failures.Enqueue(new UsernameTakenException());
 
-        var conflict = await Assert.ThrowsAsync<VaultAdminException>(() => vault.Service.CreateAsync(NewPerson("it-raced"), default));
+        var conflict = await Assert.ThrowsAsync<UsernameTakenException>(() => vault.Service.CreateAsync(NewPerson("it-raced"), default));
 
         Assert.Equal("The username 'it-raced' is already taken.", conflict.Message);
         Assert.Equal(["stage new it-raced"], vault.Steps);
@@ -74,7 +74,7 @@ public class UserAdminServiceTests
         vault.Changes.SavedFirstByAnother = new User { Id = Guid.NewGuid(), Username = "it-raced", Email = "new.person.1@example.test" };
         vault.Changes.Failures.Enqueue(new EmailAddressTakenException());
 
-        var conflict = await Assert.ThrowsAsync<VaultAdminException>(() => vault.Service.CreateAsync(NewPerson("it-raced"), default));
+        var conflict = await Assert.ThrowsAsync<UsernameTakenException>(() => vault.Service.CreateAsync(NewPerson("it-raced"), default));
 
         Assert.Equal("The username 'it-raced' is already taken.", conflict.Message);
     }
@@ -100,7 +100,7 @@ public class UserAdminServiceTests
         vault.Changes.Failures.Enqueue(new EmailAddressTakenException());
         vault.Changes.Failures.Enqueue(new EmailAddressTakenException());
 
-        var refusal = await Assert.ThrowsAsync<VaultAdminException>(() => vault.Service.CreateAsync(NewPerson("it-raced"), default));
+        var refusal = await Assert.ThrowsAsync<AccountChangedException>(() => vault.Service.CreateAsync(NewPerson("it-raced"), default));
 
         Assert.Equal("Another account for the same name was created at the same moment. Try again.", refusal.Message);
         Assert.Equal(["stage new it-raced", "stage new it-raced"], vault.Steps);

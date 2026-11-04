@@ -1,62 +1,6 @@
 using System.ComponentModel.DataAnnotations;
-using EclipsVault.Core.Application.Users;
-using EclipsVault.Core.Domain.Enums;
 
 namespace EclipsVault.Web.Models;
-
-public sealed class EditUserViewModel
-{
-    public Guid Id { get; set; }
-
-    public string Username { get; set; } = string.Empty;
-
-    public string DisplayName { get; set; } = string.Empty;
-
-    public bool IsDisabled { get; set; }
-
-    public bool IsSelf { get; set; }
-
-    [Display(Name = "Clearance level")]
-    public ClearanceLevel Clearance { get; set; }
-
-    [Required]
-    [StringLength(64)]
-    [Display(Name = "Project key")]
-    public string ProjectKey { get; set; } = string.Empty;
-}
-
-public sealed class CreateUserViewModel
-{
-    [Required]
-    [StringLength(UsernameRules.MaximumLength, MinimumLength = UsernameRules.MinimumLength)]
-    [RegularExpression(UsernameRules.AllowedCharactersPattern, ErrorMessage = UsernameRules.Description)]
-    [Display(Name = "Username")]
-    public string Username { get; set; } = string.Empty;
-
-    [Required]
-    [StringLength(64)]
-    [Display(Name = "First name")]
-    public string FirstName { get; set; } = string.Empty;
-
-    [Required]
-    [StringLength(64)]
-    [Display(Name = "Last name")]
-    public string LastName { get; set; } = string.Empty;
-
-    [Required]
-    [StringLength(256, MinimumLength = 12, ErrorMessage = "Passwords must be at least 12 characters.")]
-    [DataType(DataType.Password)]
-    [Display(Name = "Initial password")]
-    public string Password { get; set; } = string.Empty;
-
-    [Display(Name = "Clearance level")]
-    public ClearanceLevel Clearance { get; set; } = ClearanceLevel.Standard;
-
-    [Required]
-    [StringLength(64)]
-    [Display(Name = "Project key")]
-    public string ProjectKey { get; set; } = string.Empty;
-}
 
 public sealed class NetworksViewModel
 {

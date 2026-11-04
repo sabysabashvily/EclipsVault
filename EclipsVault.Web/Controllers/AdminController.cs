@@ -10,12 +10,11 @@ using Microsoft.Extensions.Options;
 namespace EclipsVault.Web.Controllers;
 
 /// <summary>
-/// Legacy staff provisioning and role forms, trusted networks and intrusion-defence blocks.
+/// Legacy trusted networks and intrusion-defence blocks.
 /// </summary>
 [Authorize(Policy = VaultPolicies.AdminOnly)]
 public sealed class AdminController : VaultController
 {
-    private readonly IUserAdminService _userAdmin;
     private readonly ITrustedNetworkService _trustedNetworks;
     private readonly IIpBlacklist _blacklist;
     private readonly IAuditSink _audit;
@@ -23,119 +22,17 @@ public sealed class AdminController : VaultController
     private readonly ILogger<AdminController> _logger;
 
     public AdminController(
-        IUserAdminService userAdmin,
         ITrustedNetworkService trustedNetworks,
         IIpBlacklist blacklist,
         IAuditSink audit,
         IOptions<AbacOptions> abacOptions,
         ILogger<AdminController> logger)
     {
-        _userAdmin = userAdmin;
         _trustedNetworks = trustedNetworks;
         _blacklist = blacklist;
         _audit = audit;
         _abacOptions = abacOptions.Value;
         _logger = logger;
-    }
-
-    // ---- Users -------------------------------------------------------------------
-
-    [HttpGet]
-    public IActionResult CreateUser() => View(new CreateUserViewModel());
-
-    [HttpPost]
-    public async Task<IActionResult> CreateUser(CreateUserViewModel model, CancellationToken ct)
-    {
-        if (!ModelState.IsValid)
-        {
-            return View(model);
-        }
-
-        CreatedUserDto created;
-        try
-        {
-            created = await _userAdmin.CreateAsync(
-                new CreateUserRequest(model.Username, model.FirstName, model.LastName, model.Password, model.Clearance, model.ProjectKey),
-                ct);
-        }
-        catch (VaultAdminException ex)
-        {
-            ModelState.AddModelError(string.Empty, ex.Message);
-            return View(model);
-        }
-
-        UsersSuccess($"User '{created.Username}' created with email {created.Email}. They can sign in with either and will set up their authenticator on first sign-in.");
-        return Redirect("/Admin/Users");
-    }
-
-    [HttpGet]
-    public async Task<IActionResult> EditUser(Guid id, CancellationToken ct)
-    {
-        var user = await _userAdmin.GetAsync(id, ct);
-        if (user is null)
-        {
-            UsersError("User not found.");
-            return Redirect("/Admin/Users");
-        }
-
-        return View(new EditUserViewModel
-        {
-            Id = user.Id,
-            Username = user.Username,
-            DisplayName = user.DisplayName,
-            Clearance = user.Clearance,
-            ProjectKey = user.ProjectKey,
-            IsDisabled = user.IsDisabled,
-            IsSelf = user.Id == CurrentUserId()
-        });
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> EditUser(EditUserViewModel model, CancellationToken ct)
-    {
-        if (!ModelState.IsValid)
-        {
-            return View(model);
-        }
-
-        try
-        {
-            var account = await _userAdmin.GetAsync(model.Id, ct);
-            if (account is null)
-            {
-                UsersError("User not found.");
-                return Redirect("/Admin/Users");
-            }
-
-            if (await _userAdmin.SetRoleAsync(model.Id, model.Clearance, model.ProjectKey, ct))
-            {
-                UsersSuccess($"Role updated for '{account.Username}'. Their sessions were revoked so the change takes effect at next sign-in.");
-            }
-            else
-            {
-                UsersError("User not found.");
-            }
-        }
-        catch (VaultAdminException ex)
-        {
-            model.IsSelf = model.Id == CurrentUserId();
-            ModelState.AddModelError(string.Empty, ex.Message);
-            return View(model);
-        }
-
-        return Redirect("/Admin/Users");
-    }
-
-    private void UsersSuccess(string message)
-    {
-        TempData["UsersMessage"] = message;
-        TempData["UsersError"] = false;
-    }
-
-    private void UsersError(string message)
-    {
-        TempData["UsersMessage"] = message;
-        TempData["UsersError"] = true;
     }
 
     // ---- Networks ----------------------------------------------------------------

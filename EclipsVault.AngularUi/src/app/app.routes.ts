@@ -16,6 +16,16 @@ function legacyPath(path: string): UrlMatcher {
       : null;
 }
 
+function editUserPath(): UrlMatcher {
+  return (segments) =>
+    segments.length === 3 &&
+    segments[0]?.path.toLowerCase() === 'admin' &&
+    segments[1]?.path.toLowerCase() === 'edituser' &&
+    /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(segments[2]?.path ?? '')
+      ? { consumed: segments, posParams: { id: segments[2] } }
+      : null;
+}
+
 const access = () => import('./access/access-page').then((m) => m.AccessPage);
 const activity = () => import('./activity/activity-page').then((m) => m.ActivityPage);
 const signIns = () => import('./sign-ins/sign-ins-page').then((m) => m.SignInsPage);
@@ -32,6 +42,15 @@ const profile = () => import('./profile/profile-page').then((m) => m.ProfilePage
 const password = () => import('./profile/change-password-page').then((m) => m.ChangePasswordPage);
 
 export const routes: Routes = [
+  {
+    matcher: legacyPath('Admin/CreateUser'),
+    loadComponent: () => import('./users/new-user-page').then((m) => m.NewUserPage),
+    title: 'New user — EclipsVault',
+  },
+  {
+    matcher: editUserPath(),
+    loadComponent: () => import('./users/edit-user-page').then((m) => m.EditUserPage),
+  },
   {
     matcher: legacyPath('Admin/Users'),
     loadComponent: () => import('./users/users-page').then((m) => m.UsersPage),

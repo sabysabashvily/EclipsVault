@@ -162,22 +162,8 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         await LegacySharing.ShareAsync(account.Browser.Client, details, "it-shares-lost-recipient");
         var share = await LegacySharing.ShareOfAsync(vault, details);
         var issuerId = SessionApi.PrincipalOf(vault, account.Browser).GetUserId();
-        var editPath = $"/Admin/EditUser/{issuerId}";
-        var edit = await admin.GetStringAsync(editPath);
-        var changed = await admin.PostAsync(editPath, new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(edit, editPath),
-            ["Id"] = issuerId.ToString(),
-            ["Username"] = "it-shares-lost-access",
-            ["DisplayName"] = "Integration Test",
-            ["Clearance"] = ((int)ClearanceLevel.Standard).ToString(CultureInfo.InvariantCulture),
-            ["ProjectKey"] = "SHARES-REASSIGNED",
-        }));
-        Assert.Equal(HttpStatusCode.Redirect, changed.StatusCode);
-        // The edit revokes the account's sessions, so sign in again to carry the new project. A
-        // session's sign-in time is whole seconds and revocation covers its own second, so wait
-        // for the next one or the new session is revoked too.
-        await Task.Delay(TimeSpan.FromMilliseconds(1_050 - DateTimeOffset.UtcNow.Millisecond));
+        var changed = await UserAccounts.EditRoleAsync(admin, issuerId, ClearanceLevel.Standard, "SHARES-REASSIGNED");
+        Assert.Equal(HttpStatusCode.NoContent, changed.StatusCode);
         var issuer = await account.OpenDeviceAsync(recoveryCodeIndex: 0, "192.0.2.96");
         Assert.StartsWith("/Account/Denied?", (await issuer.Client.GetAsync(details)).Headers.Location?.OriginalString);
         Assert.Equal(HttpStatusCode.OK, (await recipient.Client.GetAsync(details)).StatusCode);

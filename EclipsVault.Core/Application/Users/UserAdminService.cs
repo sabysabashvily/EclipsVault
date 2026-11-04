@@ -98,7 +98,7 @@ public sealed class UserAdminService : IUserAdminService
 
         if (await _users.FindByUsernameAsync(username, ct) is not null)
         {
-            throw UsernameTaken(username);
+            throw new UsernameTakenException(username);
         }
 
         var email = await GenerateEmailAsync(first, last, ct);
@@ -123,7 +123,7 @@ public sealed class UserAdminService : IUserAdminService
             user.Email = await GenerateEmailAsync(first, last, ct);
             if (!await TryCommitNewAccountAsync(user, ct))
             {
-                throw new VaultAdminException("Another account for the same name was created at the same moment. Try again.");
+                throw new AccountChangedException("Another account for the same name was created at the same moment. Try again.");
             }
         }
 
@@ -144,7 +144,7 @@ public sealed class UserAdminService : IUserAdminService
         }
         catch (UsernameTakenException)
         {
-            throw UsernameTaken(user.Username);
+            throw new UsernameTakenException(user.Username);
         }
         catch (EmailAddressTakenException)
         {
@@ -152,14 +152,12 @@ public sealed class UserAdminService : IUserAdminService
             // database may report that index first. The username is what the administrator chose, so name it.
             if (await _users.FindByUsernameAsync(user.Username, ct) is not null)
             {
-                throw UsernameTaken(user.Username);
+                throw new UsernameTakenException(user.Username);
             }
 
             return false;
         }
     }
-
-    private static VaultAdminException UsernameTaken(string username) => new($"The username '{username}' is already taken.");
 
     /// <summary>
     /// The New user form's rules for the username, names and password, so callers other than the form are

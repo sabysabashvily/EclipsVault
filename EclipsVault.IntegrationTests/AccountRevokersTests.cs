@@ -114,14 +114,14 @@ public abstract class AccountRevokersTests(VaultFixture vault)
     {
         var demoted = await vault.SignInNewAccountAsync("it-version-role", IPAddress.Parse("198.18.240.1"), ClearanceLevel.TopSecret);
         var original = SessionApi.PrincipalOf(vault, demoted);
-        Assert.Equal(HttpStatusCode.OK, (await demoted.Client.GetAsync(LegacyUsers.UsersPage)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await demoted.Client.GetAsync(UserAccounts.UsersPage)).StatusCode);
 
-        var edited = await LegacyUsers.EditRoleAsync(await vault.AdminClientAsync(), original.GetUserId(), ClearanceLevel.Elevated, "OTHER");
+        var edited = await UserAccounts.EditRoleAsync(await vault.AdminClientAsync(), original.GetUserId(), ClearanceLevel.Elevated, "OTHER");
 
-        Assert.Equal(LegacyUsers.UsersPage, edited.Headers.Location?.OriginalString);
+        Assert.Equal(HttpStatusCode.NoContent, edited.StatusCode);
         Assert.Equal(original.GetSessionStampOrNull()!.RevocationVersion,
             await vault.Services.GetRequiredService<ISessionRevocationService>().FindAsync(original.GetUserId()));
-        var refused = await demoted.Client.GetAsync(LegacyUsers.UsersPage);
+        var refused = await demoted.Client.GetAsync(UserAccounts.UsersPage);
         Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
         Assert.Equal("/Account/Login", refused.Headers.Location?.AbsolutePath);
     }
@@ -216,19 +216,8 @@ public abstract class AccountRevokersTests(VaultFixture vault)
         var token = VaultFixture.FormTokenOf(await pending.Client.GetStringAsync("/Account/Totp"), "/Account/Totp");
         var code = Totp.NextCode(account.TotpSecret!);
         var admin = await vault.AdminClientAsync();
-        var editPath = $"/Admin/EditUser/{account.Id}";
-        var edit = await admin.GetStringAsync(editPath);
-
-        var changed = await admin.PostAsync(editPath, new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(edit, editPath),
-            ["Id"] = account.Id.ToString(),
-            ["Username"] = username,
-            ["DisplayName"] = "Integration Test",
-            ["Clearance"] = ((int)ClearanceLevel.Standard).ToString(CultureInfo.InvariantCulture),
-            ["ProjectKey"] = "ROLE-HTTP",
-        }));
-        Assert.Equal(HttpStatusCode.Redirect, changed.StatusCode);
+        var changed = await UserAccounts.EditRoleAsync(admin, account.Id, ClearanceLevel.Standard, "ROLE-HTTP");
+        Assert.Equal(HttpStatusCode.NoContent, changed.StatusCode);
         var refused = await pending.Client.PostAsync("/Account/Totp", new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["__RequestVerificationToken"] = token,

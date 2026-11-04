@@ -16,7 +16,6 @@ namespace EclipsVault.IntegrationTests;
 [Collection(AuditFailureCollection.Name)]
 public sealed class AdministratorAuditFailureTests(AuditFailureFixture failure)
 {
-    private const string AuditUnavailablePage = "/Home/Error?code=503";
 
     [Fact]
     public async Task A_create_that_cannot_be_recorded_leaves_no_account()
@@ -28,9 +27,9 @@ public sealed class AdministratorAuditFailureTests(AuditFailureFixture failure)
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await LegacyUsers.CreateAsync(admin, "it-unrecorded-create");
+            var response = await UserAccounts.CreateAsync(admin, "it-unrecorded-create");
 
-            Assert.Equal(AuditUnavailablePage, response.Headers.Location?.OriginalString);
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
             Assert.Null(await FindAccountAsync("it-unrecorded-create"));
             Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         }
@@ -51,9 +50,9 @@ public sealed class AdministratorAuditFailureTests(AuditFailureFixture failure)
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await LegacyUsers.EditRoleAsync(admin, account.Id, ClearanceLevel.Secret, "OTHER");
+            var response = await UserAccounts.EditRoleAsync(admin, account.Id, ClearanceLevel.Secret, "OTHER");
 
-            Assert.Equal(AuditUnavailablePage, response.Headers.Location?.OriginalString);
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
             var stored = await FindAccountAsync("it-unrecorded-role");
             Assert.Equal(ClearanceLevel.Standard, stored!.Clearance);
             Assert.Equal("GLOBAL", stored.ProjectKey);
@@ -249,7 +248,7 @@ public sealed class AdministratorAuditFailureTests(AuditFailureFixture failure)
 
     private async Task<User> CreateAccountAsync(HttpClient admin, string username)
     {
-        Assert.Equal(LegacyUsers.UsersPage, (await LegacyUsers.CreateAsync(admin, username)).Headers.Location?.OriginalString);
+        Assert.Equal(HttpStatusCode.Created, (await UserAccounts.CreateAsync(admin, username)).StatusCode);
         return (await FindAccountAsync(username))!;
     }
 

@@ -3,7 +3,9 @@
     <h1>Users</h1>
     <p class="page-sub">Staff accounts. New users set up their authenticator at first sign-in.</p>
   </div>
-  <div class="page-actions"><a class="button primary" href="/Admin/CreateUser">New user</a></div>
+  <div class="page-actions">
+    <a class="button primary" routerLink="/Admin/CreateUser">New user</a>
+  </div>
 </div>
 <app-status-line [message]="status().message" [error]="status().error" />
 @if (users.isLoading() && !users.hasValue()) {
@@ -67,7 +69,7 @@
               }}</span>
             </td>
             <td class="cell-actions">
-              <a class="button small" [href]="'/Admin/EditUser/' + user.userId">Edit</a>
+              <a class="button small" [routerLink]="['/Admin/EditUser', user.userId]">Edit</a>
               @if (!user.isYou) {
                 @if (user.status === 'locked') {
                   <button

@@ -35,7 +35,7 @@ public sealed class StepUpService : IStepUpService
     public bool IsRequired(AdministratorAction action, DateTimeOffset lastStrongAuthUtc, DateTimeOffset nowUtc)
         => action switch
         {
-            AdministratorAction.EnableAccount or AdministratorAction.UnlockAccount or AdministratorAction.ResetAuthenticator
+            AdministratorAction.CreateAccount or AdministratorAction.ChangeAccountRole or AdministratorAction.EnableAccount or AdministratorAction.UnlockAccount or AdministratorAction.ResetAuthenticator
                 => nowUtc - lastStrongAuthUtc > TimeSpan.FromMinutes(_options.MaxAuthAgeMinutes),
             AdministratorAction.DisableAccount or AdministratorAction.DeleteAccount or AdministratorAction.SignOutAccount => false,
             _ => throw new ArgumentOutOfRangeException(nameof(action))

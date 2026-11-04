@@ -11,10 +11,39 @@ namespace EclipsVault.IntegrationTests;
 public sealed class AdministratorFreshnessTests(VaultFixture vault)
 {
     [Fact]
+    public async Task A_stale_administrator_cannot_create_lasting_access()
+    {
+        var administrator = await vault.SignInNewAccountAsync("it-fresh-create-admin", IPAddress.Parse("198.18.110.1"), ClearanceLevel.TopSecret);
+        var stale = vault.CreateSession(SessionApi.WithStrongAuthenticationAt(vault, administrator, DateTimeOffset.UtcNow.AddMinutes(-11)), IPAddress.Parse("198.18.110.1"));
+
+        var response = await UserAccounts.CreateAsync(stale.Client, "it-fresh-create-target");
+
+        using var scope = vault.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+        Assert.False(await db.Users.AnyAsync(account => account.Username == "it-fresh-create-target"));
+        await AssertStepUpAsync(response, "code");
+    }
+
+    [Fact]
+    public async Task A_stale_administrator_cannot_change_an_accounts_role()
+    {
+        var administrator = await vault.SignInNewAccountAsync("it-fresh-role-admin", IPAddress.Parse("198.18.110.2"), ClearanceLevel.TopSecret);
+        await UserAccounts.CreateAsync(administrator.Client, "it-fresh-role-target");
+        var target = await ProfileHttp.AccountAsync(vault, "it-fresh-role-target");
+        var stale = vault.CreateSession(SessionApi.WithStrongAuthenticationAt(vault, administrator, DateTimeOffset.UtcNow.AddMinutes(-11)), IPAddress.Parse("198.18.110.2"));
+
+        var response = await UserAccounts.EditRoleAsync(stale.Client, target.Id, ClearanceLevel.TopSecret, "OTHER");
+
+        var stored = await ProfileHttp.AccountAsync(vault, "it-fresh-role-target");
+        Assert.Equal((ClearanceLevel.Standard, "GLOBAL", target.CredentialGeneration), (stored.Clearance, stored.ProjectKey, stored.CredentialGeneration));
+        await AssertStepUpAsync(response, "code");
+    }
+
+    [Fact]
     public async Task A_stale_administrator_cannot_enable_an_account()
     {
         var administrator = await vault.SignInNewAccountAsync("it-fresh-enable-admin", IPAddress.Parse("198.18.109.1"), ClearanceLevel.TopSecret);
-        await LegacyUsers.CreateAsync(administrator.Client, "it-fresh-enable-target");
+        await UserAccounts.CreateAsync(administrator.Client, "it-fresh-enable-target");
         var target = await ProfileHttp.AccountAsync(vault, "it-fresh-enable-target");
         await UserActions.SetEnabledAsync(administrator.Client, target.Id, enabled: false);
         var stale = vault.CreateSession(SessionApi.WithStrongAuthenticationAt(vault, administrator, DateTimeOffset.UtcNow.AddMinutes(-11)), IPAddress.Parse("198.18.109.1"));
@@ -29,7 +58,7 @@ public sealed class AdministratorFreshnessTests(VaultFixture vault)
     public async Task A_stale_administrator_cannot_clear_an_account_lockout()
     {
         var administrator = await vault.SignInNewAccountAsync("it-fresh-unlock-admin", IPAddress.Parse("198.18.109.2"), ClearanceLevel.TopSecret);
-        await LegacyUsers.CreateAsync(administrator.Client, "it-fresh-unlock-target");
+        await UserAccounts.CreateAsync(administrator.Client, "it-fresh-unlock-target");
         var target = await ProfileHttp.AccountAsync(vault, "it-fresh-unlock-target");
         using (var setup = vault.Services.CreateScope())
         {
@@ -49,7 +78,7 @@ public sealed class AdministratorFreshnessTests(VaultFixture vault)
     public async Task A_stale_administrator_cannot_reset_another_accounts_authenticator()
     {
         var administrator = await vault.SignInNewAccountAsync("it-fresh-reset-admin", IPAddress.Parse("198.18.109.3"), ClearanceLevel.TopSecret);
-        await LegacyUsers.CreateAsync(administrator.Client, "it-fresh-reset-target");
+        await UserAccounts.CreateAsync(administrator.Client, "it-fresh-reset-target");
         var target = await ProfileHttp.AccountAsync(vault, "it-fresh-reset-target");
         var stale = vault.CreateSession(SessionApi.WithStrongAuthenticationAt(vault, administrator, DateTimeOffset.UtcNow.AddMinutes(-11)), IPAddress.Parse("198.18.109.3"));
 

@@ -1,4 +1,4 @@
-using System.Net;
+using System.Net.Http.Json;
 using EclipsVault.Core.Domain.Enums;
 using Xunit;
 
@@ -16,18 +16,18 @@ public sealed class LastAdministratorTests(SingleAdministratorFixture fixture)
     {
         var vault = fixture.Vault;
         var admin = await vault.AdminClientAsync();
-        await LegacyUsers.CreateAsync(admin, "it-last-disabled-admin");
+        await UserAccounts.CreateAsync(admin, "it-last-disabled-admin");
         var disabled = await ProfileHttp.AccountAsync(vault, "it-last-disabled-admin");
-        await LegacyUsers.EditRoleAsync(admin, disabled.Id, ClearanceLevel.TopSecret, "GLOBAL");
+        await UserAccounts.EditRoleAsync(admin, disabled.Id, ClearanceLevel.TopSecret, "GLOBAL");
         await UserActions.SetEnabledAsync(admin, disabled.Id, enabled: false);
         var self = await ProfileHttp.AccountAsync(vault, VaultFixture.AdminUsername);
         var head = await AuditTrail.HeadAsync(vault);
 
-        var response = await LegacyUsers.EditRoleAsync(admin, self.Id, ClearanceLevel.Secret, "GLOBAL");
+        var response = await UserAccounts.EditRoleAsync(admin, self.Id, ClearanceLevel.Secret, "GLOBAL");
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await UiApiFailureContractTests.AssertProblemAsync(response, 409, "last_administrator");
         Assert.Contains("Cannot demote the last TopSecret administrator — the vault would become unmanageable.",
-            WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync()), StringComparison.Ordinal);
+            (await response.Content.ReadFromJsonAsync<Microsoft.AspNetCore.Mvc.ProblemDetails>())!.Title!, StringComparison.Ordinal);
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, head));
         var stored = await ProfileHttp.AccountAsync(vault, VaultFixture.AdminUsername);
         Assert.Equal((ClearanceLevel.TopSecret, self.CredentialGeneration), (stored.Clearance, stored.CredentialGeneration));

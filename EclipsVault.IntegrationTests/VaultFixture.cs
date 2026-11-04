@@ -249,19 +249,9 @@ public sealed partial class VaultFixture : IAsyncLifetime
         string? password = null)
     {
         password ??= "It-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
-        var created = await PostFormAsync(await AdminClientAsync(), "/Admin/CreateUser", new()
-        {
-            ["Username"] = username,
-            ["FirstName"] = "Integration",
-            ["LastName"] = "Test",
-            ["Password"] = password,
-            ["Clearance"] = ((int)clearance).ToString(CultureInfo.InvariantCulture),
-            ["ProjectKey"] = project,
-        });
-        if (created.StatusCode != HttpStatusCode.Redirect)
-        {
-            throw new InvalidOperationException($"Creating the account {username} answered {(int)created.StatusCode}, not a redirect.");
-        }
+        var created = await UserAccounts.CreateAsync(await AdminClientAsync(), username,
+            password: password, clearance: clearance, project: project);
+        created.EnsureSuccessStatusCode();
 
         var session = CreateSession(source: source);
         await SignInFirstTimeAsync(session.Client, username, password);

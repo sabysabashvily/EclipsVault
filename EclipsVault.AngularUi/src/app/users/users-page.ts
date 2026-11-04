@@ -1,3 +1,4 @@
+import { RouterLink } from '@angular/router';
 import { HttpClient, httpResource } from '@angular/common/http';
 import {
   Component,
@@ -41,7 +42,7 @@ const statuses: Record<User['status'], { label: string; tone: string }> = {
 
 @Component({
   selector: 'app-users-page',
-  imports: [ConfirmationDialog, RowMenu, StatusLine, StepUpDialog, TableFilter],
+  imports: [RouterLink, ConfirmationDialog, RowMenu, StatusLine, StepUpDialog, TableFilter],
   templateUrl: './users-page.html',
 })
 export class UsersPage {

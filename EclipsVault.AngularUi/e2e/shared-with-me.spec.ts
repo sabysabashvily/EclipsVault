@@ -1,3 +1,5 @@
+import { refreshAdministratorProof } from './administrator-proof';
+import { AccountCreation } from './account-creation';
 import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -61,14 +63,17 @@ test('a share whose recipient was later under-cleared is not listed for them', a
   test.setTimeout(150_000);
   const password = `E2e-${randomBytes(24).toString('hex')}`;
   await signInAsAdministrator(page);
-  await page.goto('/Admin/CreateUser');
-  await page.getByLabel('First name').fill('Shared');
-  await page.getByLabel('Last name').fill('Recipient');
-  await page.getByLabel('Username').fill(recipientUsername);
-  await page.getByLabel('Initial password', { exact: true }).fill(password);
-  await page.getByLabel('Clearance').selectOption({ label: 'Elevated' });
-  await page.getByLabel('Project').fill('E2E-SWM');
-  await page.getByRole('button', { name: 'Create user', exact: true }).click();
+  const creation = new AccountCreation(page);
+  await refreshAdministratorProof(page);
+  await creation.open();
+  await creation.create({
+    firstName: 'Shared',
+    lastName: 'Recipient',
+    username: recipientUsername,
+    password,
+    clearance: 'Elevated',
+    project: 'E2E-SWM',
+  });
   await expect(page).toHaveURL(/\/Admin\/Users$/);
 
   // Sharing refuses an under-cleared recipient, so the share is made first and the clearance

@@ -496,16 +496,8 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         var username = "return-" + Guid.NewGuid().ToString("N")[..12];
         var password = "It-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
         var admin = await vault.AdminClientAsync();
-        var created = await PostFormAsync(admin, "/Admin/CreateUser", await admin.GetStringAsync("/Admin/CreateUser"), new()
-        {
-            ["Username"] = username,
-            ["FirstName"] = "Return",
-            ["LastName"] = "Test",
-            ["Password"] = password,
-            ["Clearance"] = "1",
-            ["ProjectKey"] = "GLOBAL"
-        });
-        Assert.Equal(HttpStatusCode.Redirect, created.StatusCode);
+        var created = await UserAccounts.CreateAsync(admin, username, "Return", "Test", password);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         return (username, password);
     }
 

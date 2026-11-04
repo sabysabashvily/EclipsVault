@@ -25,6 +25,7 @@ export class UiApiError extends Error {
     readonly title: string,
     readonly signedOut: number | null = null,
     readonly proof: StepUpProof | null = null,
+    readonly errors: Readonly<Record<string, string[]>> = {},
   ) {
     super(title);
     this.name = 'UiApiError';
@@ -59,7 +60,22 @@ function toUiApiError(response: HttpErrorResponse): UiApiError {
     'proof' in problem && (problem.proof === 'code' || problem.proof === 'sign_in')
       ? problem.proof
       : null,
+    fieldErrors(problem),
   );
+}
+
+function fieldErrors(problem: object): Readonly<Record<string, string[]>> {
+  if (!('errors' in problem) || typeof problem.errors !== 'object' || problem.errors === null)
+    return {};
+  const errors: Record<string, string[]> = {};
+  for (const [field, messages] of Object.entries(problem.errors)) {
+    if (
+      Array.isArray(messages) &&
+      messages.every((message: unknown) => typeof message === 'string')
+    )
+      errors[field] = messages;
+  }
+  return errors;
 }
 
 export function parsedOrNull(text: string): unknown {

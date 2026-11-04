@@ -1,3 +1,4 @@
+using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Extensions;
@@ -14,7 +15,7 @@ namespace EclipsVault.Web.Controllers.Ui;
 [Authorize(AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme, Policy = VaultPolicies.AdminOnly)]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 [TypeFilter(typeof(AdministratorProblemFilter))]
-public sealed class UsersController(IUserAdminService users, AdministratorStepUp stepUp) : Controller
+public sealed class UsersController(IUserAdminService users, AdministratorStepUp stepUp, UserDirectoryOptions directory) : Controller
 {
     [HttpGet("notice")]
     [ProducesResponseType<UserNoticeResponse>(StatusCodes.Status200OK, "application/json")]
@@ -32,6 +33,78 @@ public sealed class UsersController(IUserAdminService users, AdministratorStepUp
             account.IsDisabled ? "disabled" : account.IsLockedOut ? "locked" : "active",
             Url.Content($"~/Profile/Avatar?id={account.Id}&seed={Uri.EscapeDataString(account.DisplayName)}&v={(account.HasCustomAvatar ? "c" : "g")}"),
             account.Id == User.GetUserId())).ToList());
+    }
+
+    private static IReadOnlyList<ClearanceOptionResponse> Clearances => Enum.GetValues<ClearanceLevel>()
+        .Select(level => new ClearanceOptionResponse((int)level, level.ToDisplayName())).ToList();
+
+    [HttpGet("new")]
+    [ProducesResponseType<NewUserResponse>(StatusCodes.Status200OK, "application/json")]
+    public ActionResult<NewUserResponse> New() => new NewUserResponse(directory.EmailDomain, Clearances);
+
+    [HttpGet("{userId:guid}")]
+    [ProducesResponseType<UserDetailsResponse>(StatusCodes.Status200OK, "application/json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status404NotFound, "application/problem+json")]
+    public async Task<ActionResult<UserDetailsResponse>> Details(Guid userId, CancellationToken ct)
+    {
+        var account = await users.GetAsync(userId, ct);
+        if (account is null)
+        {
+            return AdministratorProblems.UserNotFound();
+        }
+        return new UserDetailsResponse(account.Id, account.Username, account.DisplayName, (int)account.Clearance,
+            account.ProjectKey, account.Id == User.GetUserId(), Clearances);
+    }
+
+    [HttpPost]
+    [RequestSizeLimit(8192)]
+    [ProducesResponseType<CreatedUserResponse>(StatusCodes.Status201Created, "application/json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status400BadRequest, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status403Forbidden, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status409Conflict, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
+    public async Task<IActionResult> Create([FromBody] CreateUserUiRequest request, CancellationToken ct)
+    {
+        if (await stepUp.RequireAsync(User, AdministratorAction.CreateAccount, ct) is { } required)
+        {
+            return required;
+        }
+        var created = await users.CreateAsync(new CreateUserRequest(request.Username ?? "", request.FirstName ?? "", request.LastName ?? "",
+            request.Password ?? "", (ClearanceLevel)(request.Clearance ?? 0), request.Project ?? ""), ct);
+        Success($"User '{created.Username}' created with email {created.Email}. They can sign in with either and will set up their authenticator on first sign-in.");
+        return Created($"/api/ui/users/{created.Id}", new CreatedUserResponse(created.Id, created.Username, created.Email));
+    }
+
+    [HttpPatch("{userId:guid}/role")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status400BadRequest, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status403Forbidden, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status404NotFound, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status409Conflict, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
+    public async Task<IActionResult> Role(Guid userId, [FromBody] UserRoleRequest request, CancellationToken ct)
+    {
+        if (await stepUp.RequireAsync(User, AdministratorAction.ChangeAccountRole, ct) is { } required)
+        {
+            return required;
+        }
+        var account = await users.GetAsync(userId, ct);
+        if (account is null || !await users.SetRoleAsync(userId, (ClearanceLevel)(request.Clearance ?? 0), request.Project ?? "", ct))
+        {
+            return AdministratorProblems.UserNotFound();
+        }
+        Success($"Role updated for '{account.Username}'. Their sessions were revoked so the change takes effect at next sign-in.");
+        if (userId == User.GetUserId() && ((int)account.Clearance != request.Clearance || account.ProjectKey != request.Project?.Trim().ToUpperInvariant()))
+        {
+            await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        }
+        return NoContent();
+    }
+
+    private void Success(string message)
+    {
+        TempData["UsersMessage"] = message;
+        TempData["UsersError"] = false;
     }
 
     [HttpPost("{userId:guid}/enable")]
