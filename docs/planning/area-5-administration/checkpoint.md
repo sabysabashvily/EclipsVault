@@ -310,3 +310,76 @@ Left for the owner:
   the whole-part PR. No later ticket was started.
 - The npm audit's moderate findings remain visible. No gate or advisory was suppressed.
 - #109 is committed locally only. No push, PR, issue comment/closure or #109 CI claim was made.
+
+## Delivery: ticket 5 (#110)
+
+Completed on 2026-11-04 in the dedicated implementation thread, as the only implementation worker
+on `area-5a-accounts` from pushed `272441ad2f10dcc2a8f61081a4d1740d20df7248`. The owner authorized
+starting while #109's final browser CI was active. Dependency run `41699054031` was verified successful
+on that exact SHA, including immediately before the first local commit. The coordinator owns #109 closure.
+
+Implementation commit: `abb5e0af767a5b66f598f1860ff7eeb42593c4ec`,
+"Serve New user and Edit user in Angular with fresh proof" (56 characters).
+This final Delivery ticket 5 checkpoint update is committed separately and last.
+
+New user and Edit user now use Angular at their existing AdminOnly URLs, with typed session-only
+metadata/create/details/role endpoints, no-store and antiforgery. New grants require the shared fresh
+strong proof, with one retry after proof. Core retains atomic auditing, validation, last-administrator
+locking and generation changes. Saved notices preserve Legacy text. An unchanged own Unicode role
+keeps its sessions and notice; a real self-demotion ends both browsers and returns to sign-in.
+The corresponding MVC actions, views, models and old account-form helper are retired. Dashboard's
+existing "Provision a user" action reaches Angular. Networks and service accounts remain outside scope.
+
+Validation:
+
+- locked restore, Release build with 0 warnings and 0 errors, and .NET format verification
+- unit tests: 838 passed, no failures or skips
+- full SQL Server integration: 948 passed, no failures or skips, 14m 1s
+- full PostgreSQL integration: 948 passed, no failures or skips, 12m 51s
+- both pending-model checks: no changes and no migrations
+- agent hooks: 6 passed
+- Angular install with `--ignore-scripts`, lint/browser types and 6 lint guards
+- Vitest: 396 passed in 29 files
+- Prettier, 15 build checks, generated API verification and production Angular build
+- npm high/critical audit gate passed; 21 moderate findings remain visible
+- complete production browser suite: 167 passed, no failures or skips, 52.4 minutes
+- all 8 browser-health guard probes produced the expected real failures; verification exited 0
+
+The final browser/guard runner was 22967 and exited 0. A preceding focused Production probe passed
+8/8 (bootstrap plus the final seven scenarios) in 16.6 seconds. It supplements the completed full run.
+Heavy checks ran serially on pinned Node 24.22.0, with four .NET processors and bounded image-build CPU.
+Only owned containers were capped. Transient host CPU spikes exceeded 90%; SQL/vault caps were later
+reduced to one CPU each, and later observed samples were below the ceiling. No unrelated process or
+system setting changed. The report records the exact samples and caps.
+
+The stale Legacy create and role flaws were demonstrated first on saved state. Security, Standards
+and Spec reviews completed serially in fresh GPT Sol 6.1 xhigh sessions after Claude Opus 5.5 high
+was unavailable at its weekly limit. These are approved same-model fallback reviews. Security found
+no demonstrable defects. Standards and Spec findings were resolved with literal test cases, explicit
+proof setup, named constants, cancellation focus and Unicode no-op navigation. Small fixes were made
+directly afterward; no additional independent recheck is claimed. Original reports and the resolution
+ledger remain in `logs/ticket-110/`.
+
+Failures and interruptions are retained. They include the password DOM cleanup regression, browser
+pattern syntax, saved-clearance display, and a Dashboard page-object locator that used "New user"
+instead of the unchanged Legacy accessible link name. The final full run passed those flows. Docker
+stopped after 129 and later 142 passes; the owner attributed the interruptions to usage limits and a
+network issue. Those incomplete suites are not counted as passing. No retry, timeout or browser-health
+rule was weakened.
+
+Two scope mistakes are disclosed in the report. Earlier Docker contexts may have traversed or
+transferred unrelated graph output to the local builder because the ignore rule was missing; the
+final build excludes it without inspecting the tree. An interrupted-run cleanup initially captured
+unfiltered container metadata in Python memory, which may have included a disposable test signing
+key. No key value was printed or saved by that inspection, and no key file was opened. Later
+inspection requests only the required fields. Shared build cache was not pruned.
+
+Cleanup verified all eight owned Compose projects' containers, networks and labelled volumes absent,
+all owned image tags removed, and two owned runtime key-ring directories deleted without reading
+contents. The two older unrelated exited SQL containers were left untouched. Evidence is preserved.
+No push, PR, issue action, branch/worktree change, history rewrite or later-ticket implementation was
+performed.
+
+Exact commands, counts, commit SHAs/subject lengths, review resolutions, readability excerpts and
+cleanup evidence are in `logs/ticket-110/final-report.md`. The implementation and this checkpoint
+remain local. #111 and #112 have not started in this thread.
