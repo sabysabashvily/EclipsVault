@@ -565,3 +565,93 @@ whole-part PR after these gates/reviews. No new permission is requested or impli
 performed no push, PR/issue action, merge, branch/worktree change or history rewrite or later-ticket work.
 No merge is authorized. Any later source repair returns to this same ticket thread with exclusive
 ownership, rather than a duplicate implementation worker.
+
+
+## Restart: Part 5b, delivery ticket 1 (#113)
+
+Started on 2026-11-06 in the dedicated ticket thread, as the sole implementation worker, on
+`area-5b-vault-settings` from clean tracked HEAD `94a73e1060bf620cc1907f7da76310e286c98f1b`.
+The coordinator merged #122 at that commit, verified main contains it and #104/#112 are closed,
+then created this branch under the owner's authorization. Scope is #113 only, with local commits,
+required serial reviews and final local gates. Networks and recovery remain Legacy. No push, CI
+dispatch, issue/PR action, branch/history change or #114 work is authorized in this worker.
+Evidence and task-local scratch stay in `logs/ticket-113/`; protected trees and earlier evidence
+remain untouched. Exclusive checkout ownership returns to the coordinator after the local handoff.
+
+
+## Delivery: Part 5b, delivery ticket 1 (#113)
+
+Completed locally on 2026-11-06 in the dedicated ticket thread as the sole implementation worker on
+`area-5b-vault-settings`, from `94a73e1060bf620cc1907f7da76310e286c98f1b`. Implementation commit is
+`c042dda25b5062cf925ed97e95cd63ab4f09830b`, "Restore lifted blocks when their audit write fails" (50 characters).
+This checkpoint is committed separately and last. Its exact SHA is in `logs/ticket-113/final-report.md`.
+The original 40,838-byte prefix is preserved byte for byte. No push, CI dispatch, PR/issue action,
+branch/worktree/history change or #114 work was performed. Coordinator owns later delivery.
+
+Administration lifting now retains the removed store record, lifts first and writes exactly one
+`IpRangeUnblocked` event. A rejected audit restores the original range, reason and time. Redis keeps
+its exact original key content. Missing blocks change nothing and record nothing. Failed exact
+restoration is distinct `503 unblock_unrecorded`, with a safe critical alert and a Legacy 503 page
+that does not claim restoration succeeded. Normal Legacy form behavior stays intact. Networks stays
+Legacy, and break-glass recovery is unchanged. Auditing and compensation finish after a browser
+disconnect so a cancelled audit wait cannot later commit after mistaken restoration.
+
+The real finding was reproduced first through the Production AuditFailureFixture and Legacy Unblock
+form: the audit insert failed, but the block collection was empty. The original failing command,
+exit 1 and 22.715-second duration remain in the evidence. The repaired test proves original state,
+effective HTTP 403 blocking and no audit row, with setup/sign-in before rejection and restoration
+of auditing in finally. Both final database suites passed it. Both-store unit coverage proves the
+sequence, exact event, compensation, no-op, conflict and cancellation outcomes. Real Redis also proves
+byte-identical JSON restoration and an actual closed-connection restoration failure.
+
+Final local gates passed on the final source snapshot:
+
+- locked restore, .NET format verification, Release build with zero warnings/errors
+- unit tests: 858 passed, no failures or skips
+- full SQL Server integration: 1,054 passed, no failures or skips, 21m 40s reported
+- full PostgreSQL integration: 1,054 passed, no failures or skips, 13m 32s reported
+- both pending-model checks: no changes; six hook tests passed
+- pinned Node 24.22.0 install --ignore-scripts, lint/browser types and six lint guards
+- Prettier, 431 Vitest tests in 30 files, 15 build checks, generated API consistency and production build
+- npm high/critical gate passed; 15 moderate findings remain visible
+- all 184 production browser tests passed in 54.4m, no failures/skips and zero retries
+- all eight intentional browser-health failures verified; guard command exit 0
+
+Security, Standards and Spec ran serially in fresh GPT Sol 6.1 xhigh sessions after Claude Opus 5.5
+high was rate limited. These are the authorized same-model fallback, not cross-model reviews.
+Security found no demonstrable defect. Three Standards violations and two judgment-call smells were
+fixed directly. Spec found no implementation gap or scope expansion on the updated snapshot.
+Original reports, reviewed manifests and the finding ledger remain unchanged. Five small fixes after
+Security/Standards were not independently rechecked by those axes; Spec reviewed the updated snapshot.
+No later independent recheck is claimed. The final checkpoint append is subsequent metadata.
+
+Heavy suites/reviews stayed serial with normal priority, two .NET processors, explicit root MSBuild
+one worker, two Angular workers, bounded Vitest without file parallelism, about 4.1 GB Docker, a
+two-CPU image build and one Playwright worker. Database samples reached 91.05% and 92.2% busy; browser
+sampling reached 94.28%. Owned database/vault caps were lowered to 0.75 CPU. The exact owned browser
+monitor was replaced to keep the lower caps for guard startup; tests were uninterrupted. Every sample
+and cap update is retained. Startup and between-sample bounds are not proved; strict continuous
+CPU-ceiling compliance is not claimed. No unrelated process or global setting changed.
+
+The inherited Profile suite still waits for real production throttle windows under its unchanged
+per-case limits. This timing limitation is disclosed. No wait, retry, timeout, health exemption,
+advisory suppression or weaker assertion was introduced or changed for #113.
+
+Cleanup verified both owned browser projects, ten browser containers, both captured anonymous volumes,
+project networks/labelled volumes, all five captured Testcontainers sessions and the sole owned image
+absent. Owned host key-ring directories and monitors are gone, including the replacement monitor;
+recorded runner and browser-child PIDs were checked directly. No private key contents or full container
+environments were read. No shared cache, unrelated resources, protected trees or earlier evidence
+were pruned or removed. Context exclusions were verified before the production build.
+
+All 19 implementation files match the actual tested snapshot, staged blobs and implementation commit.
+The full final source verification also binds final HEAD and working bytes, with zero deletion markers.
+The checkpoint append is the sole post-test source change. Exact commits/subjects, counts, commands,
+exits/durations, original reviews and resolutions, readability excerpts, resource/cleanup limits,
+source manifests and restart instructions are in `logs/ticket-113/final-report.md` and its evidence.
+
+Compensation does not overwrite a different newer block; that is a failed exact restoration requiring
+inspection. Lost Redis replies and cross-store concurrency remain limitations. No schema, dependency,
+commercial/legal or licensing-policy change was made. All writer nodes need the new code before
+relying on compensation. The handoff returns exclusive checkout ownership to the coordinator through
+the supported thread tool. It adds no delivery authorization and starts no later ticket.
