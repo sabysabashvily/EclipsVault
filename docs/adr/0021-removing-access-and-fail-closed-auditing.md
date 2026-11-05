@@ -26,9 +26,10 @@ Capture the revocation version before loading the account snapshot used for auth
 it through verification and issuance, and refuse issuance if it changed. Reading a newer version
 after authentication must not give stale role claims a valid new session. Sliding expiration,
 display-name/avatar renewal and secret step-up retain the original version. This applies to every
-account-wide revocation caller, including role changes, disabling, forced sign-out, deletion and
-intrusion response. New store state is initialized atomically with a non-repeating version; validation
-never recreates missing state from a cookie.
+account-wide session-store revocation caller, including forced sign-out and intrusion response.
+Database-backed account changes follow ADR-0023's credential generation, and deletion is durable
+because each request requires an existing account. New store state is initialized atomically with a
+non-repeating version; validation never recreates missing state from a cookie.
 
 Restoring populated Redis state can restore a version that was already revoked. Before accepting
 traffic after recovery that may have lost session-store writes, coordinate a new session-store

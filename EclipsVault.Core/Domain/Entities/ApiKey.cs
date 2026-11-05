@@ -52,6 +52,11 @@ public class ApiKey
     public bool IsActive(DateTimeOffset nowUtc)
         => RevokedAtUtc is null && (ExpiresAtUtc is null || ExpiresAtUtc > nowUtc);
 
+    public ApiKeyStatus StatusAt(DateTimeOffset nowUtc)
+        => RevokedAtUtc is not null ? ApiKeyStatus.Revoked
+            : IsActive(nowUtc) ? ApiKeyStatus.Active
+            : ApiKeyStatus.Expired;
+
     /// <summary>The network binding split into individual CIDR ranges (empty when unrestricted).</summary>
     public IReadOnlyList<string> AllowedCidrList()
         => string.IsNullOrEmpty(AllowedCidrs)

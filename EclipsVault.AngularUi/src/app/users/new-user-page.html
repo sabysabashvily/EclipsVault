@@ -1,0 +1,197 @@
+<div class="page-header">
+  <div>
+    <h1>New user</h1>
+    <p class="page-sub">
+      The email is generated automatically from the name; the password is Argon2id-hashed. TOTP
+      enrollment happens at first sign-in.
+    </p>
+  </div>
+  <div class="page-actions">
+    <a class="button" routerLink="/Admin/Users">Back to users</a>
+  </div>
+</div>
+
+<app-status-line [message]="writes.status().message" [error]="writes.status().error" />
+@if (metadata.isLoading() && !metadata.hasValue()) {
+  <p role="status">Loading new user…</p>
+} @else if (metadata.error()) {
+  <p role="alert">Could not load new user. Try again.</p>
+  <button type="button" class="button" (click)="metadata.reload()">Try again</button>
+} @else if (metadata.hasValue()) {
+  <section class="panel narrow-left">
+    <form (submit)="submit($event)">
+      <fieldset [disabled]="writes.busy() || writes.awaitingProof() || writes.blocked()">
+        <div class="field-row">
+          <div class="field">
+            <label for="firstName">First name</label>
+            <input
+              id="firstName"
+              #firstNameInput
+              [value]="firstName()"
+              (input)="firstName.set(firstNameInput.value)"
+              maxlength="64"
+              required
+              autocomplete="off"
+              placeholder="Saba"
+            />
+            <span class="field-error">{{ error('firstName') }}</span>
+          </div>
+          <div class="field">
+            <label for="lastName">Last name</label>
+            <input
+              id="lastName"
+              #lastNameInput
+              [value]="lastName()"
+              (input)="lastName.set(lastNameInput.value)"
+              maxlength="64"
+              required
+              autocomplete="off"
+              placeholder="Sabashvili"
+            />
+            <span class="field-error">{{ error('lastName') }}</span>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="username">Username</label>
+            <input
+              id="username"
+              minlength="3"
+              pattern="[A-Za-z0-9._\-]+"
+              #usernameInput
+              [value]="username()"
+              (input)="username.set(usernameInput.value)"
+              maxlength="64"
+              required
+              autocomplete="off"
+            />
+            <span class="field-error">{{ error('username') }}</span>
+          </div>
+          <div class="field">
+            <label for="password">Initial password</label>
+            <div class="input-affix">
+              <input
+                #passwordInput
+                id="password"
+                [value]="candidate()"
+                [type]="shown() ? 'text' : 'password'"
+                autocomplete="new-password"
+                minlength="12"
+                maxlength="256"
+                required
+                (input)="passwordChanged(passwordInput.value)"
+              />
+              <button
+                class="affix-button"
+                type="button"
+                [attr.aria-label]="shown() ? 'Hide password' : 'Show password'"
+                (click)="shown.set(!shown()); passwordInput.focus()"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  @if (shown()) {
+                    <path
+                      d="M2 12s3.6-7 10-7c2 0 3.8.7 5.2 1.6M22 12s-3.6 7-10 7c-2 0-3.8-.7-5.2-1.6"
+                    />
+                    <path d="m4 4 16 16" />
+                  } @else {
+                    <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
+                    <circle cx="12" cy="12" r="3" />
+                  }
+                </svg>
+              </button>
+            </div>
+            @if (candidate()) {
+              <div class="strength" [attr.data-score]="strength().score">
+                <div
+                  class="strength-track"
+                  role="img"
+                  [attr.aria-label]="'Password strength: ' + strength().text"
+                >
+                  <span class="strength-fill"></span>
+                </div>
+                <p class="strength-label">{{ strength().text }}</p>
+              </div>
+            }
+            <span class="field-error">{{ error('password') }}</span>
+            <p
+              id="new-user-password-breach"
+              class="field-note"
+              role="status"
+              aria-live="polite"
+              [class.status-error]="breach() === true"
+              [class.status-ok]="breach() === false"
+            >
+              {{
+                breach() === true
+                  ? '⚠ This password has appeared in known data breaches — choose a different one.'
+                  : breach() === false
+                    ? '✓ Not found in the breach corpus.'
+                    : ''
+              }}
+            </p>
+          </div>
+        </div>
+
+        <p class="hint muted">
+          Passwords are screened against a corpus of values exposed in public breaches and rejected
+          if compromised (NIST 800-63B). At least 12 characters.
+        </p>
+
+        <p class="hint muted">
+          The email is generated as
+          <code>firstname.lastname.N@{{ metadata.value().emailDomain }}</code
+          >, where <code>N</code> increments for people who share a name — so a second "Saba
+          Sabashvili" becomes <code>saba.sabashvili.2@…</code>. The user can sign in with either the
+          username or this email.
+        </p>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="clearance">Clearance level</label>
+            <select id="clearance" #clearanceInput (change)="clearance.set(+clearanceInput.value)">
+              @for (option of metadata.value().clearances; track option.value) {
+                <option [value]="option.value" [selected]="+option.value === clearance()">
+                  {{ option.label }}
+                </option>
+              }</select
+            ><span class="field-error">{{ error('clearance') }}</span>
+          </div>
+          <div class="field">
+            <label for="project">Project key</label>
+            <input
+              id="project"
+              #projectInput
+              [value]="project()"
+              (input)="project.set(projectInput.value)"
+              maxlength="64"
+              required
+              placeholder="PHOENIX"
+            />
+            <span class="field-error">{{ error('project') }}</span>
+          </div>
+        </div>
+
+        <p class="hint muted">
+          Clearance gates which sensitivity levels the user can read; the project key scopes them to
+          their project's secrets (TopSecret clearance sees all projects). Note: network trust is
+          evaluated per request from the connecting address — it is a property of the network, not
+          of the account.
+        </p>
+
+        <button #submitButton type="submit" class="button primary" [disabled]="breach() === true">
+          Create user
+        </button>
+      </fieldset>
+    </form>
+  </section>
+}
+<app-step-up-dialog (decision)="verified($event)" />

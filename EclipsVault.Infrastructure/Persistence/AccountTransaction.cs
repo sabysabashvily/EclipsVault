@@ -10,9 +10,10 @@ namespace EclipsVault.Infrastructure.Persistence;
 /// <summary>
 /// Runs one account operation in a database transaction that holds the account's lock, so
 /// operations on the same account take effect one at a time. A failure leaves nothing staged and
-/// is reported as the domain outcome a caller can act on: the account changed, the email is taken,
-/// the proof predates the account's credentials, a Profile operation was refused, the session store
-/// could not be read, or the operation and its audit events could not be stored.
+/// is reported as the domain outcome a caller can act on: the account changed, the email or username
+/// is taken, the proof predates the account's credentials, a Profile operation was refused, the
+/// change would leave no enabled administrator, the session store could not be read, or the
+/// operation and its audit events could not be stored.
 /// </summary>
 public sealed class AccountTransaction(EclipsVaultDbContext context, IAuditChainLocker locks)
 {
@@ -62,8 +63,13 @@ public sealed class AccountTransaction(EclipsVaultDbContext context, IAuditChain
                 throw new EmailAddressTakenException();
             }
 
-            if (failure is OperationCanceledException or AccountChangedException or EmailAddressTakenException or StaleProofException
-                or ProfileOperationRefusedException)
+            if (failure is DbUpdateException duplicate && UserRepository.ViolatesUniqueUsername(duplicate))
+            {
+                throw new UsernameTakenException();
+            }
+
+            if (failure is OperationCanceledException or AccountChangedException or EmailAddressTakenException or UsernameTakenException
+                or StaleProofException or ProfileOperationRefusedException or LastAdministratorException)
             {
                 throw;
             }
@@ -85,4 +91,11 @@ public sealed class AccountTransaction(EclipsVaultDbContext context, IAuditChain
             }
         }
     }
+
+    /// <summary>
+    /// Holds the vault-wide administrators lock until the running operation's transaction ends. It is
+    /// taken after the account's lock and before the audit chain's, the order every holder keeps.
+    /// </summary>
+    public Task LockAdministratorsAsync(CancellationToken ct)
+        => locks.AcquireAsync(context, "EclipsVault:Administrators", LockTimeout, ct);
 }

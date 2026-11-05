@@ -14,6 +14,12 @@ namespace EclipsVault.Core.Application.Users;
 public sealed class UserAdminService : IUserAdminService
 {
     private const int MinimumPasswordLength = 12;
+    private const int MaximumPasswordLength = 256;
+    private const int MaximumProjectKeyLength = 64;
+    private const int MaximumNameLength = 64;
+
+    /// <summary>The display name column's width, which "First Last" must fit.</summary>
+    private const int MaximumDisplayNameLength = 64;
 
     private readonly IUserRepository _users;
     private readonly IPasswordHasher _hasher;
@@ -53,16 +59,16 @@ public sealed class UserAdminService : IUserAdminService
         _clock = clock;
     }
 
-    private Task AuditUserAsync(AuditAction action, Guid? targetUserId, string username, string? details, CancellationToken ct)
-        => _audit.WriteAsync(new AuditEntry
-        {
-            Action = action,
-            ResourceType = "User",
-            ResourceId = targetUserId,
-            ActorUserId = _actor.UserId,
-            ActorUsername = username,
-            Details = details
-        }, ct);
+    /// <summary>An administrator's action on an account, attributed to the administrator.</summary>
+    private AuditEntry AdministratorEvent(AuditAction action, User account, string details) => new()
+    {
+        Action = action,
+        ResourceType = nameof(User),
+        ResourceId = account.Id,
+        ActorUserId = _actor.UserId,
+        ActorUsername = _actor.Username ?? "system",
+        Details = details
+    };
 
     public async Task<IReadOnlyList<UserSummaryDto>> ListAsync(CancellationToken ct)
     {
@@ -79,37 +85,23 @@ public sealed class UserAdminService : IUserAdminService
     public async Task<CreatedUserDto> CreateAsync(CreateUserRequest request, CancellationToken ct)
     {
         var username = request.Username.Trim();
-        if (!UsernameRules.Allows(username))
-        {
-            throw new VaultAdminException(
-                $"Usernames are {UsernameRules.MinimumLength} to {UsernameRules.MaximumLength} characters. {UsernameRules.Description}");
-        }
-
         var first = request.FirstName.Trim();
         var last = request.LastName.Trim();
-        if (first.Length == 0 || last.Length == 0)
-        {
-            throw new VaultAdminException("First name and last name are required.");
-        }
-
-        if (request.Password.Length < MinimumPasswordLength)
-        {
-            throw new VaultAdminException($"Passwords must be at least {MinimumPasswordLength} characters long.");
-        }
-
+        var displayName = $"{first} {last}";
+        CheckNewAccount(request, username, first, last, displayName);
+        CheckClearance(request.Clearance);
+        var project = CheckedProjectKey(request.ProjectKey);
         if (_breachScreen.IsCompromised(request.Password))
         {
-            throw new VaultAdminException("That password has appeared in a known data breach. Choose a different one.");
+            throw new AccountInputException(nameof(CreateUserRequest.Password), "That password has appeared in a known data breach. Choose a different one.");
         }
 
         if (await _users.FindByUsernameAsync(username, ct) is not null)
         {
-            throw new VaultAdminException($"The username '{username}' is already taken.");
+            throw new UsernameTakenException(username);
         }
 
         var email = await GenerateEmailAsync(first, last, ct);
-        var displayName = $"{first} {last}";
-
         var hashed = _hasher.Hash(request.Password);
         var user = new User
         {
@@ -120,17 +112,117 @@ public sealed class UserAdminService : IUserAdminService
             PasswordHash = hashed.Hash,
             PasswordSalt = hashed.Salt,
             Clearance = request.Clearance,
-            ProjectKey = request.ProjectKey.Trim().ToUpperInvariant(),
+            ProjectKey = project,
             CreatedAtUtc = _clock.GetUtcNow()
         };
 
-        await _users.AddAsync(user, ct);
-        await AuditUserAsync(
-            AuditAction.UserCreated, user.Id, _actor.Username ?? "system",
-            $"Created '{user.Username}' <{email}> (clearance {user.Clearance}, project {user.ProjectKey})", ct);
-        await _notifications.NotifyUserProvisionedAsync(email, displayName, user.Username, ct);
+        // Another create for the same person's name can take the generated address first. The account
+        // then takes the next free one, once; losing twice in a row means the name is busy right now.
+        if (!await TryCommitNewAccountAsync(user, ct))
+        {
+            user.Email = await GenerateEmailAsync(first, last, ct);
+            if (!await TryCommitNewAccountAsync(user, ct))
+            {
+                throw new AccountChangedException("Another account for the same name was created at the same moment. Try again.");
+            }
+        }
 
-        return new CreatedUserDto(user.Id, user.Username, email, displayName);
+        await _notifications.NotifyUserProvisionedAsync(user.Email, displayName, user.Username, ct);
+        return new CreatedUserDto(user.Id, user.Username, user.Email, displayName);
+    }
+
+    /// <summary>Saves the new account with its UserCreated event.</summary>
+    /// <returns>False when another account took its email address first; nothing was saved.</returns>
+    private async Task<bool> TryCommitNewAccountAsync(User user, CancellationToken ct)
+    {
+        _users.StageAddition(user);
+        try
+        {
+            await _changes.CommitAsync(user, AdministratorEvent(AuditAction.UserCreated, user,
+                $"Created '{user.Username}' <{user.Email}> (clearance {user.Clearance}, project {user.ProjectKey})"), ct);
+            return true;
+        }
+        catch (UsernameTakenException)
+        {
+            throw new UsernameTakenException(user.Username);
+        }
+        catch (EmailAddressTakenException)
+        {
+            // The same username created twice at once also gets the same generated address, and the
+            // database may report that index first. The username is what the administrator chose, so name it.
+            if (await _users.FindByUsernameAsync(user.Username, ct) is not null)
+            {
+                throw new UsernameTakenException(user.Username);
+            }
+
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The New user form's rules for the username, names and password, so callers other than the form are
+    /// held to them too. Clearance and project key have checks of their own, shared with role changes.
+    /// </summary>
+    private static void CheckNewAccount(CreateUserRequest request, string username, string first, string last, string displayName)
+    {
+        if (!UsernameRules.Allows(username))
+        {
+            throw new AccountInputException(nameof(CreateUserRequest.Username),
+                $"Usernames are {UsernameRules.MinimumLength} to {UsernameRules.MaximumLength} characters. {UsernameRules.Description}");
+        }
+
+        CheckName(nameof(CreateUserRequest.FirstName), "First name", first);
+        CheckName(nameof(CreateUserRequest.LastName), "Last name", last);
+        if (displayName.Length > MaximumDisplayNameLength)
+        {
+            throw new AccountInputException(nameof(CreateUserRequest.LastName),
+                $"First and last name together can be at most {MaximumDisplayNameLength} characters, counting the space between them.");
+        }
+
+        if (request.Password.Length < MinimumPasswordLength)
+        {
+            throw new AccountInputException(nameof(CreateUserRequest.Password), $"Passwords must be at least {MinimumPasswordLength} characters long.");
+        }
+
+        if (request.Password.Length > MaximumPasswordLength)
+        {
+            throw new AccountInputException(nameof(CreateUserRequest.Password), $"Passwords can be at most {MaximumPasswordLength} characters long.");
+        }
+    }
+
+    private static void CheckName(string field, string label, string name)
+    {
+        if (name.Length == 0)
+        {
+            throw new AccountInputException(field, $"{label} is required.");
+        }
+
+        if (name.Length > MaximumNameLength)
+        {
+            throw new AccountInputException(field, $"{label} can be at most {MaximumNameLength} characters.");
+        }
+    }
+
+    /// <summary>Any integer binds to the enum, and an undefined clearance passes sensitivity checks without being an administrator.</summary>
+    private static void CheckClearance(ClearanceLevel clearance)
+    {
+        if (!Enum.IsDefined(clearance))
+        {
+            throw new AccountInputException(nameof(CreateUserRequest.Clearance), "Choose one of the vault's clearance levels.");
+        }
+    }
+
+    /// <returns>The project key as it is stored: trimmed and upper case.</returns>
+    private static string CheckedProjectKey(string projectKey)
+    {
+        var project = projectKey.Trim();
+        if (project.Length is 0 or > MaximumProjectKeyLength)
+        {
+            throw new AccountInputException(nameof(CreateUserRequest.ProjectKey),
+                $"Project keys are 1 to {MaximumProjectKeyLength} characters, not counting spaces at either end.");
+        }
+
+        return project.ToUpperInvariant();
     }
 
     /// <summary>
@@ -180,31 +272,29 @@ public sealed class UserAdminService : IUserAdminService
 
     public async Task<bool> SetRoleAsync(Guid userId, ClearanceLevel clearance, string projectKey, CancellationToken ct)
     {
+        CheckClearance(clearance);
+        var project = CheckedProjectKey(projectKey);
         var user = await _users.FindByIdAsync(userId, ct);
         if (user is null)
         {
             return false;
         }
 
-        // Refuse to remove the last administrator's clearance.
-        if (user.Clearance == ClearanceLevel.TopSecret && clearance != ClearanceLevel.TopSecret
-            && await IsLastAdminAsync(ct))
+        if (user.Clearance == clearance && user.ProjectKey == project)
         {
-            throw new VaultAdminException("Cannot demote the last TopSecret administrator — the vault would become unmanageable.");
+            return true;
         }
 
+        var demotesAnAdministrator = IsEnabledAdministrator(user) && clearance != ClearanceLevel.TopSecret;
         var previous = $"{user.Clearance}/{user.ProjectKey}";
         user.Clearance = clearance;
-        user.ProjectKey = projectKey.Trim().ToUpperInvariant();
-        await _users.UpdateAsync(user, ct);
-
-        // A clearance/project change alters what the user may reach, so drop their
-        // current sessions; the new attributes take effect at their next sign-in.
-        await _revocation.RevokeAsync(user.Id, ct);
-
-        await AuditUserAsync(
-            AuditAction.UserRoleChanged, user.Id, _actor.Username ?? "system",
-            $"Role for '{user.Username}' changed {previous} → {user.Clearance}/{user.ProjectKey}; sessions revoked", ct);
+        user.ProjectKey = project;
+        // A session carries the clearance and project it was signed in with, so every earlier session
+        // ends with the change: the new role takes effect at the account's next sign-in.
+        user.CredentialGeneration++;
+        await CommitKeepingAnAdministratorAsync(user, demotesAnAdministrator, AdministratorEvent(AuditAction.UserRoleChanged, user,
+            $"Role for '{user.Username}' changed {previous} → {user.Clearance}/{user.ProjectKey}; sessions revoked"),
+            "Cannot demote the last TopSecret administrator — the vault would become unmanageable.", ct);
         return true;
     }
 
@@ -212,7 +302,7 @@ public sealed class UserAdminService : IUserAdminService
     {
         if (!enabled && _actor.UserId == userId)
         {
-            throw new VaultAdminException("You cannot disable your own account while signed in with it.");
+            throw new OwnAccountException("You cannot disable your own account while signed in with it.");
         }
 
         var user = await _users.FindByIdAsync(userId, ct);
@@ -221,29 +311,20 @@ public sealed class UserAdminService : IUserAdminService
             return false;
         }
 
-        if (!enabled && user.Clearance == ClearanceLevel.TopSecret && await IsLastAdminAsync(ct))
-        {
-            throw new VaultAdminException("Cannot disable the last TopSecret administrator.");
-        }
-
         if (user.IsDisabled == !enabled)
         {
-            return true; // already in the requested state
+            return true;
         }
 
+        var disablesAnAdministrator = !enabled && IsEnabledAdministrator(user);
         user.IsDisabled = !enabled;
-        await _users.UpdateAsync(user, ct);
+        // Both directions advance the generation (ADR-0023). Disabling ends every session in this commit;
+        // enabling also ends any that an earlier disable ended only in the session store, if the store lost it.
+        user.CredentialGeneration++;
 
-        if (!enabled)
-        {
-            // Kill active sessions immediately; new sign-ins are blocked at credential check.
-            await _revocation.RevokeAsync(user.Id, ct);
-        }
-
-        await AuditUserAsync(
-            enabled ? AuditAction.UserEnabled : AuditAction.UserDisabled,
-            user.Id, _actor.Username ?? "system",
-            $"Account '{user.Username}' {(enabled ? "enabled" : "disabled")}", ct);
+        await CommitKeepingAnAdministratorAsync(user, disablesAnAdministrator,
+            AdministratorEvent(enabled ? AuditAction.UserEnabled : AuditAction.UserDisabled, user, $"Account '{user.Username}' {(enabled ? "enabled" : "disabled")}"),
+            "Cannot disable the last TopSecret administrator.", ct);
         return true;
     }
 
@@ -255,15 +336,22 @@ public sealed class UserAdminService : IUserAdminService
             return false;
         }
 
+        // Sessions live in the session store, outside the database's transaction. Revoking first means
+        // an audit failure never leaves them open (ADR-0021).
         await _revocation.RevokeAsync(user.Id, ct);
-        await AuditUserAsync(
-            AuditAction.UserForceLoggedOut, user.Id, _actor.Username ?? "system",
-            $"All sessions for '{user.Username}' revoked by administrator", ct);
+        await _audit.WriteAsync(AdministratorEvent(AuditAction.UserForceLoggedOut, user,
+            $"All sessions for '{user.Username}' revoked by administrator"), ct);
         return true;
     }
 
     public async Task<bool> ResetTotpAsync(Guid userId, CancellationToken ct)
     {
+        // Profile resets your own authenticator after confirming it is you (ADR-0022); a session alone must not.
+        if (_actor.UserId == userId)
+        {
+            throw new OwnAccountException("You cannot reset your own MFA here. Reset it from Profile, which first confirms it is you.");
+        }
+
         var user = await _users.FindByIdAsync(userId, ct);
         if (user is null)
         {
@@ -277,15 +365,8 @@ public sealed class UserAdminService : IUserAdminService
         // A reset retires the account's authenticator, so it ends what the authenticator opened:
         // sessions and pending sign-ins are refused, as after the account's own reset.
         user.CredentialGeneration++;
-        await _changes.CommitAsync(user, new AuditEntry
-        {
-            Action = AuditAction.UserTotpReset,
-            ResourceType = nameof(User),
-            ResourceId = user.Id,
-            ActorUserId = _actor.UserId,
-            ActorUsername = _actor.Username ?? "system",
-            Details = $"MFA reset for '{user.Username}'; sessions revoked; TOTP re-enrollment required at next sign-in"
-        }, ct);
+        await _changes.CommitAsync(user, AdministratorEvent(AuditAction.UserTotpReset, user,
+            $"MFA reset for '{user.Username}'; sessions revoked; TOTP re-enrollment required at next sign-in"), ct);
         return true;
     }
 
@@ -293,7 +374,7 @@ public sealed class UserAdminService : IUserAdminService
     {
         if (_actor.UserId == userId)
         {
-            throw new VaultAdminException("You cannot delete your own account while signed in with it.");
+            throw new OwnAccountException("You cannot delete your own account while signed in with it.");
         }
 
         var user = await _users.FindByIdAsync(userId, ct);
@@ -302,18 +383,11 @@ public sealed class UserAdminService : IUserAdminService
             return false;
         }
 
-        if (user.Clearance == ClearanceLevel.TopSecret && await IsLastAdminAsync(ct))
-        {
-            throw new VaultAdminException("Cannot delete the last TopSecret administrator — the vault would become unmanageable.");
-        }
-
-        // A session carries the account's clearance and project, so one that outlived the account
-        // would keep its access. Revoked first: if the delete then fails, the account only lost its sessions.
-        await _revocation.RevokeAsync(user.Id, ct);
-        await _users.DeleteAsync(user, ct);
-        await AuditUserAsync(
-            AuditAction.UserDeleted, userId, _actor.Username ?? "system",
-            $"Deleted '{user.Username}'; sessions revoked", ct);
+        // Every request reads its session's account, so the account's sessions end when the account does.
+        _users.StageRemoval(user);
+        await CommitKeepingAnAdministratorAsync(user, IsEnabledAdministrator(user),
+            AdministratorEvent(AuditAction.UserDeleted, user, $"Deleted '{user.Username}'; sessions revoked"),
+            "Cannot delete the last TopSecret administrator — the vault would become unmanageable.", ct);
         return true;
     }
 
@@ -327,26 +401,49 @@ public sealed class UserAdminService : IUserAdminService
 
         if (user.FailedAccessCount == 0 && user.LockedUntilUtc is null)
         {
-            return true; // nothing to clear
+            return true;
         }
 
         user.FailedAccessCount = 0;
         user.LockedUntilUtc = null;
-        await _users.UpdateAsync(user, ct);
         // This is an authentication lifecycle event for the affected account, like AccountLockedOut;
         // keep it in that account's sign-in history. The User* administrative actions above instead
         // belong to the administrator's own activity.
-        await _audit.WriteUserEventAsync(
-            AuditAction.AccountUnlocked, user.Id, _actor.Username ?? "system",
-            $"Lockout cleared for '{user.Username}'", ct);
+        await _changes.CommitAsync(user, new AuditEntry
+        {
+            Action = AuditAction.AccountUnlocked,
+            ResourceType = nameof(User),
+            ResourceId = user.Id,
+            ActorUserId = user.Id,
+            InheritActorUserId = false,
+            ActorUsername = _actor.Username ?? "system",
+            Details = $"Lockout cleared for '{user.Username}'"
+        }, ct);
         return true;
     }
 
-    private async Task<bool> IsLastAdminAsync(CancellationToken ct)
+    /// <summary>
+    /// Commits a change to <paramref name="account"/>. A change that removes an enabled administrator
+    /// commits only while another enabled administrator remains, counted under the vault-wide lock every
+    /// such change takes, so two at once cannot both pass (ADR-0028).
+    /// </summary>
+    private Task CommitKeepingAnAdministratorAsync(User account, bool removesAnAdministrator, AuditEntry entry, string lastAdministratorRefusal, CancellationToken ct)
     {
-        var all = await _users.ListAsync(ct);
-        return all.Count(u => u.Clearance == ClearanceLevel.TopSecret) <= 1;
+        if (!removesAnAdministrator)
+        {
+            return _changes.CommitAsync(account, entry, ct);
+        }
+
+        return _changes.CommitAdministratorChangeAsync(account, entry, async token =>
+        {
+            if (!await _users.AnyOtherEnabledAdministratorAsync(account.Id, token))
+            {
+                throw new LastAdministratorException(lastAdministratorRefusal);
+            }
+        }, ct);
     }
+
+    private static bool IsEnabledAdministrator(User account) => account.Clearance == ClearanceLevel.TopSecret && !account.IsDisabled;
 
     private UserSummaryDto Map(User u) =>
         new(u.Id, u.Username, u.DisplayName, u.Email, u.Clearance, u.ProjectKey,

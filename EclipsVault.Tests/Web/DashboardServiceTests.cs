@@ -73,6 +73,7 @@ public class DashboardServiceTests
         public Task<IReadOnlyList<User>> ListAsync(CancellationToken ct)
             => Task.FromResult<IReadOnlyList<User>>([]);
 
+        public Task<bool> AnyOtherEnabledAdministratorAsync(Guid accountId, CancellationToken ct) => throw new NotSupportedException();
         public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task<bool> ReloadAsync(User user, CancellationToken ct) => throw new NotSupportedException();
         public Task<User?> FindByUsernameAsync(string username, CancellationToken ct) => throw new NotSupportedException();
@@ -82,7 +83,8 @@ public class DashboardServiceTests
         public Task<IReadOnlyList<string>> FindEmailsWithPrefixAsync(string localPrefix, string domain, CancellationToken ct) => throw new NotSupportedException();
         public Task AddAsync(User user, CancellationToken ct) => throw new NotSupportedException();
         public Task UpdateAsync(User user, CancellationToken ct) => throw new NotSupportedException();
-        public Task DeleteAsync(User user, CancellationToken ct) => throw new NotSupportedException();
+        public void StageAddition(User user) => throw new NotSupportedException();
+        public void StageRemoval(User user) => throw new NotSupportedException();
         public Task<byte[]?> GetAvatarPngAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
         public Task StageAvatarAsync(User user, byte[] png, CancellationToken ct) => throw new NotSupportedException();
         public Task StageAvatarRemovalAsync(User user, CancellationToken ct) => throw new NotSupportedException();

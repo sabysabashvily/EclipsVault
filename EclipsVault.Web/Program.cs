@@ -64,6 +64,7 @@ try
     builder.Services.AddScoped<IAccessContextProvider, AccessContextProvider>();
     builder.Services.AddScoped<IAuthorizationHandler, SecretAccessHandler>();
     builder.Services.AddScoped<AccessRequestReviewers>();
+    builder.Services.AddScoped<AdministratorStepUp>();
 
     builder.Services
         .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)

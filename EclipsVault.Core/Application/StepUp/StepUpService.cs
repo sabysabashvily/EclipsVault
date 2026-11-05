@@ -32,6 +32,16 @@ public sealed class StepUpService : IStepUpService
         => (int)sensitivity >= (int)_options.MinimumSensitivity
            && nowUtc - lastStrongAuthUtc > TimeSpan.FromMinutes(_options.MaxAuthAgeMinutes);
 
+    public bool IsRequired(AdministratorAction action, DateTimeOffset lastStrongAuthUtc, DateTimeOffset nowUtc)
+        => action switch
+        {
+            AdministratorAction.CreateAccount or AdministratorAction.ChangeAccountRole or AdministratorAction.EnableAccount or AdministratorAction.UnlockAccount or AdministratorAction.ResetAuthenticator or AdministratorAction.IssueApiKey or AdministratorAction.EnableServiceAccount
+                => nowUtc - lastStrongAuthUtc > TimeSpan.FromMinutes(_options.MaxAuthAgeMinutes),
+            AdministratorAction.DisableAccount or AdministratorAction.DeleteAccount or AdministratorAction.SignOutAccount
+                or AdministratorAction.CreateServiceAccount or AdministratorAction.DisableServiceAccount or AdministratorAction.RevokeApiKey or AdministratorAction.DeleteServiceAccount => false,
+            _ => throw new ArgumentOutOfRangeException(nameof(action))
+        };
+
     public async Task<bool> VerifyAsync(Guid userId, SessionStamp stamp, string code, CancellationToken ct)
     {
         var user = await _users.FindByIdAsync(userId, ct);
@@ -61,7 +71,7 @@ public sealed class StepUpService : IStepUpService
             }
 
             await _failures.ResetAsync(user, token);
-            _attempt.RecordUserEvent(AuditAction.StepUpVerified, user, "Re-authenticated for a sensitive reveal");
+            _attempt.RecordUserEvent(AuditAction.StepUpVerified, user, "Re-authenticated for a sensitive action");
             return true;
         }, ct);
     }

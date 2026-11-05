@@ -1,4 +1,5 @@
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Core.Domain.Exceptions;
 
 namespace EclipsVault.Core.Application.Users;
 
@@ -28,8 +29,10 @@ public sealed record CreatedUserDto(Guid Id, string Username, string Email, stri
 
 /// <summary>
 /// Administrative user lifecycle: provisioning, role and access control, MFA reset,
-/// forced logout, disable/enable, and removal. Every operation is audited; guards
-/// prevent the vault from being locked out of its own administration.
+/// forced logout, disable/enable, and removal. Every operation is audited. Values outside the
+/// account input rules are refused with <see cref="AccountInputException"/>, changes Profile governs
+/// on the caller's own account with <see cref="OwnAccountException"/>, and a change that would leave
+/// no enabled administrator with <see cref="LastAdministratorException"/>.
 /// </summary>
 public interface IUserAdminService
 {
@@ -40,10 +43,10 @@ public interface IUserAdminService
     /// <summary>Provisions a user, auto-generating a unique <c>first.last.N@domain</c> email.</summary>
     Task<CreatedUserDto> CreateAsync(CreateUserRequest request, CancellationToken ct);
 
-    /// <summary>Changes a user's clearance and project assignment. Throws VaultAdminException if it would demote the last administrator.</summary>
+    /// <summary>Changes a user's clearance and project assignment, ending the user's sessions.</summary>
     Task<bool> SetRoleAsync(Guid userId, ClearanceLevel clearance, string projectKey, CancellationToken ct);
 
-    /// <summary>Enables or disables an account; disabling also revokes its active sessions. Throws VaultAdminException for self or the last administrator.</summary>
+    /// <summary>Enables or disables an account, ending its sessions.</summary>
     Task<bool> SetEnabledAsync(Guid userId, bool enabled, CancellationToken ct);
 
     /// <summary>Immediately revokes every active session for the user (server-side kill switch).</summary>

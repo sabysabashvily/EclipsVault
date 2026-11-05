@@ -513,13 +513,21 @@ button {
   font-size: 0.8rem;
 }
 
-.avatar-img {
-  width: 34px;
-  height: 34px;
+.avatar-img,
+.avatar-sm {
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
   background: var(--bg-inset);
+}
+
+.avatar-img {
+  width: 34px;
+  height: 34px;
+}
+.avatar-sm {
+  width: 30px;
+  height: 30px;
 }
 
 .user-meta {
@@ -1847,6 +1855,50 @@ select:focus {
   margin: 0.2rem 0 0;
 }
 
+.issue-key-form {
+  margin-bottom: 1.2rem;
+}
+.field-inline-row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.field-inline-row .field {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.check-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 200px;
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+.check-inline input {
+  width: auto;
+}
+.key-scopes {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.danger-zone {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  border: 1px solid rgba(255, 69, 58, 0.35);
+  border-radius: var(--radius);
+  padding: 0.9rem 1.1rem;
+  margin-top: 1.2rem;
+  background: linear-gradient(180deg, var(--danger-soft), transparent 85%);
+}
+.danger-zone p {
+  margin: 0.15rem 0 0;
+  font-size: 0.82rem;
+}
+
 .settings-row {
   display: flex;
   justify-content: space-between;
@@ -1948,4 +2000,62 @@ fieldset {
 }
 .field-note.status-ok {
   color: var(--ok);
+}
+
+.table-toolbar {
+  margin-bottom: 1rem;
+}
+.table-search {
+  max-width: 340px;
+}
+
+.user-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+.user-cell-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.user-cell-sub {
+  font-size: 0.76rem;
+}
+.data-table tr.row-muted td {
+  opacity: 0.55;
+}
+
+/* ---- Row overflow menu (details/summary) ---------------------------------------- */
+.row-menu {
+  position: relative;
+  display: inline-block;
+}
+.row-menu > summary {
+  list-style: none;
+  display: inline-flex;
+}
+.row-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.row-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 30;
+  min-width: 160px;
+  padding: 0.3rem;
+  background: var(--bg-raised-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: left;
+}
+
+#users-table .cell-actions > .button + .button,
+#users-table .cell-actions > app-row-menu {
+  margin-left: 0.4rem;
 }

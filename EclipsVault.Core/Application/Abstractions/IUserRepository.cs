@@ -35,6 +35,9 @@ public interface IUserRepository
 
     Task<IReadOnlyList<User>> ListAsync(CancellationToken ct);
 
+    /// <summary>Whether an enabled administrator other than <paramref name="accountId"/> exists, as committed now.</summary>
+    Task<bool> AnyOtherEnabledAdministratorAsync(Guid accountId, CancellationToken ct);
+
     /// <exception cref="EmailAddressTakenException">Another account took the user's email first.</exception>
     Task AddAsync(User user, CancellationToken ct);
 
@@ -45,7 +48,11 @@ public interface IUserRepository
     /// <exception cref="AccountChangedException">Another change to the account was saved after it was loaded.</exception>
     Task UpdateAsync(User user, CancellationToken ct);
 
-    Task DeleteAsync(User user, CancellationToken ct);
+    /// <summary>Stages saving <paramref name="user"/> as a new account, through <see cref="IAccountChangeCommitter"/>.</summary>
+    void StageAddition(User user);
+
+    /// <summary>Stages deleting <paramref name="user"/> and the rows it owns, through <see cref="IAccountChangeCommitter"/>.</summary>
+    void StageRemoval(User user);
 
     Task<byte[]?> GetAvatarPngAsync(Guid userId, CancellationToken ct);
 

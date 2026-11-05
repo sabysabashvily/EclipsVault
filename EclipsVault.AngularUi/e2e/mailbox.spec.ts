@@ -1,3 +1,4 @@
+import { refreshAdministratorProof } from './administrator-proof';
 import type { BrowserContext } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -22,6 +23,7 @@ test('a real SMTP code activates only the frozen mailbox and retires a copied se
   ) as { cookies: Awaited<ReturnType<BrowserContext['cookies']>> };
   await page.context().addCookies(administrator.cookies);
   const creation = new AccountCreation(page);
+  await refreshAdministratorProof(page);
   await creation.open();
   const password = `E2e-${randomBytes(24).toString('hex')}`;
   await creation.createMailboxOwner('e2e-mailbox-owner', password);

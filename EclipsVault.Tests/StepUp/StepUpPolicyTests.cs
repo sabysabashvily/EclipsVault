@@ -44,4 +44,28 @@ public class StepUpPolicyTests
     [Fact]
     public void MaxAuthAgeMinutes_is_surfaced_for_the_prompt()
         => Assert.Equal(15, Service(maxAgeMinutes: 15).MaxAuthAgeMinutes);
+    [Theory]
+    [InlineData(AdministratorAction.CreateAccount, true)]
+    [InlineData(AdministratorAction.ChangeAccountRole, true)]
+    [InlineData(AdministratorAction.EnableAccount, true)]
+    [InlineData(AdministratorAction.UnlockAccount, true)]
+    [InlineData(AdministratorAction.ResetAuthenticator, true)]
+    [InlineData(AdministratorAction.DisableAccount, false)]
+    [InlineData(AdministratorAction.DeleteAccount, false)]
+    [InlineData(AdministratorAction.SignOutAccount, false)]
+    [InlineData(AdministratorAction.IssueApiKey, true)]
+    [InlineData(AdministratorAction.EnableServiceAccount, true)]
+    [InlineData(AdministratorAction.CreateServiceAccount, false)]
+    [InlineData(AdministratorAction.DisableServiceAccount, false)]
+    [InlineData(AdministratorAction.RevokeApiKey, false)]
+    [InlineData(AdministratorAction.DeleteServiceAccount, false)]
+    public void Stale_administrator_grants_require_proof_independently_of_the_reveal_threshold(AdministratorAction action, bool required)
+        => Assert.Equal(required, Service(minimum: SensitivityLevel.TopSecret).IsRequired(action, Now.AddMinutes(-11), Now));
+
+    [Fact]
+    public void Administrator_proof_is_fresh_at_the_configured_boundary()
+    {
+        Assert.False(Service(maxAgeMinutes: 15).IsRequired(AdministratorAction.EnableAccount, Now.AddMinutes(-15), Now));
+        Assert.True(Service(maxAgeMinutes: 15).IsRequired(AdministratorAction.EnableAccount, Now.AddMinutes(-15).AddSeconds(-1), Now));
+    }
 }

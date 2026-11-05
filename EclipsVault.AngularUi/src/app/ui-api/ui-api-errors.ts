@@ -11,6 +11,11 @@ import {
   switchMap,
   throwError,
 } from 'rxjs';
+import type { components } from './schema.generated';
+
+export type StepUpProof = NonNullable<
+  components['schemas']['AdministratorProblemResponse']['proof']
+>;
 
 /** A failed UI API call, carrying the Problem Details `code` the server chose (ADR-0006). */
 export class UiApiError extends Error {
@@ -19,6 +24,8 @@ export class UiApiError extends Error {
     readonly code: string,
     readonly title: string,
     readonly signedOut: number | null = null,
+    readonly proof: StepUpProof | null = null,
+    readonly errors: Readonly<Record<string, string[]>> = {},
   ) {
     super(title);
     this.name = 'UiApiError';
@@ -36,19 +43,39 @@ export function signInUrl(location: Pick<Location, 'pathname' | 'search'>): stri
 }
 
 function toUiApiError(response: HttpErrorResponse): UiApiError {
-  const problem = response.error as { code?: unknown; title?: unknown; signedOut?: unknown } | null;
+  const body: unknown = response.error;
+  const problem = typeof body === 'object' && body !== null ? body : {};
   return new UiApiError(
     response.status,
-    typeof problem?.code === 'string' ? problem.code : 'unknown',
-    typeof problem?.title === 'string'
+    'code' in problem && typeof problem.code === 'string' ? problem.code : 'unknown',
+    'title' in problem && typeof problem.title === 'string'
       ? problem.title
       : 'The vault could not complete the request.',
-    typeof problem?.signedOut === 'number' &&
+    'signedOut' in problem &&
+      typeof problem.signedOut === 'number' &&
       Number.isSafeInteger(problem.signedOut) &&
       problem.signedOut >= 0
       ? problem.signedOut
       : null,
+    'proof' in problem && (problem.proof === 'code' || problem.proof === 'sign_in')
+      ? problem.proof
+      : null,
+    fieldErrors(problem),
   );
+}
+
+function fieldErrors(problem: object): Readonly<Record<string, string[]>> {
+  if (!('errors' in problem) || typeof problem.errors !== 'object' || problem.errors === null)
+    return {};
+  const errors: Record<string, string[]> = {};
+  for (const [field, messages] of Object.entries(problem.errors)) {
+    if (
+      Array.isArray(messages) &&
+      messages.every((message: unknown) => typeof message === 'string')
+    )
+      errors[field] = messages;
+  }
+  return errors;
 }
 
 export function parsedOrNull(text: string): unknown {

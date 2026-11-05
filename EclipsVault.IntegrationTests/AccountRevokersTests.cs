@@ -110,17 +110,20 @@ public abstract class AccountRevokersTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task A_role_change_retires_the_original_version_and_refuses_the_old_cookie()
+    public async Task A_demoted_administrators_earlier_cookie_is_refused_without_a_session_store_revocation()
     {
-        var owner = await vault.SignInNewAccountAsync("it-version-role", IPAddress.Parse("198.18.240.1"));
-        var original = SessionApi.PrincipalOf(vault, owner);
-        using var request = vault.Services.CreateScope();
+        var demoted = await vault.SignInNewAccountAsync("it-version-role", IPAddress.Parse("198.18.240.1"), ClearanceLevel.TopSecret);
+        var original = SessionApi.PrincipalOf(vault, demoted);
+        Assert.Equal(HttpStatusCode.OK, (await demoted.Client.GetAsync(UserAccounts.UsersPage)).StatusCode);
 
-        await request.ServiceProvider.GetRequiredService<IUserAdminService>().SetRoleAsync(original.GetUserId(), ClearanceLevel.Elevated, "OTHER", default);
+        var edited = await UserAccounts.EditRoleAsync(await vault.AdminClientAsync(), original.GetUserId(), ClearanceLevel.Elevated, "OTHER");
 
-        Assert.NotEqual(original.GetSessionStampOrNull()!.RevocationVersion,
+        Assert.Equal(HttpStatusCode.NoContent, edited.StatusCode);
+        Assert.Equal(original.GetSessionStampOrNull()!.RevocationVersion,
             await vault.Services.GetRequiredService<ISessionRevocationService>().FindAsync(original.GetUserId()));
-        Assert.Equal(HttpStatusCode.Unauthorized, (await owner.Client.GetAsync("/api/ui/me")).StatusCode);
+        var refused = await demoted.Client.GetAsync(UserAccounts.UsersPage);
+        Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
+        Assert.Equal("/Account/Login", refused.Headers.Location?.AbsolutePath);
     }
 
     [Fact]
@@ -136,15 +139,16 @@ public abstract class AccountRevokersTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task Disabling_an_account_retires_its_original_version()
+    public async Task A_disabled_then_re_enabled_accounts_earlier_cookie_stays_refused_without_a_session_store_revocation()
     {
         var owner = await vault.SignInNewAccountAsync("it-version-disable", IPAddress.Parse("198.18.240.2"));
         var original = SessionApi.PrincipalOf(vault, owner);
-        using var request = vault.Services.CreateScope();
+        var admin = await vault.AdminClientAsync();
 
-        await request.ServiceProvider.GetRequiredService<IUserAdminService>().SetEnabledAsync(original.GetUserId(), false, default);
+        Assert.Equal(HttpStatusCode.NoContent, (await UserActions.SetEnabledAsync(admin, original.GetUserId(), enabled: false)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await UserActions.SetEnabledAsync(admin, original.GetUserId(), enabled: true)).StatusCode);
 
-        Assert.NotEqual(original.GetSessionStampOrNull()!.RevocationVersion,
+        Assert.Equal(original.GetSessionStampOrNull()!.RevocationVersion,
             await vault.Services.GetRequiredService<ISessionRevocationService>().FindAsync(original.GetUserId()));
         Assert.Equal(HttpStatusCode.Unauthorized, (await owner.Client.GetAsync("/api/ui/me")).StatusCode);
     }
@@ -163,14 +167,14 @@ public abstract class AccountRevokersTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task Account_deletion_retires_the_original_version()
+    public async Task Account_deletion_refuses_the_earlier_cookie_without_a_session_store_revocation()
     {
         var owner = await vault.SignInNewAccountAsync("it-version-deleted", IPAddress.Parse("198.18.240.4"));
         var original = SessionApi.PrincipalOf(vault, owner);
 
         await vault.DeleteAccountAsync("it-version-deleted");
 
-        Assert.NotEqual(original.GetSessionStampOrNull()!.RevocationVersion,
+        Assert.Equal(original.GetSessionStampOrNull()!.RevocationVersion,
             await vault.Services.GetRequiredService<ISessionRevocationService>().FindAsync(original.GetUserId()));
         Assert.Equal(HttpStatusCode.Unauthorized, (await owner.Client.GetAsync("/api/ui/me")).StatusCode);
     }
@@ -212,19 +216,8 @@ public abstract class AccountRevokersTests(VaultFixture vault)
         var token = VaultFixture.FormTokenOf(await pending.Client.GetStringAsync("/Account/Totp"), "/Account/Totp");
         var code = Totp.NextCode(account.TotpSecret!);
         var admin = await vault.AdminClientAsync();
-        var editPath = $"/Admin/EditUser/{account.Id}";
-        var edit = await admin.GetStringAsync(editPath);
-
-        var changed = await admin.PostAsync(editPath, new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(edit, editPath),
-            ["Id"] = account.Id.ToString(),
-            ["Username"] = username,
-            ["DisplayName"] = "Integration Test",
-            ["Clearance"] = ((int)ClearanceLevel.Standard).ToString(CultureInfo.InvariantCulture),
-            ["ProjectKey"] = "ROLE-HTTP",
-        }));
-        Assert.Equal(HttpStatusCode.Redirect, changed.StatusCode);
+        var changed = await UserAccounts.EditRoleAsync(admin, account.Id, ClearanceLevel.Standard, "ROLE-HTTP");
+        Assert.Equal(HttpStatusCode.NoContent, changed.StatusCode);
         var refused = await pending.Client.PostAsync("/Account/Totp", new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["__RequestVerificationToken"] = token,

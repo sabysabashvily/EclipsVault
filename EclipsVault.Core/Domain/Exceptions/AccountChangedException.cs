@@ -6,7 +6,7 @@ namespace EclipsVault.Core.Domain.Exceptions;
 /// </summary>
 public sealed class AccountChangedException : DomainException
 {
-    public AccountChangedException() : base("Your account was changed by another request. Reload the page and try again.")
+    public AccountChangedException(string message = "Your account was changed by another request. Reload the page and try again.") : base(message)
     {
     }
 }

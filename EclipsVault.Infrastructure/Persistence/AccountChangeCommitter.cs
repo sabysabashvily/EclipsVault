@@ -27,6 +27,13 @@ public sealed class AccountChangeCommitter : IAccountChangeCommitter
     public Task<bool> CommitAsync(User account, AuditEntry entry, CancellationToken ct)
         => CommitAsync(account, entry, _ => Task.CompletedTask, ct);
 
+    public Task<bool> CommitAdministratorChangeAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct)
+        => CommitAsync(account, entry, async token =>
+        {
+            await _transaction.LockAdministratorsAsync(token);
+            await recheck(token);
+        }, ct);
+
     private async Task<bool> CommitAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct)
     {
         if (!_context.ChangeTracker.HasChanges())

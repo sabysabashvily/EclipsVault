@@ -37,3 +37,16 @@ Generation-less sessions and pending proofs are refused after deployment, requir
 sign-in. Nodes running the older validation rules must be retired before the new invalidation
 guarantee can be relied on. Explicit device sign-out remains external session-store revocation and
 keeps ADR-0021's revoke-first behavior; it is not blocked by an audit failure.
+
+## Administrator changes advance the generation too (Area 5)
+
+An administrator's change to another account's clearance, project or enabled state advances that
+account's credential generation in the same transaction as the change and its audit event. Before
+this, these changes ended sessions only through the session store, while each request re-read the
+account for its enabled state and generation but not its clearance. A failed store call after the
+commit therefore left a demoted administrator with administrator sessions, and re-enabling an account
+revived any session that disabling had failed to revoke. The generation makes both durable: the
+per-request account read refuses every older session whatever the store does, and re-enabling never
+revives one. These two changes no longer call the session store. Force logout changes nothing in the
+database, so it keeps ADR-0021's revocation version; deletion is already durable, because the account
+read finds nothing.

@@ -81,6 +81,18 @@ public static class AngularUiRoutes
         {
             endpoints.MapMethods(path, [HttpMethods.Get, HttpMethods.Head], ServeIndex).RequireAuthorization(session);
         }
+
+        string[] administratorPaths = ["/Admin/Users", "/Admin/CreateUser", "/Admin/EditUser/{id:guid}",
+            "/ServiceAccounts", "/ServiceAccounts/Index", "/ServiceAccounts/Create", "/ServiceAccounts/Details/{id:guid}"];
+        foreach (var path in administratorPaths)
+        {
+            endpoints.MapMethods(path, [HttpMethods.Get, HttpMethods.Head], ServeIndex)
+                .RequireAuthorization(new AuthorizeAttribute
+                {
+                    AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme,
+                    Policy = VaultPolicies.AdminOnly,
+                });
+        }
     }
 
     private static IResult ServeIndex(HttpContext context, IWebHostEnvironment environment)

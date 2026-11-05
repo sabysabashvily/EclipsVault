@@ -1,0 +1,65 @@
+<app-status-line [message]="writes.status().message" [error]="writes.status().error" />
+@if (account.isLoading() && !account.hasValue()) {
+  <p role="status">Loading user…</p>
+} @else if (account.error()) {
+  <p role="alert">{{ loadError() }}</p>
+  <button type="button" class="button" (click)="account.reload()">Try again</button>
+  <a class="button" routerLink="/Admin/Users">Back to users</a>
+} @else if (account.hasValue()) {
+  <div class="page-header">
+    <div>
+      <h1>Edit user</h1>
+      <p class="page-sub">
+        <span class="mono">{{ account.value().username }}</span> — {{ account.value().displayName }}
+      </p>
+    </div>
+    <div class="page-actions">
+      <a class="button" routerLink="/Admin/Users">Back to users</a>
+    </div>
+  </div>
+
+  <section class="panel narrow-left">
+    <div class="panel-header"><h2>Role &amp; access</h2></div>
+    <form (submit)="submit($event)">
+      <fieldset [disabled]="writes.busy() || writes.awaitingProof() || writes.blocked()">
+        <div class="field-row">
+          <div class="field">
+            <label for="clearance">Clearance level</label>
+            <select id="clearance" #clearanceInput (change)="clearance.set(+clearanceInput.value)">
+              @for (option of account.value().clearances; track option.value) {
+                <option [value]="option.value" [selected]="+option.value === clearance()">
+                  {{ option.label }}
+                </option>
+              }</select
+            ><span class="field-error">{{ error('clearance') }}</span>
+          </div>
+          <div class="field">
+            <label for="project">Project key</label>
+            <input
+              id="project"
+              #projectInput
+              [value]="project()"
+              (input)="project.set(projectInput.value)"
+              maxlength="64"
+              required
+            />
+            <span class="field-error">{{ error('project') }}</span>
+          </div>
+        </div>
+
+        <p class="hint muted">
+          Clearance gates which sensitivity levels the user can read; the project key scopes them to
+          that project (TopSecret sees all projects). Saving revokes the user's active sessions so
+          the new access applies at their next sign-in.
+          @if (account.value().isYou) {
+            <br /><strong>This is your own account</strong> — you cannot remove the last
+            administrator's clearance.
+          }
+        </p>
+
+        <button #submitButton type="submit" class="button primary">Save role</button>
+      </fieldset>
+    </form>
+  </section>
+}
+<app-step-up-dialog (decision)="verified($event)" />

@@ -1,4 +1,5 @@
 import type { BrowserContext, Page } from '@playwright/test';
+import { writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { test, expect } from './fixtures';
 import {
@@ -2101,6 +2102,12 @@ test('a real passkey follows the server redirect for local and external return t
     await context.storageState({
       path: `${process.env['E2E_TEST_RESULTS'] || 'test-results'}/sessions-administrator.json`,
     });
+
+    await writeFile(
+      `${process.env['E2E_TEST_RESULTS'] || 'test-results'}/users-administrator-authenticator.txt`,
+      authenticatorSecret,
+      { mode: 0o600 },
+    );
 
     // Preparation and verification spend two requests; the four sign-ins spend eight more.
     // All ten fit this window's eleven-request budget.

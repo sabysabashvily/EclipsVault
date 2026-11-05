@@ -7,7 +7,8 @@ namespace EclipsVault.Core.Application.Abstractions;
 /// <summary>
 /// Saves one change to a vault account together with the one audit event that describes it, in one
 /// transaction, so neither is stored without the other. The change is everything staged since the
-/// account was loaded: edits to the loaded account and the rows repositories staged for it.
+/// account was loaded: edits to the loaded account and the rows repositories staged for it, including
+/// the account's own addition or removal.
 /// </summary>
 public interface IAccountChangeCommitter
 {
@@ -18,6 +19,7 @@ public interface IAccountChangeCommitter
     /// <returns>False when nothing was staged: nothing changed, so nothing is recorded.</returns>
     /// <exception cref="AccountChangedException">The account changed after it was loaded; nothing was saved.</exception>
     /// <exception cref="EmailAddressTakenException">Another account took the staged email first; nothing was saved.</exception>
+    /// <exception cref="UsernameTakenException">Another account took the new account's username first; nothing was saved.</exception>
     /// <exception cref="AuditWriteFailedException">The change and its event could not be stored; neither was.</exception>
     Task<bool> CommitAsync(User account, AuditAction action, string details, CancellationToken ct);
 
@@ -31,4 +33,12 @@ public interface IAccountChangeCommitter
 
     /// <summary>Preserves explicit event attribution for an administrator changing another account.</summary>
     Task<bool> CommitAsync(User account, AuditEntry entry, CancellationToken ct);
+
+    /// <summary>
+    /// Like <see cref="CommitAsync(User, AuditEntry, CancellationToken)"/>, for a change that could leave
+    /// the vault without an enabled administrator. After the account's lock it takes the vault-wide
+    /// administrators lock, so such changes take effect one at a time, and runs <paramref name="recheck"/>
+    /// under both: it reads every change that committed before this one. A refusal it throws saves nothing.
+    /// </summary>
+    Task<bool> CommitAdministratorChangeAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct);
 }

@@ -1,3 +1,5 @@
+import { refreshAdministratorProof } from './administrator-proof';
+import { AccountCreation } from './account-creation';
 import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -83,14 +85,17 @@ test('a requester denied in another project sees the request they filed from the
   test.setTimeout(180_000);
   const password = `E2e-${randomBytes(24).toString('hex')}`;
   await signInAsAdministrator(page);
-  await page.goto('/Admin/CreateUser');
-  await page.getByLabel('First name').fill('Access');
-  await page.getByLabel('Last name').fill('Requester');
-  await page.getByLabel('Username').fill(requesterUsername);
-  await page.getByLabel('Initial password', { exact: true }).fill(password);
-  await page.getByLabel('Clearance').selectOption({ label: 'Elevated' });
-  await page.getByLabel('Project').fill('E2E-AR');
-  await page.getByRole('button', { name: 'Create user', exact: true }).click();
+  const creation = new AccountCreation(page);
+  await refreshAdministratorProof(page);
+  await creation.open();
+  await creation.create({
+    firstName: 'Access',
+    lastName: 'Requester',
+    username: requesterUsername,
+    password,
+    clearance: 'Elevated',
+    project: 'E2E-AR',
+  });
   await expect(page).toHaveURL(/\/Admin\/Users$/);
 
   for (const [secret, sensitivity] of [

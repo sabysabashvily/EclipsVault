@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Models.Ui;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -12,6 +13,18 @@ namespace EclipsVault.IntegrationTests;
 
 internal static class SessionApi
 {
+    public static Cookie WithStrongAuthenticationAt(VaultFixture vault, VaultSession session, DateTimeOffset authenticatedAt)
+    {
+        var format = vault.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
+            .Get(CookieAuthenticationDefaults.AuthenticationScheme).TicketDataFormat;
+        var cookie = Assert.IsType<Cookie>(session.SessionCookie);
+        var ticket = Assert.IsType<AuthenticationTicket>(format.Unprotect(cookie.Value));
+        var claims = ticket.Principal.Claims.Where(claim => claim.Type != VaultClaimTypes.AuthTime && claim.Type != VaultClaimTypes.StepUpTime);
+        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        identity.AddClaim(new Claim(VaultClaimTypes.AuthTime, authenticatedAt.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        return new Cookie(cookie.Name, format.Protect(new AuthenticationTicket(new ClaimsPrincipal(identity), ticket.Properties, ticket.AuthenticationScheme)));
+    }
+
     public static async Task<SessionResponse> CurrentAsync(VaultSession session)
     {
         var list = await session.Client.GetFromJsonAsync<SessionsResponse>("/api/ui/sessions");

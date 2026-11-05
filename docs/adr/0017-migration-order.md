@@ -18,3 +18,5 @@ Risk grows down the list, so the patterns settle on pages where a mistake cannot
 Area 2 joined that list when its grill found it revokes sessions and shares and changes how they are audited (ADR-0021).
 
 Area 4 joined that list when its grill found that approving an access request issues a share, and that requests and shares were decided and audited outside the sharing rule (ADR-0027).
+
+Area 5 runs in two parts, each with its own spec, branch and PR, after its grill found that it changes how administrator actions are committed, audited and authorized (ADR-0028). Part 5a, Accounts, moves Users and Service accounts. Part 5b, Vault settings, moves Networks, Notifications and License after 5a merges. The risk sits in 5a, and two smaller diffs keep each security review focused.

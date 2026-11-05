@@ -116,6 +116,26 @@ describe('uiApiErrors', () => {
     expect(assign).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['code', 'code'],
+    ['sign_in', 'sign_in'],
+    ['unrecognized', null],
+    [17, null],
+    [null, null],
+  ])('passes only a recognized step-up proof to the page: %s', (proof, expected) => {
+    let surfaced: unknown;
+    http
+      .post('/api/ui/users/target/enable', null)
+      .subscribe({ error: (error: unknown) => (surfaced = error) });
+    backend
+      .expectOne('/api/ui/users/target/enable')
+      .flush(
+        { code: 'step_up_required', title: "Confirm it's you.", proof },
+        { status: 403, statusText: 'Forbidden' },
+      );
+    expect(surfaced).toMatchObject({ status: 403, code: 'step_up_required', proof: expected });
+  });
+
   it('reads the Problem Details of a failed file download, whose body arrives as a Blob', async () => {
     const surfaced = new Promise((resolve) =>
       http

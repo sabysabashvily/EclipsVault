@@ -39,8 +39,8 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         var before = await OwnActivityAsync(AccountIdOf(target));
         var admin = await vault.AdminClientAsync();
 
-        var reset = await PostFormAsync(admin, $"/Admin/ResetTotp/{AccountIdOf(target):D}", new(), "/Admin/Users");
-        Assert.Equal(HttpStatusCode.Redirect, reset.StatusCode);
+        var reset = await UserActions.ResetMfaAsync(admin, AccountIdOf(target));
+        Assert.Equal(HttpStatusCode.NoContent, reset.StatusCode);
         // The reset ends the target's sessions, so its own feed is read as its next session would see it.
         Assert.Equal(before, await OwnActivityAsync(AccountIdOf(target)));
         await vault.DeleteAccountAsync(username);
@@ -62,9 +62,9 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
             ClearanceLevel.TopSecret)).Client;
         var adminHistory = await admin.GetStringAsync("/api/ui/sign-ins");
 
-        var response = await PostFormAsync(admin, $"/Admin/Unlock/{AccountIdOf(target):D}", new(), "/Admin/Users");
+        var response = await UserActions.UnlockAsync(admin, AccountIdOf(target));
 
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         Assert.Equal(adminHistory, await admin.GetStringAsync("/api/ui/sign-ins"));
         var activityBody = await target.Client.GetStringAsync("/api/ui/activity");
         var historyBody = await target.Client.GetStringAsync("/api/ui/sign-ins");
@@ -153,7 +153,10 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
                 checkup.RootElement.GetProperty("nextStep").GetString());
         }
 
-        var admin = await vault.AdminClientAsync();
+        // A separate administrator has one known sign-in, independent of the bootstrap session's
+        // maintenance proofs during a long suite.
+        var administrator = await vault.SignInNewAccountAsync("it-scope-administrator", IPAddress.Parse("198.18.109.40"), ClearanceLevel.TopSecret);
+        var admin = administrator.Client;
         var adminResponses = await ReadEndpointsAsync(admin);
         Assert.All(adminResponses, body =>
         {
@@ -162,12 +165,10 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
             Assert.DoesNotContain(bOtherAddress, body);
             Assert.DoesNotContain(bFailedAddress, body);
         });
-        // The bootstrap administrator has one enrolled authenticator and one session. Creating
-        // other accounts and B using recovery codes must widen neither history nor posture.
         using (var history = JsonDocument.Parse(adminResponses[1]))
         {
             AssertSummary(history.RootElement, 1, 0, 0, 1, needsAttention: false, lastFailureKind: JsonValueKind.Null);
-            Assert.Equal("internal", Assert.Single(history.RootElement.GetProperty("events").EnumerateArray())
+            Assert.Equal("198.18.109.40", Assert.Single(history.RootElement.GetProperty("events").EnumerateArray())
                 .GetProperty("sourceIp").GetString());
         }
         using (var checkup = JsonDocument.Parse(adminResponses[2]))
@@ -176,6 +177,7 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
                 "You have no backup codes left.", "Only this device is signed in.");
         }
         Assert.All(aResponses.Concat(bResponses), body => Assert.DoesNotContain("\"internal\"", body));
+        Assert.All(aResponses.Concat(bResponses), body => Assert.DoesNotContain("198.18.109.40", body));
         Assert.All(aResponses, body =>
         {
             Assert.DoesNotContain(bAddress, body);

@@ -1,3 +1,4 @@
+import { refreshAdministratorProof } from './administrator-proof';
 import type { BrowserContext } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -42,6 +43,7 @@ test('Profile opens through production routes after real enrollment', async ({
   ) as { cookies: typeof ownerCookies };
   await page.context().addCookies(administrator.cookies);
   const creation = new AccountCreation(page);
+  await refreshAdministratorProof(page);
   await creation.open();
   await creation.createMailboxOwner('e2e-profile-owner', password);
   await expect(page).toHaveURL(/\/Admin\/Users$/);

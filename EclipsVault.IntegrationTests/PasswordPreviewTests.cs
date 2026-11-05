@@ -29,21 +29,10 @@ public sealed class PasswordPreviewTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task Legacy_Create_user_uses_the_session_only_breach_preview()
+    public async Task New_user_gets_a_verdict_with_the_UI_antiforgery_token()
     {
         var admin = await vault.AdminClientAsync();
-
-        var create = await admin.GetStringAsync("/Admin/CreateUser");
-
-        Assert.Contains("data-breach-check=\"/api/ui/passwords/check-breached\"", create);
-    }
-
-    [Fact]
-    public async Task Legacy_Create_user_gets_a_verdict_with_its_own_form_token()
-    {
-        var admin = await vault.AdminClientAsync();
-        var token = VaultFixture.FormTokenOf(await admin.GetStringAsync("/Admin/CreateUser"), "/Admin/CreateUser");
-        // The same request site.js sends: the page's form token in the antiforgery header.
+        var token = await UiApiRequest.AntiforgeryTokenAsync(admin);
         using var check = new HttpRequestMessage(HttpMethod.Post, "/api/ui/passwords/check-breached")
         {
             Content = JsonContent.Create(new { password = "000000000000" }),

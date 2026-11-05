@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using EclipsVault.Core.Domain;
 using EclipsVault.Core.Domain.Entities;
+using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Infrastructure.Persistence.Configurations;
 using Microsoft.EntityFrameworkCore;
@@ -10,6 +11,7 @@ namespace EclipsVault.Infrastructure.Persistence.Repositories;
 public sealed class UserRepository : IUserRepository
 {
     private const string UniqueEmailIndex = "IX_Users_NormalizedEmail";
+    private const string UniqueUsernameIndex = "IX_Users_Username";
 
     private readonly EclipsVaultDbContext _context;
     private readonly TimeProvider _clock;
@@ -81,6 +83,9 @@ public sealed class UserRepository : IUserRepository
     public async Task<IReadOnlyList<User>> ListAsync(CancellationToken ct)
         => await _context.Users.AsNoTracking().OrderBy(u => u.Username).ToListAsync(ct);
 
+    public Task<bool> AnyOtherEnabledAdministratorAsync(Guid accountId, CancellationToken ct)
+        => _context.Users.AnyAsync(u => u.Id != accountId && u.Clearance == ClearanceLevel.TopSecret && !u.IsDisabled, ct);
+
     public async Task AddAsync(User user, CancellationToken ct)
     {
         _context.Users.Add(user);
@@ -100,11 +105,9 @@ public sealed class UserRepository : IUserRepository
         await SaveClaimingEmailAsync(ct);
     }
 
-    public async Task DeleteAsync(User user, CancellationToken ct)
-    {
-        _context.Users.Remove(user);
-        await _context.SaveChangesAsync(ct);
-    }
+    public void StageAddition(User user) => _context.Users.Add(user);
+
+    public void StageRemoval(User user) => _context.Users.Remove(user);
 
     public Task<byte[]?> GetAvatarPngAsync(Guid userId, CancellationToken ct)
         => _context.UserAvatars
@@ -275,4 +278,6 @@ public sealed class UserRepository : IUserRepository
     }
 
     internal static bool ViolatesUniqueEmail(DbUpdateException failure) => UniqueIndex.IsViolatedBy(failure, UniqueEmailIndex);
+
+    internal static bool ViolatesUniqueUsername(DbUpdateException failure) => UniqueIndex.IsViolatedBy(failure, UniqueUsernameIndex);
 }

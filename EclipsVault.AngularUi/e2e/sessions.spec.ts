@@ -1,3 +1,5 @@
+import { refreshAdministratorProof } from './administrator-proof';
+import { AccountCreation } from './account-creation';
 import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -72,14 +74,17 @@ test('a separate vault account enrolls MFA for its signed-in device scenarios', 
     cookies: Awaited<ReturnType<BrowserContext['cookies']>>;
   };
   await page.context().addCookies(state.cookies);
-  await page.goto('/Admin/CreateUser');
-  await page.getByLabel('First name').fill('Devices');
-  await page.getByLabel('Last name').fill('Test');
-  await page.getByLabel('Username').fill(username);
-  await page.getByLabel('Initial password', { exact: true }).fill(password);
-  await page.getByLabel('Clearance').selectOption({ label: 'Standard' });
-  await page.getByLabel('Project').fill('GLOBAL');
-  await page.getByRole('button', { name: 'Create user', exact: true }).click();
+  const creation = new AccountCreation(page);
+  await refreshAdministratorProof(page);
+  await creation.open();
+  await creation.create({
+    firstName: 'Devices',
+    lastName: 'Test',
+    username: username,
+    password,
+    clearance: 'Standard',
+    project: 'GLOBAL',
+  });
   await expect(page).toHaveURL(/\/Admin\/Users$/);
 
   // The preceding passkey scenarios spend the shared source's credential budget; start a fresh window.

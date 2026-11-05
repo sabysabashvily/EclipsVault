@@ -21,9 +21,11 @@ internal sealed class SessionAccountStore : IUserRepository
     public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult(_user);
     public Task<bool> ReloadAsync(User user, CancellationToken ct) => Task.FromResult(true);
     public Task<IReadOnlyList<User>> ListAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<User>>([]);
+    public Task<bool> AnyOtherEnabledAdministratorAsync(Guid accountId, CancellationToken ct) => throw new NotSupportedException();
     public Task AddAsync(User user, CancellationToken ct) => Task.CompletedTask;
     public Task UpdateAsync(User user, CancellationToken ct) => Task.CompletedTask;
-    public Task DeleteAsync(User user, CancellationToken ct) => Task.CompletedTask;
+    public void StageAddition(User user) { }
+    public void StageRemoval(User user) { }
     public Task<byte[]?> GetAvatarPngAsync(Guid userId, CancellationToken ct) => Task.FromResult<byte[]?>(null);
     public Task StageAvatarAsync(User user, byte[] png, CancellationToken ct) => Task.CompletedTask;
     public Task StageAvatarRemovalAsync(User user, CancellationToken ct) => Task.CompletedTask;
