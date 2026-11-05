@@ -383,3 +383,83 @@ performed.
 Exact commands, counts, commit SHAs/subject lengths, review resolutions, readability excerpts and
 cleanup evidence are in `logs/ticket-110/final-report.md`. The implementation and this checkpoint
 remain local. #111 and #112 have not started in this thread.
+
+## Restart: ticket 6 (#111)
+
+Started on 2026-11-04 in its dedicated implementation thread, as the sole implementation worker,
+from pushed `9aa2425cae74ced339724f74cb142390bf3eb969` on `area-5a-accounts`. The owner authorized
+implementation while #110 CI run `41879345754` runs on that exact SHA. Its required success will be
+verified before any local commit. The coordinator owns #110 closure. Scope is #104/#111 only,
+with local commits and final checkpoint last, no push or PR. Evidence is under `logs/ticket-111/`.
+
+## Delivery: ticket 6 (#111)
+
+Completed locally on 2026-11-05 in its dedicated thread, as the sole implementation worker, on
+`area-5a-accounts`. Implementation commit is `bda1af226e428671d74131782cb2d2a1116857c3`. This checkpoint is committed last,
+with the prior #110 prefix preserved byte for byte. Before the first local commit, immutable
+coordinator evidence verified #110 CI run `41879345754` completed successfully on exact dependency
+SHA `9aa2425cae74ced339724f74cb142390bf3eb969`; all required jobs succeeded and only workflow_dispatch
+commit-subjects skipped. The coordinator confirmed #110 closure. Its checks were not rerun.
+
+Service accounts list, Create and Details now use Angular at their existing mixed-case bookmarks,
+with explicit AdminOnly route authorization. The typed cookie-session UI API keeps Core validation,
+normalization, scoping, unique-name handling and atomic fail-closed auditing. Issuing a key and enabling
+an account require shared fresh proof before target lookup; removals do not. The raw key appears only
+in the issuance response and current page memory, clears on departure/session loss, and never passes
+through TempData or saved notices. Both shells and palette reach Angular. The Legacy service-account
+controller, views, models and dead form helper are retired. Networks remains Legacy; #112 is untouched.
+
+Final validation passed:
+
+- locked restore, .NET format/verification and Release build with zero warnings or errors
+- unit suite: 844 passed; exact malformed-input preflight: 10 passed
+- full SQL Server integration: 995 passed, zero failures/skips, 14m 32s
+- full PostgreSQL integration: 995 passed, zero failures/skips, 13m 42s
+- both pending-model checks: no changes; six agent hook tests passed
+- pinned Node 24.22.0 install with --ignore-scripts, lint/browser types and six lint guards
+- Vitest: 429 passed in 30 files; Prettier and 15 build checks passed
+- API types regenerated/verified and production Angular build/index gates passed
+- refreshed npm high/critical audit gate passed with 15 moderate findings, earlier 21 retained
+- complete production browser suite: 175 passed, zero failures/skips, 54.3 minutes
+- all eight deliberate browser-health failures verified, guard verification exit 0
+
+The final browser/guard runner PID was 44995 and exited 0. All eight new service-account scenarios
+passed, including real stale-proof cancellation/focus and retry, scoped Public API use/revocation,
+one-time key lifetime/copy, enable/disable/delete, both shells/palette, keyboard/themes and denied
+non-administrator bookmarks. All six real audit-failure writes preserve state and return 503.
+
+Three untouched-Legacy regressions were demonstrated first: stale issuance persisted a key, stale
+enabling persisted the grant, and TempData recovered the raw-key handoff from the cookie. No raw key
+or cookie values were printed. Security, Standards and Spec reviews covered all permitted changes
+and new/deleted files in separate fresh GPT Sol 6.1 xhigh sessions after Claude Opus 5.5 high was rate
+limited. This is the authorized same-model fallback. Security found no demonstrable defects. Three
+Standards findings and one Spec finding were resolved with literal test cases, split endpoint tests,
+exact field problems and explicit no-op 204 assertions. Small fixes were made directly before final
+validation; no additional independent recheck is claimed. Original reports and resolutions remain.
+
+Failures and interruptions remain in logs/ticket-111/. These include expected baseline failures,
+initial HTTP/frontend assertion mistakes, corrected formatting gates, an interrupted format runner
+with no exit record, and a preflight that could not initialize while Docker was stopped. The rerun
+passed. A precommit path check initially overlooked the deletion half of a detected rename; it was
+corrected with --no-renames before committing. No test timeout, retry or health rule was weakened.
+
+Heavy checks and reviews ran serially, with no integration/browser overlap, task-local scratch and
+normal priority. .NET used four processors and serial MSBuild/tests; the resumed formatter used two.
+The production image build used a 2.5 CPU quota, and only owned browser services were capped, with
+SQL/vault at one CPU each. The 90% host ceiling was exceeded in earlier quick/format attempts and
+in two browser samples, at 12:24:55 and 13:04:18 local time, reaching 95.81% and 94.09%. All samples
+are preserved. Later database samples peaked at 78.16%. Strict ceiling compliance is not claimed.
+No unrelated process or global setting changed. Docker context exclusions were verified before build
+without accessing the protected trees.
+
+Cleanup verified both owned Compose projects' containers, networks and labelled volumes absent,
+owned image removed, captured Testcontainers sessions and named containers absent, no owned runtime
+key-ring directories remaining, and owned monitors stopped. No key contents were read and shared
+cache was not pruned. All 49 implementation paths, including seven deletion markers, match the
+actual tested sources and committed contents. Tracked state is clean after this checkpoint.
+
+Exact commands, counts, commit subjects/lengths, review resolutions, three readability excerpts,
+resource limitations and cleanup/source manifests are in logs/ticket-111/final-report.md. The remaining
+15 moderate npm findings are visible and unsuppressed. Completion is reported to the coordinator;
+reporting adds no delivery authorization. No push, PR, issue action, branch/worktree/history change
+or later-ticket work was performed. The coordinator owns subsequent delivery decisions.
