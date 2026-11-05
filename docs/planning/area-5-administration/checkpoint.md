@@ -463,3 +463,105 @@ resource limitations and cleanup/source manifests are in logs/ticket-111/final-r
 15 moderate npm findings are visible and unsuppressed. Completion is reported to the coordinator;
 reporting adds no delivery authorization. No push, PR, issue action, branch/worktree/history change
 or later-ticket work was performed. The coordinator owns subsequent delivery decisions.
+
+## Restart: ticket 7 (#112)
+
+Started on 2026-11-05 in the dedicated ticket thread as the sole implementation worker, from pushed
+`cdb62b17677c20fc42e0f55f095be0ae7eb0d7eb` on `area-5a-accounts`, with clean tracked state. The owner
+authorized whole-part verification while #111 CI run `42003069030` runs on that immutable SHA.
+Every required dependency job must succeed before the first local commit. The coordinator owns
+dependency closure and subsequent delivery, already authorized by the owner to verify, push and open
+the whole-part PR after final gates and reviews. This worker prepares artifacts and commits locally.
+
+The whole-part review base is `dc7ae769dde424ffeee0a4013b23c42951181fbc`. Main's separate PostgreSQL
+dev/docs changes at `139aaf9fa4d8919d7c0830fd31797a179fe7aba1` are inspected for compatibility without
+merging. Evidence and scratch stay in `logs/ticket-112/`. Protected trees, private keys and full
+container environments remain excluded. No branch/worktree/history changes, delivery actions,
+duplicate implementation worker, #113 or 5b work are authorized in this worker.
+
+## Delivery: ticket 7 (#112)
+
+Completed the whole-part verification locally on 2026-11-05 in the dedicated ticket thread, retaining
+exclusive checkout ownership on `area-5a-accounts`. Implementation commit: `961b27cb0c3908c4d2d69d7308c3d8f9d25e0cd7`.
+The separate checkpoint commit is last; its exact SHA is recorded in logs/ticket-112/final-report.md.
+The starting 32,984-byte checkpoint prefix is preserved byte for byte.
+
+Before the first local commit, independently verified #111 workflow run `42003069030` completed
+successfully on exact starting SHA `cdb62b17677c20fc42e0f55f095be0ae7eb0d7eb`: all ten required jobs
+passed, with only workflow_dispatch commit-subjects skipped as expected. The coordinator confirmed
+#111's closure. This dependency evidence does not claim CI for the later local #112 commits.
+
+Added 47 real retired-handler HTTP cases and two actor-scoped administration activity tests, plus
+production browser Dashboard/avatar/activity checks and captures of all six Accounts pages in both
+themes. Standards fixes split independent scenarios, validate saved cookie JSON from unknown and
+remove redundant comments/indirection. Two actual Spec defects were reproduced first: four real-
+bundle layout probes failed for missing Service account Details CSS, and the component filter test
+failed because the displayed you badge was absent from search. Restoring Legacy CSS and the badge
+search text made the exact regressions pass. Two narrow ADR statements now match the implementation.
+
+Whole-part Security, Standards and Spec reviews covered the fixed-base permitted diff, original
+planning records, all new files and eight deletions. Claude Opus 5.5 high was rate limited; fresh
+GPT Sol 6.1 xhigh sessions completed the authorized same-model fallback serially. Security found no
+demonstrable defect. All three Standards violations and two judgment-call smells are resolved or
+answered in the ledger; both Spec defects are fixed. Small later fixes were made directly before
+final validation; no independent recheck is claimed. Original reports, manifests and exact later
+path deltas remain under logs/ticket-112/.
+
+Final validation passed on the final source snapshot:
+
+- locked restore, .NET format verification and Release build with zero warnings/errors
+- unit suite: 844 passed, no failures/skips
+- full SQL Server integration: 1,047 passed, no failures/skips, 15m 4s
+- full PostgreSQL integration: 1,047 passed, no failures/skips, 12m 33s
+- both pending-model checks: no changes; six agent hook tests passed
+- pinned Node 24.22.0 install --ignore-scripts, lint/browser types and six lint guards
+- Prettier, 431 Vitest cases in 30 files, 15 build checks and full limited-worker Vitest repeat
+- API types regenerated/checked, production Angular build/index gates, high/critical audit passed
+- complete production browser suite: 184 passed, 55.6 minutes, no failures/skips
+- all eight deliberate browser-health failures verified; guard command exit 0
+
+Manually inspected all twelve real production captures: Users/New/Edit and Service accounts/Create/Details
+in dark and light. No persistent layout defect was observed. This is manual inspection plus Legacy
+source comparison, not an automated pixel-diff baseline; the light Service accounts list capture
+includes an entrance-animation frame. No passwords or raw keys are present in these selected captures.
+
+All expected red probes, prior attempts, exact commands, durations, exits and resource samples remain.
+The focused runner briefly waited on its own caffeinate child after checks exited 0; only that child
+was terminated and the runner was corrected. One quick Vitest host sample reached 99.3%; the entire
+431-case suite was repeated with two workers and file parallelism disabled, with a 55.3% sampled
+peak. Other final resource evidence and lifecycle limitations are recorded in the report. No retry,
+timeout, guard rule, assertion or advisory threshold was weakened. The 15 moderate npm findings
+remain visible. Strict continuous CPU-ceiling compliance is not claimed.
+
+Heavy suites/reviews stayed serial, with no integration/browser overlap and normal priority. .NET
+used two processors, MSBuild one worker and Angular two; Docker exposed about 4.1 GB, the production
+image build used a two-CPU quota and only owned services were capped. All 166 final database samples
+peaked at 88.84%; all 338 browser samples peaked at 87.41%, with no observed over-90 sample in either
+phase. Three integration cap updates raced containers already removed by their lifecycle. Caps were
+applied after containers were observed; continuous startup bounds and between-sample load are not
+proved. All evidence is retained, without unrelated process or global setting changes.
+
+Main's six separate PostgreSQL dev/docs commits at `139aaf9fa4d8919d7c0830fd31797a179fe7aba1` touch
+seven non-overlapping paths. No concrete compatibility problem was found; both provider suites passed
+on this part. Main was not merged and no runtime test of a merged tree is claimed. No schema change,
+runtime dependency, commercial/legal edit, #117 redesign, #113 or 5b work was introduced.
+
+Cleanup verified both exact owned Compose projects, captured Testcontainers sessions, task-prefixed
+containers, networks and labelled volumes absent. The sole owned image was removed; no owned key-ring
+directories, monitor processes or process-bound caffeinate children remain. Every captured task runner
+exited 0. No private keys or full container environments were read, protected trees were not accessed
+or enumerated, and no shared Docker cache/image/volume or package cache was pruned.
+
+All 177 final source paths, including eight deletion markers, are verified against the actual tested
+snapshot and committed blobs. The final checkpoint append is the sole expected post-test metadata
+change; its hash and unchanged starting prefix are recorded separately. Tracked state is clean.
+See final-source-manifest.json and committed-source-verification.json, acceptance-matrix.md,
+follow-ups.md, review-resolutions.md, the original reviews and final-report.md in logs/ticket-112/.
+Prepared PR title/body are pr-title.txt and pr-body.md there, using the required skills.
+
+The local handoff returns exclusive checkout ownership to the coordinator through the supported
+thread tool. The coordinator already has owner authorization to verify, push and open the real
+whole-part PR after these gates/reviews. No new permission is requested or implied. This worker
+performed no push, PR/issue action, merge, branch/worktree change or history rewrite or later-ticket work.
+No merge is authorized. Any later source repair returns to this same ticket thread with exclusive
+ownership, rather than a duplicate implementation worker.
