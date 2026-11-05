@@ -104,7 +104,7 @@ describe('sidebar mapping', () => {
             label: 'Service accounts',
             icon: 'service-accounts',
             url: '/ServiceAccounts',
-            angular: false,
+            angular: true,
           },
           { label: 'Audit log', icon: 'audit', url: '/Audit', angular: false },
           { label: 'Notifications', icon: 'notifications', url: '/Notifications', angular: false },

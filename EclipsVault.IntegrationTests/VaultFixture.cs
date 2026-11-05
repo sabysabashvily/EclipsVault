@@ -214,28 +214,15 @@ public sealed partial class VaultFixture : IAsyncLifetime
         }
     }
 
-    /// <summary>
-    /// Issues a real API key the way an administrator does: create a service account, issue it a key,
-    /// and copy the key from the one page that shows it.
-    /// </summary>
+    /// <summary>Creates a service account and reads its one-time key from the UI API issuance response.</summary>
     public async Task<string> IssueApiKeyAsync(HttpClient admin, string serviceAccountName)
     {
-        var created = await PostFormAsync(admin, "/ServiceAccounts/Create", new()
-        {
-            ["Name"] = serviceAccountName,
-            ["Clearance"] = ((int)ClearanceLevel.Standard).ToString(CultureInfo.InvariantCulture),
-            ["ProjectKey"] = "GLOBAL",
-        });
-        var details = created.Headers.Location?.OriginalString
-            ?? throw new InvalidOperationException($"Creating a service account answered {(int)created.StatusCode}, not a redirect.");
-
-        var issueKey = details.Replace("/Details/", "/IssueKey/", StringComparison.OrdinalIgnoreCase);
-        await PostFormAsync(admin, issueKey, new() { ["ttlDays"] = "0" }, formPage: details);
-
-        var page = await admin.GetStringAsync(details);
-        return IssuedApiKey().Match(page) is { Success: true } apiKey
-            ? apiKey.Groups[1].Value
-            : throw new InvalidOperationException("The service account page showed no newly issued API key.");
+        var created = await ServiceAccountsApi.WriteAsync(admin, HttpMethod.Post, ServiceAccountsApi.Path,
+            JsonContent.Create(new { name = serviceAccountName, clearance = 1, project = "GLOBAL" }));
+        created.EnsureSuccessStatusCode();
+        var account = await created.Content.ReadFromJsonAsync<EclipsVault.Web.Models.Ui.CreatedServiceAccountResponse>()
+            ?? throw new InvalidOperationException("Service-account creation returned no response.");
+        return (await ServiceAccountsApi.IssuedAsync(admin, account.ServiceAccountId)).ApiKey;
     }
 
     /// <summary>
@@ -386,8 +373,6 @@ public sealed partial class VaultFixture : IAsyncLifetime
     [GeneratedRegex("<code class=\"secret-code\">([A-Z2-7=]+)</code>")]
     private static partial Regex EnrollmentSecret();
 
-    [GeneratedRegex("<code class=\"secret-code\" id=\"new-token\">([^<]+)</code>")]
-    private static partial Regex IssuedApiKey();
 
 }
 

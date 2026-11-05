@@ -15,7 +15,7 @@ import { passwordStrength } from '../profile/password-strength';
 import { StatusLine } from '../shared/status-line';
 import { StepUpDialog } from '../shared/step-up-dialog';
 import type { components } from '../ui-api/schema.generated';
-import { UserFormWrites } from './user-form-writes';
+import { AdministratorWrites } from '../shared/administrator-writes';
 
 const standardClearance = 1;
 const minimumPasswordLength = 12;
@@ -25,7 +25,7 @@ const breachPreviewDelayMilliseconds = 400;
 @Component({
   selector: 'app-new-user-page',
   imports: [RouterLink, StatusLine, StepUpDialog],
-  providers: [UserFormWrites],
+  providers: [AdministratorWrites],
   templateUrl: './new-user-page.html',
 })
 export class NewUserPage {
@@ -35,7 +35,7 @@ export class NewUserPage {
   private readonly passwordInput = viewChild<ElementRef<HTMLInputElement>>('passwordInput');
   private readonly submitButton = viewChild.required<ElementRef<HTMLButtonElement>>('submitButton');
   private readonly stepUp = viewChild.required(StepUpDialog);
-  protected readonly writes = inject(UserFormWrites);
+  protected readonly writes = inject(AdministratorWrites);
   protected readonly metadata = httpResource<components['schemas']['NewUserResponse']>(
     () => '/api/ui/users/new',
   );

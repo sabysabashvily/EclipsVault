@@ -12,7 +12,7 @@ import { StepUpProof, UiApiError } from '../ui-api/ui-api-errors';
 
 /** Retains a blocked grant only in page memory and retries it once after fresh proof. */
 @Injectable()
-export class UserFormWrites {
+export class AdministratorWrites {
   readonly busy = signal(false);
   readonly awaitingProof = signal(false);
   readonly blocked = signal(false);
@@ -102,7 +102,7 @@ export class UserFormWrites {
             message:
               !unknownOutcome && error instanceof UiApiError
                 ? error.title
-                : 'The response was lost. Check Users before trying again.',
+                : 'The response was lost. Reload the page before trying again.',
             error: true,
           });
         },

@@ -6,7 +6,7 @@ namespace EclipsVault.Core.Domain.Exceptions;
 /// </summary>
 public sealed class ServiceAccountNameTakenException : DomainException
 {
-    public ServiceAccountNameTakenException() : base("That service account name is already taken.")
+    public ServiceAccountNameTakenException(string? name = null) : base(name is null ? "That service account name is already taken." : $"A service account named '{name}' already exists.")
     {
     }
 }

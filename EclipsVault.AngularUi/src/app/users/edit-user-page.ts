@@ -7,12 +7,12 @@ import { StatusLine } from '../shared/status-line';
 import { StepUpDialog } from '../shared/step-up-dialog';
 import type { components } from '../ui-api/schema.generated';
 import { UiApiError } from '../ui-api/ui-api-errors';
-import { UserFormWrites } from './user-form-writes';
+import { AdministratorWrites } from '../shared/administrator-writes';
 
 @Component({
   selector: 'app-edit-user-page',
   imports: [RouterLink, StatusLine, StepUpDialog],
-  providers: [UserFormWrites],
+  providers: [AdministratorWrites],
   templateUrl: './edit-user-page.html',
 })
 export class EditUserPage {
@@ -23,7 +23,7 @@ export class EditUserPage {
   private readonly submitButton = viewChild.required<ElementRef<HTMLButtonElement>>('submitButton');
   private readonly stepUp = viewChild.required(StepUpDialog);
   private readonly userId = inject(ActivatedRoute).snapshot.paramMap.get('id');
-  protected readonly writes = inject(UserFormWrites);
+  protected readonly writes = inject(AdministratorWrites);
   protected readonly account = httpResource<components['schemas']['UserDetailsResponse']>(
     () => `/api/ui/users/${this.userId}`,
   );

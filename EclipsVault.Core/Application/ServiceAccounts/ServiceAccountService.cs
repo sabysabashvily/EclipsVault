@@ -110,7 +110,7 @@ public sealed class ServiceAccountService : IServiceAccountService, IApiKeyAuthe
         return account.Id;
     }
 
-    private static VaultAdminException NameTaken(string name) => new($"A service account named '{name}' already exists.");
+    private static ServiceAccountNameTakenException NameTaken(string name) => new(name);
 
     /// <returns>The name as it is stored: trimmed.</returns>
     private static string CheckedName(string requested)

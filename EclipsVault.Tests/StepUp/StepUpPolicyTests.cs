@@ -53,6 +53,12 @@ public class StepUpPolicyTests
     [InlineData(AdministratorAction.DisableAccount, false)]
     [InlineData(AdministratorAction.DeleteAccount, false)]
     [InlineData(AdministratorAction.SignOutAccount, false)]
+    [InlineData(AdministratorAction.IssueApiKey, true)]
+    [InlineData(AdministratorAction.EnableServiceAccount, true)]
+    [InlineData(AdministratorAction.CreateServiceAccount, false)]
+    [InlineData(AdministratorAction.DisableServiceAccount, false)]
+    [InlineData(AdministratorAction.RevokeApiKey, false)]
+    [InlineData(AdministratorAction.DeleteServiceAccount, false)]
     public void Stale_administrator_grants_require_proof_independently_of_the_reveal_threshold(AdministratorAction action, bool required)
         => Assert.Equal(required, Service(minimum: SensitivityLevel.TopSecret).IsRequired(action, Now.AddMinutes(-11), Now));
 

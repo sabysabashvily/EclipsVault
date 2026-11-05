@@ -16,11 +16,11 @@ function legacyPath(path: string): UrlMatcher {
       : null;
 }
 
-function editUserPath(): UrlMatcher {
+function detailsPath(controller: string, action: string): UrlMatcher {
   return (segments) =>
     segments.length === 3 &&
-    segments[0]?.path.toLowerCase() === 'admin' &&
-    segments[1]?.path.toLowerCase() === 'edituser' &&
+    segments[0]?.path.toLowerCase() === controller.toLowerCase() &&
+    segments[1]?.path.toLowerCase() === action.toLowerCase() &&
     /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(segments[2]?.path ?? '')
       ? { consumed: segments, posParams: { id: segments[2] } }
       : null;
@@ -41,14 +41,38 @@ const accessRequests = () =>
 const profile = () => import('./profile/profile-page').then((m) => m.ProfilePage);
 const password = () => import('./profile/change-password-page').then((m) => m.ChangePasswordPage);
 
+const serviceAccounts = () =>
+  import('./service-accounts/service-accounts-page').then((m) => m.ServiceAccountsPage);
+
 export const routes: Routes = [
+  {
+    matcher: legacyPath('ServiceAccounts'),
+    loadComponent: serviceAccounts,
+    title: 'Service accounts — EclipsVault',
+  },
+  {
+    matcher: legacyPath('ServiceAccounts/Index'),
+    loadComponent: serviceAccounts,
+    title: 'Service accounts — EclipsVault',
+  },
+  {
+    matcher: legacyPath('ServiceAccounts/Create'),
+    loadComponent: () =>
+      import('./service-accounts/new-service-account-page').then((m) => m.NewServiceAccountPage),
+    title: 'New service account — EclipsVault',
+  },
+  {
+    matcher: detailsPath('ServiceAccounts', 'Details'),
+    loadComponent: () =>
+      import('./service-accounts/service-account-page').then((m) => m.ServiceAccountPage),
+  },
   {
     matcher: legacyPath('Admin/CreateUser'),
     loadComponent: () => import('./users/new-user-page').then((m) => m.NewUserPage),
     title: 'New user — EclipsVault',
   },
   {
-    matcher: editUserPath(),
+    matcher: detailsPath('Admin', 'EditUser'),
     loadComponent: () => import('./users/edit-user-page').then((m) => m.EditUserPage),
   },
   {

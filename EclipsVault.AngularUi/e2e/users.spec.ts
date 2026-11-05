@@ -45,7 +45,9 @@ test('a stale administrator creates a user through real authenticator step-up an
   await expect(creation.password).toHaveValue('');
   await creation.createMailboxOwner(username, password);
   await expect(createProof.stepUp).toBeVisible();
-  await createProof.enterCode(await freshTotp(administratorSecret));
+  await createProof.enterCode(
+    await freshTotp(administratorSecret, Math.floor(Date.now() / 30_000)),
+  );
   await createProof.verifyCode();
   const users = new Users(page);
   await expect(users.heading).toBeVisible();

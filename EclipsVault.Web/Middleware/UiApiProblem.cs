@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EclipsVault.Web.Middleware;
@@ -65,6 +66,7 @@ public static class UiApiProblem
         context.Response.StatusCode = StatusCodes.Status400BadRequest;
         var errors = fields
             .Select(field => field.StartsWith("$.", StringComparison.Ordinal) ? field[2..] : field)
+            .Select(JsonNamingPolicy.CamelCase.ConvertName)
             .Distinct(StringComparer.Ordinal)
             .ToDictionary(field => field, _ => new[] { "This field is missing or invalid." });
         var problem = new ProblemDetails

@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -8,7 +10,7 @@ using Xunit;
 
 namespace EclipsVault.IntegrationTests;
 
-/// <summary>An administrator issues and revokes a service account's API keys through the Legacy pages.</summary>
+/// <summary>An administrator issues and revokes a service account's API keys through the UI API.</summary>
 [Collection(VaultCollection.Name)]
 public sealed class ServiceAccountKeyTests(VaultFixture vault)
 {
@@ -17,14 +19,14 @@ public sealed class ServiceAccountKeyTests(VaultFixture vault)
     {
         var admin = await vault.AdminClientAsync();
         var apiKey = await vault.IssueApiKeyAsync(admin, "it-key-revoked-at-once");
-        var account = await LegacyServiceAccounts.FindAsync(vault, "it-key-revoked-at-once");
+        var account = await ServiceAccountsApi.FindAsync(vault, "it-key-revoked-at-once");
         var service = vault.CreateClient();
         service.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         Assert.Equal(HttpStatusCode.OK, (await service.GetAsync("/api/v1/secrets")).StatusCode);
 
-        var revoked = await LegacyServiceAccounts.RevokeKeyAsync(admin, account!.Id, Assert.Single(account.Keys).Id);
+        var revoked = await ServiceAccountsApi.RevokeKeyAsync(admin, account!.Id, Assert.Single(account.Keys).Id);
 
-        Assert.Contains("API key revoked.", await LegacyServiceAccounts.PageAfterAsync(admin, revoked), StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.NoContent, revoked.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await service.GetAsync("/api/v1/secrets")).StatusCode);
     }
 
@@ -33,14 +35,14 @@ public sealed class ServiceAccountKeyTests(VaultFixture vault)
     {
         var admin = await vault.AdminClientAsync();
         var apiKey = await vault.IssueApiKeyAsync(admin, "it-key-owner");
-        var owner = await LegacyServiceAccounts.FindAsync(vault, "it-key-owner");
-        var other = await LegacyServiceAccounts.CreatedAsync(vault, admin, "it-key-other-account");
+        var owner = await ServiceAccountsApi.FindAsync(vault, "it-key-owner");
+        var other = await ServiceAccountsApi.CreatedAsync(vault, admin, "it-key-other-account");
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await LegacyServiceAccounts.RevokeKeyAsync(admin, other.Id, Assert.Single(owner!.Keys).Id);
+        var response = await ServiceAccountsApi.RevokeKeyAsync(admin, other.Id, Assert.Single(owner!.Keys).Id);
 
-        Assert.Contains("Key not found.", await LegacyServiceAccounts.PageAfterAsync(admin, response), StringComparison.Ordinal);
-        Assert.Null(Assert.Single((await LegacyServiceAccounts.FindAsync(vault, "it-key-owner"))!.Keys).RevokedAtUtc);
+        await UiApiFailureContractTests.AssertProblemAsync(response, 404, "key_not_found");
+        Assert.Null(Assert.Single((await ServiceAccountsApi.FindAsync(vault, "it-key-owner"))!.Keys).RevokedAtUtc);
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         var service = vault.CreateClient();
         service.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
@@ -51,13 +53,13 @@ public sealed class ServiceAccountKeyTests(VaultFixture vault)
     public async Task Revoking_a_revoked_key_records_nothing()
     {
         var admin = await vault.AdminClientAsync();
-        var account = await LegacyServiceAccounts.CreatedAsync(vault, admin, "it-key-revoked-twice");
-        await LegacyServiceAccounts.IssueKeyAsync(admin, account.Id);
-        var key = Assert.Single((await LegacyServiceAccounts.FindAsync(vault, "it-key-revoked-twice"))!.Keys);
-        await LegacyServiceAccounts.RevokeKeyAsync(admin, account.Id, key.Id);
+        var account = await ServiceAccountsApi.CreatedAsync(vault, admin, "it-key-revoked-twice");
+        await ServiceAccountsApi.IssueKeyAsync(admin, account.Id);
+        var key = Assert.Single((await ServiceAccountsApi.FindAsync(vault, "it-key-revoked-twice"))!.Keys);
+        Assert.Equal(HttpStatusCode.NoContent, (await ServiceAccountsApi.RevokeKeyAsync(admin, account.Id, key.Id)).StatusCode);
         var before = await AuditTrail.HeadAsync(vault);
 
-        await LegacyServiceAccounts.RevokeKeyAsync(admin, account.Id, key.Id);
+        Assert.Equal(HttpStatusCode.NoContent, (await ServiceAccountsApi.RevokeKeyAsync(admin, account.Id, key.Id)).StatusCode);
 
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
@@ -67,7 +69,7 @@ public sealed class ServiceAccountKeyTests(VaultFixture vault)
     {
         var admin = await vault.AdminClientAsync();
         var apiKey = await vault.IssueApiKeyAsync(admin, "it-key-audited-by-prefix");
-        var account = await LegacyServiceAccounts.FindAsync(vault, "it-key-audited-by-prefix");
+        var account = await ServiceAccountsApi.FindAsync(vault, "it-key-audited-by-prefix");
         using var scope = vault.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
 
@@ -78,25 +80,24 @@ public sealed class ServiceAccountKeyTests(VaultFixture vault)
         Assert.DoesNotContain(apiKey, issued.Details, StringComparison.Ordinal);
     }
 
-    /// <summary>The service account is Secret, so Elevated is the highest ceiling it accepts.</summary>
     [Theory]
-    [InlineData("it-key-unknown-ceiling", "clearanceCeiling", "7", "A clearance ceiling must be one of the vault's clearance levels below the service account's, or none.")]
-    [InlineData("it-key-ceiling-not-below", "clearanceCeiling", "3", "A clearance ceiling must be one of the vault's clearance levels below the service account's, or none.")]
-    [InlineData("it-key-negative-expiry", "ttlDays", "-1", "A key expires after 0 to 3650 days, where 0 means it never expires.")]
-    [InlineData("it-key-unbounded-expiry", "ttlDays", "3651", "A key expires after 0 to 3650 days, where 0 means it never expires.")]
-    [InlineData("it-key-overflowing-expiry", "ttlDays", "99999999999", "Enter the expiry as a whole number of days and choose the clearance ceiling from the list.")]
-    [InlineData("it-key-named-ceiling", "clearanceCeiling", "Elevated", "Enter the expiry as a whole number of days and choose the clearance ceiling from the list.")]
-    public async Task A_key_option_outside_its_rule_is_refused_with_its_message_and_issues_no_key(
-        string serviceAccount, string option, string value, string message)
+    [InlineData("it-key-unknown-ceiling", "{\"expiresInDays\":0,\"clearanceCeiling\":7}", "clearanceCeiling", "A clearance ceiling must be one of the vault's clearance levels below the service account's, or none.", new[] { "clearanceCeiling" })]
+    [InlineData("it-key-ceiling-not-below", "{\"expiresInDays\":0,\"clearanceCeiling\":3}", "clearanceCeiling", "A clearance ceiling must be one of the vault's clearance levels below the service account's, or none.", new[] { "clearanceCeiling" })]
+    [InlineData("it-key-negative-expiry", "{\"expiresInDays\":-1}", "expiresInDays", "A key expires after 0 to 3650 days, where 0 means it never expires.", new[] { "expiresInDays" })]
+    [InlineData("it-key-unbounded-expiry", "{\"expiresInDays\":3651}", "expiresInDays", "A key expires after 0 to 3650 days, where 0 means it never expires.", new[] { "expiresInDays" })]
+    [InlineData("it-key-overflowing-expiry", "{\"expiresInDays\":99999999999}", "expiresInDays", "This field is missing or invalid.", new[] { "expiresInDays", "request" })]
+    [InlineData("it-key-named-ceiling", "{\"expiresInDays\":0,\"clearanceCeiling\":\"Elevated\"}", "clearanceCeiling", "This field is missing or invalid.", new[] { "clearanceCeiling", "request" })]
+    public async Task An_invalid_key_option_returns_its_field_message_and_issues_no_key(string name, string json, string field, string message, string[] errorFields)
     {
         var admin = await vault.AdminClientAsync();
-        var account = await LegacyServiceAccounts.CreatedAsync(vault, admin, serviceAccount);
-        var options = new Dictionary<string, string> { ["ttlDays"] = "0", ["clearanceCeiling"] = "0" };
-        options[option] = value;
+        var account = await ServiceAccountsApi.CreatedAsync(vault, admin, name);
+        var response = await ServiceAccountsApi.IssueKeyAsync(admin, account.Id, new StringContent(json, Encoding.UTF8, "application/json"));
 
-        var response = await LegacyServiceAccounts.IssueKeyAsync(admin, account.Id, options);
-
-        Assert.Contains(message, await LegacyServiceAccounts.PageAfterAsync(admin, response), StringComparison.Ordinal);
-        Assert.Empty((await LegacyServiceAccounts.FindAsync(vault, serviceAccount))!.Keys);
+        await ServiceAccountsApi.AssertValidationAsync(response);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var errors = body.RootElement.GetProperty("errors");
+        Assert.Equal(errorFields, ProfileApi.NamesOf(errors));
+        Assert.Equal(message, errors.GetProperty(field)[0].GetString());
+        Assert.Empty((await ServiceAccountsApi.FindAsync(vault, name))!.Keys);
     }
 }

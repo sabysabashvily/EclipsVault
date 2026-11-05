@@ -9,8 +9,6 @@ namespace EclipsVault.IntegrationTests;
 [Collection(AuditFailureCollection.Name)]
 public sealed class ServiceAccountAuditFailureTests(AuditFailureFixture failure)
 {
-    private const string AuditUnavailablePage = "/Home/Error?code=503";
-
     [Fact]
     public async Task A_create_that_cannot_be_recorded_leaves_no_service_account()
     {
@@ -21,10 +19,10 @@ public sealed class ServiceAccountAuditFailureTests(AuditFailureFixture failure)
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await LegacyServiceAccounts.CreateAsync(admin, "it-unrecorded-sa-create");
+            var response = await ServiceAccountsApi.CreateAsync(admin, "it-unrecorded-sa-create");
 
-            Assert.Equal(AuditUnavailablePage, response.Headers.Location?.OriginalString);
-            Assert.Null(await LegacyServiceAccounts.FindAsync(vault, "it-unrecorded-sa-create"));
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
+            Assert.Null(await ServiceAccountsApi.FindAsync(vault, "it-unrecorded-sa-create"));
             Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         }
         finally
@@ -38,17 +36,17 @@ public sealed class ServiceAccountAuditFailureTests(AuditFailureFixture failure)
     {
         var vault = failure.Vault;
         var admin = await vault.AdminClientAsync();
-        var account = await LegacyServiceAccounts.CreatedAsync(vault, admin, "it-unrecorded-sa-enable");
-        await LegacyServiceAccounts.SetEnabledAsync(admin, account.Id, enabled: false);
+        var account = await ServiceAccountsApi.CreatedAsync(vault, admin, "it-unrecorded-sa-enable");
+        await ServiceAccountsApi.SetEnabledAsync(admin, account.Id, enabled: false);
         var before = await AuditTrail.HeadAsync(vault);
 
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await LegacyServiceAccounts.SetEnabledAsync(admin, account.Id, enabled: true);
+            var response = await ServiceAccountsApi.SetEnabledAsync(admin, account.Id, enabled: true);
 
-            Assert.Equal(AuditUnavailablePage, response.Headers.Location?.OriginalString);
-            Assert.True((await LegacyServiceAccounts.FindAsync(vault, "it-unrecorded-sa-enable"))!.IsDisabled);
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
+            Assert.True((await ServiceAccountsApi.FindAsync(vault, "it-unrecorded-sa-enable"))!.IsDisabled);
             Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         }
         finally
@@ -62,16 +60,16 @@ public sealed class ServiceAccountAuditFailureTests(AuditFailureFixture failure)
     {
         var vault = failure.Vault;
         var admin = await vault.AdminClientAsync();
-        var account = await LegacyServiceAccounts.CreatedAsync(vault, admin, "it-unrecorded-sa-disable");
+        var account = await ServiceAccountsApi.CreatedAsync(vault, admin, "it-unrecorded-sa-disable");
         var before = await AuditTrail.HeadAsync(vault);
 
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await LegacyServiceAccounts.SetEnabledAsync(admin, account.Id, enabled: false);
+            var response = await ServiceAccountsApi.SetEnabledAsync(admin, account.Id, enabled: false);
 
-            Assert.Equal(AuditUnavailablePage, response.Headers.Location?.OriginalString);
-            Assert.False((await LegacyServiceAccounts.FindAsync(vault, "it-unrecorded-sa-disable"))!.IsDisabled);
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
+            Assert.False((await ServiceAccountsApi.FindAsync(vault, "it-unrecorded-sa-disable"))!.IsDisabled);
             Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         }
         finally
@@ -85,17 +83,17 @@ public sealed class ServiceAccountAuditFailureTests(AuditFailureFixture failure)
     {
         var vault = failure.Vault;
         var admin = await vault.AdminClientAsync();
-        var account = await LegacyServiceAccounts.CreatedAsync(vault, admin, "it-unrecorded-sa-delete");
-        await LegacyServiceAccounts.IssueKeyAsync(admin, account.Id);
+        var account = await ServiceAccountsApi.CreatedAsync(vault, admin, "it-unrecorded-sa-delete");
+        await ServiceAccountsApi.IssueKeyAsync(admin, account.Id);
         var before = await AuditTrail.HeadAsync(vault);
 
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await LegacyServiceAccounts.DeleteAsync(admin, account.Id);
+            var response = await ServiceAccountsApi.DeleteAsync(admin, account.Id);
 
-            Assert.Equal(AuditUnavailablePage, response.Headers.Location?.OriginalString);
-            var stored = await LegacyServiceAccounts.FindAsync(vault, "it-unrecorded-sa-delete");
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
+            var stored = await ServiceAccountsApi.FindAsync(vault, "it-unrecorded-sa-delete");
             Assert.Single(stored!.Keys);
             Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         }
@@ -110,16 +108,16 @@ public sealed class ServiceAccountAuditFailureTests(AuditFailureFixture failure)
     {
         var vault = failure.Vault;
         var admin = await vault.AdminClientAsync();
-        var account = await LegacyServiceAccounts.CreatedAsync(vault, admin, "it-unrecorded-key-issue");
+        var account = await ServiceAccountsApi.CreatedAsync(vault, admin, "it-unrecorded-key-issue");
         var before = await AuditTrail.HeadAsync(vault);
 
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await LegacyServiceAccounts.IssueKeyAsync(admin, account.Id);
+            var response = await ServiceAccountsApi.IssueKeyAsync(admin, account.Id);
 
-            Assert.Equal(AuditUnavailablePage, response.Headers.Location?.OriginalString);
-            Assert.Empty((await LegacyServiceAccounts.FindAsync(vault, "it-unrecorded-key-issue"))!.Keys);
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
+            Assert.Empty((await ServiceAccountsApi.FindAsync(vault, "it-unrecorded-key-issue"))!.Keys);
             Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         }
         finally
@@ -133,18 +131,18 @@ public sealed class ServiceAccountAuditFailureTests(AuditFailureFixture failure)
     {
         var vault = failure.Vault;
         var admin = await vault.AdminClientAsync();
-        var account = await LegacyServiceAccounts.CreatedAsync(vault, admin, "it-unrecorded-key-revoke");
-        await LegacyServiceAccounts.IssueKeyAsync(admin, account.Id);
-        var key = Assert.Single((await LegacyServiceAccounts.FindAsync(vault, "it-unrecorded-key-revoke"))!.Keys);
+        var account = await ServiceAccountsApi.CreatedAsync(vault, admin, "it-unrecorded-key-revoke");
+        await ServiceAccountsApi.IssueKeyAsync(admin, account.Id);
+        var key = Assert.Single((await ServiceAccountsApi.FindAsync(vault, "it-unrecorded-key-revoke"))!.Keys);
         var before = await AuditTrail.HeadAsync(vault);
 
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await LegacyServiceAccounts.RevokeKeyAsync(admin, account.Id, key.Id);
+            var response = await ServiceAccountsApi.RevokeKeyAsync(admin, account.Id, key.Id);
 
-            Assert.Equal(AuditUnavailablePage, response.Headers.Location?.OriginalString);
-            Assert.Null(Assert.Single((await LegacyServiceAccounts.FindAsync(vault, "it-unrecorded-key-revoke"))!.Keys).RevokedAtUtc);
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
+            Assert.Null(Assert.Single((await ServiceAccountsApi.FindAsync(vault, "it-unrecorded-key-revoke"))!.Keys).RevokedAtUtc);
             Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         }
         finally

@@ -39,7 +39,7 @@ public class ServiceAccountServiceTests
         var vault = new Vault();
         vault.Changes.Failures.Enqueue(new ServiceAccountNameTakenException());
 
-        var conflict = await Assert.ThrowsAsync<VaultAdminException>(() =>
+        var conflict = await Assert.ThrowsAsync<ServiceAccountNameTakenException>(() =>
             vault.Service.CreateAsync(new CreateServiceAccountRequest("payments-ci", ClearanceLevel.Secret, "PAYMENTS"), default));
 
         Assert.Equal("A service account named 'payments-ci' already exists.", conflict.Message);

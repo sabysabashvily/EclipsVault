@@ -7,6 +7,9 @@ import { ActivityPage } from './activity/activity-page';
 import { NewUserPage } from './users/new-user-page';
 import { EditUserPage } from './users/edit-user-page';
 import { UsersPage } from './users/users-page';
+import { ServiceAccountsPage } from './service-accounts/service-accounts-page';
+import { NewServiceAccountPage } from './service-accounts/new-service-account-page';
+import { ServiceAccountPage } from './service-accounts/service-account-page';
 import { routes } from './app.routes';
 import { SignInsPage } from './sign-ins/sign-ins-page';
 import { SecurityPage } from './security/security-page';
@@ -26,6 +29,30 @@ function routeFor(url: string): Route | undefined {
 }
 
 describe('routes', () => {
+  it.each(['/ServiceAccounts', '/sErViCeAcCoUnTs/InDeX'])(
+    'opens Service accounts at %s',
+    async (url) => {
+      expect(await routeFor(url)?.loadComponent?.()).toBe(ServiceAccountsPage);
+    },
+  );
+  it.each(['/ServiceAccounts/Create', '/SERVICEACCOUNTS/create'])(
+    'opens New service account at %s',
+    async (url) => {
+      expect(await routeFor(url)?.loadComponent?.()).toBe(NewServiceAccountPage);
+    },
+  );
+  it.each([
+    '/ServiceAccounts/Details/11111111-1111-1111-1111-111111111111',
+    '/sErViCeAcCoUnTs/dEtAiLs/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA',
+  ])('opens a service account at %s', async (url) => {
+    expect(await routeFor(url)?.loadComponent?.()).toBe(ServiceAccountPage);
+  });
+  it.each(['/ServiceAccounts/Details/new', '/ServiceAccounts/Create/extra'])(
+    'leaves %s unmatched',
+    (url) => {
+      expect(routeFor(url)).toBeUndefined();
+    },
+  );
   it.each(['/Admin/CreateUser', '/aDmIn/cReAtEuSeR'])('opens New user at %s', async (url) => {
     expect(await routeFor(url)?.loadComponent?.()).toBe(NewUserPage);
   });

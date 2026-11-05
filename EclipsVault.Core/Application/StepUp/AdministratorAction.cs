@@ -9,5 +9,11 @@ public enum AdministratorAction
     ResetAuthenticator,
     DisableAccount,
     DeleteAccount,
-    SignOutAccount
+    SignOutAccount,
+    IssueApiKey,
+    EnableServiceAccount,
+    CreateServiceAccount,
+    DisableServiceAccount,
+    RevokeApiKey,
+    DeleteServiceAccount
 }
