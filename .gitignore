@@ -19,6 +19,7 @@ appsettings.Local.json
 appsettings.*.Local.json
 .env
 .env.*
+evaluation/.local/
 *.pfx
 *.key
 secrets.json
