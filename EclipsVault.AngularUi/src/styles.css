@@ -1855,6 +1855,50 @@ select:focus {
   margin: 0.2rem 0 0;
 }
 
+.issue-key-form {
+  margin-bottom: 1.2rem;
+}
+.field-inline-row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.field-inline-row .field {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.check-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 200px;
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+.check-inline input {
+  width: auto;
+}
+.key-scopes {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.danger-zone {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  border: 1px solid rgba(255, 69, 58, 0.35);
+  border-radius: var(--radius);
+  padding: 0.9rem 1.1rem;
+  margin-top: 1.2rem;
+  background: linear-gradient(180deg, var(--danger-soft), transparent 85%);
+}
+.danger-zone p {
+  margin: 0.15rem 0 0;
+  font-size: 0.82rem;
+}
+
 .settings-row {
   display: flex;
   justify-content: space-between;

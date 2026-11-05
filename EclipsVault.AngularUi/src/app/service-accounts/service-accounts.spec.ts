@@ -471,7 +471,7 @@ describe('Service account Details', () => {
     expect(navigate).toHaveBeenCalledWith('/ServiceAccounts');
     expect(TestBed.inject(ServiceAccountNotices).deleted).toBe(true);
   });
-  it('disables and enables without a confirmation and preserves both Legacy notices', async () => {
+  it('disables without confirmation and preserves the Legacy notice', async () => {
     const { page, fixture } = await loadedDetails();
     button(page, 'Disable').click();
     backend.expectOne(path + '/disable').flush(null);
@@ -479,10 +479,17 @@ describe('Service account Details', () => {
     expect(page.textContent).toContain(
       'Service account disabled — all of its keys are now rejected.',
     );
+    expect(button(page, 'Enable').matches(':disabled')).toBe(false);
+    expect(page.querySelector('dialog[open]')).toBeNull();
+  });
+  it('enables without confirmation and preserves the Legacy notice', async () => {
+    const { page, fixture } = await loadedDetails({ ...details, enabled: false });
     button(page, 'Enable').click();
     backend.expectOne(path + '/enable').flush(null);
     await reload(fixture);
     expect(page.textContent).toContain('Service account enabled.');
+    expect(button(page, 'Disable').matches(':disabled')).toBe(false);
+    expect(page.querySelector('dialog[open]')).toBeNull();
   });
   it.each([
     { action: 'Issue new key', enabled: true, endpoint: '/keys' },

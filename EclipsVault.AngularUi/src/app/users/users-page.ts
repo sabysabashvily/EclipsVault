@@ -68,6 +68,7 @@ export class UsersPage {
         account.displayName,
         account.username,
         account.email,
+        account.isYou ? 'you' : '',
         account.clearanceLabel,
         account.project,
         account.mfaEnrolled ? 'Enrolled' : 'Pending',

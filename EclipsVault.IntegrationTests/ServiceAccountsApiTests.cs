@@ -81,20 +81,48 @@ public sealed class ServiceAccountsApiTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task Stale_sessions_can_create_disable_revoke_and_delete_without_fresh_proof()
+    public async Task A_stale_administrator_can_create_a_service_account_without_fresh_proof()
     {
-        var admin = await vault.SignInNewAccountAsync("it-sa-remove-admin", IPAddress.Parse("198.18.111.23"), ClearanceLevel.TopSecret);
-        var account = await ServiceAccountsApi.CreatedAsync(vault, admin.Client, "it-sa-remove");
-        var key = await ServiceAccountsApi.IssuedAsync(admin.Client, account.Id);
-        var stale = vault.CreateSession(SessionApi.WithStrongAuthenticationAt(vault, admin, DateTimeOffset.UtcNow.AddDays(-1)), IPAddress.Parse("198.18.111.23"));
+        var admin = await vault.SignInNewAccountAsync("it-sa-stale-create-admin", IPAddress.Parse("198.19.112.11"), ClearanceLevel.TopSecret);
+        var stale = vault.CreateSession(SessionApi.WithStrongAuthenticationAt(vault, admin, DateTimeOffset.UtcNow.AddDays(-1)), IPAddress.Parse("198.19.112.11"));
 
         Assert.Equal(HttpStatusCode.Created, (await ServiceAccountsApi.CreateAsync(stale.Client, "it-sa-create-stale")).StatusCode);
+        Assert.False((await ServiceAccountsApi.FindAsync(vault, "it-sa-create-stale"))!.IsDisabled);
+    }
+
+    [Fact]
+    public async Task A_stale_administrator_can_disable_a_service_account_without_fresh_proof()
+    {
+        var admin = await vault.SignInNewAccountAsync("it-sa-stale-disable-admin", IPAddress.Parse("198.19.112.12"), ClearanceLevel.TopSecret);
+        var account = await ServiceAccountsApi.CreatedAsync(vault, admin.Client, "it-sa-stale-disable");
+        var stale = vault.CreateSession(SessionApi.WithStrongAuthenticationAt(vault, admin, DateTimeOffset.UtcNow.AddDays(-1)), IPAddress.Parse("198.19.112.12"));
+
         Assert.Equal(HttpStatusCode.NoContent, (await ServiceAccountsApi.SetEnabledAsync(stale.Client, account.Id, false)).StatusCode);
-        Assert.True((await ServiceAccountsApi.FindAsync(vault, "it-sa-remove"))!.IsDisabled);
+        Assert.True((await ServiceAccountsApi.FindAsync(vault, "it-sa-stale-disable"))!.IsDisabled);
+    }
+
+    [Fact]
+    public async Task A_stale_administrator_can_revoke_a_key_without_fresh_proof()
+    {
+        var admin = await vault.SignInNewAccountAsync("it-sa-stale-revoke-admin", IPAddress.Parse("198.19.112.13"), ClearanceLevel.TopSecret);
+        var account = await ServiceAccountsApi.CreatedAsync(vault, admin.Client, "it-sa-stale-revoke");
+        var key = await ServiceAccountsApi.IssuedAsync(admin.Client, account.Id);
+        var stale = vault.CreateSession(SessionApi.WithStrongAuthenticationAt(vault, admin, DateTimeOffset.UtcNow.AddDays(-1)), IPAddress.Parse("198.19.112.13"));
+
         Assert.Equal(HttpStatusCode.NoContent, (await ServiceAccountsApi.RevokeKeyAsync(stale.Client, account.Id, key.KeyId)).StatusCode);
-        Assert.NotNull(Assert.Single((await ServiceAccountsApi.FindAsync(vault, "it-sa-remove"))!.Keys).RevokedAtUtc);
+        Assert.NotNull(Assert.Single((await ServiceAccountsApi.FindAsync(vault, "it-sa-stale-revoke"))!.Keys).RevokedAtUtc);
+    }
+
+    [Fact]
+    public async Task A_stale_administrator_can_delete_a_service_account_without_fresh_proof()
+    {
+        var admin = await vault.SignInNewAccountAsync("it-sa-stale-delete-admin", IPAddress.Parse("198.19.112.14"), ClearanceLevel.TopSecret);
+        var account = await ServiceAccountsApi.CreatedAsync(vault, admin.Client, "it-sa-stale-delete");
+        await ServiceAccountsApi.IssuedAsync(admin.Client, account.Id);
+        var stale = vault.CreateSession(SessionApi.WithStrongAuthenticationAt(vault, admin, DateTimeOffset.UtcNow.AddDays(-1)), IPAddress.Parse("198.19.112.14"));
+
         Assert.Equal(HttpStatusCode.NoContent, (await ServiceAccountsApi.DeleteAsync(stale.Client, account.Id)).StatusCode);
-        Assert.Null(await ServiceAccountsApi.FindAsync(vault, "it-sa-remove"));
+        Assert.Null(await ServiceAccountsApi.FindAsync(vault, "it-sa-stale-delete"));
     }
 
     [Fact]

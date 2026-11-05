@@ -313,7 +313,7 @@ public sealed class UserAdminService : IUserAdminService
 
         if (user.IsDisabled == !enabled)
         {
-            return true; // already in the requested state
+            return true;
         }
 
         var disablesAnAdministrator = !enabled && IsEnabledAdministrator(user);
@@ -401,7 +401,7 @@ public sealed class UserAdminService : IUserAdminService
 
         if (user.FailedAccessCount == 0 && user.LockedUntilUtc is null)
         {
-            return true; // nothing to clear
+            return true;
         }
 
         user.FailedAccessCount = 0;

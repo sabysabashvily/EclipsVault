@@ -83,7 +83,7 @@ public sealed class ServiceAccountService : IServiceAccountService, IApiKeyAuthe
         var project = CheckedProjectKey(request.ProjectKey);
         if (await _repository.ExistsByNameAsync(name, ct))
         {
-            throw NameTaken(name);
+            throw new ServiceAccountNameTakenException(name);
         }
 
         var account = new ServiceAccount
@@ -104,13 +104,11 @@ public sealed class ServiceAccountService : IServiceAccountService, IApiKeyAuthe
         }
         catch (ServiceAccountNameTakenException)
         {
-            throw NameTaken(name);
+            throw new ServiceAccountNameTakenException(name);
         }
 
         return account.Id;
     }
-
-    private static ServiceAccountNameTakenException NameTaken(string name) => new(name);
 
     /// <returns>The name as it is stored: trimmed.</returns>
     private static string CheckedName(string requested)

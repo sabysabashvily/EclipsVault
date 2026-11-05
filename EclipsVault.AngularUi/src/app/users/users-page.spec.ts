@@ -115,6 +115,16 @@ describe('UsersPage', () => {
       [...page.querySelectorAll('tbody button')].map((item) => item.textContent?.trim()),
     ).toEqual(['Force logout']);
   });
+  it('filtering by you keeps the signed-in account in the list', async () => {
+    const { page, fixture } = await loaded({ ...colleague, isYou: true });
+    const search = page.querySelector('input[type="search"]');
+    if (!(search instanceof HTMLInputElement)) throw new Error('No user filter');
+    search.value = 'you';
+    search.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    expect(page.querySelectorAll('tbody tr')).toHaveLength(1);
+    expect(page.querySelector('tbody')?.textContent).toContain('Ada Staff');
+  });
   it.each([
     ['Disable', `${path}/disable`, 'Account disabled and its sessions revoked.'],
     [

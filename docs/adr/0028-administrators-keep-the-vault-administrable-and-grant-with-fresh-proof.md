@@ -1,4 +1,4 @@
-# Administrator changes keep an administrator, never act on their own account, and grant access only with fresh proof
+# Administrator changes keep an enabled administrator and grant access only with fresh proof
 
 The Area 5 grill read the Legacy administration pages and found that they saved account and
 service-account changes before auditing them (#92). It also found that the vault could be left with

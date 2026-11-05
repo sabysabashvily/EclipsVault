@@ -19,6 +19,8 @@ export class ServiceAccount {
   readonly stepUp;
   readonly status;
   readonly scope;
+  readonly keyScopes;
+  readonly dangerZone;
   constructor(
     private readonly page: Page,
     name: string,
@@ -42,6 +44,11 @@ export class ServiceAccount {
     this.scope = page
       .getByRole('cell')
       .filter({ has: page.getByText('metadata-only', { exact: true }) });
+    // These wrappers own the Legacy layout measured by the visual parity tests.
+    // eslint-disable-next-line playwright/no-raw-locators -- Scope wrapping is a visual CSS contract.
+    this.keyScopes = page.locator('.key-scopes');
+    // eslint-disable-next-line playwright/no-raw-locators -- The destructive panel owns its border.
+    this.dangerZone = page.locator('.danger-zone');
     this.confirmation = page.getByRole('alertdialog');
     this.stepUp = page.getByRole('dialog', { name: "Confirm it's you" });
     // eslint-disable-next-line playwright/no-raw-locators -- Loading has its own status; this is the shared outcome announcer.

@@ -9,6 +9,8 @@ import { AccountCreation } from './account-creation';
 import { AccountSignIn } from './account-sign-in';
 import { AuthenticatorEnrollment } from './authenticator-enrollment';
 import { freshTotp, currentTotpStep } from './totp';
+import { AccountAdministrationActivity } from './account-administration-activity';
+import { savedAdministratorCookies } from './administrator-cookies';
 
 test.describe.configure({ mode: 'serial' });
 let administratorCookies: Awaited<ReturnType<BrowserContext['cookies']>> = [];
@@ -23,11 +25,9 @@ test('creates a service account and issues a scoped key through real proof, then
   browserHealth,
 }) => {
   const directory = process.env['E2E_TEST_RESULTS'] || 'test-results';
-  const state: { cookies: typeof administratorCookies } = JSON.parse(
-    await readFile(`${directory}/sessions-administrator.json`, 'utf8'),
-  );
+  const cookies = await savedAdministratorCookies();
   secret = await readFile(`${directory}/users-administrator-authenticator.txt`, 'utf8');
-  staleCookies = state.cookies;
+  staleCookies = cookies;
   await page.context().addCookies(staleCookies);
   const list = new ServiceAccounts(page);
   await list.open();
@@ -141,6 +141,42 @@ for (const shell of shells) {
 }
 const themes = ['dark', 'light'] as const;
 for (const theme of themes) {
+  test(`visual parity: Service accounts and both forms in ${theme} appearance`, async ({
+    page,
+  }, info) => {
+    await page.context().addCookies(administratorCookies);
+    const list = new ServiceAccounts(page);
+    await list.open();
+    await page.context().addCookies([{ name: 'EclipsVault.Theme', value: theme, url: page.url() }]);
+    await page.reload();
+    await expect(list.row(name)).toBeVisible();
+    await page.screenshot({
+      path: info.outputPath(`service-accounts-${theme}.png`),
+      fullPage: true,
+    });
+    await list.create.click();
+    const creation = new ServiceAccountCreation(page);
+    await expect(creation.name).toBeEnabled();
+    await page.screenshot({
+      path: info.outputPath(`new-service-account-${theme}.png`),
+      fullPage: true,
+    });
+    await creation.back.click();
+    await list.manage(name);
+    const details = new ServiceAccount(page, name);
+    await expect(details.expiry).toBeEnabled();
+    const expiry = await details.expiry.boundingBox();
+    const ceiling = await details.ceiling.boundingBox();
+    expect(expiry?.y).toBe(ceiling?.y);
+    await expect(details.metadataOnly).toHaveCSS('width', '13px');
+    await expect(details.keyScopes).toHaveCSS('display', 'inline-flex');
+    await expect(details.dangerZone).toHaveCSS('border-top-width', '1px');
+    await page.screenshot({
+      path: info.outputPath(`service-account-${theme}.png`),
+      fullPage: true,
+    });
+  });
+
   test(`Service accounts forms and confirmation support the keyboard in ${theme} appearance`, async ({
     page,
   }) => {
@@ -216,4 +252,19 @@ test('deletes after the exact confirmation and announces the outcome on the list
   await expect(list.heading).toBeVisible();
   await expect(list.status).toBeVisible();
   await expect(list.row(name)).toHaveCount(0);
+});
+
+test('My activity shows the service account and key actions after leaving Service accounts', async ({
+  page,
+}) => {
+  await page.context().addCookies(administratorCookies);
+  const activity = new AccountAdministrationActivity(page);
+  await activity.open();
+  await expect(activity.heading).toBeVisible();
+  await expect(activity.entry('Deleted a service account')).toContainText(name);
+  await expect(activity.entry('Enabled a service account')).toContainText(name);
+  await expect(activity.entry('Disabled a service account')).toContainText(name);
+  await expect(activity.entry('Revoked an API key')).toContainText(name);
+  await expect(activity.entry('Issued an API key')).toContainText(name);
+  await expect(activity.entry('Created a service account')).toContainText(name);
 });

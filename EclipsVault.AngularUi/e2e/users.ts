@@ -22,6 +22,15 @@ export class Users {
   async open(): Promise<void> {
     await this.page.goto('/Admin/Users');
   }
+  async fromDashboard(): Promise<void> {
+    await this.page.goto('/');
+    await this.page.getByRole('link', { name: /Staff accounts Manage users/ }).click();
+  }
+  async avatarLoaded(username: string): Promise<boolean> {
+    return this.row(username)
+      .getByAltText('', { exact: true })
+      .evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0);
+  }
   async useTheme(theme: 'dark' | 'light'): Promise<void> {
     await this.page
       .context()

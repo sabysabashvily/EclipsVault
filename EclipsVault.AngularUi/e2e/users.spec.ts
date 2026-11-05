@@ -10,11 +10,14 @@ import { lockAccount } from './users-state';
 import { freshTotp } from './totp';
 import { rejectAuditWrites } from './profile-state';
 import { UserRole } from './user-role';
+import { AccountAdministrationActivity } from './account-administration-activity';
+import { savedAdministratorCookies } from './administrator-cookies';
 
 test.describe.configure({ mode: 'serial' });
 let administratorCookies: Awaited<ReturnType<BrowserContext['cookies']>> = [];
 let ownerCookies: typeof administratorCookies = [];
 let staleAdministratorCookies: typeof administratorCookies = [];
+let roleOwnerCookies: typeof administratorCookies = [];
 let administratorSecret = '';
 const password = `E2e-${randomBytes(24).toString('hex')}`;
 const username = 'e2e-users-target';
@@ -26,14 +29,12 @@ test('a stale administrator creates a user through real authenticator step-up an
   browserHealth,
 }) => {
   const directory = process.env['E2E_TEST_RESULTS'] || 'test-results';
-  const state: { cookies: typeof administratorCookies } = JSON.parse(
-    await readFile(`${directory}/sessions-administrator.json`, 'utf8'),
-  );
+  const cookies = await savedAdministratorCookies();
   administratorSecret = await readFile(
     `${directory}/users-administrator-authenticator.txt`,
     'utf8',
   );
-  await page.context().addCookies(state.cookies);
+  await page.context().addCookies(cookies);
   const creation = new AccountCreation(page);
   await creation.open();
   browserHealth.expectConsoleError({ text: /403/, url: /\/api\/ui\/users$/ });
@@ -60,7 +61,7 @@ test('a stale administrator creates a user through real authenticator step-up an
   await expect(owner).toHaveURL(/\/Secrets$/);
   ownerCookies = await owner.context().cookies();
   administratorCookies = await page.context().cookies();
-  staleAdministratorCookies = state.cookies;
+  staleAdministratorCookies = cookies;
 });
 
 test('cancelling stale Edit user proof restores Save role focus and changes no role', async ({
@@ -183,6 +184,29 @@ test('deleting the account removes its row', async ({ page }) => {
   await expect(users.row(username)).toHaveCount(0);
 });
 
+test('My activity shows the administrator account actions after leaving Users', async ({
+  page,
+}) => {
+  await page.context().addCookies(administratorCookies);
+  const activity = new AccountAdministrationActivity(page);
+  await activity.open();
+  await expect(activity.heading).toBeVisible();
+  await expect(activity.entry('Deleted a user')).toContainText('Admin');
+  await expect(activity.entry('Forced a user to sign out')).toContainText('Admin');
+  await expect(activity.entry("Reset a user's MFA")).toContainText('Admin');
+  await expect(activity.entry('Enabled a user')).toContainText('Admin');
+  await expect(activity.entry('Disabled a user')).toContainText('Admin');
+});
+
+test('Dashboard Staff accounts opens Users with a loaded avatar', async ({ page }) => {
+  await page.context().addCookies(administratorCookies);
+  const users = new Users(page);
+  await users.fromDashboard();
+  await expect(users.heading).toBeVisible();
+  await expect(page).toHaveTitle('Users — EclipsVault');
+  await expect.poll(() => users.avatarLoaded('vault-admin')).toBe(true);
+});
+
 test('both sidebars open Users in Angular', async ({ page }) => {
   await page.context().addCookies(administratorCookies);
   const users = new Users(page);
@@ -211,8 +235,38 @@ test('filtering Users leaves only the matching account', async ({ page }) => {
   await expect(users.row('vault-admin')).toBeVisible();
 });
 
+test('filtering Users by you keeps the signed-in administrator visible', async ({ page }) => {
+  await page.context().addCookies(administratorCookies);
+  const users = new Users(page);
+  await users.open();
+  await users.filter.fill('you');
+  await expect(users.rows).toHaveCount(2);
+  await expect(users.row('vault-admin')).toBeVisible();
+});
+
 const themes: ('dark' | 'light')[] = ['dark', 'light'];
 for (const theme of themes) {
+  test(`visual parity: Users and both account forms in ${theme} appearance`, async ({
+    page,
+  }, info) => {
+    await page.context().addCookies(administratorCookies);
+    const users = new Users(page);
+    await users.open();
+    await users.useTheme(theme);
+    await expect(users.row('vault-admin')).toBeVisible();
+    await page.screenshot({ path: info.outputPath(`users-${theme}.png`), fullPage: true });
+    await users.newUser.click();
+    const creation = new AccountCreation(page);
+    await expect(creation.heading).toBeVisible();
+    await expect(creation.firstName).toBeEnabled();
+    await page.screenshot({ path: info.outputPath(`new-user-${theme}.png`), fullPage: true });
+    await creation.back.click();
+    await users.edit('vault-admin');
+    const role = new UserRole(page);
+    await expect(role.clearance).toHaveValue('4');
+    await page.screenshot({ path: info.outputPath(`edit-user-${theme}.png`), fullPage: true });
+  });
+
   test(`the Users row menu supports the keyboard in ${theme} appearance`, async ({ page }) => {
     await page.context().addCookies(administratorCookies);
     const users = new Users(page);
@@ -295,7 +349,7 @@ for (const theme of themes) {
   });
 }
 
-test('an unchanged Unicode role keeps its notice and self-demotion ends both open browsers', async ({
+test('an unchanged Unicode role keeps its notice and both open browsers signed in', async ({
   page,
   browserHealth,
 }) => {
@@ -333,16 +387,28 @@ test('an unchanged Unicode role keeps its notice and self-demotion ends both ope
   await expect(ownUsers.status).toContainText("Role updated for 'e2e-own-role'.");
   await otherDevice.reload();
   await expect(otherDevice).toHaveURL(/\/Access$/);
+  roleOwnerCookies = await owner.context().cookies();
+});
+
+test('self-demotion ends both open browsers', async ({ page, browserHealth }) => {
+  await page.context().addCookies(roleOwnerCookies);
+  const otherContext = await browserHealth.newContext();
+  await otherContext.addCookies(roleOwnerCookies);
+  const otherDevice = await otherContext.newPage();
+  await otherDevice.goto('/Access');
+  await expect(otherDevice).toHaveURL(/\/Access$/);
+  const ownUsers = new Users(page);
+  await ownUsers.open();
   await ownUsers.edit('e2e-own-role');
+  const role = new UserRole(page);
   await role.clearance.selectOption({ label: 'Secret' });
   await role.save();
-  await expect(owner).toHaveURL(/\/Account\/Login/);
+  await expect(page).toHaveURL(/\/Account\/Login/);
   await otherDevice.reload();
   await expect(otherDevice).toHaveURL(/\/Account\/Login/);
   expect(
-    (await owner.context().cookies()).some((cookie) => cookie.name === 'EclipsVault.Session'),
+    (await page.context().cookies()).some((cookie) => cookie.name === 'EclipsVault.Session'),
   ).toBe(false);
-  administratorCookies = await page.context().cookies();
 });
 
 test('own Force logout reaches sign-in and preserves an audit-failure warning', async ({
