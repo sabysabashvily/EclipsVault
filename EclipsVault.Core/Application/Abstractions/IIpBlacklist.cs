@@ -19,7 +19,7 @@ public interface IIpBlacklist
 
     Task<IReadOnlyList<BlockedRangeDto>> ListAsync(CancellationToken ct = default);
 
-    Task<bool> UnblockAsync(string network, CancellationToken ct = default);
+    Task<ILiftedIpBlock?> UnblockAsync(string network, CancellationToken ct = default);
 
     /// <summary>Removes every blocked range containing the address (break-glass recovery).</summary>
     Task<bool> UnblockAddressAsync(IPAddress address, CancellationToken ct = default);

@@ -1,4 +1,4 @@
-using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Core.Application.Networks;
 using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Extensions;
@@ -17,25 +17,23 @@ public sealed class AdminController : VaultController
 {
     private readonly ITrustedNetworkService _trustedNetworks;
     private readonly IIpBlacklist _blacklist;
-    private readonly IAuditSink _audit;
+    private readonly IBlockAdministration _blocks;
     private readonly AbacOptions _abacOptions;
     private readonly ILogger<AdminController> _logger;
 
     public AdminController(
         ITrustedNetworkService trustedNetworks,
         IIpBlacklist blacklist,
-        IAuditSink audit,
+        IBlockAdministration blocks,
         IOptions<AbacOptions> abacOptions,
         ILogger<AdminController> logger)
     {
         _trustedNetworks = trustedNetworks;
         _blacklist = blacklist;
-        _audit = audit;
+        _blocks = blocks;
         _abacOptions = abacOptions.Value;
         _logger = logger;
     }
-
-    // ---- Networks ----------------------------------------------------------------
 
     [HttpGet]
     public async Task<IActionResult> Networks(CancellationToken ct)
@@ -105,15 +103,8 @@ public sealed class AdminController : VaultController
     [HttpPost]
     public async Task<IActionResult> Unblock(string network, CancellationToken ct)
     {
-        if (await _blacklist.UnblockAsync(network, ct))
+        if (await _blocks.LiftAsync(network, ct))
         {
-            await _audit.WriteAsync(new AuditEntry
-            {
-                Action = AuditAction.IpRangeUnblocked,
-                ResourceType = "TrustedNetwork",
-                ResourceName = network,
-                Details = "Intrusion-defence block lifted"
-            }, ct);
             _logger.LogWarning("Administrator {Username} lifted the intrusion-defence block on {Network}", User.Identity?.Name, network);
             this.FlashSuccess($"Block on {network} lifted.");
         }

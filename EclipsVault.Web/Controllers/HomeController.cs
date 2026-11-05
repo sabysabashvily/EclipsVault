@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using EclipsVault.Core.Application.Secrets;
+using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Extensions;
 using EclipsVault.Web.Models;
@@ -33,15 +34,12 @@ public sealed class HomeController : Controller
 
         var isAdmin = User.IsAdmin();
 
-        // The overview reports on what this caller can see, and nothing else. A name is not nothing —
-        // "FINANCE_PROD_STRIPE_LIVE_KEY, expiring in 2 days" says what exists, where, and what it is
-        // worth — so every row goes through the same ABAC handler that gates the secrets list, and
-        // comes from ISecretService.ListAsync, which drops honey tokens. Reading the repository
-        // directly here is what leaked other projects' secrets onto everyone's home page.
+        // Secret names disclose what exists, so dashboard metadata needs the same access filter
+        // as the Secrets list. Listing through the service also excludes honey tokens.
         var visible = await _authorization.VisibleToAsync(User, await _secrets.ListAsync(ct));
 
         var dto = await _dashboard.GetAsync(visible, isAdmin ? null : User.Identity.Name, ct);
-        var displayName = User.FindFirst(VaultClaimTypes.Display)?.Value ?? User.Identity.Name ?? string.Empty;
+        var displayName = User.GetDisplayName();
 
         return View("Dashboard", new DashboardViewModel
         {
@@ -61,13 +59,14 @@ public sealed class HomeController : Controller
 
     [AllowAnonymous]
     [HttpGet]
-    public IActionResult Error(int? code)
+    public IActionResult Error(int? code, string? failure = null)
     {
         var (title, message) = code switch
         {
             404 => ("Not found", "The requested resource does not exist, has expired, or has been shredded."),
             403 => ("Access denied", "The attribute-based access policy denied this request."),
             409 => ("Secret needs a one-time upgrade", "This value was sealed before the vault bound each secret to its row, so it cannot be safely read until an administrator completes the re-seal migration. Nothing was decrypted or exposed."),
+            503 when failure == "unblock_unrecorded" => ("Block lift could not be recorded", UnblockUnrecordedException.FailureMessage),
             503 => ("Vault unavailable (fail-closed)", "The audit trail could not be written, so the operation was refused. No data was released."),
             402 => ("Licence required", "This feature's 30-day evaluation period has ended. Install a licence, then try again. Nothing was changed, and nothing already running was stopped."),
             _ => ("Something went wrong", "An unexpected error occurred. The incident has been logged.")

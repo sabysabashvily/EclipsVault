@@ -66,15 +66,30 @@ public sealed class InMemoryIpBlacklist : IIpBlacklist
         => Task.FromResult<IReadOnlyList<BlockedRangeDto>>(
             _blocked.Values.Select(e => e.Dto).OrderByDescending(d => d.BlockedAtUtc).ToList());
 
-    public Task<bool> UnblockAsync(string network, CancellationToken ct = default)
+    public Task<ILiftedIpBlock?> UnblockAsync(string network, CancellationToken ct = default)
     {
-        if (_blocked.TryRemove(network.Trim(), out _))
+        if (_blocked.TryRemove(network.Trim(), out var entry))
         {
             _logger.LogWarning("Blacklisted range {Network} was unblocked by an administrator", network);
-            return Task.FromResult(true);
+            return Task.FromResult<ILiftedIpBlock?>(new LiftedBlock(_blocked, entry));
         }
 
-        return Task.FromResult(false);
+        return Task.FromResult<ILiftedIpBlock?>(null);
+    }
+
+    private sealed class LiftedBlock(ConcurrentDictionary<string, Entry> blocked, Entry entry) : ILiftedIpBlock
+    {
+        public string Network => entry.Dto.Network;
+
+        public Task RestoreAsync(CancellationToken ct = default)
+        {
+            if (blocked.GetOrAdd(Network, entry) != entry)
+            {
+                throw new InvalidOperationException("The original block could not be restored.");
+            }
+
+            return Task.CompletedTask;
+        }
     }
 
     public Task<bool> UnblockAddressAsync(IPAddress address, CancellationToken ct = default)
