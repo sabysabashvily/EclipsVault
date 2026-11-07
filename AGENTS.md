@@ -13,6 +13,10 @@ file, tests and commit messages included, and the code-review Standards axis che
   lock files whenever you change `Directory.Packages.props`.
 - Build: `dotnet build EclipsVault.slnx -c Release`. Warnings, including analyzer findings, fail the build.
 - Test (unit, no Docker): `dotnet test EclipsVault.Tests -c Release --no-build --blame-hang-timeout 5m --blame-hang-dump-type mini`
+- Verify a change with `scripts/check.sh` rather than reading raw build and test output: it restores,
+  builds and runs the unit tests, printing one line per step and only the errors on failure (full logs
+  in `logs/check/`). `scripts/check.sh integration "<filter>"` adds the integration tests on
+  PostgreSQL; `scripts/check.sh e2e <spec>...` adds only the named browser specs. CI runs the rest.
 - Integration tests: `dotnet test EclipsVault.IntegrationTests -c Release --no-build --blame-hang-timeout 10m --blame-hang-dump-type mini`.
   First build the Angular UI (`npm ci --ignore-scripts` then `npm run build` in `EclipsVault.AngularUi`,
   on its `.nvmrc` Node version): header tests serve its real document through the route table.
