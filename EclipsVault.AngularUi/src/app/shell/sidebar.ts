@@ -82,7 +82,7 @@ const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)
     label: 'Administration',
     items: [
       link('users', 'Users', '/Admin/Users', 'users', true),
-      link('networks', 'Networks', '/Admin/Networks'),
+      link('networks', 'Networks', '/Admin/Networks', 'networks', true),
       link('service-accounts', 'Service accounts', '/ServiceAccounts', 'service-accounts', true),
       link('audit', 'Audit log', '/Audit'),
       link('notifications', 'Notifications', '/Notifications'),

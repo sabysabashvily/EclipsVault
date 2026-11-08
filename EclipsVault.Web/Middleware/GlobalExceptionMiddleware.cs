@@ -105,9 +105,7 @@ public sealed class GlobalExceptionMiddleware
             return UiApiProblem.WriteAsync(context, status, code, title);
         }
 
-        context.Response.Redirect(code == "unblock_unrecorded"
-            ? "/Home/Error?code=503&failure=unblock_unrecorded"
-            : $"/Home/Error?code={status}");
+        context.Response.Redirect($"/Home/Error?code={status}");
         return Task.CompletedTask;
     }
 }

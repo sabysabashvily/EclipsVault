@@ -80,6 +80,11 @@ export const routes: Routes = [
     loadComponent: () => import('./users/users-page').then((m) => m.UsersPage),
     title: 'Users — EclipsVault',
   },
+  {
+    matcher: legacyPath('Admin/Networks'),
+    loadComponent: () => import('./networks/networks-page').then((m) => m.NetworksPage),
+    title: 'Networks — EclipsVault',
+  },
   { matcher: legacyPath('Profile'), loadComponent: profile, title: 'Profile — EclipsVault' },
   { matcher: legacyPath('Profile/Index'), loadComponent: profile, title: 'Profile — EclipsVault' },
   {

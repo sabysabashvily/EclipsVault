@@ -44,6 +44,9 @@ public sealed partial class VaultFixture : IAsyncLifetime
 
     public const string SessionCookie = "EclipsVault.Session";
 
+    /// <summary>The one reverse proxy whose forwarded headers the vault honours, as an operator configures it.</summary>
+    public static readonly IPAddress ForwardingProxy = IPAddress.Parse("198.18.114.254");
+
     private static readonly Uri BaseAddress = new("https://localhost");
 
     private readonly VaultDatabase _database = VaultDatabase.ForThisRun();
@@ -87,6 +90,7 @@ public sealed partial class VaultFixture : IAsyncLifetime
         SetEnvironment("ECLIPSVAULT_AUDIT_SIGNING_KEY", Convert.ToBase64String(signingKey.ExportPkcs8PrivateKey()));
         SetEnvironment("DataProtection__KeyRingPath", _keyRing.FullName);
         SetEnvironment("Seed__AdminPassword", _adminPassword);
+        SetEnvironment("ForwardedHeaders__KnownProxies__0", ForwardingProxy.ToString());
         if (RedisConfiguration is not null)
         {
             SetEnvironment("Redis__Enabled", "true");

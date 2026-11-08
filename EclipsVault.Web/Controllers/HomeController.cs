@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using EclipsVault.Core.Application.Secrets;
-using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Extensions;
 using EclipsVault.Web.Models;
@@ -59,14 +58,13 @@ public sealed class HomeController : Controller
 
     [AllowAnonymous]
     [HttpGet]
-    public IActionResult Error(int? code, string? failure = null)
+    public IActionResult Error(int? code)
     {
         var (title, message) = code switch
         {
             404 => ("Not found", "The requested resource does not exist, has expired, or has been shredded."),
             403 => ("Access denied", "The attribute-based access policy denied this request."),
             409 => ("Secret needs a one-time upgrade", "This value was sealed before the vault bound each secret to its row, so it cannot be safely read until an administrator completes the re-seal migration. Nothing was decrypted or exposed."),
-            503 when failure == "unblock_unrecorded" => ("Block lift could not be recorded", UnblockUnrecordedException.FailureMessage),
             503 => ("Vault unavailable (fail-closed)", "The audit trail could not be written, so the operation was refused. No data was released."),
             402 => ("Licence required", "This feature's 30-day evaluation period has ended. Install a licence, then try again. Nothing was changed, and nothing already running was stopped."),
             _ => ("Something went wrong", "An unexpected error occurred. The incident has been logged.")

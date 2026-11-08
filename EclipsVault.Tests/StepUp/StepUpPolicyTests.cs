@@ -59,6 +59,9 @@ public class StepUpPolicyTests
     [InlineData(AdministratorAction.DisableServiceAccount, false)]
     [InlineData(AdministratorAction.RevokeApiKey, false)]
     [InlineData(AdministratorAction.DeleteServiceAccount, false)]
+    [InlineData(AdministratorAction.TrustNetwork, true)]
+    [InlineData(AdministratorAction.LiftBlock, true)]
+    [InlineData(AdministratorAction.RemoveTrustedNetwork, false)]
     public void Stale_administrator_grants_require_proof_independently_of_the_reveal_threshold(AdministratorAction action, bool required)
         => Assert.Equal(required, Service(minimum: SensitivityLevel.TopSecret).IsRequired(action, Now.AddMinutes(-11), Now));
 

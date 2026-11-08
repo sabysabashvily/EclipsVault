@@ -1899,6 +1899,57 @@ select:focus {
   font-size: 0.82rem;
 }
 
+/* Networks keeps the Legacy page's layout while both UIs serve administrators. */
+.current-ip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+}
+.current-ip-value {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 0.4rem 0;
+}
+.current-ip-value code {
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+.current-ip p {
+  margin: 0.35rem 0 0;
+  max-width: 560px;
+  font-size: 0.85rem;
+}
+.add-network-form {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.add-network-form input {
+  flex: 1;
+  min-width: 150px;
+}
+.add-network-form .button {
+  flex-shrink: 0;
+}
+.cidr-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.88rem;
+}
+.cidr-list li {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.cidr-list li:last-child {
+  border-bottom: none;
+}
+
 .settings-row {
   display: flex;
   justify-content: space-between;

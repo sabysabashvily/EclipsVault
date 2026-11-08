@@ -40,13 +40,22 @@ export default defineConfig({
             '**/profile.spec.ts',
             '**/users.spec.ts',
             '**/service-accounts.spec.ts',
+            '**/networks.spec.ts',
           ],
           use: { ...devices['Desktop Chrome'] },
         },
         {
+          name: 'networks',
+          testMatch: '**/networks.spec.ts',
+          dependencies: ['service-accounts'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          // Users ends with the administrator's own Force logout, which ends the saved session that
+          // Networks reuses, so Networks runs first.
           name: 'users',
           testMatch: '**/users.spec.ts',
-          dependencies: ['service-accounts'],
+          dependencies: ['networks'],
           use: { ...devices['Desktop Chrome'] },
         },
         {

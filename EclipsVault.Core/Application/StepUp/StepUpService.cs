@@ -36,9 +36,11 @@ public sealed class StepUpService : IStepUpService
         => action switch
         {
             AdministratorAction.CreateAccount or AdministratorAction.ChangeAccountRole or AdministratorAction.EnableAccount or AdministratorAction.UnlockAccount or AdministratorAction.ResetAuthenticator or AdministratorAction.IssueApiKey or AdministratorAction.EnableServiceAccount
+                or AdministratorAction.TrustNetwork or AdministratorAction.LiftBlock
                 => nowUtc - lastStrongAuthUtc > TimeSpan.FromMinutes(_options.MaxAuthAgeMinutes),
             AdministratorAction.DisableAccount or AdministratorAction.DeleteAccount or AdministratorAction.SignOutAccount
-                or AdministratorAction.CreateServiceAccount or AdministratorAction.DisableServiceAccount or AdministratorAction.RevokeApiKey or AdministratorAction.DeleteServiceAccount => false,
+                or AdministratorAction.CreateServiceAccount or AdministratorAction.DisableServiceAccount or AdministratorAction.RevokeApiKey or AdministratorAction.DeleteServiceAccount
+                or AdministratorAction.RemoveTrustedNetwork => false,
             _ => throw new ArgumentOutOfRangeException(nameof(action))
         };
 

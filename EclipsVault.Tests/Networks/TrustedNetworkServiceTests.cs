@@ -23,6 +23,9 @@ public class TrustedNetworkServiceTests
         public List<TrustedNetwork> Added { get; } = [];
         public List<TrustedNetwork> Removed { get; } = [];
 
+        /// <summary>Another request trusts the same range between the service's check and its save.</summary>
+        public bool LosesTheRace { get; init; }
+
         public Task<IReadOnlyList<string>> ListCidrsAsync(CancellationToken ct)
             => Task.FromResult<IReadOnlyList<string>>(_networks.Select(n => n.Cidr).ToList());
 
@@ -34,6 +37,11 @@ public class TrustedNetworkServiceTests
 
         public Task AddAsync(TrustedNetwork network, CancellationToken ct)
         {
+            if (LosesTheRace)
+            {
+                throw new NetworkExistsException();
+            }
+
             Added.Add(network);
             _networks.Add(network);
             return Task.CompletedTask;
@@ -92,10 +100,11 @@ public class TrustedNetworkServiceTests
     {
         var repository = new FakeTrustedNetworks();
 
-        var ex = await Assert.ThrowsAsync<VaultAdminException>(
+        var ex = await Assert.ThrowsAsync<NetworkInputException>(
             () => Build(repository).AddAsync(cidr, "Too wide", CancellationToken.None));
 
         Assert.Contains("broader than /8", ex.Message);
+        Assert.Equal("range", ex.Field);
         Assert.Empty(repository.Added);
     }
 
@@ -117,8 +126,10 @@ public class TrustedNetworkServiceTests
     {
         var repository = new FakeTrustedNetworks();
 
-        await Assert.ThrowsAsync<VaultAdminException>(
+        var ex = await Assert.ThrowsAsync<NetworkInputException>(
             () => Build(repository).AddAsync(input, "Junk", CancellationToken.None));
+
+        Assert.Equal("range", ex.Field);
 
         Assert.Empty(repository.Added);
     }
@@ -129,10 +140,36 @@ public class TrustedNetworkServiceTests
         // Stored as /32 — re-adding the bare address must collide, not create a second row.
         var repository = new FakeTrustedNetworks(new TrustedNetwork { Id = Guid.NewGuid(), Cidr = "203.0.113.7/32" });
 
-        var ex = await Assert.ThrowsAsync<VaultAdminException>(
+        var ex = await Assert.ThrowsAsync<NetworkExistsException>(
             () => Build(repository).AddAsync("203.0.113.7", "Duplicate", CancellationToken.None));
 
-        Assert.Contains("already trusted", ex.Message);
+        Assert.Equal("The range '203.0.113.7/32' is already trusted.", ex.Message);
+        Assert.Empty(repository.Added);
+    }
+
+    [Fact]
+    public async Task AddAsync_reports_a_lost_race_as_the_same_conflict_naming_the_range()
+    {
+        var repository = new FakeTrustedNetworks { LosesTheRace = true };
+
+        var ex = await Assert.ThrowsAsync<NetworkExistsException>(
+            () => Build(repository).AddAsync("203.0.113.7", "Racing", CancellationToken.None));
+
+        Assert.Equal("The range '203.0.113.7/32' is already trusted.", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("   ", "", "range")]
+    [InlineData("10.8.0.0/24 with a description long enough to pass the sixty-four limit", "", "range")]
+    [InlineData("203.0.113.7", "This label is one character longer than the 128 characters that the label column stores and the Legacy form allowed to be entered", "label")]
+    public async Task AddAsync_refuses_the_Legacy_form_limits_with_the_form_message(string range, string label, string field)
+    {
+        var repository = new FakeTrustedNetworks();
+
+        var ex = await Assert.ThrowsAsync<NetworkInputException>(
+            () => Build(repository).AddAsync(range, label, CancellationToken.None));
+
+        Assert.Equal(("Enter an IP address or CIDR range to trust.", field), (ex.Message, ex.Field));
         Assert.Empty(repository.Added);
     }
 

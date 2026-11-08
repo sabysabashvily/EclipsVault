@@ -19,6 +19,12 @@ public sealed class TrustedNetworkService : ITrustedNetworkService
     /// </summary>
     private const int MinimumPrefixLength = 8;
 
+    // The longest range and label the trusted-network columns store.
+    private const int MaximumRangeLength = 64;
+    private const int MaximumLabelLength = 128;
+
+    private const string InvalidNetworkInput = "Enter an IP address or CIDR range to trust.";
+
     private readonly ITrustedNetworkRepository _repository;
     private readonly IAuditContext _actor;
     private readonly TimeProvider _clock;
@@ -40,11 +46,21 @@ public sealed class TrustedNetworkService : ITrustedNetworkService
 
     public async Task<TrustedNetworkDto> AddAsync(string cidrOrIp, string label, CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(cidrOrIp) || cidrOrIp.Length > MaximumRangeLength)
+        {
+            throw new NetworkInputException("range", InvalidNetworkInput);
+        }
+
+        if (label.Length > MaximumLabelLength)
+        {
+            throw new NetworkInputException("label", InvalidNetworkInput);
+        }
+
         var cidr = NormalizeToCidr(cidrOrIp);
 
         if (await _repository.ExistsAsync(cidr, ct))
         {
-            throw new VaultAdminException($"The range '{cidr}' is already trusted.");
+            throw new NetworkExistsException(cidr);
         }
 
         var entity = new TrustedNetwork
@@ -56,7 +72,15 @@ public sealed class TrustedNetworkService : ITrustedNetworkService
             CreatedAtUtc = _clock.GetUtcNow()
         };
 
-        await _repository.AddAsync(entity, ct);
+        try
+        {
+            await _repository.AddAsync(entity, ct);
+        }
+        catch (NetworkExistsException)
+        {
+            throw new NetworkExistsException(cidr);
+        }
+
         return new TrustedNetworkDto(entity.Id, entity.Cidr, entity.Label, entity.AddedBy, entity.CreatedAtUtc);
     }
 
@@ -76,14 +100,14 @@ public sealed class TrustedNetworkService : ITrustedNetworkService
     {
         if (!NetworkRules.TryParseCidr(input, out var cidr))
         {
-            throw new VaultAdminException(
+            throw new NetworkInputException("range",
                 $"'{input}' is not a valid IP address or CIDR range (e.g. 203.0.113.7 or 10.8.0.0/24).");
         }
 
         // A bare address canonicalises to /32 or /128, so this only ever rejects an explicit range.
         if (IPNetwork.Parse(cidr).PrefixLength < MinimumPrefixLength)
         {
-            throw new VaultAdminException(
+            throw new NetworkInputException("range",
                 $"'{input}' is broader than /{MinimumPrefixLength} — refusing to trust a range that large.");
         }
 

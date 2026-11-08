@@ -31,19 +31,6 @@ public sealed class UnblockFailureResponseTests
         Assert.Null(logger.Exception);
     }
 
-    [Fact]
-    public async Task Failed_compensation_sends_the_legacy_form_to_its_distinct_error_page()
-    {
-        var context = new DefaultHttpContext();
-        context.Request.Path = "/Admin/Unblock";
-        var middleware = new GlobalExceptionMiddleware(_ => throw new UnblockUnrecordedException(), new CriticalAlert());
-
-        await middleware.InvokeAsync(context);
-
-        Assert.Equal(302, context.Response.StatusCode);
-        Assert.Equal("/Home/Error?code=503&failure=unblock_unrecorded", context.Response.Headers.Location);
-    }
-
     private sealed class CriticalAlert : ILogger<GlobalExceptionMiddleware>
     {
         public List<string> Messages { get; } = [];

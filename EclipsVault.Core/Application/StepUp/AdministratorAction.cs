@@ -15,5 +15,8 @@ public enum AdministratorAction
     CreateServiceAccount,
     DisableServiceAccount,
     RevokeApiKey,
-    DeleteServiceAccount
+    DeleteServiceAccount,
+    TrustNetwork,
+    LiftBlock,
+    RemoveTrustedNetwork
 }
