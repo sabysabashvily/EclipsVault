@@ -25,14 +25,14 @@ public sealed class SessionIssuerTests
         var revocation = NewRevocation();
         var stamp = new SessionStamp(1, await revocation.CaptureAsync(account.Id));
         var authentication = new RecordingAuthentication();
-        var audit = new RecordingAudit();
+        var attempt = new RecordingAttempt();
         var http = Context(authentication);
-        var issuer = Issuer(account, revocation, audit);
+        var issuer = Issuer(account, revocation, attempt);
 
         Assert.False(await issuer.SignInAsync(http, UserDto.From(account), stamp, TotpSignIn, default));
 
         Assert.Null(authentication.Issued);
-        var refusal = Assert.Single(audit.Recorded);
+        var refusal = Assert.Single(attempt.Recorded);
         Assert.Equal(AuditAction.SignInRefused, refusal.Action);
         Assert.Equal("Password + TOTP", refusal.Details);
         Assert.Equal(account.Id, refusal.ActorUserId);
@@ -50,11 +50,11 @@ public sealed class SessionIssuerTests
         await revocation.RevokeAsync(account.Id);
         var authentication = new RecordingAuthentication();
 
-        var audit = new RecordingAudit();
-        Assert.False(await Issuer(account, revocation, audit).SignInAsync(Context(authentication), snapshot, stamp, TotpSignIn, default));
+        var attempt = new RecordingAttempt();
+        Assert.False(await Issuer(account, revocation, attempt).SignInAsync(Context(authentication), snapshot, stamp, TotpSignIn, default));
 
         Assert.Null(authentication.Issued);
-        Assert.Equal(AuditAction.SignInRefused, Assert.Single(audit.Recorded).Action);
+        Assert.Equal(AuditAction.SignInRefused, Assert.Single(attempt.Recorded).Action);
     }
 
     [Fact]
@@ -64,29 +64,13 @@ public sealed class SessionIssuerTests
         var revocation = NewRevocation();
         var stamp = new SessionStamp(1, await revocation.CaptureAsync(account.Id));
         var authentication = new RecordingAuthentication();
-        var audit = new RecordingAudit();
+        var attempt = new RecordingAttempt();
 
-        Assert.True(await Issuer(account, revocation, audit).SignInAsync(
+        Assert.True(await Issuer(account, revocation, attempt).SignInAsync(
             Context(authentication), UserDto.From(account), stamp, TotpSignIn, default));
 
         Assert.NotNull(authentication.Issued);
-        Assert.Equal(AuditAction.LoginSucceeded, Assert.Single(audit.Recorded).Action);
-    }
-
-    [Fact]
-    public async Task A_credential_change_during_the_outcome_write_issues_no_session()
-    {
-        var account = new User { Id = Guid.NewGuid(), Username = "issuer", CredentialGeneration = 1 };
-        var revocation = NewRevocation();
-        var stamp = new SessionStamp(1, await revocation.CaptureAsync(account.Id));
-        var authentication = new RecordingAuthentication();
-        var audit = new GenerationAdvancingAudit(account);
-
-        Assert.False(await Issuer(account, revocation, audit).SignInAsync(
-            Context(authentication), UserDto.From(account), stamp, TotpSignIn, default));
-
-        Assert.Null(authentication.Issued);
-        Assert.Equal(AuditAction.LoginSucceeded, Assert.Single(audit.Recorded).Action);
+        Assert.Equal(AuditAction.LoginSucceeded, Assert.Single(attempt.Recorded).Action);
     }
 
     [Fact]
@@ -97,7 +81,7 @@ public sealed class SessionIssuerTests
         var stamp = new SessionStamp(1, await revocation.CaptureAsync(account.Id));
         var authentication = new RecordingAuthentication();
 
-        await Assert.ThrowsAsync<AuditWriteFailedException>(() => Issuer(account, revocation, new ThrowingAudit()).SignInAsync(
+        await Assert.ThrowsAsync<AuditWriteFailedException>(() => Issuer(account, revocation, new RecordingAttempt { RejectCommit = true }).SignInAsync(
             Context(authentication), UserDto.From(account), stamp, TotpSignIn, default));
 
         Assert.Null(authentication.Issued);
@@ -113,7 +97,7 @@ public sealed class SessionIssuerTests
         var http = Context(authentication);
         http.User = VaultClaimsFactory.CreateSessionPrincipal(UserDto.From(account), Guid.NewGuid(), DateTimeOffset.UtcNow, stamp);
 
-        Assert.False(await Issuer(account, revocation, new RecordingAudit()).ReplaceAsync(http, 1));
+        Assert.False(await Issuer(account, revocation, new RecordingAttempt()).ReplaceAsync(http, 1));
 
         Assert.True(authentication.SignedOut);
         Assert.Equal(1, account.CredentialGeneration);
@@ -130,7 +114,7 @@ public sealed class SessionIssuerTests
         var http = Context(authentication);
         http.User = VaultClaimsFactory.CreateSessionPrincipal(UserDto.From(account), Guid.NewGuid(), DateTimeOffset.UtcNow, stamp);
 
-        Assert.False(await Issuer(account, revocation, new RecordingAudit()).ReplaceAsync(http, 1));
+        Assert.False(await Issuer(account, revocation, new RecordingAttempt()).ReplaceAsync(http, 1));
 
         Assert.True(authentication.SignedOut);
         Assert.Null(authentication.Issued);
@@ -147,7 +131,7 @@ public sealed class SessionIssuerTests
         var oldId = Guid.NewGuid();
         http.User = VaultClaimsFactory.CreateSessionPrincipal(UserDto.From(account), oldId, DateTimeOffset.UtcNow, stamp);
 
-        Assert.True(await Issuer(account, revocation, new RecordingAudit()).ReplaceAsync(http, 1));
+        Assert.True(await Issuer(account, revocation, new RecordingAttempt()).ReplaceAsync(http, 1));
 
         Assert.NotEqual(oldId, authentication.Issued!.GetSessionId());
         Assert.Equal(new SessionStamp(1, stamp.RevocationVersion), authentication.Issued!.GetSessionStampOrNull());
@@ -158,10 +142,10 @@ public sealed class SessionIssuerTests
 
     private static readonly SignInAudit TotpSignIn = new(AuditAction.LoginSucceeded, "Password + TOTP");
 
-    private static SessionIssuer Issuer(User account, InMemorySessionRevocationService revocation, IAuditSink audit)
+    private static SessionIssuer Issuer(User account, InMemorySessionRevocationService revocation, IAuthenticationAttempt attempt)
         => new(new SessionAccountStore(account), revocation,
             new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance, TimeProvider.System),
-            audit, NullLogger<SessionIssuer>.Instance);
+            attempt, NullLogger<SessionIssuer>.Instance);
 
     private static DefaultHttpContext Context(RecordingAuthentication authentication)
         => new()
@@ -194,34 +178,5 @@ public sealed class SessionIssuerTests
         public Task<AuthenticateResult> AuthenticateAsync(HttpContext context, string? scheme) => throw new NotSupportedException();
         public Task ChallengeAsync(HttpContext context, string? scheme, AuthenticationProperties? properties) => throw new NotSupportedException();
         public Task ForbidAsync(HttpContext context, string? scheme, AuthenticationProperties? properties) => throw new NotSupportedException();
-    }
-
-    private sealed class RecordingAudit : IAuditSink
-    {
-        public List<AuditEntry> Recorded { get; } = [];
-
-        public Task WriteAsync(AuditEntry entry, CancellationToken ct)
-        {
-            Recorded.Add(entry);
-            return Task.CompletedTask;
-        }
-    }
-
-    private sealed class ThrowingAudit : IAuditSink
-    {
-        public Task WriteAsync(AuditEntry entry, CancellationToken ct)
-            => throw new AuditWriteFailedException("The audit store is unavailable.");
-    }
-
-    private sealed class GenerationAdvancingAudit(User account) : IAuditSink
-    {
-        public List<AuditEntry> Recorded { get; } = [];
-
-        public Task WriteAsync(AuditEntry entry, CancellationToken ct)
-        {
-            Recorded.Add(entry);
-            account.CredentialGeneration++;
-            return Task.CompletedTask;
-        }
     }
 }

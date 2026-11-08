@@ -12,7 +12,6 @@ using EclipsVault.Web.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace EclipsVault.IntegrationTests;
@@ -50,6 +49,44 @@ public sealed class SignInRefusalAuditTests(VaultFixture vault)
     }
 
     [Fact]
+    public async Task A_credential_change_committing_while_issuance_waits_for_the_account_records_a_refusal()
+    {
+        const string username = "it-refusal-held-account";
+        await vault.SignInNewAccountAsync(username, IPAddress.Parse("198.18.93.10"), password: Password);
+        var account = await ProfileHttp.AccountAsync(vault, username);
+        using var proof = vault.Services.CreateScope();
+        var authentication = proof.ServiceProvider.GetRequiredService<IVaultAuthenticationService>();
+        var passwordStage = await authentication.ValidateCredentialsAsync(username, Password, default);
+        var proven = await authentication.VerifyTotpAsync(account.Id, passwordStage.Stamp!, Totp.NextCode(account.TotpSecret!), default);
+        var before = await AuditTrail.HeadAsync(vault);
+
+        using var change = vault.Services.CreateScope();
+        var held = await change.ServiceProvider.GetRequiredService<IUserRepository>().FindByIdAsync(account.Id, default);
+        var holding = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var changing = change.ServiceProvider.GetRequiredService<IAuthenticationAttempt>().RunAsync(held!, async _ =>
+        {
+            held!.CredentialGeneration++;
+            holding.SetResult();
+            await release.Task;
+            return true;
+        }, default);
+        await holding.Task;
+        var http = new DefaultHttpContext { RequestServices = proof.ServiceProvider };
+        var issuing = IssueAsync(proof.ServiceProvider, http, proven!, passwordStage.Stamp!, "Password + TOTP");
+        // Long enough for issuance to read the account and reach the lock the change holds.
+        await Task.Delay(TimeSpan.FromSeconds(1));
+        release.SetResult();
+        await changing;
+
+        Assert.False(await issuing);
+        Assert.False(http.Response.Headers.ContainsKey("Set-Cookie"));
+        var actions = await ProfileHttp.EventsAfterAsync(vault, before, account.Id);
+        Assert.Contains(AuditAction.SignInRefused, actions);
+        Assert.DoesNotContain(AuditAction.LoginSucceeded, actions);
+    }
+
+    [Fact]
     public async Task Break_glass_lifts_a_blocked_address_only_after_a_session_is_issued()
     {
         const string username = "it-refusal-break-glass";
@@ -69,8 +106,7 @@ public sealed class SignInRefusalAuditTests(VaultFixture vault)
         var finished = await new BreakGlassSignIn(
             proof.ServiceProvider.GetRequiredService<SessionIssuer>(),
             blacklist,
-            proof.ServiceProvider.GetRequiredService<IAuditSink>(),
-            NullLogger<BreakGlassSignIn>.Instance)
+            proof.ServiceProvider.GetRequiredService<IAuditSink>())
             .FinishAsync(http, proven!, passwordStage.Stamp!, source, default);
 
         Assert.False(finished.SessionIssued);
@@ -102,8 +138,7 @@ public sealed class SignInRefusalAuditTests(VaultFixture vault)
         var finished = await new BreakGlassSignIn(
             proof.ServiceProvider.GetRequiredService<SessionIssuer>(),
             blacklist,
-            proof.ServiceProvider.GetRequiredService<IAuditSink>(),
-            NullLogger<BreakGlassSignIn>.Instance)
+            proof.ServiceProvider.GetRequiredService<IAuditSink>())
             .FinishAsync(http, proven!, passwordStage.Stamp!, source, default);
 
         Assert.True(finished.SessionIssued);

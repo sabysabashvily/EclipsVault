@@ -25,45 +25,68 @@ public sealed class BreakGlassSignInTests
         var stamp = new SessionStamp(1, await revocation.CaptureAsync(account.Id));
         var source = IPAddress.Parse("198.18.93.9");
         var blacklist = new FakeBlacklist { Blocked = true };
+        var attempt = new RecordingAttempt();
         var audit = new RecordingAudit();
-        var http = Context();
 
-        var finished = await Finish(account, revocation, blacklist, audit)
-            .FinishAsync(http, UserDto.From(account), stamp, source, default);
+        var finished = await Finish(account, revocation, blacklist, attempt, audit)
+            .FinishAsync(Context(), UserDto.From(account), stamp, source, default);
 
         Assert.False(finished.SessionIssued);
         Assert.False(finished.BlockLifted);
         Assert.True(blacklist.Blocked);
         Assert.Equal(0, blacklist.Unblocks);
-        Assert.Equal(AuditAction.SignInRefused, Assert.Single(audit.Recorded).Action);
+        Assert.Equal(AuditAction.SignInRefused, Assert.Single(attempt.Recorded).Action);
+        Assert.Empty(audit.Recorded);
     }
 
     [Fact]
-    public async Task A_failed_recovery_audit_puts_the_intrusion_block_back()
+    public async Task An_issued_session_records_the_recovery_and_then_lifts_the_block()
     {
         var account = new User { Id = Guid.NewGuid(), Username = "glass", CredentialGeneration = 1 };
         var revocation = new InMemorySessionRevocationService(NullLogger<InMemorySessionRevocationService>.Instance);
         var stamp = new SessionStamp(1, await revocation.CaptureAsync(account.Id));
         var source = IPAddress.Parse("198.18.93.9");
         var blacklist = new FakeBlacklist { Blocked = true };
+        var audit = new RecordingAudit { Blacklist = blacklist };
+
+        var finished = await Finish(account, revocation, blacklist, new RecordingAttempt(), audit)
+            .FinishAsync(Context(), UserDto.From(account), stamp, source, default);
+
+        Assert.True(finished.SessionIssued);
+        Assert.True(finished.BlockLifted);
+        Assert.False(blacklist.Blocked);
+        var recovery = Assert.Single(audit.Recorded);
+        Assert.Equal("Break-glass recovery from 198.18.93.9; block lifted: True", recovery.Details);
+        Assert.True(audit.BlockedWhenRecorded);
+    }
+
+    [Fact]
+    public async Task A_rejected_recovery_row_leaves_the_intrusion_block_in_place()
+    {
+        var account = new User { Id = Guid.NewGuid(), Username = "glass", CredentialGeneration = 1 };
+        var revocation = new InMemorySessionRevocationService(NullLogger<InMemorySessionRevocationService>.Instance);
+        var stamp = new SessionStamp(1, await revocation.CaptureAsync(account.Id));
+        var source = IPAddress.Parse("198.18.93.9");
+        var blacklist = new FakeBlacklist { Blocked = true };
+        var attempt = new RecordingAttempt();
         var audit = new RecordingAudit { RejectRecovery = true };
 
-        await Assert.ThrowsAsync<AuditWriteFailedException>(() => Finish(account, revocation, blacklist, audit)
+        await Assert.ThrowsAsync<AuditWriteFailedException>(() => Finish(account, revocation, blacklist, attempt, audit)
             .FinishAsync(Context(), UserDto.From(account), stamp, source, default));
 
         Assert.True(blacklist.Blocked);
-        Assert.Equal(1, blacklist.Unblocks);
-        Assert.Equal(1, blacklist.Restores);
-        Assert.Contains(audit.Recorded, entry => entry.Action == AuditAction.LoginSucceeded);
-        Assert.DoesNotContain(audit.Recorded, entry => entry.Action == AuditAction.BreakGlassRecovery);
+        Assert.Equal(0, blacklist.Unblocks);
+        Assert.Equal(AuditAction.LoginSucceeded, Assert.Single(attempt.Recorded).Action);
+        Assert.Empty(audit.Recorded);
     }
 
-    private static BreakGlassSignIn Finish(User account, InMemorySessionRevocationService revocation, FakeBlacklist blacklist, IAuditSink audit)
+    private static BreakGlassSignIn Finish(
+        User account, InMemorySessionRevocationService revocation, FakeBlacklist blacklist, RecordingAttempt attempt, IAuditSink audit)
     {
         var issuer = new SessionIssuer(new SessionAccountStore(account), revocation,
             new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance, TimeProvider.System),
-            audit, NullLogger<SessionIssuer>.Instance);
-        return new BreakGlassSignIn(issuer, blacklist, audit, NullLogger.Instance);
+            attempt, NullLogger<SessionIssuer>.Instance);
+        return new BreakGlassSignIn(issuer, blacklist, audit);
     }
 
     private static DefaultHttpContext Context()
@@ -87,14 +110,17 @@ public sealed class BreakGlassSignInTests
     {
         public List<AuditEntry> Recorded { get; } = [];
         public bool RejectRecovery { get; init; }
+        public FakeBlacklist? Blacklist { get; init; }
+        public bool BlockedWhenRecorded { get; private set; }
 
         public Task WriteAsync(AuditEntry entry, CancellationToken ct)
         {
-            if (RejectRecovery && entry.Action == AuditAction.BreakGlassRecovery)
+            if (RejectRecovery)
             {
                 throw new AuditWriteFailedException("The audit store is unavailable.");
             }
 
+            BlockedWhenRecorded = Blacklist?.Blocked ?? false;
             Recorded.Add(entry);
             return Task.CompletedTask;
         }
@@ -104,14 +130,8 @@ public sealed class BreakGlassSignInTests
     {
         public bool Blocked { get; set; }
         public int Unblocks { get; private set; }
-        public int Restores { get; private set; }
 
-        public Task BlockAsync(string sourceIp, string reason, CancellationToken ct = default)
-        {
-            Restores++;
-            Blocked = true;
-            return Task.CompletedTask;
-        }
+        public Task BlockAsync(string sourceIp, string reason, CancellationToken ct = default) => throw new NotSupportedException();
 
         public Task<bool> IsBlockedAsync(IPAddress address, CancellationToken ct = default) => Task.FromResult(Blocked);
 

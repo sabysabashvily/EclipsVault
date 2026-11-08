@@ -74,8 +74,8 @@ public class SsoSignInRedirectTests
         var accountId = Guid.NewGuid();
         var revocation = new InMemorySessionRevocationService(NullLogger<InMemorySessionRevocationService>.Instance);
         var sessions = new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance, TimeProvider.System);
-        var audit = new RecordingAudit();
-        var issuer = new SessionIssuer(new SessionAccountStore(new User { Id = accountId }), revocation, sessions, audit, NullLogger<SessionIssuer>.Instance);
+        var attempt = new RecordingAttempt();
+        var issuer = new SessionIssuer(new SessionAccountStore(new User { Id = accountId }), revocation, sessions, attempt, NullLogger<SessionIssuer>.Instance);
         var controller = new AccountController(null!, null!, null!, null!, sessions, null!,
             new BothFactorsAtTheIdp(accountId, await revocation.CaptureAsync(accountId)), null!, issuer,
             NullLogger<AccountController>.Instance)
@@ -87,19 +87,8 @@ public class SsoSignInRedirectTests
         var result = await controller.ExternalCallback(returnUrl, CancellationToken.None);
 
         Assert.Equal(expected, Assert.IsType<LocalRedirectResult>(result).Url);
-        var signedIn = Assert.Single(audit.Recorded);
+        var signedIn = Assert.Single(attempt.Recorded);
         Assert.Equal(AuditAction.LoginSucceeded, signedIn.Action);
         Assert.Equal("Single sign-on", signedIn.Details);
-    }
-
-    private sealed class RecordingAudit : IAuditSink
-    {
-        public List<AuditEntry> Recorded { get; } = [];
-
-        public Task WriteAsync(AuditEntry entry, CancellationToken ct)
-        {
-            Recorded.Add(entry);
-            return Task.CompletedTask;
-        }
     }
 }

@@ -10,13 +10,13 @@ namespace EclipsVault.Web.Authentication;
 /// <summary>
 /// Issues interactive session cookies. A sign-in gets a session only while the credentials its
 /// proof captured are still current, so a credential change or a sign-out everywhere during a
-/// sign-in ends that sign-in too. The trail records that outcome in the same step, before the
-/// cookie, so a proof that never becomes a session is not a sign-in. After a credential change the
-/// caller's session is replaced by a new one under the generation the change committed; the old
+/// sign-in ends that sign-in too. The trail records that outcome, a sign-in or a refusal, before
+/// the cookie, so a proof that never becomes a session is not a sign-in. After a credential change
+/// the caller's session is replaced by a new one under the generation the change committed; the old
 /// session is never renewed.
 /// </summary>
 public sealed class SessionIssuer(
-    IUserRepository users, ISessionRevocationService revocation, ISessionRegistry registry, IAuditSink audit, ILogger<SessionIssuer> logger)
+    IUserRepository users, ISessionRevocationService revocation, ISessionRegistry registry, IAuthenticationAttempt attempt, ILogger<SessionIssuer> logger)
 {
     /// <returns>
     /// False when the proof's credentials are no longer current. No session was issued, and the
@@ -24,20 +24,23 @@ public sealed class SessionIssuer(
     /// </returns>
     public async Task<bool> SignInAsync(HttpContext context, UserDto user, SessionStamp stamp, SignInAudit success, CancellationToken ct)
     {
-        if (!await HasCurrentGenerationAsync(user.Id, stamp.CredentialGeneration)
-            || await revocation.FindAsync(user.Id) != stamp.RevocationVersion)
+        var account = await users.FindByIdAsync(user.Id, ct);
+        if (account is null)
         {
-            // The factor already passed. The account changing afterwards is a refusal, not a sign-in.
-            await audit.WriteAsync(Outcome(user, AuditAction.SignInRefused, success.Details), ct);
             return false;
         }
 
-        // Durable before the cookie: a failed audit write never leaves a session behind.
-        await audit.WriteAsync(Outcome(user, success.Action, success.Details), ct);
-        // The row waited on the chain. A credential change in that wait must not be issued, and
-        // must not be treated as a session by the caller that lifts an intrusion block.
-        if (!await HasCurrentGenerationAsync(user.Id, stamp.CredentialGeneration)
-            || await revocation.FindAsync(user.Id) != stamp.RevocationVersion)
+        // Under the account's lock, so a credential change commits wholly before this outcome or after
+        // it. Not cancellable: an outcome that commits must also get its cookie.
+        var current = await attempt.RunAsync(account, async token =>
+        {
+            var stillCurrent = !account.IsDisabled
+                && account.CredentialGeneration == stamp.CredentialGeneration
+                && await revocation.FindAsync(user.Id, token) == stamp.RevocationVersion;
+            attempt.RecordUserEvent(stillCurrent ? success.Action : AuditAction.SignInRefused, account, success.Details);
+            return stillCurrent;
+        }, CancellationToken.None);
+        if (!current)
         {
             return false;
         }
@@ -82,17 +85,6 @@ public sealed class SessionIssuer(
         await RecordAsync(context, userId, sessionId, stamp with { CredentialGeneration = committedGeneration });
         return true;
     }
-
-    private static AuditEntry Outcome(UserDto user, AuditAction action, string? details) => new()
-    {
-        Action = action,
-        ResourceType = "User",
-        ResourceId = user.Id,
-        ActorUserId = user.Id,
-        ActorUsername = user.Username,
-        InheritActorUserId = false,
-        Details = details
-    };
 
     /// <summary>A sighting of the session <paramref name="sessionId"/> from this request, for the device list.</summary>
     public static SessionObservation ObservationOf(HttpContext context, Guid userId, Guid sessionId, SessionStamp stamp)

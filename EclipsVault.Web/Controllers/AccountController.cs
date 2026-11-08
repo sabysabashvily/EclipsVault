@@ -372,7 +372,7 @@ public sealed class AccountController : Controller
             return View(model);
         }
 
-        var finished = await new BreakGlassSignIn(_issuer, _blacklist, _audit, _logger)
+        var finished = await new BreakGlassSignIn(_issuer, _blacklist, _audit)
             .FinishAsync(HttpContext, user, stamp, sourceIp, ct);
         if (!finished.SessionIssued)
         {
