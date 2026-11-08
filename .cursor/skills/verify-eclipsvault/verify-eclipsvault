@@ -22,6 +22,10 @@ pid_from_state() {
   python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("pid") or "")' "$state"
 }
 
+dll_from_state() {
+  python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("dll") or "")' "$state"
+}
+
 psql() {
   local database="$1"
   shift
@@ -53,8 +57,11 @@ process_args() {
 
 our_process() {
   local pid="$1"
-  [[ -n "$pid" ]] || return 1
-  process_args "$pid" | grep -q 'EclipsVault.Web.dll'
+  local dll_path
+  [[ -n "$pid" && -f "$state" ]] || return 1
+  dll_path="$(dll_from_state)"
+  # The filename alone is shared by every build of this repo. Match the path recorded for this run.
+  [[ -n "$dll_path" ]] && process_args "$pid" | grep -F -q -- "$dll_path"
 }
 
 browser_process() {
@@ -175,7 +182,7 @@ doctor() {
   pid="$(pid_from_state)"
   database="$(database_name)"
   [[ "$database" =~ ^evverify[0-9a-f]{8}$ ]] || die "State names a database this skill did not create."
-  our_process "$pid" || die "Vault pid $pid is not the EclipsVault.Web.dll this run started."
+  our_process "$pid" || die "Vault pid $pid is not the dll recorded for this run."
   listener="$(listening_pid 7443 || true)"
   [[ "$listener" == "$pid" ]] || die "Port 7443 is owned by pid ${listener:-nobody}, not the verification vault pid $pid."
   local code
