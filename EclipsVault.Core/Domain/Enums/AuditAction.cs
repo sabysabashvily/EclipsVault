@@ -24,6 +24,13 @@ public enum AuditAction
     /// credentials were no longer the ones that proof was for. Not a sign-in.
     /// </summary>
     SignInRefused = 16,
+
+    /// <summary>
+    /// A sign-in factor passed and its bookkeeping (a spent authenticator step, a passkey counter,
+    /// a cleared failure count) committed with this row. Not a sign-in: the session is recorded
+    /// when it is issued.
+    /// </summary>
+    SignInFactorVerified = 17,
     HoneyTokenTripped = 20,
     SessionRevoked = 21,
     UserCreated = 30,

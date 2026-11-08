@@ -93,7 +93,7 @@ public sealed class ProfileAuditTests(VaultFixture vault)
         var signedIn = await SubmitAuthenticatorCodeAsync(browser.Client, NextCode(account.TotpSecret!));
 
         Assert.Equal(HttpStatusCode.Redirect, signedIn.StatusCode);
-        Assert.Equal([AuditAction.LoginSucceeded], await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
+        Assert.Equal([AuditAction.SignInFactorVerified, AuditAction.LoginSucceeded], await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
         Assert.NotEqual(account.LastTotpStep, (await ProfileHttp.AccountAsync(vault, "it-profile-sign-in")).LastTotpStep);
     }
 
@@ -135,7 +135,7 @@ public sealed class ProfileAuditTests(VaultFixture vault)
         Assert.Equal(1, (await ProfileHttp.AccountAsync(vault, "it-profile-replay")).FailedAccessCount);
         // The failed attempt commits on its own. The sign-in is recorded later, when the session is issued.
         var actions = await ProfileHttp.EventsAfterAsync(vault, before, account.Id);
-        Assert.Equal([AuditAction.LoginSucceeded, AuditAction.TotpFailed], actions.Order().ToArray());
+        Assert.Equal([AuditAction.LoginSucceeded, AuditAction.TotpFailed, AuditAction.SignInFactorVerified], actions.Order().ToArray());
     }
 
     [Fact]

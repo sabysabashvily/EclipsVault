@@ -111,10 +111,12 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
         Assert.Equal(0, stored.FailedAccessCount);
         Assert.Null(stored.LockedUntilUtc);
         Assert.Equal(2, Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id)).SignCount);
-        Assert.Empty(await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
+        Assert.Equal([AuditAction.SignInFactorVerified, AuditAction.SignInFactorVerified], await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
         Assert.True(await IssueAsync(first, firstOutcome));
         Assert.True(await IssueAsync(second, secondOutcome));
-        Assert.Equal([AuditAction.PasskeyLogin, AuditAction.PasskeyLogin], await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
+        Assert.Equal(
+            [AuditAction.SignInFactorVerified, AuditAction.SignInFactorVerified, AuditAction.PasskeyLogin, AuditAction.PasskeyLogin],
+            await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
     }
 
     [Fact]
@@ -208,9 +210,9 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
         Assert.True(outcome.Success);
         Assert.Equal(0, (await ProfileHttp.AccountAsync(vault, account.Username)).FailedAccessCount);
         Assert.Equal(1, Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id)).SignCount);
-        Assert.Empty(await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
+        Assert.Equal([AuditAction.SignInFactorVerified], await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
         Assert.True(await IssueAsync(request, outcome));
-        Assert.Equal([AuditAction.PasskeyLogin], await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
+        Assert.Equal([AuditAction.SignInFactorVerified, AuditAction.PasskeyLogin], await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
     }
 
     private static Task<bool> IssueAsync(IServiceScope scope, PasskeyAssertionResult outcome)

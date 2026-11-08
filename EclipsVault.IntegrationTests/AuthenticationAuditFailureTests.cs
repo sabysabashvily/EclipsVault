@@ -22,7 +22,7 @@ namespace EclipsVault.IntegrationTests;
 public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
 {
     [Fact]
-    public async Task A_refused_sign_in_outcome_issues_no_session()
+    public async Task A_refused_sign_in_event_preserves_the_authenticator_step_and_failures()
     {
         var vault = failure.Vault;
         await vault.SignInNewAccountAsync("it-ledger-totp", IPAddress.Parse("203.0.113.170"));
@@ -37,9 +37,36 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         await failure.RejectAuditWritesAsync();
         try
         {
-            // The step is the factor. Its sign-in is the outcome written at issuance, so a rejected
-            // outcome spends the step and still issues no session.
-            var proven = await auth.VerifyTotpAsync(account.Id, stamp, code, default);
+            await Assert.ThrowsAsync<AuditWriteFailedException>(() => auth.VerifyTotpAsync(account.Id, stamp, code, default));
+        }
+        finally
+        {
+            await failure.RestoreAuditWritesAsync();
+        }
+
+        await request.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().SaveChangesAsync();
+        var stored = await ProfileHttp.AccountAsync(vault, "it-ledger-totp");
+        Assert.Equal(account.LastTotpStep, stored.LastTotpStep);
+        Assert.Equal(2, stored.FailedAccessCount);
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
+        Assert.NotNull(await auth.VerifyTotpAsync(account.Id, stamp, code, default));
+    }
+
+    [Fact]
+    public async Task A_refused_sign_in_outcome_issues_no_session()
+    {
+        var vault = failure.Vault;
+        await vault.SignInNewAccountAsync("it-ledger-totp-outcome", IPAddress.Parse("203.0.113.177"));
+        var account = await ProfileHttp.AccountAsync(vault, "it-ledger-totp-outcome");
+        using var request = vault.Services.CreateScope();
+        var auth = request.ServiceProvider.GetRequiredService<IVaultAuthenticationService>();
+        var stamp = await CurrentStampAsync(vault, account);
+        var proven = await auth.VerifyTotpAsync(account.Id, stamp, Totp.Code(account.TotpSecret!, Totp.CurrentStep() + 1), default);
+        var before = await AuditTrail.HeadAsync(vault);
+
+        await failure.RejectAuditWritesAsync();
+        try
+        {
             var http = new DefaultHttpContext { RequestServices = request.ServiceProvider };
             await Assert.ThrowsAsync<AuditWriteFailedException>(() => request.ServiceProvider.GetRequiredService<SessionIssuer>()
                 .SignInAsync(http, proven!, stamp, new SignInAudit(AuditAction.LoginSucceeded, "Password + TOTP"), default));
@@ -50,11 +77,7 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
             await failure.RestoreAuditWritesAsync();
         }
 
-        await request.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().SaveChangesAsync();
-        var stored = await ProfileHttp.AccountAsync(vault, "it-ledger-totp");
-        Assert.NotEqual(account.LastTotpStep, stored.LastTotpStep);
-        Assert.Equal(0, stored.FailedAccessCount);
-        Assert.DoesNotContain(await AuditTrail.RowsAfterAsync(vault, before), row => row.Action == AuditAction.LoginSucceeded);
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
     [Fact]
@@ -188,7 +211,7 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
     }
 
     [Fact]
-    public async Task A_refused_passkey_outcome_issues_no_session()
+    public async Task A_refused_passkey_sign_in_preserves_its_counter_and_account_failures()
     {
         var vault = failure.Vault;
         var owner = await vault.SignInNewAccountAsync("it-ledger-passkey", IPAddress.Parse("203.0.113.175"));
@@ -206,11 +229,7 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         await failure.RejectAuditWritesAsync();
         try
         {
-            var proved = await passkeys.CompleteAssertionAsync(ceremony.Challenge, ceremony.NamedAccount, response, default);
-            var http = new DefaultHttpContext { RequestServices = request.ServiceProvider };
-            await Assert.ThrowsAsync<AuditWriteFailedException>(() => request.ServiceProvider.GetRequiredService<SessionIssuer>()
-                .SignInAsync(http, proved.User!, proved.Stamp!, new SignInAudit(AuditAction.PasskeyLogin, "Passwordless sign-in with a passkey"), default));
-            Assert.False(http.Response.Headers.ContainsKey("Set-Cookie"));
+            await Assert.ThrowsAsync<AuditWriteFailedException>(() => passkeys.CompleteAssertionAsync(ceremony.Challenge, ceremony.NamedAccount, response, default));
         }
         finally
         {
@@ -218,9 +237,9 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         }
 
         await request.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().SaveChangesAsync();
-        Assert.NotEqual(key.SignCount, Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id)).SignCount);
-        Assert.Equal(0, (await ProfileHttp.AccountAsync(vault, "it-ledger-passkey")).FailedAccessCount);
-        Assert.DoesNotContain(await AuditTrail.RowsAfterAsync(vault, before), row => row.Action == AuditAction.PasskeyLogin);
+        Assert.Equal(key.SignCount, Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id)).SignCount);
+        Assert.Equal(2, (await ProfileHttp.AccountAsync(vault, "it-ledger-passkey")).FailedAccessCount);
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
     [Fact]

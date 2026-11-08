@@ -38,6 +38,7 @@ public static class ActivityDescriber
         AuditAction.LoginFailed => new(ActivityCategory.Authentication, "A sign-in attempt failed", ActivitySeverity.Notable),
         AuditAction.TotpFailed => new(ActivityCategory.Authentication, "A two-factor code was rejected", ActivitySeverity.Notable),
         AuditAction.SignInRefused => new(ActivityCategory.Authentication, "Sign-in refused", ActivitySeverity.Notable),
+        AuditAction.SignInFactorVerified => new(ActivityCategory.Authentication, "Proved a sign-in factor", ActivitySeverity.Routine),
         AuditAction.PasskeyLogin => new(ActivityCategory.Authentication, "Signed in with a passkey", ActivitySeverity.Routine),
         AuditAction.RecoveryCodeUsed => new(ActivityCategory.Authentication, "Used a recovery code", ActivitySeverity.Notable),
 

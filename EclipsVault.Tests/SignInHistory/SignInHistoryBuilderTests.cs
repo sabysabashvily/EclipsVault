@@ -47,6 +47,13 @@ public class SignInHistoryBuilderTests
     }
 
     [Fact]
+    public void A_verified_factor_is_not_a_sign_in_and_stays_out_of_the_history()
+    {
+        Assert.Null(SignInEventClassifier.Classify(AuditAction.SignInFactorVerified));
+        Assert.DoesNotContain(AuditAction.SignInFactorVerified, SignInEventClassifier.RelevantActions);
+    }
+
+    [Fact]
     public void Profile_account_verification_is_not_a_sign_in_and_never_makes_an_address_familiar()
     {
         var history = SignInHistoryBuilder.Build(

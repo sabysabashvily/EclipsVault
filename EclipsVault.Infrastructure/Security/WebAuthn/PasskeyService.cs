@@ -336,7 +336,8 @@ public sealed class PasskeyService : IPasskeyService
             }
 
             await _failures.ResetAsync(user, token);
-            // The passkey is proved here. The session outcome is recorded when the session is issued.
+            // The sign-in itself is recorded when the session is issued.
+            _attempt.RecordUserEvent(AuditAction.SignInFactorVerified, user, "Passkey assertion accepted");
             return PasskeyAssertionResult.Succeeded(Map(user), new SessionStamp(credentialGeneration, revocationVersion));
         }, ct);
     }
