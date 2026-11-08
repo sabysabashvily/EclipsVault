@@ -40,7 +40,7 @@ public sealed class BreakGlassSignInTests
     }
 
     [Fact]
-    public async Task An_issued_session_records_the_recovery_and_then_lifts_the_block()
+    public async Task An_issued_session_authorizes_the_lift_then_lifts_the_block_and_records_it()
     {
         var account = new User { Id = Guid.NewGuid(), Username = "glass", CredentialGeneration = 1 };
         var revocation = new InMemorySessionRevocationService(NullLogger<InMemorySessionRevocationService>.Instance);
@@ -55,9 +55,26 @@ public sealed class BreakGlassSignInTests
         Assert.True(finished.SessionIssued);
         Assert.True(finished.BlockLifted);
         Assert.False(blacklist.Blocked);
-        var recovery = Assert.Single(audit.Recorded);
-        Assert.Equal("Break-glass recovery from 198.18.93.9; block lifted: True", recovery.Details);
-        Assert.True(audit.BlockedWhenRecorded);
+        Assert.Equal([AuditAction.BreakGlassRecovery, AuditAction.IpRangeUnblocked], audit.Recorded.Select(entry => entry.Action));
+        Assert.Equal([true, false], audit.BlockedAtEachWrite);
+        Assert.Equal("198.18.93.9", audit.Recorded[1].ResourceName);
+    }
+
+    [Fact]
+    public async Task An_unblocked_address_records_the_recovery_and_no_lift()
+    {
+        var account = new User { Id = Guid.NewGuid(), Username = "glass", CredentialGeneration = 1 };
+        var revocation = new InMemorySessionRevocationService(NullLogger<InMemorySessionRevocationService>.Instance);
+        var stamp = new SessionStamp(1, await revocation.CaptureAsync(account.Id));
+        var blacklist = new FakeBlacklist { Blocked = false };
+        var audit = new RecordingAudit { Blacklist = blacklist };
+
+        var finished = await Finish(account, revocation, blacklist, new RecordingAttempt(), audit)
+            .FinishAsync(Context(), UserDto.From(account), stamp, IPAddress.Parse("198.18.93.9"), default);
+
+        Assert.True(finished.SessionIssued);
+        Assert.False(finished.BlockLifted);
+        Assert.Equal(AuditAction.BreakGlassRecovery, Assert.Single(audit.Recorded).Action);
     }
 
     [Fact]
@@ -111,7 +128,7 @@ public sealed class BreakGlassSignInTests
         public List<AuditEntry> Recorded { get; } = [];
         public bool RejectRecovery { get; init; }
         public FakeBlacklist? Blacklist { get; init; }
-        public bool BlockedWhenRecorded { get; private set; }
+        public List<bool> BlockedAtEachWrite { get; } = [];
 
         public Task WriteAsync(AuditEntry entry, CancellationToken ct)
         {
@@ -120,7 +137,7 @@ public sealed class BreakGlassSignInTests
                 throw new AuditWriteFailedException("The audit store is unavailable.");
             }
 
-            BlockedWhenRecorded = Blacklist?.Blocked ?? false;
+            BlockedAtEachWrite.Add(Blacklist?.Blocked ?? false);
             Recorded.Add(entry);
             return Task.CompletedTask;
         }

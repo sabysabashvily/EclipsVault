@@ -71,12 +71,21 @@ public sealed class SignInRefusalAuditTests(VaultFixture vault)
             await release.Task;
             return true;
         }, default);
-        await holding.Task;
         var http = new DefaultHttpContext { RequestServices = proof.ServiceProvider };
-        var issuing = IssueAsync(proof.ServiceProvider, http, proven!, passwordStage.Stamp!, "Password + TOTP");
-        // Long enough for issuance to read the account and reach the lock the change holds.
-        await Task.Delay(TimeSpan.FromSeconds(1));
-        release.SetResult();
+        Task<bool> issuing;
+        try
+        {
+            await holding.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            issuing = IssueAsync(proof.ServiceProvider, http, proven!, passwordStage.Stamp!, "Password + TOTP");
+            // Long enough for issuance to read the account and reach the lock the change holds. If it
+            // gets there later, it still sees the committed change, so the outcome below cannot differ.
+            await Task.Delay(TimeSpan.FromSeconds(1));
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+
         await changing;
 
         Assert.False(await issuing);
@@ -148,6 +157,8 @@ public sealed class SignInRefusalAuditTests(VaultFixture vault)
         Assert.Contains(AuditAction.LoginSucceeded, actions);
         Assert.Contains(AuditAction.BreakGlassRecovery, actions);
         Assert.DoesNotContain(AuditAction.SignInRefused, actions);
+        Assert.Contains(await AuditTrail.RowsAfterAsync(vault, before),
+            row => row.Action == AuditAction.IpRangeUnblocked && row.ResourceName == source.ToString());
     }
 
     [Fact]

@@ -8,7 +8,8 @@ public readonly record struct BreakGlassFinish(bool SessionIssued, bool BlockLif
 
 /// <summary>
 /// Break-glass lifts a block only after a session exists, and only after the recovery row that
-/// records the lift has committed. It never records a recovery for a sign-in that got no session.
+/// authorizes the lift has committed. A lift that happens then gets its own row. It never records
+/// a recovery for a sign-in that got no session.
 /// </summary>
 public sealed class BreakGlassSignIn(SessionIssuer issuer, IIpBlacklist blacklist, IAuditSink audit)
 {
@@ -20,21 +21,35 @@ public sealed class BreakGlassSignIn(SessionIssuer issuer, IIpBlacklist blacklis
             return new BreakGlassFinish(false, false);
         }
 
-        var blocked = source is not null && await blacklist.IsBlockedAsync(source, ct);
-        // The row comes first, so a lift never stands without it. Not cancellable: a row that commits
-        // after a cancelled wait would record a lift that never ran.
-        await audit.WriteAsync(Recovery(user, source, blocked), CancellationToken.None);
-        var lifted = blocked && await blacklist.UnblockAddressAsync(source!, CancellationToken.None);
-        return new BreakGlassFinish(true, lifted);
+        // The authorization comes first, so a lift never stands without a row. Not cancellable: a row
+        // that commits after a cancelled wait would authorize a lift that never ran.
+        await audit.WriteAsync(Recovery(user, source), CancellationToken.None);
+        if (source is null || !await blacklist.UnblockAddressAsync(source, CancellationToken.None))
+        {
+            return new BreakGlassFinish(true, false);
+        }
+
+        await audit.WriteAsync(Lift(user, source), CancellationToken.None);
+        return new BreakGlassFinish(true, true);
     }
 
-    private static AuditEntry Recovery(UserDto user, IPAddress? source, bool lifting) => new()
+    private static AuditEntry Recovery(UserDto user, IPAddress? source) => new()
     {
         Action = AuditAction.BreakGlassRecovery,
         ResourceType = "User",
         ResourceId = user.Id,
         ActorUserId = user.Id,
         ActorUsername = user.Username,
-        Details = $"Break-glass recovery from {source}; block lifted: {lifting}"
+        Details = $"Break-glass recovery from {source}; lifting any intrusion block on it"
+    };
+
+    private static AuditEntry Lift(UserDto user, IPAddress source) => new()
+    {
+        Action = AuditAction.IpRangeUnblocked,
+        ResourceType = "TrustedNetwork",
+        ResourceName = source.ToString(),
+        ActorUserId = user.Id,
+        ActorUsername = user.Username,
+        Details = "Intrusion-defence block lifted by break-glass recovery"
     };
 }
