@@ -133,7 +133,9 @@ public sealed class ProfileAuditTests(VaultFixture vault)
         Assert.Single(outcomes, outcome => outcome.StatusCode == HttpStatusCode.Redirect);
         Assert.Single(outcomes, outcome => outcome.StatusCode == HttpStatusCode.OK);
         Assert.Equal(1, (await ProfileHttp.AccountAsync(vault, "it-profile-replay")).FailedAccessCount);
-        Assert.Equal([AuditAction.LoginSucceeded, AuditAction.TotpFailed], await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
+        // The failed attempt commits on its own. The sign-in is recorded later, when the session is issued.
+        var actions = await ProfileHttp.EventsAfterAsync(vault, before, account.Id);
+        Assert.Equal([AuditAction.LoginSucceeded, AuditAction.TotpFailed], actions.Order().ToArray());
     }
 
     [Fact]

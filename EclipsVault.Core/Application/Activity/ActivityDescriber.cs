@@ -37,8 +37,9 @@ public static class ActivityDescriber
         AuditAction.LoginSucceeded => new(ActivityCategory.Authentication, "Signed in", ActivitySeverity.Routine),
         AuditAction.LoginFailed => new(ActivityCategory.Authentication, "A sign-in attempt failed", ActivitySeverity.Notable),
         AuditAction.TotpFailed => new(ActivityCategory.Authentication, "A two-factor code was rejected", ActivitySeverity.Notable),
+        AuditAction.SignInRefused => new(ActivityCategory.Authentication, "Sign-in refused", ActivitySeverity.Notable),
         AuditAction.PasskeyLogin => new(ActivityCategory.Authentication, "Signed in with a passkey", ActivitySeverity.Routine),
-        AuditAction.RecoveryCodeUsed => new(ActivityCategory.Authentication, "Signed in with a recovery code", ActivitySeverity.Notable),
+        AuditAction.RecoveryCodeUsed => new(ActivityCategory.Authentication, "Used a recovery code", ActivitySeverity.Notable),
 
         // --- Account & self-service --------------------------------------------------
         AuditAction.TotpEnrolled => new(ActivityCategory.Account, "Set up your authenticator", ActivitySeverity.Notable),

@@ -336,7 +336,7 @@ public sealed class PasskeyService : IPasskeyService
             }
 
             await _failures.ResetAsync(user, token);
-            _attempt.RecordUserEvent(AuditAction.PasskeyLogin, user, "Passwordless sign-in with a passkey");
+            // The passkey is proved here. The session outcome is recorded when the session is issued.
             return PasskeyAssertionResult.Succeeded(Map(user), new SessionStamp(credentialGeneration, revocationVersion));
         }, ct);
     }

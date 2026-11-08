@@ -114,8 +114,8 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         using (var activity = JsonDocument.Parse(bResponses[0]))
         {
             AssertActivity(activity.RootElement, 6,
-                ["Signed in", "Signed in with a recovery code", "Signed in", "Signed in with a recovery code",
-                 "Signed in", "Signed in with a recovery code", "Generated new recovery codes", "Verified your account for a security change", "A sign-in attempt failed",
+                ["Signed in", "Used a recovery code", "Signed in", "Used a recovery code",
+                 "Signed in", "Used a recovery code", "Generated new recovery codes", "Verified your account for a security change", "A sign-in attempt failed",
                  "Signed in", "Set up your authenticator"],
                 [bOtherAddress, bOtherAddress, bOtherAddress, bOtherAddress, bOtherAddress, bOtherAddress,
                  bAddress, bAddress, bFailedAddress, bAddress, bAddress]);
@@ -130,10 +130,11 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         }
         using (var history = JsonDocument.Parse(bResponses[1]))
         {
-            AssertSummary(history.RootElement, 7, 1, 1, 3, needsAttention: true, lastFailureKind: JsonValueKind.String);
+            // A recovery code is spent whether or not a session follows, so it is not itself a sign-in.
+            AssertSummary(history.RootElement, 4, 1, 1, 3, needsAttention: true, lastFailureKind: JsonValueKind.String);
             var events = history.RootElement.GetProperty("events").EnumerateArray().ToArray();
             Assert.Equal(8, events.Length);
-            Assert.Equal(3, events.Count(e => e.GetProperty("title").GetString() == "Signed in with a recovery code"));
+            Assert.Equal(3, events.Count(e => e.GetProperty("title").GetString() == "Used a recovery code"));
             Assert.Equal(6, events.Count(e => e.GetProperty("sourceIp").GetString() == bOtherAddress));
             var failed = Assert.Single(events, e => e.GetProperty("outcome").GetString() == "Failed");
             Assert.Equal("Sign-in attempt failed", failed.GetProperty("title").GetString());

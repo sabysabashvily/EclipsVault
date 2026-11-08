@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Extensions;
 using Microsoft.AspNetCore.Authentication;
@@ -7,16 +8,34 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 namespace EclipsVault.Web.Authentication;
 
 /// <summary>
-/// Issues interactive session cookies. A sign-in gets a session only while the revocation version its
-/// proof captured is still the account's current one, so signing out everywhere during a sign-in ends
-/// that sign-in too. After a credential change the caller's session is replaced by a new one under the
-/// generation the change committed; the old session is never renewed.
+/// Issues interactive session cookies. A sign-in gets a session only while the credentials its
+/// proof captured are still current, so a credential change or a sign-out everywhere during a
+/// sign-in ends that sign-in too. The trail records that outcome in the same step, before the
+/// cookie, so a proof that never becomes a session is not a sign-in. After a credential change the
+/// caller's session is replaced by a new one under the generation the change committed; the old
+/// session is never renewed.
 /// </summary>
-public sealed class SessionIssuer(IUserRepository users, ISessionRevocationService revocation, ISessionRegistry registry, ILogger<SessionIssuer> logger)
+public sealed class SessionIssuer(
+    IUserRepository users, ISessionRevocationService revocation, ISessionRegistry registry, IAuditSink audit, ILogger<SessionIssuer> logger)
 {
-    /// <returns>False when the account was signed out everywhere after the proof began; then no session was issued.</returns>
-    public async Task<bool> SignInAsync(HttpContext context, UserDto user, SessionStamp stamp)
+    /// <returns>
+    /// False when the proof's credentials are no longer current. No session was issued, and the
+    /// trail records a refusal instead of the sign-in.
+    /// </returns>
+    public async Task<bool> SignInAsync(HttpContext context, UserDto user, SessionStamp stamp, SignInAudit success, CancellationToken ct)
     {
+        if (!await HasCurrentGenerationAsync(user.Id, stamp.CredentialGeneration)
+            || await revocation.FindAsync(user.Id) != stamp.RevocationVersion)
+        {
+            // The factor already passed. The account changing afterwards is a refusal, not a sign-in.
+            await audit.WriteAsync(Outcome(user, AuditAction.SignInRefused, success.Details), ct);
+            return false;
+        }
+
+        // Durable before the cookie: a failed audit write never leaves a session behind.
+        await audit.WriteAsync(Outcome(user, success.Action, success.Details), ct);
+        // The row waited on the chain. A credential change in that wait must not be issued, and
+        // must not be treated as a session by the caller that lifts an intrusion block.
         if (!await HasCurrentGenerationAsync(user.Id, stamp.CredentialGeneration)
             || await revocation.FindAsync(user.Id) != stamp.RevocationVersion)
         {
@@ -63,6 +82,17 @@ public sealed class SessionIssuer(IUserRepository users, ISessionRevocationServi
         await RecordAsync(context, userId, sessionId, stamp with { CredentialGeneration = committedGeneration });
         return true;
     }
+
+    private static AuditEntry Outcome(UserDto user, AuditAction action, string? details) => new()
+    {
+        Action = action,
+        ResourceType = "User",
+        ResourceId = user.Id,
+        ActorUserId = user.Id,
+        ActorUsername = user.Username,
+        InheritActorUserId = false,
+        Details = details
+    };
 
     /// <summary>A sighting of the session <paramref name="sessionId"/> from this request, for the device list.</summary>
     public static SessionObservation ObservationOf(HttpContext context, Guid userId, Guid sessionId, SessionStamp stamp)

@@ -18,6 +18,12 @@ public enum AuditAction
     LoginSucceeded = 11,
     TotpFailed = 12,
     TotpEnrolled = 13,
+
+    /// <summary>
+    /// A sign-in proved a factor and then was refused a session, because the account's
+    /// credentials were no longer the ones that proof was for. Not a sign-in.
+    /// </summary>
+    SignInRefused = 16,
     HoneyTokenTripped = 20,
     SessionRevoked = 21,
     UserCreated = 30,

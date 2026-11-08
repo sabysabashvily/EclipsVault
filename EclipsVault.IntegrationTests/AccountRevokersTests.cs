@@ -263,7 +263,8 @@ public abstract class AccountRevokersTests(VaultFixture vault)
         }
         var http = new DefaultHttpContext { RequestServices = proofRequest.ServiceProvider };
 
-        Assert.False(await proofRequest.ServiceProvider.GetRequiredService<SessionIssuer>().SignInAsync(http, proven!, passwordStage.Stamp!));
+        Assert.False(await proofRequest.ServiceProvider.GetRequiredService<SessionIssuer>().SignInAsync(
+            http, proven!, passwordStage.Stamp!, new SignInAudit(AuditAction.LoginSucceeded, "Password + TOTP"), default));
 
         Assert.False(http.Response.Headers.ContainsKey("Set-Cookie"));
     }

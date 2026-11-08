@@ -2,8 +2,11 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using EclipsVault.Core.Application.Abstractions;
+using EclipsVault.Core.Application.Passkeys;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
+using EclipsVault.Web.Authentication;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -108,6 +111,9 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
         Assert.Equal(0, stored.FailedAccessCount);
         Assert.Null(stored.LockedUntilUtc);
         Assert.Equal(2, Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id)).SignCount);
+        Assert.Empty(await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
+        Assert.True(await IssueAsync(first, firstOutcome));
+        Assert.True(await IssueAsync(second, secondOutcome));
         Assert.Equal([AuditAction.PasskeyLogin, AuditAction.PasskeyLogin], await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
     }
 
@@ -202,7 +208,16 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
         Assert.True(outcome.Success);
         Assert.Equal(0, (await ProfileHttp.AccountAsync(vault, account.Username)).FailedAccessCount);
         Assert.Equal(1, Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id)).SignCount);
+        Assert.Empty(await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
+        Assert.True(await IssueAsync(request, outcome));
         Assert.Equal([AuditAction.PasskeyLogin], await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
+    }
+
+    private static Task<bool> IssueAsync(IServiceScope scope, PasskeyAssertionResult outcome)
+    {
+        var http = new DefaultHttpContext { RequestServices = scope.ServiceProvider };
+        return scope.ServiceProvider.GetRequiredService<SessionIssuer>().SignInAsync(
+            http, outcome.User!, outcome.Stamp!, new SignInAudit(AuditAction.PasskeyLogin, "Passwordless sign-in with a passkey"), default);
     }
 
     private static async Task<JsonElement> PostSignInJsonAsync(HttpClient client, string path, string page, object body)

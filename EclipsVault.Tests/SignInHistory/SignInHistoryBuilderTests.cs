@@ -35,6 +35,12 @@ public class SignInHistoryBuilderTests
         Assert.All(SignInEventClassifier.RelevantActions,
             action => Assert.NotNull(SignInEventClassifier.Classify(action)));
 
+        var refused = SignInEventClassifier.Classify(AuditAction.SignInRefused);
+        Assert.Equal(SignInOutcome.Failed, refused!.Outcome);
+        var spent = SignInEventClassifier.Classify(AuditAction.RecoveryCodeUsed);
+        Assert.Equal(SignInOutcome.Info, spent!.Outcome);
+        Assert.Equal("Used a recovery code", spent.Title);
+
         Assert.Null(SignInEventClassifier.Classify(AuditAction.SecretRevealed));
         Assert.Null(SignInEventClassifier.Classify(AuditAction.ProfileUpdated));
         Assert.Null(SignInEventClassifier.Classify(AuditAction.SessionRevokedByUser));

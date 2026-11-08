@@ -20,6 +20,7 @@ public static class SignInEventClassifier
         AuditAction.LoginSucceeded,
         AuditAction.LoginFailed,
         AuditAction.TotpFailed,
+        AuditAction.SignInRefused,
         AuditAction.PasskeyLogin,
         AuditAction.RecoveryCodeUsed,
         AuditAction.StepUpVerified,
@@ -33,7 +34,9 @@ public static class SignInEventClassifier
     {
         AuditAction.LoginSucceeded => new(SignInOutcome.Success, SignInMethod.Password, "Signed in"),
         AuditAction.PasskeyLogin => new(SignInOutcome.Success, SignInMethod.Passkey, "Signed in with a passkey"),
-        AuditAction.RecoveryCodeUsed => new(SignInOutcome.Success, SignInMethod.RecoveryCode, "Signed in with a recovery code"),
+        // The code was spent. That is not a session: LoginSucceeded is the sign-in.
+        AuditAction.RecoveryCodeUsed => new(SignInOutcome.Info, SignInMethod.RecoveryCode, "Used a recovery code"),
+        AuditAction.SignInRefused => new(SignInOutcome.Failed, SignInMethod.System, "Sign-in refused"),
         AuditAction.StepUpVerified => new(SignInOutcome.Success, SignInMethod.StepUp, "Re-authenticated for a sensitive action"),
 
         AuditAction.LoginFailed => new(SignInOutcome.Failed, SignInMethod.Password, "Sign-in attempt failed"),
