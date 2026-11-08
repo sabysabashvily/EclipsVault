@@ -65,7 +65,7 @@ Mocks are not used. Mailpit, Redis, Keycloak, and HashiCorp Vault are not starte
 
 Cleanup stops the Chromium session and the vault pid this run started, then drops only the `evverify…` database. It does not stop PostgreSQL, and it does not delete `logs/verify/evidence`.
 
-The browser daemon exits on its own after 30 minutes with no request. On that idle exit it first stops the vault pid recorded in `logs/verify/instance/state.json`, and only when that process's command line contains the exact `dll` path stored there. It then closes Chromium and exits. Idle exit does not drop the database or remove `logs/verify/instance`; run cleanup afterwards so the next launch is not blocked by the leftover directory.
+The browser daemon starts at launch and exits on its own after 30 minutes with no request, so a vault nobody signs in to stops too. On that idle exit it first stops the vault pid recorded in `logs/verify/instance/state.json`, and only when that process's command line contains the exact `dll` path stored there. It then closes Chromium and exits. Idle exit does not drop the database or remove `logs/verify/instance`; run cleanup afterwards so the next launch is not blocked by the leftover directory.
 
 ```bash
 .cursor/skills/verify-eclipsvault/verify-eclipsvault cleanup

@@ -345,6 +345,9 @@ const [command, ...rest] = process.argv.slice(2);
 try {
   if (command === 'daemon') {
     await serve();
+  } else if (command === 'start') {
+    // Launch starts the session so its idle timer also covers a vault nobody signs in to.
+    if (!(await daemonAlive())) await startDaemon();
   } else {
     if (!(await daemonAlive())) await startDaemon();
     const request = command === 'sign-in' ? { action: 'sign-in' } : requestFromArgs(rest);

@@ -167,6 +167,8 @@ PY
     code="$(curl -sk -o "$instance/login.body" -w '%{http_code}' "$base_url/Account/Login" || true)"
     if [[ "$code" == "200" ]] && grep -q 'Sign in' "$instance/login.body"; then
       rm -f "$instance/login.body"
+      VERIFY_ROOT="$root" node "$root/.cursor/skills/verify-eclipsvault/browser.mjs" start \
+        || die "The browser session did not start. Run cleanup, then launch again."
       printf 'launched %s pid %s database %s\n' "$base_url" "$vault_pid" "$database"
       return
     fi
