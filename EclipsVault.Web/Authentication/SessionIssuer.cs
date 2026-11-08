@@ -34,7 +34,9 @@ public sealed class SessionIssuer(
         // it. Not cancellable: an outcome that commits must also get its cookie.
         var current = await attempt.RunAsync(account, async token =>
         {
-            var stillCurrent = !account.IsDisabled
+            // The attempt's reload detaches an account deleted while issuance waited for its lock.
+            var stillCurrent = await users.ReloadAsync(account, token)
+                && !account.IsDisabled
                 && account.CredentialGeneration == stamp.CredentialGeneration
                 && await revocation.FindAsync(user.Id, token) == stamp.RevocationVersion;
             attempt.RecordUserEvent(stillCurrent ? success.Action : AuditAction.SignInRefused, account, success.Details);

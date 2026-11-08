@@ -40,6 +40,24 @@ public sealed class SessionIssuerTests
     }
 
     [Fact]
+    public async Task An_account_deleted_while_issuance_waits_for_it_records_a_refusal_and_no_session()
+    {
+        var account = new User { Id = Guid.NewGuid(), Username = "deleted", CredentialGeneration = 1 };
+        var revocation = NewRevocation();
+        var stamp = new SessionStamp(1, await revocation.CaptureAsync(account.Id));
+        var authentication = new RecordingAuthentication();
+        var attempt = new RecordingAttempt();
+        var issuer = new SessionIssuer(new SessionAccountStore(account) { Deleted = true }, revocation,
+            new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance, TimeProvider.System),
+            attempt, NullLogger<SessionIssuer>.Instance);
+
+        Assert.False(await issuer.SignInAsync(Context(authentication), UserDto.From(account), stamp, TotpSignIn, default));
+
+        Assert.Null(authentication.Issued);
+        Assert.Equal(AuditAction.SignInRefused, Assert.Single(attempt.Recorded).Action);
+    }
+
+    [Fact]
     public async Task Revocation_after_loading_a_role_snapshot_prevents_issuing_it_under_a_newer_version()
     {
         var account = new User { Id = Guid.NewGuid() };
