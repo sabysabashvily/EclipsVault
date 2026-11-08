@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using EclipsVault.Infrastructure.Persistence;
@@ -15,6 +17,8 @@ namespace EclipsVault.IntegrationTests;
 internal static class ProofDisclosure
 {
     private static readonly string LogFolder = Path.Combine(AppContext.BaseDirectory, "logs");
+
+    private static readonly DateTimeOffset ProcessStarted = new(Process.GetCurrentProcess().StartTime);
 
     /// <summary>
     /// Fails when any of <paramref name="secrets"/> appears in an audit row after <paramref name="sequence"/>,
@@ -63,31 +67,70 @@ internal static class ProofDisclosure
             $@"(?<![A-Za-z0-9])(?<![0-9]\.){Regex.Escape(secret)}(?!\.[0-9])(?![A-Za-z0-9])");
     }
 
-    private static async Task<string> ReadLogsAsync()
+    internal static bool LogFileWasWrittenDuringThisRun(DateTime lastWriteUtc, DateTimeOffset started)
+        => lastWriteUtc >= started.UtcDateTime;
+
+    internal static string LogTextFromThisRun(string raw, DateTimeOffset started)
     {
+        var lines = raw.Split('\n');
         var contents = new List<string>();
-        foreach (var file in Directory.EnumerateFiles(LogFolder, "*.clef"))
+        for (var i = 0; i < lines.Length; i++)
         {
-            // The vault keeps writing while the test reads.
-            await using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            using var reader = new StreamReader(stream);
-            var raw = await reader.ReadToEndAsync();
-            contents.Add(raw);
-            foreach (var line in raw.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            var line = lines[i].TrimEnd('\r');
+            if (line.Length == 0)
+                continue;
+
+            var unfinished = i == lines.Length - 1 && !raw.EndsWith('\n') && !raw.EndsWith('\r');
+            try
             {
-                try
-                {
-                    using var document = JsonDocument.Parse(line);
-                    contents.AddRange(StringValues(document.RootElement));
-                }
-                catch (JsonException)
-                {
-                    // A concurrently written final line may be incomplete; the raw text is still checked.
-                }
+                using var document = JsonDocument.Parse(line);
+                if (!WrittenAtOrAfter(document.RootElement, started))
+                    continue;
+
+                contents.Add(line);
+                contents.AddRange(StringValues(document.RootElement));
+            }
+            catch (JsonException)
+            {
+                if (!unfinished)
+                    continue;
+
+                // A concurrently written final line may be incomplete; the raw text is still checked.
+                contents.Add(line);
             }
         }
 
         return string.Join('\n', contents);
+    }
+
+    private static async Task<string> ReadLogsAsync()
+    {
+        // Daily files stay for two weeks, and today's file keeps earlier runs.
+        var contents = new List<string>();
+        foreach (var file in Directory.EnumerateFiles(LogFolder, "*.clef"))
+        {
+            if (!LogFileWasWrittenDuringThisRun(File.GetLastWriteTimeUtc(file), ProcessStarted))
+                continue;
+
+            // The vault keeps writing while the test reads.
+            await using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+            var text = LogTextFromThisRun(await reader.ReadToEndAsync(), ProcessStarted);
+            if (text.Length > 0)
+                contents.Add(text);
+        }
+
+        return string.Join('\n', contents);
+    }
+
+    private static bool WrittenAtOrAfter(JsonElement value, DateTimeOffset started)
+    {
+        if (!value.TryGetProperty("@t", out var stamp) || stamp.ValueKind != JsonValueKind.String)
+            return false;
+
+        return DateTimeOffset.TryParse(
+                stamp.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var written)
+            && written >= started;
     }
 
     private static IEnumerable<string> StringValues(JsonElement value) => value.ValueKind switch
