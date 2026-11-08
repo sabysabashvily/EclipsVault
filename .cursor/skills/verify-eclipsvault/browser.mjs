@@ -191,6 +191,55 @@ function requestFromArgs(args) {
   return request;
 }
 
+async function processCommandLine(pid) {
+  try {
+    const raw = await readFile(`/proc/${pid}/cmdline`);
+    return raw.toString('utf8').replaceAll('\0', ' ');
+  } catch {
+    return new Promise((resolveLine) => {
+      const child = spawn('ps', ['-p', String(pid), '-o', 'args='], { stdio: ['ignore', 'pipe', 'ignore'] });
+      let output = '';
+      child.stdout?.on('data', (chunk) => {
+        output += chunk;
+      });
+      child.on('close', () => resolveLine(output));
+      child.on('error', () => resolveLine(''));
+    });
+  }
+}
+
+async function stopRecordedVault() {
+  let state;
+  try {
+    state = JSON.parse(await readFile(resolve(instance, 'state.json'), 'utf8'));
+  } catch {
+    return;
+  }
+  const pid = Number(state.pid);
+  const dll = state.dll;
+  if (!Number.isInteger(pid) || pid <= 0 || typeof dll !== 'string' || dll.length === 0) return;
+  const commandLine = await processCommandLine(pid);
+  if (!commandLine.includes(dll)) return;
+  try {
+    process.kill(pid, 'SIGTERM');
+  } catch {
+    return;
+  }
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await new Promise((resolveWait) => setTimeout(resolveWait, 250));
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return;
+    }
+  }
+  try {
+    process.kill(pid, 'SIGKILL');
+  } catch {
+    // It exited between the check and this signal.
+  }
+}
+
 async function serve() {
   try {
     unlinkSync(socketPath);
@@ -198,7 +247,27 @@ async function serve() {
     // No stale socket from an earlier session.
   }
   await writeFile(pidPath, String(process.pid));
-  const server = createServer((connection) => {
+  const idleMs = 30 * 60 * 1000;
+  let idleTimer;
+  let activeRequests = 0;
+  let closing = false;
+  let server;
+  const armIdle = () => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      if (activeRequests === 0) void shutDown({ stopVault: true });
+    }, idleMs);
+  };
+  const shutDown = async ({ stopVault }) => {
+    if (closing) return;
+    closing = true;
+    clearTimeout(idleTimer);
+    if (stopVault) await stopRecordedVault();
+    await browser?.close().catch(() => {});
+    server.close();
+    process.exit(0);
+  };
+  server = createServer((connection) => {
     let body = '';
     connection.on('data', (chunk) => {
       body += chunk;
@@ -206,23 +275,26 @@ async function serve() {
       if (newline < 0) return;
       const line = body.slice(0, newline);
       body = body.slice(newline + 1);
-      handle(JSON.parse(line))
+      activeRequests += 1;
+      clearTimeout(idleTimer);
+      Promise.resolve()
+        .then(() => handle(JSON.parse(line)))
         .then((message) => connection.end(`${JSON.stringify({ ok: true, message })}\n`))
         .catch((error) => {
           const message = error instanceof Error ? error.message : String(error);
           connection.end(`${JSON.stringify({ ok: false, message })}\n`);
+        })
+        .finally(() => {
+          activeRequests -= 1;
+          if (!closing && activeRequests === 0) armIdle();
         });
     });
   });
   server.listen(socketPath);
   await new Promise((resolveListen) => server.on('listening', resolveListen));
-  const close = async () => {
-    await browser?.close().catch(() => {});
-    server.close();
-    process.exit(0);
-  };
-  process.on('SIGTERM', close);
-  process.on('SIGINT', close);
+  armIdle();
+  process.on('SIGTERM', () => void shutDown({ stopVault: false }));
+  process.on('SIGINT', () => void shutDown({ stopVault: false }));
 }
 
 function daemonAlive() {
