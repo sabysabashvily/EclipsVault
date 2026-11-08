@@ -655,3 +655,39 @@ inspection. Lost Redis replies and cross-store concurrency remain limitations. N
 commercial/legal or licensing-policy change was made. All writer nodes need the new code before
 relying on compensation. The handoff returns exclusive checkout ownership to the coordinator through
 the supported thread tool. It adds no delivery authorization and starts no later ticket.
+
+
+## Delivery: Part 5b ticket 2 (#114)
+
+Networks is served by the Angular UI at `/Admin/Networks` under `AdminOnly`, through
+`/api/ui/networks` (list, trust the current address, add, remove, lift a block). The Legacy page,
+its `AdminController` actions, view and view models are gone, and so is the Legacy-only error page
+for an unrecorded unblock, which nothing could reach after the form was retired. The Dashboard
+action, the Denied page link and the Legacy sidebar now link to `/Admin/Networks` directly.
+
+Trusting the current address, adding a range and lifting a block need a strong sign-in within
+`StepUp:MaxAuthAgeMinutes` (Q7); removing a range does not. Checks run `AdminOnly`, then freshness,
+then validation or lookup. A range lost to a concurrent add answers `409 network_exists`; any other
+failed save answers `503 audit_unavailable` with nothing trusted or removed. Before the fix both were
+`500 internal_error`; the red runs are kept in `logs/ticket-114/red-*.log`. A lift that can be
+neither recorded nor restored answers `503 unblock_unrecorded` over HTTP, proved by holding the
+audit chain while the range is blocked again. Block reasons show decoy names unfiltered (Q11).
+
+Author Claude Opus 5.5 (high). Security, Standards and Spec reviews ran serially in fresh GPT Sol
+6.1 xhigh sessions, cross-model to the author; the brief's Claude reviewers assumed a GPT author.
+Security found nothing (a 2 m 34 s pass). Standards found seven issues, all fixed. Spec found one
+(no HTTP test for `unblock_unrecorded`), fixed with that test. Two later fixes to the browser spec
+(project order, an address assertion) were found by the browser suite and seen by no reviewer.
+
+Local gates on the final sources: locked restore, format, Release build with 0 warnings, 864 unit,
+1092 integration on SQL Server and 1092 on PostgreSQL (the first PostgreSQL run failed once on a
+`ProofDisclosure` false positive, a code matching a logged duration), both model checks, six hook
+tests, 450 Vitest in 31 files, 15 build checks, `check:api-types`, the production build and the
+high/critical audit. The production browser suite passed 202 of 202 in 58.0 m (one worker, zero retries, image `eclipsvault-ticket114-final:test`). `e2e:verify-guards` verified all eight intentional failures (exit 0). Earlier browser runs failed on timing in Profile
+and passkey specs while other apps loaded the host, and twice on the new Networks spec; every
+attempt is kept with its command, exit and duration.
+
+Owner items: the browser chain makes each new spec cost a full suite per attempt;
+`ProofDisclosure.ContainsSecret` matches codes inside logged durations; the Profile spec fails under
+host load. Full detail in `logs/ticket-114/final-report.md`. The handoff returns exclusive checkout
+ownership to the coordinator; it adds no delivery authorization and starts no later ticket.
