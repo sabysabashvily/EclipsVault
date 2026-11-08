@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verify Cloud Agent toolchain for EclipsVault (no application build).
+# Cloud Agent toolchain doctor for EclipsVault (no application build). scripts/check.sh verifies the code.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
