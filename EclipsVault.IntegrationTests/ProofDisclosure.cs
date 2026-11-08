@@ -54,10 +54,13 @@ internal static class ProofDisclosure
 
     internal static bool ContainsSecret(string text, string secret)
     {
-        // A short numeric code can occur by chance inside an opaque trace or session identifier.
-        return secret.Length == 6 && secret.All(char.IsAsciiDigit)
-            ? Regex.IsMatch(text, $"(?<![A-Za-z0-9]){Regex.Escape(secret)}(?![A-Za-z0-9])")
-            : text.Contains(secret, StringComparison.Ordinal);
+        // A six-digit code can sit inside a trace identifier, or on one side of a logged decimal.
+        if (secret.Length != 6 || !secret.All(char.IsAsciiDigit))
+            return text.Contains(secret, StringComparison.Ordinal);
+
+        return Regex.IsMatch(
+            text,
+            $@"(?<![A-Za-z0-9])(?<![0-9]\.){Regex.Escape(secret)}(?!\.[0-9])(?![A-Za-z0-9])");
     }
 
     private static async Task<string> ReadLogsAsync()
@@ -86,6 +89,7 @@ internal static class ProofDisclosure
 
         return string.Join('\n', contents);
     }
+
     private static IEnumerable<string> StringValues(JsonElement value) => value.ValueKind switch
     {
         JsonValueKind.String => [value.GetString()!],
