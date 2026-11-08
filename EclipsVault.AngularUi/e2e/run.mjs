@@ -172,10 +172,16 @@ async function main() {
 
     // A failed runner must never be mistaken for the previous invocation's expected failures.
     if (probes) await rm(new URL('results.json', output), { force: true });
-    const result = await run(process.execPath, ['node_modules/@playwright/test/cli.js', 'test'], {
-      ...env,
-      E2E_VERIFY_GUARDS: probes ? '1' : '0',
-    });
+    // Spec names after `npm run e2e --` narrow an ordinary run; guard probes always run whole.
+    const specs = probes ? [] : process.argv.slice(2);
+    const result = await run(
+      process.execPath,
+      ['node_modules/@playwright/test/cli.js', 'test', ...specs],
+      {
+        ...env,
+        E2E_VERIFY_GUARDS: probes ? '1' : '0',
+      },
+    );
     if (probes) {
       verifyGuardFailures(
         JSON.parse(await readFile(new URL('results.json', output), 'utf8')),
