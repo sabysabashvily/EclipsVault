@@ -266,10 +266,11 @@ test("visual parity: My activity shows the administrator's own rows in both them
   await page.context().addCookies(administratorCookies);
   await page.goto('/Access');
   await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
-  // The first test's own actions, newest first: the ordinary two-factor sign-in, then the sign-in
-  // that confirming enrolment completes, then the enrolment itself.
+  // The first test's own actions, newest first: the ordinary two-factor sign-in and the accepted
+  // code it was issued for, then the sign-in that confirming enrolment completes, then the enrolment.
   const rows: ExpectedRow[] = [
     { title: 'Signed in', category: 'Sign-in', accent: 'sev-muted' },
+    { title: 'Proved a sign-in factor', category: 'Sign-in', accent: 'sev-muted' },
     { title: 'Signed in', category: 'Sign-in', accent: 'sev-muted' },
     { title: 'Set up your authenticator', category: 'Account', accent: 'sev-warn' },
   ];
