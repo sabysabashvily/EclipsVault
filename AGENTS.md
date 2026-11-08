@@ -176,6 +176,14 @@ failure with short retention.
   (`reasoningEffort: xhigh`) or Claude Opus 5.5 (`claude-opus-5-5`) with high reasoning
   (`effort: high`). Pass these settings as tool options. If one is unavailable, use the other;
   if both are unavailable, report the blocker before choosing another model.
+- Cursor cloud agents are the exception: the owner starts them and picks the model per ticket.
+  Grok 4.7 takes ordinary tickets; Claude Opus 5.5 takes any change to encryption, authorization,
+  the audit chain, MFA, licensing, or dynamic secrets. GPT Sol 6.1 and Thermos review every pull
+  request before the owner merges it.
+- A cloud agent works on its own `cursor/…` branch, pushes only that branch, and hands back a pull
+  request. `main` is protected, so every change reaches it through a pull request with green CI.
+- Prove a change before handing it back: `scripts/check.sh` for build and tests, and the
+  `verify-eclipsvault` skill for anything a user sees in the web UI.
 - Do not merge pull requests, push tags, force-push, delete branches, or rewrite history unless the
   owner asks for that specific action. Before any branch deletion, prove the branch is contained in
   `main` with `git merge-base --is-ancestor`.
