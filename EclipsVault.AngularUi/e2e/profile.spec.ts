@@ -7,7 +7,7 @@ import { AccountCreation } from './account-creation';
 import { AccountSignIn } from './account-sign-in';
 import { AuthenticatorEnrollment } from './authenticator-enrollment';
 import { openPalette } from './palette';
-import { avatarImage, ChangePasswordPage, ProfilePage } from './profile';
+import { avatarImage, ChangePasswordPage, freshProfileTotp, ProfilePage } from './profile';
 import {
   expireProfileOperation,
   expireMailboxCode,
@@ -18,9 +18,10 @@ import {
   rejectAuditWrites,
   profileCredentialGeneration,
   pauseSmtpTransport,
+  waitForMailboxSendBudget,
 } from './profile-state';
 import { mailboxCode } from './smtp-capture';
-import { currentTotpStep, freshTotp } from './totp';
+import { currentTotpStep } from './totp';
 
 test.describe.configure({ mode: 'serial' });
 let ownerCookies: Awaited<ReturnType<BrowserContext['cookies']>> = [];
@@ -48,7 +49,7 @@ test('Profile opens through production routes after real enrollment', async ({
   await creation.createMailboxOwner('e2e-profile-owner', password);
   await expect(page).toHaveURL(/\/Admin\/Users$/);
   const profile = new ProfilePage(page);
-  await profile.waitForNextThrottleWindow();
+  profile.releaseSignInBudget();
   const owner = await (await browserHealth.newContext()).newPage();
   const signIn = new AccountSignIn(owner);
   await signIn.open();
@@ -56,7 +57,7 @@ test('Profile opens through production routes after real enrollment', async ({
   await expect(owner).toHaveURL(/\/Account\/EnrollTotp$/);
   const enrollment = new AuthenticatorEnrollment(owner);
   secret = await enrollment.secret.innerText();
-  await enrollment.confirm(await freshTotp(secret));
+  await enrollment.confirm(await freshProfileTotp(secret));
   lastStep = currentTotpStep();
   await expect(owner).toHaveURL(/\/Secrets$/);
   await new ProfilePage(owner).open('/pRoFiLe/InDeX');
@@ -472,12 +473,12 @@ test('real password verification renews the current browser and refuses its copi
   await copied.addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
-  await profile.waitForNextThrottleWindow();
+  profile.releaseSignInBudget();
   const replacement = `E2e-new-${randomBytes(24).toString('hex')}`;
   await new ChangePasswordPage(page).changeFromProfile(password, replacement);
   await expect(profile.verification).toBeVisible();
   await expect(profile.cancelVerification).toBeFocused();
-  lastStep = await profile.verify(password, secret, lastStep);
+  lastStep = await profile.verifyOwner(password, secret, lastStep);
   await expect(
     page.getByText('Your password was changed. Any other signed-in devices have been signed out.', {
       exact: true,
@@ -507,7 +508,7 @@ test('a real SMTP mailbox code activates the address only after Profile confirma
   const original = await profile.email.inputValue();
   await profile.newEmail.fill('e2e-profile-confirmed@example.test');
   await page.getByRole('button', { name: 'Change email', exact: true }).click();
-  lastStep = await profile.verify(password, secret, lastStep);
+  lastStep = await profile.verifyOwner(password, secret, lastStep);
   await expect(profile.mailboxCode).toBeVisible();
   await expect(profile.email).toHaveValue(original);
   const oldCode = await mailboxCode('e2e-profile-confirmed@example.test');
@@ -516,14 +517,14 @@ test('a real SMTP mailbox code activates the address only after Profile confirma
     url: /\/api\/ui\/profile\/email\/resend$/,
   });
   await profile.resendCode.click();
-  lastStep = await profile.verify(password, secret, lastStep);
+  lastStep = await profile.verifyOwner(password, secret, lastStep);
   const throttled = 'Too many attempts. Wait a few minutes and try again.';
   await expect(profile.alertSaying(throttled)).toHaveText(throttled);
   await expect(profile.email).toHaveValue(original);
   // SMTP's production send budget is a rolling minute; this exercises its real boundary.
-  await page.waitForTimeout(61_000);
+  await waitForMailboxSendBudget();
   await profile.resendCode.click();
-  lastStep = await profile.verify(password, secret, lastStep);
+  lastStep = await profile.verifyOwner(password, secret, lastStep);
   await expect(
     page.getByText('A confirmation code was sent. Your current email is still active.', {
       exact: true,
@@ -555,24 +556,22 @@ test('a wrong mailbox code is refused, then an expired code leaves the active ad
   await page.context().addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
-  await profile.waitForNextThrottleWindow();
+  profile.releaseSignInBudget();
+  // The previous scenario's send still occupies the rolling minute.
+  await waitForMailboxSendBudget();
   const verifications: string[] = [];
   page.on('request', (request) => {
     if (/\/api\/ui\/profile\/operations\/[\da-f-]+\/verify$/.test(request.url()))
       verifications.push(request.method());
   });
   const active = await profile.email.inputValue();
-  const prepared = page.waitForResponse(
-    (response) =>
-      response.url().endsWith('/api/ui/profile/operations') &&
-      response.request().method() === 'POST',
-  );
+  const prepared = profile.preparedOperation();
   await profile.newEmail.fill('e2e-profile-expired@example.test');
   await page.getByRole('button', { name: 'Change email', exact: true }).click();
-  lastStep = await profile.fillVerification(password, secret, lastStep);
+  lastStep = await profile.fillOwnerVerification(password, secret, lastStep);
   await profile.verifyAccount.dblclick();
   await expect(profile.mailboxCode).toBeVisible();
-  const operation = (await (await prepared).json()) as { operationId: string };
+  const operation = await prepared;
   // Delivery is real; the delivered code is 32 hex characters, so six zeros can never match it.
   const code = await mailboxCode('e2e-profile-expired@example.test');
   expect(verifications).toEqual(['POST']);
@@ -608,18 +607,16 @@ test('an expired account grant requires fresh proof of the same pending mailbox'
   await page.context().addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
-  await profile.waitForNextThrottleWindow();
+  profile.releaseSignInBudget();
+  // The previous scenario's send still occupies the rolling minute.
+  await waitForMailboxSendBudget();
   const active = await profile.email.inputValue();
-  const prepared = page.waitForResponse(
-    (response) =>
-      response.url().endsWith('/api/ui/profile/operations') &&
-      response.request().method() === 'POST',
-  );
+  const prepared = profile.preparedOperation();
   await profile.newEmail.fill('e2e-profile-grant@example.test');
   await page.getByRole('button', { name: 'Change email', exact: true }).click();
-  lastStep = await profile.verify(password, secret, lastStep);
+  lastStep = await profile.verifyOwner(password, secret, lastStep);
   await expect(profile.mailboxCode).toBeVisible();
-  const operation = (await (await prepared).json()) as { operationId: string };
+  const operation = await prepared;
   const code = await mailboxCode('e2e-profile-grant@example.test');
   expireAccountGrant(operation.operationId);
   browserHealth.expectConsoleError({
@@ -634,7 +631,7 @@ test('an expired account grant requires fresh proof of the same pending mailbox'
   await expect(profile.email).toHaveValue(active);
   await page.getByRole('button', { name: 'Verify account again', exact: true }).click();
   await expect(profile.verification).toContainText('e2e-profile-grant@example.test');
-  lastStep = await profile.verify(password, secret, lastStep);
+  lastStep = await profile.verifyOwner(password, secret, lastStep);
   await expect(
     page.getByText('Account verified. Enter the mailbox code and confirm your email.', {
       exact: true,
@@ -657,7 +654,9 @@ test('a real SMTP outage leaves email inactive and reports delivery failure', as
   await page.context().addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
-  await profile.waitForNextThrottleWindow();
+  profile.releaseSignInBudget();
+  // The previous scenario's send still occupies the rolling minute.
+  await waitForMailboxSendBudget();
   const active = await profile.email.inputValue();
   await profile.newEmail.fill('e2e-profile-undelivered@example.test');
   await page.getByRole('button', { name: 'Change email', exact: true }).click();
@@ -667,7 +666,7 @@ test('a real SMTP outage leaves email inactive and reports delivery failure', as
   });
   setSmtpAvailable(false);
   try {
-    lastStep = await profile.verify(password, secret, lastStep);
+    lastStep = await profile.verifyOwner(password, secret, lastStep);
     const unavailable =
       'Email changes require configured, enabled SMTP. Delivery may be unavailable; verify again before deliberately resending.';
     await expect(profile.alertSaying(unavailable)).toHaveText(unavailable, { timeout: 90_000 });
@@ -689,10 +688,10 @@ test('visual parity: ten recovery codes print once and clear on Done, direct vis
   await copied.addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
-  await profile.waitForNextThrottleWindow();
+  profile.releaseSignInBudget();
   await page.getByRole('button', { name: 'Generate codes', exact: true }).click();
   await profile.confirm();
-  lastStep = await profile.verify(password, secret, lastStep);
+  lastStep = await profile.verifyOwner(password, secret, lastStep);
   await expect(page).toHaveTitle('Recovery codes — EclipsVault');
   await expect(profile.codes).toHaveCount(10);
   recoveryProof = await profile.codes.first().innerText();
@@ -776,7 +775,7 @@ test('a UV virtual passkey is added, verifies a frozen change and is removed usi
   await page.context().addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
-  await profile.waitForNextThrottleWindow();
+  profile.releaseSignInBudget();
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('WebAuthn.enable');
   const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
@@ -844,7 +843,7 @@ test('a UV virtual passkey is added, verifies a frozen change and is removed usi
   await page.getByRole('button', { name: 'Remove', exact: true }).click();
   await profile.confirm();
   await expect(profile.verificationMethod).not.toContainText('Passkey');
-  lastStep = await profile.verify(password, secret, lastStep);
+  lastStep = await profile.verifyOwner(password, secret, lastStep);
   await expect(page.getByText('No passkeys registered yet.', { exact: true })).toBeVisible();
   expect((await beforeRemoval.request.get('/api/ui/me')).status()).toBe(401);
   await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId });
@@ -859,7 +858,7 @@ test('session loss clears an outstanding UV registration and refuses its late co
   await page.context().addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
-  await profile.waitForNextThrottleWindow();
+  profile.releaseSignInBudget();
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('WebAuthn.enable');
   const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
@@ -891,8 +890,11 @@ test('session loss clears an outstanding UV registration and refuses its late co
     await expect(page.getByText('Your profile was updated.', { exact: true })).toBeVisible();
     await page.getByLabel('New passkey name').fill('Discarded after session loss');
     await page.getByRole('button', { name: 'Add a passkey', exact: true }).click();
+    // The code may wait out a spent authenticator step. Listen only once that wait is over,
+    // or the begin response is not the thing the timeout measures.
+    lastStep = await profile.fillOwnerVerification(password, secret, lastStep);
     const begun = page.waitForResponse('**/passkeys/registration/begin');
-    lastStep = await profile.verify(password, secret, lastStep);
+    await profile.verifyAccount.click();
     expect((await begun).status()).toBe(200);
     const copied = await browserHealth.newContext();
     await copied.addCookies(await page.context().cookies());
@@ -911,7 +913,7 @@ test('session loss clears an outstanding UV registration and refuses its late co
     expect(completed).toEqual([]);
     await page.unroute('**/api/ui/me');
     await new AccountSignIn(page).submitPassword('e2e-profile-owner', password);
-    await page.getByLabel('Authenticator code').fill(await freshTotp(secret, lastStep));
+    await page.getByLabel('Authenticator code').fill(await freshProfileTotp(secret));
     lastStep = currentTotpStep();
     await page.getByRole('button', { name: 'Verify and sign in', exact: true }).click();
     // The lost session sent the browser to sign-in with ReturnUrl=/Profile, so it comes back there.
@@ -940,7 +942,7 @@ test('the server refuses a passkey ceremony after its stored two-minute deadline
   await page.context().addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
-  await profile.waitForNextThrottleWindow();
+  profile.releaseSignInBudget();
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('WebAuthn.enable');
   const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
@@ -966,7 +968,7 @@ test('the server refuses a passkey ceremony after its stored two-minute deadline
   try {
     await page.getByLabel('New passkey name').fill('Expired UV key');
     await page.getByRole('button', { name: 'Add a passkey', exact: true }).click();
-    lastStep = await profile.verify(password, secret, lastStep);
+    lastStep = await profile.verifyOwner(password, secret, lastStep);
     await expect(profile.alertSaying('The passkey prompt expired. Try again.')).toHaveText(
       'The passkey prompt expired. Try again.',
     );
@@ -987,12 +989,12 @@ test('authenticator reset ends current and copied sessions before Legacy reenrol
   await copied.addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
-  await profile.waitForNextThrottleWindow();
+  profile.releaseSignInBudget();
   await profile.resetAuthenticator.click();
   await expect(profile.cancelConfirmation).toBeFocused();
   await profile.confirm();
   await expect(profile.confirmation).not.toBeVisible();
-  lastStep = await profile.verify(password, secret, lastStep);
+  lastStep = await profile.verifyOwner(password, secret, lastStep);
   await expect(page).toHaveURL(/\/Account\/Login$/);
   await expect(
     page.getByText('Your authenticator was reset. Sign in to set up a new one.', { exact: true }),
@@ -1007,7 +1009,7 @@ test('authenticator reset ends current and copied sessions before Legacy reenrol
   const enrollment = new AuthenticatorEnrollment(page);
   const replacementSecret = await enrollment.secret.innerText();
   expect(replacementSecret).not.toBe(secret);
-  await enrollment.confirm(await freshTotp(replacementSecret));
+  await enrollment.confirm(await freshProfileTotp(replacementSecret));
   lastStep = currentTotpStep();
   secret = replacementSecret;
   await expect(page).toHaveURL(/\/Secrets$/);
@@ -1103,21 +1105,17 @@ test('an expired prepared change is refused by the real server without a credent
   await page.context().addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
-  await profile.waitForNextThrottleWindow();
+  profile.releaseSignInBudget();
   browserHealth.expectConsoleError({
     text: /status of 409/,
     url: /\/api\/ui\/profile\/operations\/[\da-f-]+\/verify$/,
   });
-  const prepared = page.waitForResponse(
-    (response) =>
-      response.url().endsWith('/api/ui/profile/operations') &&
-      response.request().method() === 'POST',
-  );
+  const prepared = profile.preparedOperation();
   await profile.resetAuthenticator.click();
   await profile.confirm();
-  const operation = (await (await prepared).json()) as { operationId: string };
+  const operation = await prepared;
   expireProfileOperation(operation.operationId);
-  await profile.verify(password, secret, lastStep);
+  await profile.verifyOwner(password, secret, lastStep);
   await expect(profile.verification.getByRole('alert')).toHaveText(
     'This change was not verified in time. Start it again.',
   );
@@ -1133,7 +1131,7 @@ test('reset retains a passkey and refuses deleting the last method until Legacy 
   await page.context().addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
-  await profile.waitForNextThrottleWindow();
+  profile.releaseSignInBudget();
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('WebAuthn.enable');
   const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
@@ -1149,7 +1147,7 @@ test('reset retains a passkey and refuses deleting the last method until Legacy 
   try {
     await page.getByLabel('New passkey name').fill('Surviving UV key');
     await page.getByRole('button', { name: 'Add a passkey', exact: true }).click();
-    lastStep = await profile.verify(password, secret, lastStep);
+    lastStep = await profile.verifyOwner(password, secret, lastStep);
     await expect(
       page.getByText('Passkey added. You can now sign in with it.', { exact: true }),
     ).toBeVisible();
@@ -1186,20 +1184,20 @@ test('reset retains a passkey and refuses deleting the last method until Legacy 
     await expect(page.getByRole('button', { name: 'Generate codes', exact: true })).toBeDisabled();
     await expect(profile.resetAuthenticator).toBeDisabled();
 
-    await profile.waitForNextThrottleWindow();
+    profile.releaseSignInBudget();
     await profile.signOutThisBrowser();
     await new AccountSignIn(page).submitPassword('e2e-profile-owner', password);
     await expect(page).toHaveURL(/\/Account\/EnrollTotp$/);
     const enrollment = new AuthenticatorEnrollment(page);
     secret = await enrollment.secret.innerText();
-    await enrollment.confirm(await freshTotp(secret));
+    await enrollment.confirm(await freshProfileTotp(secret));
     lastStep = currentTotpStep();
     await expect(page).toHaveURL(/\/Secrets$/);
     await profile.open();
     await page.getByRole('button', { name: 'Remove', exact: true }).click();
     await profile.confirm();
     await expect(profile.verificationMethod).not.toContainText('Passkey');
-    lastStep = await profile.verify(password, secret, lastStep);
+    lastStep = await profile.verifyOwner(password, secret, lastStep);
     // Verification, the locked removal commit and the reload took 11 s on an emulated SQL Server.
     await expect(page.getByText('No passkeys registered yet.', { exact: true })).toBeVisible({
       timeout: 30_000,
@@ -1221,7 +1219,7 @@ test('sign out everywhere ends this and copied sessions, and the account signs i
   await copied.addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
-  await profile.waitForNextThrottleWindow();
+  profile.releaseSignInBudget();
   await page.getByRole('button', { name: 'Sign out everywhere', exact: true }).click();
   await expect(profile.cancelConfirmation).toBeFocused();
   await profile.confirm();
@@ -1229,7 +1227,7 @@ test('sign out everywhere ends this and copied sessions, and the account signs i
   expect((await page.request.get('/api/ui/me')).status()).toBe(401);
   expect((await copied.request.get('/api/ui/me')).status()).toBe(401);
   await new AccountSignIn(page).submitPassword('e2e-profile-owner', password);
-  await page.getByLabel('Authenticator code').fill(await freshTotp(secret, lastStep));
+  await page.getByLabel('Authenticator code').fill(await freshProfileTotp(secret));
   lastStep = currentTotpStep();
   await page.getByRole('button', { name: 'Verify and sign in', exact: true }).click();
   await expect(page).toHaveURL(/\/Secrets$/);
@@ -1244,7 +1242,7 @@ test('a rejected recovery mutation returns no codes and never replays generation
   await page.context().addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
-  await profile.waitForNextThrottleWindow();
+  profile.releaseSignInBudget();
   const generation = profileCredentialGeneration();
   const commits: string[] = [];
   await page.route('**/api/ui/profile/recovery-codes', async (route) => {
@@ -1264,7 +1262,7 @@ test('a rejected recovery mutation returns no codes and never replays generation
   });
   await page.getByRole('button', { name: 'Generate codes', exact: true }).click();
   await profile.confirm();
-  lastStep = await profile.verify(password, secret, lastStep);
+  lastStep = await profile.verifyOwner(password, secret, lastStep);
   await expect(
     profile.alertSaying('The audit trail is unavailable, so the vault refused the request.'),
   ).toHaveText('The audit trail is unavailable, so the vault refused the request.');
@@ -1281,7 +1279,7 @@ test('sign-out revocation stands and its audit failure warning reaches Legacy si
   await page.context().addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
-  await profile.waitForNextThrottleWindow();
+  profile.releaseSignInBudget();
   const copied = await browserHealth.newContext();
   await copied.addCookies(ownerCookies);
   browserHealth.expectConsoleError({
@@ -1299,7 +1297,7 @@ test('sign-out revocation stands and its audit failure warning reaches Legacy si
   }
   expect((await copied.request.get('/api/ui/me')).status()).toBe(401);
   await new AccountSignIn(page).submitPassword('e2e-profile-owner', password);
-  await page.getByLabel('Authenticator code').fill(await freshTotp(secret, lastStep));
+  await page.getByLabel('Authenticator code').fill(await freshProfileTotp(secret));
   lastStep = currentTotpStep();
   await page.getByRole('button', { name: 'Verify and sign in', exact: true }).click();
   await expect(page).toHaveURL(/\/Secrets$/);
@@ -1314,7 +1312,7 @@ test('a real session-store outage clears only this browser and preserves the inc
   await page.context().addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
-  await profile.waitForNextThrottleWindow();
+  profile.releaseSignInBudget();
   const copied = await browserHealth.newContext();
   await copied.addCookies(ownerCookies);
   await page.route('**/local-sign-out', async (route) => {
@@ -1347,7 +1345,7 @@ test('a real session-store outage clears only this browser and preserves the inc
   }
   expect((await copied.request.get('/api/ui/me')).status()).toBe(200);
   await new AccountSignIn(page).submitPassword('e2e-profile-owner', password);
-  await page.getByLabel('Authenticator code').fill(await freshTotp(secret, lastStep));
+  await page.getByLabel('Authenticator code').fill(await freshProfileTotp(secret));
   lastStep = currentTotpStep();
   await page.getByRole('button', { name: 'Verify and sign in', exact: true }).click();
   await expect(page).toHaveURL(/\/Secrets$/);
@@ -1362,7 +1360,7 @@ test('a committed password with failed session renewal has a truthful sign-in-re
   await page.context().addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
-  await profile.waitForNextThrottleWindow();
+  profile.releaseSignInBudget();
   const copied = await browserHealth.newContext();
   await copied.addCookies(ownerCookies);
   const generation = profileCredentialGeneration();
@@ -1387,7 +1385,7 @@ test('a committed password with failed session renewal has a truthful sign-in-re
   });
   browserHealth.expectConsoleError({ text: /status of 503/, url: /\/api\/ui\/profile\/password$/ });
   await new ChangePasswordPage(page).changeFromProfile(password, replacement);
-  lastStep = await profile.verify(password, secret, lastStep);
+  lastStep = await profile.verifyOwner(password, secret, lastStep);
   await expect(
     profile.alertSaying(
       'The change was saved, but this browser could not stay signed in. Sign in again to continue.',
@@ -1402,7 +1400,7 @@ test('a committed password with failed session renewal has a truthful sign-in-re
   const signIn = new AccountSignIn(other);
   await signIn.open();
   await signIn.submitPassword('e2e-profile-owner', replacement);
-  await other.getByLabel('Authenticator code').fill(await freshTotp(secret, lastStep));
+  await other.getByLabel('Authenticator code').fill(await freshProfileTotp(secret));
   lastStep = currentTotpStep();
   await other.getByRole('button', { name: 'Verify and sign in', exact: true }).click();
   await expect(other).toHaveURL(/\/Secrets$/);
@@ -1421,7 +1419,7 @@ test('a lost reply after a committed password change is reported as unknown and 
   await copied.addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
-  await profile.waitForNextThrottleWindow();
+  profile.releaseSignInBudget();
   const commits: string[] = [];
   // The request reaches the real server and commits; only its reply is lost on the way back.
   await page.route('**/api/ui/profile/password', async (route) => {
@@ -1432,7 +1430,7 @@ test('a lost reply after a committed password change is reported as unknown and 
   browserHealth.expectConsoleError({ text: /ERR_FAILED/, url: /\/api\/ui\/profile\/password$/ });
   const replacement = `E2e-lost-${randomBytes(24).toString('hex')}`;
   await new ChangePasswordPage(page).changeFromProfile(password, replacement);
-  lastStep = await profile.verify(password, secret, lastStep);
+  lastStep = await profile.verifyOwner(password, secret, lastStep);
   await expect(
     profile.alertSaying(
       'The response was lost. The change may have been saved. Check your account or sign in before deliberately trying again.',
