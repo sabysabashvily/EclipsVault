@@ -28,7 +28,7 @@ public sealed class LegacyPasskeyCeremonyTests(VaultFixture vault)
 
         Assert.Single(bodies, body => body.GetProperty("success").GetBoolean());
         Assert.Single(bodies, body => !body.GetProperty("success").GetBoolean());
-        Assert.Equal([AuditAction.PasskeyLogin], await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
+        Assert.Equal([AuditAction.SignInFactorVerified, AuditAction.PasskeyLogin], await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
     }
 
     private static HttpRequestMessage AssertionRequest(string token, object credential)

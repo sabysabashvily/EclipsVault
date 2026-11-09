@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Extensions;
 using Microsoft.AspNetCore.Authentication;
@@ -7,18 +8,41 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 namespace EclipsVault.Web.Authentication;
 
 /// <summary>
-/// Issues interactive session cookies. A sign-in gets a session only while the revocation version its
-/// proof captured is still the account's current one, so signing out everywhere during a sign-in ends
-/// that sign-in too. After a credential change the caller's session is replaced by a new one under the
-/// generation the change committed; the old session is never renewed.
+/// Issues interactive session cookies. A sign-in gets a session only while the credentials its
+/// proof captured are still current, so a credential change or a sign-out everywhere during a
+/// sign-in ends that sign-in too. The trail records that outcome, a sign-in or a refusal, before
+/// the cookie, so a proof that never becomes a session is not a sign-in. After a credential change
+/// the caller's session is replaced by a new one under the generation the change committed; the old
+/// session is never renewed.
 /// </summary>
-public sealed class SessionIssuer(IUserRepository users, ISessionRevocationService revocation, ISessionRegistry registry, ILogger<SessionIssuer> logger)
+public sealed class SessionIssuer(
+    IUserRepository users, ISessionRevocationService revocation, ISessionRegistry registry, IAuthenticationAttempt attempt, ILogger<SessionIssuer> logger)
 {
-    /// <returns>False when the account was signed out everywhere after the proof began; then no session was issued.</returns>
-    public async Task<bool> SignInAsync(HttpContext context, UserDto user, SessionStamp stamp)
+    /// <returns>
+    /// False when the proof's credentials are no longer current. No session was issued, and the
+    /// trail records a refusal instead of the sign-in.
+    /// </returns>
+    public async Task<bool> SignInAsync(HttpContext context, UserDto user, SessionStamp stamp, SignInAudit success, CancellationToken ct)
     {
-        if (!await HasCurrentGenerationAsync(user.Id, stamp.CredentialGeneration)
-            || await revocation.FindAsync(user.Id) != stamp.RevocationVersion)
+        var account = await users.FindByIdAsync(user.Id, ct);
+        if (account is null)
+        {
+            return false;
+        }
+
+        // Under the account's lock, so a credential change commits wholly before this outcome or after
+        // it. Not cancellable: an outcome that commits must also get its cookie.
+        var current = await attempt.RunAsync(account, async token =>
+        {
+            // The attempt's reload detaches an account deleted while issuance waited for its lock.
+            var stillCurrent = await users.ReloadAsync(account, token)
+                && !account.IsDisabled
+                && account.CredentialGeneration == stamp.CredentialGeneration
+                && await revocation.FindAsync(user.Id, token) == stamp.RevocationVersion;
+            attempt.RecordUserEvent(stillCurrent ? success.Action : AuditAction.SignInRefused, account, success.Details);
+            return stillCurrent;
+        }, CancellationToken.None);
+        if (!current)
         {
             return false;
         }

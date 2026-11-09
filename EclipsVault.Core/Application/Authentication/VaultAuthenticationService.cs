@@ -5,8 +5,10 @@ using EclipsVault.Core.Domain.Exceptions;
 namespace EclipsVault.Core.Application.Authentication;
 
 /// <summary>
-/// Password (Argon2id) + TOTP verification workflow. Authentication events commit with their
-/// associated replay and lockout bookkeeping in one transaction.
+/// Password (Argon2id) + TOTP verification workflow. Every attempt commits its replay and lockout
+/// bookkeeping with its audit event in one transaction. A factor that passes records that it was
+/// verified, not a sign-in: the sign-in is recorded when the session is issued, so a proof that never
+/// becomes a session is not a sign-in.
 /// An unknown username has no account to keep books for, so it is audited through <see cref="IAuditSink"/>.
 /// Each later step checks the pending sign-in's credential generation after the attempt reloads the
 /// account under its lock, so a credential change cannot commit between the check and the step.
@@ -138,7 +140,8 @@ public sealed class VaultAuthenticationService : IVaultAuthenticationService
             }
 
             await _failures.ResetAsync(user, token);
-            _attempt.RecordUserEvent(AuditAction.LoginSucceeded, user, "Password + TOTP");
+            _attempt.RecordUserEvent(AuditAction.SignInFactorVerified, user,
+                administratorRequired ? "Break-glass authenticator code accepted" : "Authenticator code accepted");
             return UserDto.From(user);
         }, ct);
     }
@@ -174,7 +177,6 @@ public sealed class VaultAuthenticationService : IVaultAuthenticationService
             await _failures.ResetAsync(user, token);
             var remaining = await _recoveryCodes.CountUnusedAsync(userId, token);
             _attempt.RecordUserEvent(AuditAction.RecoveryCodeUsed, user, $"Recovery code redeemed; {remaining} remaining");
-            _attempt.RecordUserEvent(AuditAction.LoginSucceeded, user, "Password + recovery code");
             return UserDto.From(user);
         }, ct);
     }
@@ -232,7 +234,6 @@ public sealed class VaultAuthenticationService : IVaultAuthenticationService
             }
 
             _attempt.RecordUserEvent(AuditAction.TotpEnrolled, user, null);
-            _attempt.RecordUserEvent(AuditAction.LoginSucceeded, user, "Password + TOTP enrollment");
             return UserDto.From(user);
         }, ct);
     }
