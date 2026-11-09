@@ -735,3 +735,44 @@ License spec is unproven in a browser; the outbox controller keeps the broad `IN
 port. Full detail in `logs/ticket-115/final-report.md`. The handoff returns
 exclusive checkout ownership to the coordinator; it adds no delivery authorization and starts no
 later ticket.
+
+## Delivery: Part 5b ticket 4 (#116)
+
+Verified the whole part locally on 2026-11-09 in the dedicated ticket thread, as the sole worker on
+`area-5b-vault-settings`, from pushed `59d7951`. No push, CI dispatch, PR or issue action, merge or
+history change. Exact commits, subjects and lengths are in `logs/ticket-116/final-report.md`; this
+section is the last commit.
+
+Legacy is fully retired. No Networks, Notifications or License view, view model or controller action
+remains, and `AdminController` is gone. The existing retired-route tests now try every removed action
+in a second letter case and with other HTTP methods (`NetworksApiTests`, `MonitoringPagesTests`):
+the old write actions answer 404 and change nothing; the Angular bookmarks answer other methods with 405.
+Every link into the three pages has a browser test: both sidebars and both palettes, the Dashboard
+and Denied "Manage trusted networks", and both "View license" notices. From each page, the sidebar
+now leads back to Legacy Secrets and on to Your data (Spec finding). The Legacy banner's beyond-tier
+link needs a signed valid licence, so it has no test of its own; it is the same tag helper as the
+tested one.
+
+Whole-part reviews ran on the diff from the merge base `3c3e7df`, one after another, each in a fresh
+read-only GPT Sol 6.1 xhigh session: cross-model to the Opus parts (#114, the rest of #115, #116),
+same-model to the GPT parts (#113, part of #115). Security found nothing. It covered the four
+licensing invariants, decoy state (a decoy-trip block and an outbox row naming a decoy, both
+administrator-only), step-up, the audit-failure and race answers, and break-glass. Standards found
+five issues, all fixed. Spec found two. One was the missing outgoing-link tests, now fixed and not
+re-reviewed. The other was a Production HTTP test for an expired licence. That needs a token signed
+by the pinned vendor key, which agents never touch, so it is left to the owner.
+`CONTEXT.md`, ADR-0017 and ADR-0028 match the code; no doc or decision change was needed. The #115
+re-check nit is fixed: the SMTP capture reader names the endpoint and status when the capture fails.
+
+Local gates on the final sources (`942eb1b`): locked restore, format, Release build with 0 warnings,
+892 unit, 1,150 integration on SQL Server and 1,150 on PostgreSQL, both model checks, six hook tests;
+Node 24.22.0 install, lint, Prettier, 486 Vitest in 33 files, 15 build checks, `check:api-types`,
+the production build and the high/critical audit (15 moderate findings visible). The browser run
+covered Networks, Notifications, License and every project they depend on. It passed 200 of 200 in
+29.5 m on one worker with zero retries. The full suite (Users onwards) and `e2e:verify-guards` were
+not run locally; CI runs them after the push. CPU went above 90% in 4 of 63 browser-run samples,
+all during the image build and stack startup.
+
+Owner items: the expired-licence HTTP test (Spec SPEC-2); #115's S6, a narrower outbox port, stays
+deferred. The PR body is `logs/ticket-116/pr-body.md`. The handoff returns exclusive checkout
+ownership to the coordinator; it adds no delivery authorization.
