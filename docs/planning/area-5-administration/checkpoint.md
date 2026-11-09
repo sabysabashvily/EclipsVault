@@ -691,3 +691,47 @@ Owner items: the browser chain makes each new spec cost a full suite per attempt
 `ProofDisclosure.ContainsSecret` matches codes inside logged durations; the Profile spec fails under
 host load. Full detail in `logs/ticket-114/final-report.md`. The handoff returns exclusive checkout
 ownership to the coordinator; it adds no delivery authorization and starts no later ticket.
+
+## Delivery: Part 5b ticket 3 (#115)
+
+Notifications and License are served by the Angular UI at `/Notifications` and `/License` (and their
+`/Index` bookmarks) under `AdminOnly`, through `GET /api/ui/notifications` and `GET /api/ui/license`.
+Both endpoints are read-only, accept only the cookie session and answer `no-store`. The Legacy
+controllers, views and view models are gone. The Legacy sidebar and licence banner still use
+`asp-controller`, and the conventional route keeps generating `/Notifications` and `/License` for
+them, so those views are unchanged; the brief's premise that the links would break was wrong
+(`logs/ticket-115/red-links.log` passed before any change).
+
+License reads the startup snapshot and never starts an evaluation window. It computes the update
+window at request time and answers normally for a missing or malformed licence; a signed perpetual
+licence stays Valid. The installation text now names the inputs the vault reads,
+`ECLIPSVAULT_LICENSE` or the file at `License:FilePath`, in the owner-approved sentence; the
+commercial copy is unchanged. The Notifications filter matches the whole visible row, as the Legacy
+filter did (Spec finding P1, red-first in `logs/ticket-115/red-filter.log`).
+
+Authorship is mixed: GPT Sol 6.1 (xhigh) wrote the work up to 18:24Z on 2026-11-08; Claude Opus 5.5
+(high) continued from that uncommitted state. Security, Standards and Spec reviews ran serially in
+fresh read-only GPT Sol 6.1 xhigh sessions on the Codex provider: cross-model to the Claude part,
+same-model to the GPT part. Security found nothing. Standards found six issues: five fixed, one
+(a narrower outbox port) left out of scope. Spec found one (P1), fixed after its snapshot and not
+re-reviewed.
+
+Local gates on the final application sources (the later browser-helper fixes were re-linted): locked restore, format, Release build with 0 warnings, 882 unit,
+1114 integration on SQL Server and 1114 on PostgreSQL, both model checks, six hook tests, 478 Vitest
+in 33 files, 15 build checks, `check:api-types`, the production build and the high/critical audit.
+The production browser suite has not passed. Six attempts ran (one worker, zero retries, image
+`eclipsvault-e2e-t115-*`): three failed in the inherited Profile spec under host load
+(`profile.spec.ts:1357` once, `:1128` twice), one was cut off by a T3 restart, and two failed on the
+new Notifications spec. So the License spec and the projects after it have never run, and
+`e2e:verify-guards` was not reached. The fourth browser attempt found that the Profile outage test restarts the
+SMTP capture on a new host port, leaving the runner's capture URL stale for later specs;
+`e2e/smtp-capture.ts` now looks the port up on every read. The fifth found that the new page
+objects also matched the shell's licence notice; they now read inside their own page component.
+No review has seen either fix.
+
+Owner items: the `asp-controller` premise in the brief and plan was wrong; the Profile spec fails
+under host load (two different tests across three runs); the browser suite has not passed, so the
+License spec is unproven in a browser; the outbox controller keeps the broad `INotificationService`
+port. Full detail in `logs/ticket-115/final-report.md`. The handoff returns
+exclusive checkout ownership to the coordinator; it adds no delivery authorization and starts no
+later ticket.
