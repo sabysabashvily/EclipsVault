@@ -55,3 +55,41 @@ Convention, set by Q12: a restated headline accepts the whole recommendation, su
 Q18–Q23 accepted in full: Audit UI API, Verify notices, Audit presentation, audit glossary (added to
 `CONTEXT.md`), 6b test plan, 6b delivery. ADR-0030 written. Full record: [decisions.md](decisions.md).
 Frontier empty. Confirmed by the owner on 2026-11-09. Issue drafts written to `issues/`. Published 2026-11-09 as #135 (6a; #137–#139), #136 (6b; #140–#144) and the KMS follow-up #145. The owner's "go" also started branch `area-6a-encryption-keys` from `main` with these records, and the launch of #137 in its own thread.
+
+## Delivery: ticket 1 (#137)
+
+Implemented 2026-11-09 on `area-6a-encryption-keys` by Claude Opus 5.5 (high), in the root checkout.
+The grill's records were already committed by the coordinator in `4fe7c93`. Not pushed; no PR.
+
+Commits after `4fe7c93`:
+
+- `33f2879` Rotate master keys in batches that never overwrite a changed secret
+- `5ed7b29` Keep re-wrapping KMS rows and report a pass's own failure, not unlocking
+- this checkpoint section, committed last
+
+What the pass does now (ADR-0029): secrets, then archived versions, 500 rows a batch. Each batch takes
+the audit chain, re-wraps a row with a conditional `ExecuteUpdate` that matches the wrapped data key
+and master key id it read (a changed, deleted or shredded row is skipped and counted nowhere), and
+commits with one critical `KekRotated` row through `AuditSaveChangesInterceptor.SaveOperationAsync`.
+No `SecretUpdated` row. One pass at a time across replicas under a session-owned database lock
+(`ISessionLocker`: `sp_getapplock @LockOwner='Session'` / `pg_try_advisory_lock`); a second pass gets
+`KekRotationRunningException`. Rows under keys that are not loaded are skipped and counted
+(`KekRotationResult.OnMissingKeys`). Each batch evicts its secrets from the cache; cancellation is
+checked only between batches. Under the KMS engine every row not under the current key still goes to
+the engine's re-wrap (#145 owns that page). No schema change.
+
+Checks at `5ed7b29`: `scripts/check.sh` (restore, Release build 0 warnings, 895 unit tests);
+`dotnet format --verify-no-changes`; both pending-model checks; hook tests; integration
+`FullyQualifiedName~KekRotation` 10/10 on SQL Server and PostgreSQL; full integration 1160/1160 on
+SQL Server and on PostgreSQL. Failing-first runs against the old pass are in `logs/ticket-137/red-*.log`.
+Reviews: security reviewer and GPT Sol 6.1 (Standards, Spec), each re-checked; ledger in
+`logs/ticket-137/review-ledger.md`.
+
+For #138: map `KekRotationRunningException` to `409 rotation_running`; the 503 needs the committed
+counts carried out of `KekRotationService.RotateRowsAsync`; the Legacy flash still omits rows on
+missing keys. For the owner: one batch holds the audit chain for 500 sequential updates, so at about
+30 ms of database latency other audited actions can exceed the 15-second chain wait during a pass.
+
+To restart: `git switch area-6a-encryption-keys`, `scripts/check.sh`, then
+`ECLIPSVAULT_TEST_DATABASE_PROVIDER=Postgres dotnet test EclipsVault.IntegrationTests -c Release --no-build --filter "FullyQualifiedName~KekRotation"`
+(and without the variable for SQL Server). Ticket 2 (#138) starts from the HEAD after this commit.
