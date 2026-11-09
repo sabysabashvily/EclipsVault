@@ -1,0 +1,99 @@
+<div class="page-header">
+  <div>
+    <h1>Notifications</h1>
+    <p class="page-sub">
+      Every email the vault composed and tried to deliver, newest first. This is a delivery record,
+      not a mailbox.
+    </p>
+  </div>
+</div>
+@if (notifications.isLoading() && !notifications.hasValue()) {
+  <p role="status">Loading notifications…</p>
+} @else if (notifications.error() && !notifications.hasValue()) {
+  <p role="alert">Could not load notifications. Try again.</p>
+  <button type="button" class="button" (click)="notifications.reload()">Try again</button>
+} @else if (notifications.hasValue()) {
+  <div
+    class="notice"
+    [class.notice-ok]="notifications.value().delivery === 'smtp'"
+    [class.notice-warn]="notifications.value().delivery !== 'smtp'"
+  >
+    @switch (notifications.value().delivery) {
+      @case ('off') {
+        <strong>⚠ Delivery is off.</strong>
+        <span
+          >Notifications are recorded as <em>suppressed</em> and never sent. Set
+          <code>Email:Enabled=true</code> to dispatch them.</span
+        >
+      }
+      @case ('smtp') {
+        <strong
+          >✓ Delivering via SMTP → <span class="mono">{{ notifications.value().smtpTarget }}</span
+          >.</strong
+        >
+        <span>Composed emails are sent to your mail server and recorded below.</span>
+      }
+      @case ('log') {
+        <strong>Development log transport.</strong>
+        <span
+          >Emails are composed and recorded below but <strong>not actually sent</strong>. Point
+          <code>Email:Sender=Smtp</code> at an SMTP server (e.g. the bundled Mailpit) to deliver
+          them.</span
+        >
+      }
+    }
+  </div>
+  <section class="panel">
+    <div class="panel-header">
+      <h2>Outbox</h2>
+      <app-table-filter
+        label="Filter notifications"
+        placeholder="Filter by recipient, subject, event…"
+        [(query)]="query"
+      />
+    </div>
+    @if (!notifications.value().outbox.length) {
+      <app-empty-state
+        icon="mail"
+        heading="No notifications sent yet"
+        message="Domain events send email automatically — approving or rejecting an access request, a password change, or provisioning a user. Each one is recorded here with its delivery outcome."
+      />
+    } @else {
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Sent (UTC)</th>
+              <th>To</th>
+              <th>Subject</th>
+              <th>Event</th>
+              <th>Transport</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (email of filtered(); track $index) {
+              <tr>
+                <td class="muted">{{ email.sentAtUtc | date: 'yyyy-MM-dd HH:mm' : 'UTC' }}</td>
+                <td class="mono">{{ email.to }}</td>
+                <td class="cell-strong" [title]="email.body">{{ email.subject }}</td>
+                <td>
+                  <span class="badge tone-muted">{{ email.eventType }}</span>
+                </td>
+                <td class="muted">{{ email.transport }}</td>
+                <td>
+                  <span [class]="'badge tone-' + badges[email.status].tone">{{
+                    badges[email.status].label
+                  }}</span>
+                  @if (email.status === 'failed' && email.error) {
+                    <span class="hint muted" [title]="email.error"> ⚠</span>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+}

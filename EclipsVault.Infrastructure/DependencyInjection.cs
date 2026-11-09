@@ -45,13 +45,11 @@ public static class DependencyInjection
         services.TryAddSingleton(TimeProvider.System);
         services.AddMemoryCache();
 
-        // Brute-force lockout thresholds (Core policy record, bound from configuration).
         var lockout = configuration.GetSection("Lockout");
         services.AddSingleton(new LockoutPolicy(
             lockout.GetValue<int?>("MaxFailedAttempts") ?? LockoutPolicy.Default.MaxFailedAttempts,
             TimeSpan.FromMinutes(lockout.GetValue<int?>("LockoutMinutes") ?? LockoutPolicy.Default.LockoutDuration.TotalMinutes)));
 
-        // Step-up re-authentication policy (Core options, bound from configuration).
         var stepUp = configuration.GetSection(StepUpOptions.SectionName);
         services.AddSingleton(new StepUpOptions
         {
@@ -61,7 +59,6 @@ public static class DependencyInjection
         services.AddScoped<IStepUpService, StepUpService>();
         services.AddScoped<SecondFactorVerifier>();
 
-        // Email domain used when auto-generating account emails.
         services.AddSingleton(new UserDirectoryOptions(
             configuration.GetValue<string?>("Identity:EmailDomain") ?? UserDirectoryOptions.Default.EmailDomain));
 
@@ -117,7 +114,6 @@ public static class DependencyInjection
         services.AddScoped<IDynamicSecretRepository, DynamicSecretRepository>();
         services.AddScoped<IProfileOperationRepository, ProfileOperationRepository>();
 
-        // Security primitives.
         services.AddSingleton<IPasswordHasher, Argon2idPasswordHasher>();
         services.AddSingleton<IBreachedPasswordScreen, BundledBreachedPasswordScreen>();
         services.AddSingleton<ITotpService, TotpService>();
@@ -161,6 +157,7 @@ public static class DependencyInjection
             services.AddSingleton<IPasskeyCeremonyStore, MemoryPasskeyCeremonyStore>();
         }
         services.AddScoped<IIntrusionResponseService, IntrusionResponseService>();
+        services.AddScoped<IBlockAdministration, BlockAdministration>();
 
         // Dynamic secrets: one backend per DynamicSecretBackend value; the service picks by role.
         services.AddScoped<SqlServerBackend>();
@@ -168,7 +165,6 @@ public static class DependencyInjection
         services.AddScoped<IManagedSecretBackend>(sp => sp.GetRequiredService<SqlServerBackend>());
         services.AddScoped<IDynamicSecretService, DynamicSecretService>();
 
-        // Runtime-managed trusted networks + audit reading.
         services.AddScoped<ITrustedNetworkService, TrustedNetworkService>();
         services.AddScoped<IAuditLogReader, AuditLogReader>();
 
@@ -188,7 +184,6 @@ public static class DependencyInjection
         // Single source of truth for config-activated premium features (banner + startup check read it).
         services.AddSingleton<ConfiguredPremiumFeatures>();
 
-        // Application services (pure Core classes, composed here).
         services.AddScoped<ISecretService, SecretService>();
         services.AddScoped<ISecretGrantService, SecretGrantService>();
         services.AddScoped<IAccessRequestService, AccessRequestService>();
@@ -229,8 +224,6 @@ public static class DependencyInjection
         services.AddScoped<IPersonalDataExportService, PersonalDataExportService>();
         services.AddScoped<IPasskeyService, PasskeyService>();
 
-        // Notifications: pick the email transport by config, mirror Email:Enabled into the
-        // Core policy record, and compose/record through the notification service.
         services.AddSingleton(new NotificationOptions(
             configuration.GetValue<bool?>("Email:Enabled") ?? NotificationOptions.Default.Enabled));
         if (string.Equals(configuration.GetValue<string>("Email:Sender"), "Smtp", StringComparison.OrdinalIgnoreCase))

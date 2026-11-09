@@ -7,6 +7,7 @@ import { ActivityPage } from './activity/activity-page';
 import { NewUserPage } from './users/new-user-page';
 import { EditUserPage } from './users/edit-user-page';
 import { UsersPage } from './users/users-page';
+import { NetworksPage } from './networks/networks-page';
 import { ServiceAccountsPage } from './service-accounts/service-accounts-page';
 import { NewServiceAccountPage } from './service-accounts/new-service-account-page';
 import { ServiceAccountPage } from './service-accounts/service-account-page';
@@ -74,6 +75,17 @@ describe('routes', () => {
     expect(route?.title).toBe('Users — EclipsVault');
     expect(await route?.loadComponent?.()).toBe(UsersPage);
   });
+  it.each(['/Admin/Networks', '/aDmIn/nEtWoRkS'])('opens Networks at %s', async (url) => {
+    const route = routeFor(url);
+    expect(route?.title).toBe('Networks — EclipsVault');
+    expect(await route?.loadComponent?.()).toBe(NetworksPage);
+  });
+  it.each(['/Admin/Networks/extra', '/Admin/Network'])(
+    'leaves an invalid Networks path %s unmatched',
+    (url) => {
+      expect(routeFor(url)).toBeUndefined();
+    },
+  );
   it.each(['/Profile', '/Profile/Index', '/pRoFiLe', '/PROFILE/index'])(
     'opens Profile at %s',
     async (url) => {

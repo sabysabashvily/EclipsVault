@@ -8,7 +8,7 @@ namespace EclipsVault.IntegrationTests;
 /// </summary>
 public sealed class ClosedProductionWindowFixture : IAsyncLifetime
 {
-    public VaultFixture Vault { get; } = new() { ProductionWindowNeverOpens = true };
+    public VaultFixture Vault { get; } = new() { ProductionWindowNeverOpens = true, MalformedLicense = true };
 
     public Task InitializeAsync() => Vault.InitializeAsync();
 

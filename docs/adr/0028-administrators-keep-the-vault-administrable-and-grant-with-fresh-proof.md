@@ -32,7 +32,11 @@ separate role.
 - **Lifting a block is undone if it cannot be recorded.** The block lives outside the database, so it
   cannot share a transaction with its audit row. The vault lifts it, records the lift, and restores
   the exact block record if the record cannot be written. The trail never claims a lift that did not
-  happen, and no lift outlives a failed audit write.
+  happen. Successful restoration answers `503 audit_unavailable`; if restoration also fails, the
+  vault answers `503 unblock_unrecorded` and logs critical without claiming the block was restored.
+  Compensation preserves the original store record and does not overwrite a different block raised
+  in the meantime. Such a conflict is a restoration failure requiring inspection, not a successful
+  restoration. Once a block is lifted, auditing and compensation finish even if the browser leaves.
 
 ## Consequences
 

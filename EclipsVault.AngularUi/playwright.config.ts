@@ -40,13 +40,36 @@ export default defineConfig({
             '**/profile.spec.ts',
             '**/users.spec.ts',
             '**/service-accounts.spec.ts',
+            '**/networks.spec.ts',
+            '**/notifications.spec.ts',
+            '**/license.spec.ts',
           ],
           use: { ...devices['Desktop Chrome'] },
         },
         {
+          name: 'networks',
+          testMatch: '**/networks.spec.ts',
+          dependencies: ['service-accounts'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          name: 'notifications',
+          testMatch: '**/notifications.spec.ts',
+          dependencies: ['networks'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          name: 'license',
+          testMatch: '**/license.spec.ts',
+          dependencies: ['notifications'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          // Users ends with the administrator's own Force logout, which ends the saved session that
+          // Networks, Notifications and License reuse, so they run first.
           name: 'users',
           testMatch: '**/users.spec.ts',
-          dependencies: ['service-accounts'],
+          dependencies: ['license'],
           use: { ...devices['Desktop Chrome'] },
         },
         {

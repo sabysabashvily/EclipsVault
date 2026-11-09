@@ -15,6 +15,10 @@ import { Component, input } from '@angular/core';
           stroke-linejoin="round"
         >
           @switch (icon()) {
+            @case ('mail') {
+              <rect x="3" y="5" width="18" height="14" rx="2" />
+              <path d="M4 7l8 6 8-6" />
+            }
             @case ('share') {
               <circle cx="18" cy="5" r="2.6" />
               <circle cx="6" cy="12" r="2.6" />
@@ -47,7 +51,7 @@ import { Component, input } from '@angular/core';
   `,
 })
 export class EmptyState {
-  readonly icon = input.required<'clipboard' | 'inbox' | 'lock' | 'share'>();
+  readonly icon = input.required<'clipboard' | 'inbox' | 'lock' | 'share' | 'mail'>();
   readonly heading = input.required<string>();
   readonly message = input.required<string>();
 }

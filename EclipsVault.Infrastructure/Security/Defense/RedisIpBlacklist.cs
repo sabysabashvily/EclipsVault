@@ -87,15 +87,32 @@ public sealed class RedisIpBlacklist : IIpBlacklist
         return results.OrderByDescending(d => d.BlockedAtUtc).ToList();
     }
 
-    public async Task<bool> UnblockAsync(string network, CancellationToken ct = default)
+    public async Task<ILiftedIpBlock?> UnblockAsync(string network, CancellationToken ct = default)
     {
-        var removed = await _redis.GetDatabase().KeyDeleteAsync(Key(network.Trim()));
-        if (removed)
+        var canonical = network.Trim();
+        var db = _redis.GetDatabase();
+        var record = await db.StringGetDeleteAsync(Key(canonical));
+        if (record.HasValue)
         {
             _logger.LogWarning("Blacklisted range {Network} was unblocked by an administrator", network);
+            return new LiftedBlock(db, Key(canonical), canonical, record);
         }
 
-        return removed;
+        return null;
+    }
+
+    private sealed class LiftedBlock(IDatabase database, RedisKey key, string network, RedisValue record) : ILiftedIpBlock
+    {
+        public string Network => network;
+
+        public async Task RestoreAsync(CancellationToken ct = default)
+        {
+            var restored = await database.StringSetAsync(key, record, when: When.NotExists);
+            if (!restored && await database.StringGetAsync(key) != record)
+            {
+                throw new InvalidOperationException("The original block could not be restored.");
+            }
+        }
     }
 
     public async Task<bool> UnblockAddressAsync(IPAddress address, CancellationToken ct = default)

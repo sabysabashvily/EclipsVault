@@ -355,6 +355,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ui/license": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LicenseResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ui/me": {
         parameters: {
             query?: never;
@@ -378,6 +413,327 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["MeResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/networks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["NetworksResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AddNetworkRequest"];
+                    "text/json": components["schemas"]["AddNetworkRequest"];
+                    "application/*+json": components["schemas"]["AddNetworkRequest"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TrustedRangeResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/networks/trust-current-address": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TrustedRangeResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/networks/{networkId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    networkId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/networks/blocks/lift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["LiftBlockRequest"];
+                    "text/json": components["schemas"]["LiftBlockRequest"];
+                    "application/*+json": components["schemas"]["LiftBlockRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["NotificationsResponse"];
                     };
                 };
             };
@@ -3338,6 +3694,10 @@ export interface components {
             notableCount: number | string;
             items: components["schemas"]["ActivityItemResponse"][];
         };
+        AddNetworkRequest: {
+            range?: null | string;
+            label?: null | string;
+        };
         AdministratorProblemResponse: {
             type?: null | string;
             title?: null | string;
@@ -3458,9 +3818,34 @@ export interface components {
             allowedRanges?: null | string;
         };
         JsonElement: unknown;
+        LicenseDetailsResponse: {
+            issuedTo: string;
+            tier: string;
+            contact: null | string;
+            licenseId: string;
+            /** Format: date-time */
+            issuedAtUtc: string;
+            /** Format: date-time */
+            expiresAtUtc: null | string;
+            /** Format: date-time */
+            updatesUntilUtc: null | string;
+            /** Format: int32 */
+            maxNodes: number | string;
+        };
         LicenseNotice: {
             title: string;
             text: string;
+        };
+        LicenseResponse: {
+            /** @enum {string} */
+            status: "Missing" | "Malformed" | "InvalidSignature" | "Expired" | "Valid";
+            message: string;
+            licence: null | components["schemas"]["LicenseDetailsResponse"];
+            updatesLapsed: boolean;
+            beyondTier: string[];
+        };
+        LiftBlockRequest: {
+            range?: null | string;
         };
         MeResponse: {
             username: string;
@@ -3471,12 +3856,43 @@ export interface components {
             avatarUrl: string;
             licenseNotice: null | components["schemas"]["LicenseNotice"];
         };
+        NetworkBlockResponse: {
+            range: string;
+            reason: string;
+            /** Format: date-time */
+            blockedAtUtc: string;
+        };
+        NetworksResponse: {
+            currentAddress: string;
+            currentAddressTrusted: boolean;
+            configuredRanges: string[];
+            trustedNetworks: components["schemas"]["TrustedNetworkResponse"][];
+            blocks: components["schemas"]["NetworkBlockResponse"][];
+        };
         NewServiceAccountResponse: {
             clearances: components["schemas"]["ClearanceOptionResponse"][];
         };
         NewUserResponse: {
             emailDomain: string;
             clearances: components["schemas"]["ClearanceOptionResponse"][];
+        };
+        NotificationResponse: {
+            /** Format: date-time */
+            sentAtUtc: string;
+            to: string;
+            subject: string;
+            body: string;
+            eventType: string;
+            transport: string;
+            /** @enum {string} */
+            status: "sent" | "failed" | "suppressed";
+            error: null | string;
+        };
+        NotificationsResponse: {
+            /** @enum {string} */
+            delivery: "off" | "smtp" | "log";
+            smtpTarget: null | string;
+            outbox: components["schemas"]["NotificationResponse"][];
         };
         PasskeyOptionsResponse: {
             publicKey: components["schemas"]["JsonElement"];
@@ -3763,6 +4179,18 @@ export interface components {
         };
         /** Format: binary */
         Stream: string;
+        TrustedNetworkResponse: {
+            /** Format: uuid */
+            networkId: string;
+            range: string;
+            label: string;
+            addedBy: string;
+            /** Format: date-time */
+            addedAtUtc: string;
+        };
+        TrustedRangeResponse: {
+            range: string;
+        };
         UserDetailsResponse: {
             /** Format: uuid */
             userId: string;

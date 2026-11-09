@@ -33,8 +33,8 @@ public class StepUpPolicyTests
     public void The_window_boundary_is_exclusive()
     {
         var service = Service(maxAgeMinutes: 10);
-        Assert.False(service.IsRequired(SensitivityLevel.TopSecret, Now.AddMinutes(-10), Now)); // exactly 10m: still fresh
-        Assert.True(service.IsRequired(SensitivityLevel.TopSecret, Now.AddMinutes(-10).AddSeconds(-1), Now)); // just over
+        Assert.False(service.IsRequired(SensitivityLevel.TopSecret, Now.AddMinutes(-10), Now));
+        Assert.True(service.IsRequired(SensitivityLevel.TopSecret, Now.AddMinutes(-10).AddSeconds(-1), Now));
     }
 
     [Fact]
@@ -59,6 +59,9 @@ public class StepUpPolicyTests
     [InlineData(AdministratorAction.DisableServiceAccount, false)]
     [InlineData(AdministratorAction.RevokeApiKey, false)]
     [InlineData(AdministratorAction.DeleteServiceAccount, false)]
+    [InlineData(AdministratorAction.TrustNetwork, true)]
+    [InlineData(AdministratorAction.LiftBlock, true)]
+    [InlineData(AdministratorAction.RemoveTrustedNetwork, false)]
     public void Stale_administrator_grants_require_proof_independently_of_the_reveal_threshold(AdministratorAction action, bool required)
         => Assert.Equal(required, Service(minimum: SensitivityLevel.TopSecret).IsRequired(action, Now.AddMinutes(-11), Now));
 

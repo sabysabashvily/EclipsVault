@@ -1,4 +1,5 @@
 using EclipsVault.Core.Domain.Entities;
+using EclipsVault.Core.Domain.Exceptions;
 
 namespace EclipsVault.Core.Application.Networks;
 
@@ -19,9 +20,12 @@ public interface ITrustedNetworkRepository
 
     Task<bool> ExistsAsync(string cidr, CancellationToken ct);
 
+    /// <exception cref="NetworkExistsException">Another request trusted the range first; nothing was saved.</exception>
+    /// <exception cref="AuditWriteFailedException">The network and its audit row could not be stored; nothing was saved.</exception>
     Task AddAsync(TrustedNetwork network, CancellationToken ct);
 
     Task<TrustedNetwork?> FindAsync(Guid id, CancellationToken ct);
 
+    /// <exception cref="AuditWriteFailedException">The removal and its audit row could not be stored; nothing was removed.</exception>
     Task RemoveAsync(TrustedNetwork network, CancellationToken ct);
 }

@@ -565,3 +565,214 @@ whole-part PR after these gates/reviews. No new permission is requested or impli
 performed no push, PR/issue action, merge, branch/worktree change or history rewrite or later-ticket work.
 No merge is authorized. Any later source repair returns to this same ticket thread with exclusive
 ownership, rather than a duplicate implementation worker.
+
+
+## Restart: Part 5b, delivery ticket 1 (#113)
+
+Started on 2026-11-06 in the dedicated ticket thread, as the sole implementation worker, on
+`area-5b-vault-settings` from clean tracked HEAD `94a73e1060bf620cc1907f7da76310e286c98f1b`.
+The coordinator merged #122 at that commit, verified main contains it and #104/#112 are closed,
+then created this branch under the owner's authorization. Scope is #113 only, with local commits,
+required serial reviews and final local gates. Networks and recovery remain Legacy. No push, CI
+dispatch, issue/PR action, branch/history change or #114 work is authorized in this worker.
+Evidence and task-local scratch stay in `logs/ticket-113/`; protected trees and earlier evidence
+remain untouched. Exclusive checkout ownership returns to the coordinator after the local handoff.
+
+
+## Delivery: Part 5b, delivery ticket 1 (#113)
+
+Completed locally on 2026-11-06 in the dedicated ticket thread as the sole implementation worker on
+`area-5b-vault-settings`, from `94a73e1060bf620cc1907f7da76310e286c98f1b`. Implementation commit is
+`c042dda25b5062cf925ed97e95cd63ab4f09830b`, "Restore lifted blocks when their audit write fails" (50 characters).
+This checkpoint is committed separately and last. Its exact SHA is in `logs/ticket-113/final-report.md`.
+The original 40,838-byte prefix is preserved byte for byte. No push, CI dispatch, PR/issue action,
+branch/worktree/history change or #114 work was performed. Coordinator owns later delivery.
+
+Administration lifting now retains the removed store record, lifts first and writes exactly one
+`IpRangeUnblocked` event. A rejected audit restores the original range, reason and time. Redis keeps
+its exact original key content. Missing blocks change nothing and record nothing. Failed exact
+restoration is distinct `503 unblock_unrecorded`, with a safe critical alert and a Legacy 503 page
+that does not claim restoration succeeded. Normal Legacy form behavior stays intact. Networks stays
+Legacy, and break-glass recovery is unchanged. Auditing and compensation finish after a browser
+disconnect so a cancelled audit wait cannot later commit after mistaken restoration.
+
+The real finding was reproduced first through the Production AuditFailureFixture and Legacy Unblock
+form: the audit insert failed, but the block collection was empty. The original failing command,
+exit 1 and 22.715-second duration remain in the evidence. The repaired test proves original state,
+effective HTTP 403 blocking and no audit row, with setup/sign-in before rejection and restoration
+of auditing in finally. Both final database suites passed it. Both-store unit coverage proves the
+sequence, exact event, compensation, no-op, conflict and cancellation outcomes. Real Redis also proves
+byte-identical JSON restoration and an actual closed-connection restoration failure.
+
+Final local gates passed on the final source snapshot:
+
+- locked restore, .NET format verification, Release build with zero warnings/errors
+- unit tests: 858 passed, no failures or skips
+- full SQL Server integration: 1,054 passed, no failures or skips, 21m 40s reported
+- full PostgreSQL integration: 1,054 passed, no failures or skips, 13m 32s reported
+- both pending-model checks: no changes; six hook tests passed
+- pinned Node 24.22.0 install --ignore-scripts, lint/browser types and six lint guards
+- Prettier, 431 Vitest tests in 30 files, 15 build checks, generated API consistency and production build
+- npm high/critical gate passed; 15 moderate findings remain visible
+- all 184 production browser tests passed in 54.4m, no failures/skips and zero retries
+- all eight intentional browser-health failures verified; guard command exit 0
+
+Security, Standards and Spec ran serially in fresh GPT Sol 6.1 xhigh sessions after Claude Opus 5.5
+high was rate limited. These are the authorized same-model fallback, not cross-model reviews.
+Security found no demonstrable defect. Three Standards violations and two judgment-call smells were
+fixed directly. Spec found no implementation gap or scope expansion on the updated snapshot.
+Original reports, reviewed manifests and the finding ledger remain unchanged. Five small fixes after
+Security/Standards were not independently rechecked by those axes; Spec reviewed the updated snapshot.
+No later independent recheck is claimed. The final checkpoint append is subsequent metadata.
+
+Heavy suites/reviews stayed serial with normal priority, two .NET processors, explicit root MSBuild
+one worker, two Angular workers, bounded Vitest without file parallelism, about 4.1 GB Docker, a
+two-CPU image build and one Playwright worker. Database samples reached 91.05% and 92.2% busy; browser
+sampling reached 94.28%. Owned database/vault caps were lowered to 0.75 CPU. The exact owned browser
+monitor was replaced to keep the lower caps for guard startup; tests were uninterrupted. Every sample
+and cap update is retained. Startup and between-sample bounds are not proved; strict continuous
+CPU-ceiling compliance is not claimed. No unrelated process or global setting changed.
+
+The inherited Profile suite still waits for real production throttle windows under its unchanged
+per-case limits. This timing limitation is disclosed. No wait, retry, timeout, health exemption,
+advisory suppression or weaker assertion was introduced or changed for #113.
+
+Cleanup verified both owned browser projects, ten browser containers, both captured anonymous volumes,
+project networks/labelled volumes, all five captured Testcontainers sessions and the sole owned image
+absent. Owned host key-ring directories and monitors are gone, including the replacement monitor;
+recorded runner and browser-child PIDs were checked directly. No private key contents or full container
+environments were read. No shared cache, unrelated resources, protected trees or earlier evidence
+were pruned or removed. Context exclusions were verified before the production build.
+
+All 19 implementation files match the actual tested snapshot, staged blobs and implementation commit.
+The full final source verification also binds final HEAD and working bytes, with zero deletion markers.
+The checkpoint append is the sole post-test source change. Exact commits/subjects, counts, commands,
+exits/durations, original reviews and resolutions, readability excerpts, resource/cleanup limits,
+source manifests and restart instructions are in `logs/ticket-113/final-report.md` and its evidence.
+
+Compensation does not overwrite a different newer block; that is a failed exact restoration requiring
+inspection. Lost Redis replies and cross-store concurrency remain limitations. No schema, dependency,
+commercial/legal or licensing-policy change was made. All writer nodes need the new code before
+relying on compensation. The handoff returns exclusive checkout ownership to the coordinator through
+the supported thread tool. It adds no delivery authorization and starts no later ticket.
+
+
+## Delivery: Part 5b ticket 2 (#114)
+
+Networks is served by the Angular UI at `/Admin/Networks` under `AdminOnly`, through
+`/api/ui/networks` (list, trust the current address, add, remove, lift a block). The Legacy page,
+its `AdminController` actions, view and view models are gone, and so is the Legacy-only error page
+for an unrecorded unblock, which nothing could reach after the form was retired. The Dashboard
+action, the Denied page link and the Legacy sidebar now link to `/Admin/Networks` directly.
+
+Trusting the current address, adding a range and lifting a block need a strong sign-in within
+`StepUp:MaxAuthAgeMinutes` (Q7); removing a range does not. Checks run `AdminOnly`, then freshness,
+then validation or lookup. A range lost to a concurrent add answers `409 network_exists`; any other
+failed save answers `503 audit_unavailable` with nothing trusted or removed. Before the fix both were
+`500 internal_error`; the red runs are kept in `logs/ticket-114/red-*.log`. A lift that can be
+neither recorded nor restored answers `503 unblock_unrecorded` over HTTP, proved by holding the
+audit chain while the range is blocked again. Block reasons show decoy names unfiltered (Q11).
+
+Author Claude Opus 5.5 (high). Security, Standards and Spec reviews ran serially in fresh GPT Sol
+6.1 xhigh sessions, cross-model to the author; the brief's Claude reviewers assumed a GPT author.
+Security found nothing (a 2 m 34 s pass). Standards found seven issues, all fixed. Spec found one
+(no HTTP test for `unblock_unrecorded`), fixed with that test. Two later fixes to the browser spec
+(project order, an address assertion) were found by the browser suite and seen by no reviewer.
+
+Local gates on the final sources: locked restore, format, Release build with 0 warnings, 864 unit,
+1092 integration on SQL Server and 1092 on PostgreSQL (the first PostgreSQL run failed once on a
+`ProofDisclosure` false positive, a code matching a logged duration), both model checks, six hook
+tests, 450 Vitest in 31 files, 15 build checks, `check:api-types`, the production build and the
+high/critical audit. The production browser suite passed 202 of 202 in 58.0 m (one worker, zero retries, image `eclipsvault-ticket114-final:test`). `e2e:verify-guards` verified all eight intentional failures (exit 0). Earlier browser runs failed on timing in Profile
+and passkey specs while other apps loaded the host, and twice on the new Networks spec; every
+attempt is kept with its command, exit and duration.
+
+Owner items: the browser chain makes each new spec cost a full suite per attempt;
+`ProofDisclosure.ContainsSecret` matches codes inside logged durations; the Profile spec fails under
+host load. Full detail in `logs/ticket-114/final-report.md`. The handoff returns exclusive checkout
+ownership to the coordinator; it adds no delivery authorization and starts no later ticket.
+
+## Delivery: Part 5b ticket 3 (#115)
+
+Notifications and License are served by the Angular UI at `/Notifications` and `/License` (and their
+`/Index` bookmarks) under `AdminOnly`, through `GET /api/ui/notifications` and `GET /api/ui/license`.
+Both endpoints are read-only, accept only the cookie session and answer `no-store`. The Legacy
+controllers, views and view models are gone. The Legacy sidebar and licence banner still use
+`asp-controller`, and the conventional route keeps generating `/Notifications` and `/License` for
+them, so those views are unchanged; the brief's premise that the links would break was wrong
+(`logs/ticket-115/red-links.log` passed before any change).
+
+License reads the startup snapshot and never starts an evaluation window. It computes the update
+window at request time and answers normally for a missing or malformed licence; a signed perpetual
+licence stays Valid. The installation text now names the inputs the vault reads,
+`ECLIPSVAULT_LICENSE` or the file at `License:FilePath`, in the owner-approved sentence; the
+commercial copy is unchanged. The Notifications filter matches the whole visible row, as the Legacy
+filter did (Spec finding P1, red-first in `logs/ticket-115/red-filter.log`).
+
+Authorship is mixed: GPT Sol 6.1 (xhigh) wrote the work up to 18:24Z on 2026-11-08; Claude Opus 5.5
+(high) continued from that uncommitted state. Security, Standards and Spec reviews ran serially in
+fresh read-only GPT Sol 6.1 xhigh sessions on the Codex provider: cross-model to the Claude part,
+same-model to the GPT part. Security found nothing. Standards found six issues: five fixed, one
+(a narrower outbox port) left out of scope. Spec found one (P1), fixed after its snapshot and not
+re-reviewed.
+
+Local gates on the final application sources (the later browser-helper fixes were re-linted): locked restore, format, Release build with 0 warnings, 882 unit,
+1114 integration on SQL Server and 1114 on PostgreSQL, both model checks, six hook tests, 478 Vitest
+in 33 files, 15 build checks, `check:api-types`, the production build and the high/critical audit.
+The production browser suite has not passed. Six attempts ran (one worker, zero retries, image
+`eclipsvault-e2e-t115-*`): three failed in the inherited Profile spec under host load
+(`profile.spec.ts:1357` once, `:1128` twice), one was cut off by a T3 restart, and two failed on the
+new Notifications spec. So the License spec and the projects after it have never run, and
+`e2e:verify-guards` was not reached. The fourth browser attempt found that the Profile outage test restarts the
+SMTP capture on a new host port, leaving the runner's capture URL stale for later specs;
+`e2e/smtp-capture.ts` now looks the port up on every read. The fifth found that the new page
+objects also matched the shell's licence notice; they now read inside their own page component.
+No review has seen either fix.
+
+Owner items: the `asp-controller` premise in the brief and plan was wrong; the Profile spec fails
+under host load (two different tests across three runs); the browser suite has not passed, so the
+License spec is unproven in a browser; the outbox controller keeps the broad `INotificationService`
+port. Full detail in `logs/ticket-115/final-report.md`. The handoff returns
+exclusive checkout ownership to the coordinator; it adds no delivery authorization and starts no
+later ticket.
+
+## Delivery: Part 5b ticket 4 (#116)
+
+Verified the whole part locally on 2026-11-09 in the dedicated ticket thread, as the sole worker on
+`area-5b-vault-settings`, from pushed `59d7951`. No push, CI dispatch, PR or issue action, merge or
+history change. Exact commits, subjects and lengths are in `logs/ticket-116/final-report.md`; this
+section is the last commit.
+
+Legacy is fully retired. No Networks, Notifications or License view, view model or controller action
+remains, and `AdminController` is gone. The existing retired-route tests now try every removed action
+in a second letter case and with other HTTP methods (`NetworksApiTests`, `MonitoringPagesTests`):
+the old write actions answer 404 and change nothing; the Angular bookmarks answer other methods with 405.
+Every link into the three pages has a browser test: both sidebars and both palettes, the Dashboard
+and Denied "Manage trusted networks", and both "View license" notices. From each page, the sidebar
+now leads back to Legacy Secrets and on to Your data (Spec finding). The Legacy banner's beyond-tier
+link needs a signed valid licence, so it has no test of its own; it is the same tag helper as the
+tested one.
+
+Whole-part reviews ran on the diff from the merge base `3c3e7df`, one after another, each in a fresh
+read-only GPT Sol 6.1 xhigh session: cross-model to the Opus parts (#114, the rest of #115, #116),
+same-model to the GPT parts (#113, part of #115). Security found nothing. It covered the four
+licensing invariants, decoy state (a decoy-trip block and an outbox row naming a decoy, both
+administrator-only), step-up, the audit-failure and race answers, and break-glass. Standards found
+five issues, all fixed. Spec found two. One was the missing outgoing-link tests, now fixed and not
+re-reviewed. The other was a Production HTTP test for an expired licence. That needs a token signed
+by the pinned vendor key, which agents never touch, so it is left to the owner.
+`CONTEXT.md`, ADR-0017 and ADR-0028 match the code; no doc or decision change was needed. The #115
+re-check nit is fixed: the SMTP capture reader names the endpoint and status when the capture fails.
+
+Local gates on the final sources (`942eb1b`): locked restore, format, Release build with 0 warnings,
+892 unit, 1,150 integration on SQL Server and 1,150 on PostgreSQL, both model checks, six hook tests;
+Node 24.22.0 install, lint, Prettier, 486 Vitest in 33 files, 15 build checks, `check:api-types`,
+the production build and the high/critical audit (15 moderate findings visible). The browser run
+covered Networks, Notifications, License and every project they depend on. It passed 200 of 200 in
+29.5 m on one worker with zero retries. The full suite (Users onwards) and `e2e:verify-guards` were
+not run locally; CI runs them after the push. CPU went above 90% in 4 of 63 browser-run samples,
+all during the image build and stack startup.
+
+Owner items: the expired-licence HTTP test (Spec SPEC-2); #115's S6, a narrower outbox port, stays
+deferred. The PR body is `logs/ticket-116/pr-body.md`. The handoff returns exclusive checkout
+ownership to the coordinator; it adds no delivery authorization.

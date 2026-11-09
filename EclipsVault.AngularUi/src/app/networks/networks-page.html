@@ -1,0 +1,165 @@
+<div class="page-header">
+  <div>
+    <h1>Networks</h1>
+    <p class="page-sub">
+      Trusted source ranges for the ABAC network rule, and active intrusion-defence blocks.
+    </p>
+  </div>
+</div>
+<app-status-line [message]="writes.status().message" [error]="writes.status().error" />
+@if (networks.isLoading() && !networks.hasValue()) {
+  <p role="status">Loading networks…</p>
+} @else if (networks.error() && !networks.hasValue()) {
+  <p role="alert">Could not load networks. Try again.</p>
+  <button type="button" class="button" (click)="networks.reload()">Try again</button>
+} @else if (networks.hasValue()) {
+  <section class="panel highlight">
+    <div class="current-ip">
+      <div>
+        <span class="stat-label">Your current address, as the vault sees it</span>
+        <div class="current-ip-value">
+          <code class="mono">{{ networks.value().currentAddress }}</code>
+          @if (networks.value().currentAddressTrusted) {
+            <span class="badge tone-ok">Trusted</span>
+          } @else {
+            <span class="badge tone-warn">Not trusted</span>
+          }
+        </div>
+        <p class="muted">
+          On a VPN this is the VPN egress address. Confidential+ secrets are only readable from
+          trusted ranges — if you switch networks, trust the new address here.
+        </p>
+      </div>
+      @if (!networks.value().currentAddressTrusted) {
+        <button
+          #trustButton
+          type="button"
+          class="button primary"
+          [disabled]="writesClosed()"
+          (click)="trustCurrentAddress(trustButton)"
+        >
+          Trust this address
+        </button>
+      }
+    </div>
+  </section>
+
+  <div class="two-col">
+    <section class="panel">
+      <div class="panel-header"><h2>Runtime trusted networks</h2></div>
+      <form class="add-network-form" (submit)="add($event, addButton)">
+        <input
+          #rangeInput
+          [value]="range()"
+          (input)="range.set(rangeInput.value)"
+          placeholder="203.0.113.7 or 10.8.0.0/24"
+          aria-label="IP or CIDR"
+          [disabled]="writesClosed()"
+        />
+        <input
+          #labelInput
+          [value]="label()"
+          (input)="label.set(labelInput.value)"
+          placeholder="Label (e.g. Office VPN)"
+          aria-label="Label"
+          [disabled]="writesClosed()"
+        />
+        <button #addButton type="submit" class="button primary" [disabled]="writesClosed()">
+          Trust
+        </button>
+      </form>
+
+      @if (!networks.value().trustedNetworks.length) {
+        <p class="muted">
+          No runtime-trusted networks yet. Entries added here apply immediately and are audited.
+        </p>
+      } @else {
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Range</th>
+              <th>Label</th>
+              <th>Added by</th>
+              <th>Added (UTC)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (network of networks.value().trustedNetworks; track network.networkId) {
+              <tr>
+                <td class="mono cell-strong">{{ network.range }}</td>
+                <td>{{ network.label }}</td>
+                <td class="muted">{{ network.addedBy }}</td>
+                <td class="muted">{{ network.addedAtUtc | date: 'yyyy-MM-dd HH:mm' : 'UTC' }}</td>
+                <td class="cell-actions">
+                  <button
+                    type="button"
+                    class="button small danger"
+                    [disabled]="writesClosed()"
+                    (click)="askRemove(network)"
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </section>
+
+    <div class="stack">
+      <section class="panel">
+        <div class="panel-header"><h2>Configured ranges</h2></div>
+        <p class="muted">
+          Static ranges from <code>Abac:TrustedIpCidrs</code>; change them in configuration.
+        </p>
+        <ul class="cidr-list">
+          @for (range of networks.value().configuredRanges; track $index) {
+            <li class="mono">{{ range }}</li>
+          }
+        </ul>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header"><h2>Intrusion-defence blocks</h2></div>
+        @if (!networks.value().blocks.length) {
+          <p class="muted">No ranges are currently blocked.</p>
+        } @else {
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Range</th>
+                <th>Reason</th>
+                <th>Since (UTC)</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (block of networks.value().blocks; track block.range) {
+                <tr>
+                  <td class="mono cell-strong">{{ block.range }}</td>
+                  <td class="muted">{{ block.reason }}</td>
+                  <td class="muted">{{ block.blockedAtUtc | date: 'MM-dd HH:mm' : 'UTC' }}</td>
+                  <td class="cell-actions">
+                    <button
+                      #unblockButton
+                      type="button"
+                      class="button small"
+                      [disabled]="writesClosed()"
+                      (click)="askUnblock(block, unblockButton)"
+                    >
+                      Unblock
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+      </section>
+    </div>
+  </div>
+}
+<app-confirmation-dialog (decision)="confirmed($event)" />
+<app-step-up-dialog (decision)="verified($event)" />

@@ -154,7 +154,7 @@ public sealed class BreakGlassSignInTests
 
         public Task<IReadOnlyList<BlockedRangeDto>> ListAsync(CancellationToken ct = default) => throw new NotSupportedException();
 
-        public Task<bool> UnblockAsync(string network, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<ILiftedIpBlock?> UnblockAsync(string network, CancellationToken ct = default) => throw new NotSupportedException();
 
         public Task<bool> UnblockAddressAsync(IPAddress address, CancellationToken ct = default)
         {

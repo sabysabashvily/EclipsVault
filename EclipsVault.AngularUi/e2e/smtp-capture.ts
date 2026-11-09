@@ -1,20 +1,57 @@
+import { execFileSync } from 'node:child_process';
+
+interface CapturedMessage {
+  ID: string;
+  To: { Address: string }[];
+  Subject: string;
+}
+
 /** Reads the mailbox code this run's disposable SMTP capture server received for `address`. */
 export async function mailboxCode(address: string): Promise<string> {
-  const capture = process.env['E2E_SMTP_URL'];
-  if (!capture) throw new Error('The E2E runner must configure its disposable SMTP capture');
-  const inbox = (await (await fetch(`${capture}/api/v1/messages`)).json()) as {
-    messages: { ID: string; To: { Address: string }[]; Subject: string }[];
-  };
-  const message = inbox.messages.find(
-    (mail) =>
-      mail.Subject === 'Confirm your EclipsVault email' &&
-      mail.To.some((recipient) => recipient.Address === address),
+  const message = (await captured('Confirm your EclipsVault email')).find((mail) =>
+    mail.To.some((recipient) => recipient.Address === address),
   );
   if (!message) throw new Error('The confirmation message did not arrive at the capture server');
-  const body = (await (await fetch(`${capture}/api/v1/message/${message.ID}`)).json()) as {
-    Text: string;
-  };
-  const code = /change: ([A-F0-9]{32})/.exec(body.Text)?.[1];
+  const code = /change: ([A-F0-9]{32})/.exec(await bodyOf(message))?.[1];
   if (!code) throw new Error('The delivered message has no mailbox code');
   return code;
+}
+
+/** Finds the provisioning email this run's capture server received for `username`. */
+export async function provisioningEmail(
+  username: string,
+): Promise<{ address: string; subject: string }> {
+  for (const message of await captured('Your EclipsVault account is ready')) {
+    if ((await bodyOf(message)).includes(`username '${username}'`))
+      return { address: message.To[0]!.Address, subject: message.Subject };
+  }
+  throw new Error(`No provisioning email for ${username} reached the capture server`);
+}
+
+async function captured(subject: string): Promise<CapturedMessage[]> {
+  const inbox = await captureJson<{ messages: CapturedMessage[] }>('/api/v1/messages');
+  return inbox.messages.filter((mail) => mail.Subject === subject);
+}
+
+async function bodyOf(message: CapturedMessage): Promise<string> {
+  return (await captureJson<{ Text: string }>(`/api/v1/message/${message.ID}`)).Text;
+}
+
+/** Names the endpoint and status when the capture fails, instead of a JSON shape error later. */
+async function captureJson<T>(path: string): Promise<T> {
+  const response = await fetch(`${captureUrl()}${path}`);
+  if (!response.ok) throw new Error(`The capture server answered ${response.status} for ${path}`);
+  return (await response.json()) as T;
+}
+
+/** Looked up on every read: the Profile outage test restarts the capture on a new host port. */
+function captureUrl(): string {
+  const project = process.env['E2E_COMPOSE_PROJECT'];
+  if (!project) throw new Error('The browser runner must name its own disposable stack');
+  const address = execFileSync(
+    'docker',
+    ['compose', '--project-name', project, '--file', 'e2e/compose.yml', 'port', 'smtp', '8025'],
+    { encoding: 'utf8' },
+  ).trim();
+  return `http://127.0.0.1:${address.split(':').at(-1)}`;
 }

@@ -15,7 +15,7 @@ public interface ITrustedNetworkService
 
     Task<IReadOnlyList<TrustedNetworkDto>> ListAsync(CancellationToken ct);
 
-    /// <summary>Accepts a bare IP or CIDR; normalizes and persists it. Throws VaultAdminException on invalid input.</summary>
+    /// <summary>Accepts a bare IP or CIDR; normalizes and persists it. Throws NetworkInputException on invalid input and NetworkExistsException when the range is already trusted.</summary>
     Task<TrustedNetworkDto> AddAsync(string cidrOrIp, string label, CancellationToken ct);
 
     Task<bool> RemoveAsync(Guid id, CancellationToken ct);

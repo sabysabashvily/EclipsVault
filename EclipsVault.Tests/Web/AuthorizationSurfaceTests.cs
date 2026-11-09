@@ -225,12 +225,12 @@ public class AuthorizationSurfaceTests
             ["data"] = typeof(EclipsVault.Web.Controllers.Ui.DataController),
             ["profile"] = typeof(EclipsVault.Web.Controllers.Ui.ProfileDetailsController),
             ["users"] = typeof(EclipsVault.Web.Controllers.Ui.UsersController),
-            ["networks"] = typeof(AdminController),
+            ["networks"] = typeof(EclipsVault.Web.Controllers.Ui.NetworksController),
             ["service-accounts"] = typeof(EclipsVault.Web.Controllers.Ui.ServiceAccountsController),
             ["audit"] = typeof(AuditController),
-            ["notifications"] = typeof(NotificationsController),
+            ["notifications"] = typeof(EclipsVault.Web.Controllers.Ui.NotificationsController),
             ["encryption"] = typeof(EncryptionController),
-            ["license"] = typeof(LicenseController),
+            ["license"] = typeof(EclipsVault.Web.Controllers.Ui.LicenseController),
         };
 
         Assert.Equal(controllers.Keys.Order(StringComparer.Ordinal),

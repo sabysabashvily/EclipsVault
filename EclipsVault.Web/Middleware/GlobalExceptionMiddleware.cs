@@ -45,6 +45,13 @@ public sealed class GlobalExceptionMiddleware
                 context.Response.Redirect("/Account/Login");
             }
         }
+        catch (UnblockUnrecordedException) when (!context.Response.HasStarted)
+        {
+            // Store failures can contain block reasons or connection details. Keep the alert safe.
+            _logger.LogCritical("An intrusion-defence block was lifted, but recording and restoring it failed");
+            await FailAsync(context, StatusCodes.Status503ServiceUnavailable, "unblock_unrecorded",
+                UnblockUnrecordedException.FailureMessage);
+        }
         catch (AuditWriteFailedException ex) when (!context.Response.HasStarted)
         {
             _logger.LogCritical(ex, "Fail-closed: request to {Path} aborted because the audit trail is unavailable", context.Request.Path);

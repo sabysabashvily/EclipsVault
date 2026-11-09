@@ -25,6 +25,9 @@ public sealed class AdministratorProblemFilter : IExceptionFilter
         {
             AccountInputException invalid => AdministratorProblems.Problem(StatusCodes.Status400BadRequest, "validation_failed", invalid.Message,
                 errors: new Dictionary<string, string[]> { [FieldName(invalid.Field)] = [invalid.Message] }),
+            NetworkInputException invalid => AdministratorProblems.Problem(StatusCodes.Status400BadRequest, "validation_failed", invalid.Message,
+                errors: new Dictionary<string, string[]> { [invalid.Field] = [invalid.Message] }),
+            NetworkExistsException conflict => AdministratorProblems.Problem(StatusCodes.Status409Conflict, "network_exists", conflict.Message),
             ServiceAccountNameTakenException conflict => AdministratorProblems.Problem(StatusCodes.Status409Conflict, "name_taken", conflict.Message),
             UsernameTakenException conflict => AdministratorProblems.Problem(StatusCodes.Status409Conflict, "username_taken", conflict.Message),
             OwnAccountException refused => AdministratorProblems.Problem(StatusCodes.Status409Conflict, "own_account", refused.Message),

@@ -35,7 +35,7 @@
         <a class="button" asp-controller="Secrets" asp-action="Index">Back to secrets</a>
         @if (User.IsAdmin())
         {
-            <a class="button" asp-controller="Admin" asp-action="Networks">Manage trusted networks</a>
+            <a class="button" href="/Admin/Networks">Manage trusted networks</a>
         }
     </div>
 </section>
