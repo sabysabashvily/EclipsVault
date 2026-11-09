@@ -1,0 +1,115 @@
+{
+ "status": "published",
+ "confirmed": true,
+ "confirmedOn": "2026-11-09",
+ "repository": "sabysabashvily/EclipsVault",
+ "placeholders": {
+  "#SPEC": "this part's parent issue number",
+  "#SPEC6A": "part 6a parent issue number",
+  "#SPEC6B": "part 6b parent issue number",
+  "#T<n>": "ticket n of the same part"
+ },
+ "parts": [
+  {
+   "key": "6a",
+   "parent": {
+    "title": "Angular migration — Area 6a: Encryption keys",
+    "file": "6a/spec.md",
+    "number": 135
+   },
+   "tickets": [
+    {
+     "order": 1,
+     "title": "Area 6a · 1/3: Rotate master keys in batches that never overwrite a changed secret",
+     "file": "6a/ticket-1.md",
+     "blockedByOrders": [],
+     "number": 137
+    },
+    {
+     "order": 2,
+     "title": "Area 6a · 2/3: Encryption keys served by the Angular UI",
+     "file": "6a/ticket-2.md",
+     "blockedByOrders": [
+      1
+     ],
+     "number": 138
+    },
+    {
+     "order": 3,
+     "title": "Area 6a · 3/3: Verify part 6a and prepare its PR",
+     "file": "6a/ticket-3.md",
+     "blockedByOrders": [
+      2
+     ],
+     "number": 139
+    }
+   ]
+  },
+  {
+   "key": "6b",
+   "parent": {
+    "title": "Angular migration — Area 6b: Audit log",
+    "file": "6b/spec.md",
+    "number": 136
+   },
+   "blockedByParts": [
+    "6a"
+   ],
+   "tickets": [
+    {
+     "order": 1,
+     "title": "Area 6b · 1/5: Record checkpoints, viewing and verifying with their audit rows",
+     "file": "6b/ticket-1.md",
+     "blockedByOrders": [],
+     "number": 140
+    },
+    {
+     "order": 2,
+     "title": "Area 6b · 2/5: Verify the audit trail against its signed checkpoints",
+     "file": "6b/ticket-2.md",
+     "blockedByOrders": [
+      1
+     ],
+     "number": 141
+    },
+    {
+     "order": 3,
+     "title": "Area 6b · 3/5: Stream the audit bundle after recording it, behind step-up",
+     "file": "6b/ticket-3.md",
+     "blockedByOrders": [
+      2
+     ],
+     "number": 142
+    },
+    {
+     "order": 4,
+     "title": "Area 6b · 4/5: Audit log served by the Angular UI",
+     "file": "6b/ticket-4.md",
+     "blockedByOrders": [
+      3
+     ],
+     "number": 143
+    },
+    {
+     "order": 5,
+     "title": "Area 6b · 5/5: Verify part 6b and prepare its PR",
+     "file": "6b/ticket-5.md",
+     "blockedByOrders": [
+      4
+     ],
+     "number": 144
+    }
+   ]
+  }
+ ],
+ "followUps": [
+  {
+   "title": "Show and rotate master keys correctly under the KMS engine",
+   "file": "follow-up-kms-encryption-page.md",
+   "labels": [
+    "needs-triage"
+   ],
+   "number": 145
+  }
+ ]
+}
