@@ -647,6 +647,10 @@ button {
 .notice-warn svg {
   color: var(--warn);
 }
+.notice-ok {
+  border-color: rgba(48, 209, 88, 0.4);
+  background: linear-gradient(180deg, var(--ok-soft), var(--bg-raised) 70%);
+}
 .notice strong {
   margin-right: 0.15rem;
 }

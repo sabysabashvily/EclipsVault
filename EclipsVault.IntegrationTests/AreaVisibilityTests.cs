@@ -49,6 +49,8 @@ public sealed class AreaVisibilityTests(VaultFixture vault)
     [InlineData("/Notifications", "198.18.110.207")]
     [InlineData("/Encryption", "198.18.110.208")]
     [InlineData("/License", "198.18.110.209")]
+    [InlineData("/Notifications/Index", "198.18.110.210")]
+    [InlineData("/License/Index", "198.18.110.211")]
     public async Task A_standard_account_cannot_open_an_administration_page(string path, string source)
     {
         var session = await vault.SignInNewAccountAsync("it-area-denied-" + source.Split('.').Last(), IPAddress.Parse(source));

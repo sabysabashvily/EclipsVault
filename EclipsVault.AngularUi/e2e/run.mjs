@@ -165,8 +165,6 @@ async function main() {
     );
     const address = await compose(['port', 'proxy', '443'], { capture: true });
     env.E2E_BASE_URL = `https://localhost:${address.split(':').at(-1)}`;
-    const smtpAddress = await compose(['port', 'smtp', '8025'], { capture: true });
-    env.E2E_SMTP_URL = `http://127.0.0.1:${smtpAddress.split(':').at(-1)}`;
     await compose(['up', '-d', 'vault']);
     await waitForVault(env.E2E_BASE_URL);
 

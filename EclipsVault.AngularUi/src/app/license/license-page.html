@@ -1,0 +1,85 @@
+<div class="page-header">
+  <div>
+    <h1>License</h1>
+    <p class="page-sub">
+      How this vault is licensed. Licensing is soft — your secrets, and every baseline protection,
+      are never gated.
+    </p>
+  </div>
+</div>
+@if (license.isLoading() && !license.hasValue()) {
+  <p role="status">Loading license…</p>
+} @else if (license.error() && !license.hasValue()) {
+  <p role="alert">Could not load license. Try again.</p>
+  <button type="button" class="button" (click)="license.reload()">Try again</button>
+} @else if (license.hasValue()) {
+  <section class="panel">
+    <div class="panel-header">
+      <h2>Status</h2>
+      <span [class]="'badge tone-' + tones[license.value().status]">{{
+        license.value().status
+      }}</span>
+    </div>
+    <p class="hint muted">{{ license.value().message }}</p>
+    @if (license.value().licence; as claims) {
+      <dl class="detail-grid">
+        <dt>Licensed to</dt>
+        <dd>{{ claims.issuedTo }}</dd>
+        <dt>Tier</dt>
+        <dd>{{ claims.tier }}</dd>
+        @if (claims.contact?.trim()) {
+          <dt>Contact</dt>
+          <dd>{{ claims.contact }}</dd>
+        }
+        <dt>License id</dt>
+        <dd class="mono">{{ claims.licenseId }}</dd>
+        <dt>Issued</dt>
+        <dd>{{ claims.issuedAtUtc | date: "yyyy-MM-dd HH:mm 'UTC'" : 'UTC' }}</dd>
+        <dt>Expires</dt>
+        <dd>
+          {{
+            claims.expiresAtUtc
+              ? (claims.expiresAtUtc | date: "yyyy-MM-dd HH:mm 'UTC'" : 'UTC')
+              : 'never — perpetual'
+          }}
+        </dd>
+        <dt>Updates included until</dt>
+        <dd>
+          {{
+            claims.updatesUntilUtc
+              ? (claims.updatesUntilUtc | date: "yyyy-MM-dd HH:mm 'UTC'" : 'UTC')
+              : '—'
+          }}
+        </dd>
+        <dt>Node allowance</dt>
+        <dd>{{ claims.maxNodes === 0 ? 'unlimited' : claims.maxNodes }}</dd>
+      </dl>
+    }
+    @if (license.value().updatesLapsed) {
+      <div class="notice notice-warn">
+        <span
+          ><strong>Your update window has ended.</strong> The vault keeps working and still receives
+          security patches; renew to receive new feature releases.</span
+        >
+      </div>
+    }
+    @if (license.value().beyondTier.length) {
+      <div class="notice notice-warn">
+        <span
+          ><strong>In use beyond your tier:</strong> {{ license.value().beyondTier.join(', ') }}.
+          These keep working — licensing is soft — but are not covered by your current tier.</span
+        >
+      </div>
+    }
+  </section>
+  <section class="panel">
+    <div class="panel-header"><h2>Installing a license</h2></div>
+    <p class="hint muted">
+      Set the <code>ECLIPSVAULT_LICENSE</code> environment variable to your license token, or point
+      <code>License:FilePath</code> at a file that holds the token, then restart. The token is
+      verified offline against the vendor key pinned into this build — it never leaves your
+      infrastructure.
+    </p>
+    <p class="hint muted">See the Pricing &amp; licensing section of the README to buy or renew.</p>
+  </section>
+}

@@ -44,7 +44,23 @@ const password = () => import('./profile/change-password-page').then((m) => m.Ch
 const serviceAccounts = () =>
   import('./service-accounts/service-accounts-page').then((m) => m.ServiceAccountsPage);
 
+const notifications = () =>
+  import('./notifications/notifications-page').then((m) => m.NotificationsPage);
+const license = () => import('./license/license-page').then((m) => m.LicensePage);
+
 export const routes: Routes = [
+  {
+    matcher: legacyPath('Notifications'),
+    loadComponent: notifications,
+    title: 'Notifications — EclipsVault',
+  },
+  {
+    matcher: legacyPath('Notifications/Index'),
+    loadComponent: notifications,
+    title: 'Notifications — EclipsVault',
+  },
+  { matcher: legacyPath('License'), loadComponent: license, title: 'License — EclipsVault' },
+  { matcher: legacyPath('License/Index'), loadComponent: license, title: 'License — EclipsVault' },
   {
     matcher: legacyPath('ServiceAccounts'),
     loadComponent: serviceAccounts,

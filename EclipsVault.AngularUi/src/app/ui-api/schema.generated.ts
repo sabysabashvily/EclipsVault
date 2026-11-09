@@ -355,6 +355,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ui/license": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LicenseResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ui/me": {
         parameters: {
             query?: never;
@@ -670,6 +705,41 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["NotificationsResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3748,9 +3818,31 @@ export interface components {
             allowedRanges?: null | string;
         };
         JsonElement: unknown;
+        LicenseDetailsResponse: {
+            issuedTo: string;
+            tier: string;
+            contact: null | string;
+            licenseId: string;
+            /** Format: date-time */
+            issuedAtUtc: string;
+            /** Format: date-time */
+            expiresAtUtc: null | string;
+            /** Format: date-time */
+            updatesUntilUtc: null | string;
+            /** Format: int32 */
+            maxNodes: number | string;
+        };
         LicenseNotice: {
             title: string;
             text: string;
+        };
+        LicenseResponse: {
+            /** @enum {string} */
+            status: "Missing" | "Malformed" | "InvalidSignature" | "Expired" | "Valid";
+            message: string;
+            licence: null | components["schemas"]["LicenseDetailsResponse"];
+            updatesLapsed: boolean;
+            beyondTier: string[];
         };
         LiftBlockRequest: {
             range?: null | string;
@@ -3783,6 +3875,24 @@ export interface components {
         NewUserResponse: {
             emailDomain: string;
             clearances: components["schemas"]["ClearanceOptionResponse"][];
+        };
+        NotificationResponse: {
+            /** Format: date-time */
+            sentAtUtc: string;
+            to: string;
+            subject: string;
+            body: string;
+            eventType: string;
+            transport: string;
+            /** @enum {string} */
+            status: "sent" | "failed" | "suppressed";
+            error: null | string;
+        };
+        NotificationsResponse: {
+            /** @enum {string} */
+            delivery: "off" | "smtp" | "log";
+            smtpTarget: null | string;
+            outbox: components["schemas"]["NotificationResponse"][];
         };
         PasskeyOptionsResponse: {
             publicKey: components["schemas"]["JsonElement"];
