@@ -119,21 +119,44 @@ afterEach(() => {
 });
 
 describe('Networks', () => {
-  it('shows loading, then an error with retry, then the empty states', async () => {
+  it('shows loading until the networks arrive', async () => {
     const { page, fixture } = render();
     expect(page.textContent).toContain('Loading networks…');
+    backend.expectOne(path).flush(empty);
+    await fixture.whenStable();
+  });
+
+  it('shows a failed load with Try again, which loads the networks', async () => {
+    const { page, fixture } = render();
     backend.expectOne(path).flush({}, { status: 503, statusText: 'Unavailable' });
     await fixture.whenStable();
     expect(page.textContent).toContain('Could not load networks. Try again.');
     button(page, 'Try again').click();
     await reload(fixture, empty);
+    expect(page.textContent).not.toContain('Could not load networks.');
+  });
+
+  it('shows a trusted current address with its badge and no Trust button', async () => {
+    const { page } = await loaded(empty);
     expect(page.querySelector('.current-ip-value')?.textContent).toContain('10.8.0.5');
     expect(page.querySelector('.current-ip-value .badge')?.textContent).toBe('Trusted');
     expect(page.textContent).not.toContain('Trust this address');
+  });
+
+  it('shows the Legacy text when no runtime networks are trusted', async () => {
+    const { page } = await loaded(empty);
     expect(page.textContent).toContain(
       'No runtime-trusted networks yet. Entries added here apply immediately and are audited.',
     );
+  });
+
+  it('shows the Legacy text when no range is blocked', async () => {
+    const { page } = await loaded(empty);
     expect(page.textContent).toContain('No ranges are currently blocked.');
+  });
+
+  it('lists the configured ranges in order', async () => {
+    const { page } = await loaded(empty);
     expect([...page.querySelectorAll('.cidr-list li')].map((item) => item.textContent)).toEqual([
       '127.0.0.1/32',
       '10.0.0.0/8',
@@ -265,15 +288,25 @@ describe('Networks', () => {
     expect(assign).toHaveBeenCalledWith('/Account/Login?ReturnUrl=%2FAdmin%2FNetworks');
   });
 
-  it('removes a range only after the exact Legacy confirmation', async () => {
+  it('asks before Remove with the exact Legacy confirmation', async () => {
     const { page, fixture } = await loaded();
     button(page, 'Remove').click();
     await fixture.whenStable();
     expect(page.querySelector('[role="alertdialog"]')?.textContent).toContain(
       'Stop trusting 203.0.113.0/24? Requests from it will fail the network rule for Confidential+ secrets.',
     );
+  });
+
+  it('cancelling Remove sends nothing', async () => {
+    const { page, fixture } = await loaded();
+    button(page, 'Remove').click();
+    await fixture.whenStable();
     button(page.querySelector('[role="alertdialog"]')!, 'Cancel').click();
     backend.expectNone(`${path}/${networkId}`);
+  });
+
+  it('confirming Remove deletes the range and says so', async () => {
+    const { page, fixture } = await loaded();
     button(page, 'Remove').click();
     await fixture.whenStable();
     button(page, 'Continue').click();

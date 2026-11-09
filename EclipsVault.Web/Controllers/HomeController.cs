@@ -37,7 +37,7 @@ public sealed class HomeController : Controller
         // as the Secrets list. Listing through the service also excludes honey tokens.
         var visible = await _authorization.VisibleToAsync(User, await _secrets.ListAsync(ct));
 
-        var dto = await _dashboard.GetAsync(visible, isAdmin ? null : User.Identity.Name, ct);
+        var dto = await _dashboard.GetAsync(visible, isAdmin ? null : User.GetUsername(), ct);
         var displayName = User.GetDisplayName();
 
         return View("Dashboard", new DashboardViewModel

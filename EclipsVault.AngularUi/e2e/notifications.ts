@@ -24,6 +24,13 @@ export class Notifications {
       .getByRole('row')
       .filter({ has: this.page.getByRole('cell', { name: recipient, exact: true }) });
   }
+  cells(recipient: string) {
+    return this.row(recipient).getByRole('cell');
+  }
+  /** The subject cell, which carries the email body as its tooltip. */
+  subject(recipient: string, subject: string) {
+    return this.row(recipient).getByRole('cell', { name: subject });
+  }
   async fromSidebar(path: '/Secrets' | '/Access'): Promise<void> {
     await this.page.goto(path);
     await this.page.getByRole('link', { name: 'Notifications', exact: true }).click();

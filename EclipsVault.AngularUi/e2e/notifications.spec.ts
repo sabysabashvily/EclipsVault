@@ -31,8 +31,7 @@ test('the outbox shows the provisioning email this run delivered', async ({ page
     '✓ Delivering via SMTP → smtp:1025.',
     'Composed emails are sent to your mail server and recorded below.',
   ]);
-  const row = notifications.row(delivered.address);
-  await expect(row.getByRole('cell')).toHaveText([
+  await expect(notifications.cells(delivered.address)).toHaveText([
     /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
     delivered.address,
     delivered.subject,
@@ -40,7 +39,7 @@ test('the outbox shows the provisioning email this run delivered', async ({ page
     'Smtp',
     'Sent',
   ]);
-  await expect(row.getByRole('cell', { name: delivered.subject })).toHaveAttribute(
+  await expect(notifications.subject(delivered.address, delivered.subject)).toHaveAttribute(
     'title',
     /username 'e2e-outbox-recipient'/,
   );

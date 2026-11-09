@@ -8,9 +8,7 @@ test('License shows that this vault runs unlicensed', async ({ page }) => {
   await license.open();
   await expect(license.heading).toBeVisible();
   await expect(license.status).toHaveText('Missing');
-  await expect(
-    license.content.getByText('No license is configured — running unlicensed.', { exact: true }),
-  ).toBeVisible();
+  await expect(license.message('No license is configured — running unlicensed.')).toBeVisible();
   await expect(license.details).toHaveCount(0);
 });
 

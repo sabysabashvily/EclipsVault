@@ -77,7 +77,8 @@ public sealed class NetworksAuditFailureTests(AuditFailureFixture failure)
             var response = await NetworksApi.RemoveAsync(admin, stored!.Id);
 
             await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
-            Assert.Equal((stored.Id, "Kept"), ((await NetworksApi.FindAsync(vault, "203.0.113.62/32"))!.Id, stored.Label));
+            var kept = await NetworksApi.FindAsync(vault, "203.0.113.62/32");
+            Assert.Equal((stored.Id, "Kept"), (kept!.Id, kept.Label));
             Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         }
         finally

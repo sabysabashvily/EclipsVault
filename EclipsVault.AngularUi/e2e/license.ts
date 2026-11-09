@@ -16,6 +16,9 @@ export class License {
     this.details = this.content.getByText('Licensed to', { exact: true });
     this.viewLicense = page.getByRole('link', { name: 'View license', exact: true });
   }
+  message(text: string) {
+    return this.content.getByText(text, { exact: true });
+  }
   async open(): Promise<void> {
     await this.page.goto('/License/Index');
   }

@@ -43,7 +43,6 @@ export class Networks {
   unblock(range: string) {
     return this.row(range).getByRole('button', { name: 'Unblock', exact: true });
   }
-  /** The block's "Since (UTC)" cell, the third column of its row. */
   blockedSince(range: string) {
     return this.row(range).getByRole('cell').nth(2);
   }
