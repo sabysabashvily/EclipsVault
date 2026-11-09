@@ -45,9 +45,13 @@ public sealed class MonitoringPagesTests(VaultFixture vault)
 
     [Theory]
     [InlineData("POST", "/Notifications", HttpStatusCode.MethodNotAllowed)]
+    [InlineData("PUT", "/nOtIfIcAtIoNs/", HttpStatusCode.MethodNotAllowed)]
     [InlineData("POST", "/Notifications/Index", HttpStatusCode.MethodNotAllowed)]
+    [InlineData("PATCH", "/NOTIFICATIONS/INDEX", HttpStatusCode.MethodNotAllowed)]
     [InlineData("DELETE", "/License", HttpStatusCode.MethodNotAllowed)]
+    [InlineData("POST", "/lIcEnSe/", HttpStatusCode.MethodNotAllowed)]
     [InlineData("POST", "/License/Index", HttpStatusCode.MethodNotAllowed)]
+    [InlineData("PUT", "/LICENSE/INDEX/", HttpStatusCode.MethodNotAllowed)]
     [InlineData("GET", "/Notifications/Index/11111111-1111-1111-1111-111111111111", HttpStatusCode.NotFound)]
     [InlineData("GET", "/License/Index/11111111-1111-1111-1111-111111111111", HttpStatusCode.NotFound)]
     public async Task Retired_handlers_no_longer_answer(string method, string path, HttpStatusCode expected)

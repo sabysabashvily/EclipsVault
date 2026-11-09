@@ -375,11 +375,20 @@ public sealed class NetworksApiTests(VaultFixture vault)
     [Theory]
     [InlineData("POST", "/Admin/Networks", HttpStatusCode.MethodNotAllowed)]
     [InlineData("DELETE", "/aDmIn/nEtWoRkS/", HttpStatusCode.MethodNotAllowed)]
+    [InlineData("PUT", "/ADMIN/NETWORKS", HttpStatusCode.MethodNotAllowed)]
     [InlineData("GET", "/Admin/Networks/{id}", HttpStatusCode.NotFound)]
     [InlineData("POST", "/Admin/TrustCurrentIp", HttpStatusCode.NotFound)]
+    [InlineData("GET", "/aDmIn/tRuStCuRrEnTiP/", HttpStatusCode.NotFound)]
+    [InlineData("PUT", "/ADMIN/TRUSTCURRENTIP", HttpStatusCode.NotFound)]
     [InlineData("POST", "/aDmIn/aDdNeTwOrK", HttpStatusCode.NotFound)]
+    [InlineData("GET", "/Admin/AddNetwork/", HttpStatusCode.NotFound)]
+    [InlineData("PATCH", "/ADMIN/ADDNETWORK", HttpStatusCode.NotFound)]
     [InlineData("POST", "/Admin/RemoveNetwork/{id}", HttpStatusCode.NotFound)]
+    [InlineData("DELETE", "/aDmIn/rEmOvEnEtWoRk/{id}/", HttpStatusCode.NotFound)]
+    [InlineData("GET", "/ADMIN/REMOVENETWORK", HttpStatusCode.NotFound)]
     [InlineData("POST", "/ADMIN/UNBLOCK", HttpStatusCode.NotFound)]
+    [InlineData("GET", "/aDmIn/uNbLoCk/", HttpStatusCode.NotFound)]
+    [InlineData("DELETE", "/Admin/Unblock", HttpStatusCode.NotFound)]
     public async Task A_retired_network_handler_changes_nothing(string method, string path, HttpStatusCode expected)
     {
         var admin = await vault.AdminClientAsync();
