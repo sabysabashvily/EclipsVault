@@ -1,5 +1,7 @@
 import type { Page } from '@playwright/test';
-import { currentTotpStep, freshTotp } from './totp';
+import { setTimeout } from 'node:timers/promises';
+import { clearSignInBudget, readProfileTotpStep } from './profile-state';
+import { currentTotpStep, freshTotp, totp } from './totp';
 
 /** The production Profile cards and the account-verification dialog they share. */
 export class ProfilePage {
@@ -65,6 +67,35 @@ export class ProfilePage {
     await this.page.goto(path);
   }
 
+  /**
+   * The id of the operation this page is preparing. The body is read in the response predicate,
+   * because a navigation that follows the response drops it before a later read.
+   */
+  preparedOperation(): Promise<{ operationId: string }> {
+    let body: { operationId: string } | undefined;
+    let failed: unknown;
+    return this.page
+      .waitForResponse(async (response) => {
+        if (
+          !response.url().endsWith('/api/ui/profile/operations') ||
+          response.request().method() !== 'POST'
+        ) {
+          return false;
+        }
+        try {
+          body = (await response.json()) as { operationId: string };
+        } catch (error) {
+          failed = error;
+        }
+        return true;
+      })
+      .then(() => {
+        if (failed) throw failed;
+        if (!body?.operationId) throw new Error('The prepared operation had no id');
+        return body;
+      });
+  }
+
   async themeAppearance() {
     return this.displayName.evaluate((input) => ({
       background: getComputedStyle(document.body).backgroundColor,
@@ -96,8 +127,22 @@ export class ProfilePage {
     return currentTotpStep();
   }
 
+  /** Like fillVerification, using the step this run's database recorded for the profile account. */
+  async fillOwnerVerification(password: string, secret: string, lastStep: number): Promise<number> {
+    await this.verificationPassword.fill(password);
+    await this.verificationCode.fill(await freshProfileTotp(secret));
+    return Math.max(currentTotpStep(), lastStep);
+  }
+
   async verify(password: string, secret: string, lastStep: number): Promise<number> {
     const step = await this.fillVerification(password, secret, lastStep);
+    await this.verifyAccount.click();
+    return step;
+  }
+
+  /** Like verify, for the profile account whose spent authenticator step is in this run's database. */
+  async verifyOwner(password: string, secret: string, lastStep: number): Promise<number> {
+    const step = await this.fillOwnerVerification(password, secret, lastStep);
     await this.verifyAccount.click();
     return step;
   }
@@ -126,11 +171,33 @@ export class ProfilePage {
     await this.page.goto('/Account/Login');
   }
 
-  async waitForNextThrottleWindow(): Promise<void> {
-    // The disposable TLS proxy supplies one address to the real production throttle.
-    const windowMilliseconds = 120_000;
-    await this.page.waitForTimeout(windowMilliseconds - (Date.now() % windowMilliseconds) + 1_000);
+  /**
+   * The proxy has one address and the production throttle counts it in fixed windows. Clearing this
+   * run's counters opens a full budget without waiting for the host clock to cross a boundary.
+   */
+  releaseSignInBudget(): void {
+    clearSignInBudget();
   }
+}
+
+/**
+ * A code for the profile account. The spent step is the one the server recorded, so a late request
+ * that the server matched in the next step is not offered again. One wait, matching the original
+ * authenticator helper: a second wait would walk a deliberate resend out of the mailbox minute.
+ */
+export async function freshProfileTotp(secret: string): Promise<string> {
+  const started = Date.now();
+  // Only the step the server recorded. A client step ahead of it is the clock rolling after the
+  // code was made, and waiting that out pushes a deliberate resend past the mailbox minute.
+  const spent = readProfileTotpStep();
+  // The read is the round trip this code still has to survive. Keep it inside one step.
+  const margin = Math.min(10_000, Math.max(5_000, Date.now() - started + 1_000));
+  const now = Date.now();
+  const remaining = 30_000 - (now % 30_000);
+  if (Math.floor(now / 30_000) <= spent || remaining < margin) {
+    await setTimeout(remaining + 100);
+  }
+  return totp(secret);
 }
 
 /** The separate Change password page that Profile links to. */
