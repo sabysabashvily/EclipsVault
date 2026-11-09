@@ -158,6 +158,7 @@ it.each([
   { query: 'log', subjects: ['Password changed'] },
   { query: 'FAILED', subjects: ['FINANCE_DECOY_KEY expires'] },
   { query: 'suppressed', subjects: ['Password changed'] },
+  { query: '⚠', subjects: ['FINANCE_DECOY_KEY expires'] },
   { query: 'Welcome', subjects: [] },
 ])('filters the visible row text, as Legacy did, with $query', async ({ query, subjects }) => {
   const { page, fixture } = await loaded();

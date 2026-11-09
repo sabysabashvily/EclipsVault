@@ -27,6 +27,7 @@ export class NotificationsPage {
         email.eventType,
         email.transport,
         this.badges[email.status].label,
+        email.status === 'failed' && email.error ? '⚠' : '',
       ]
         .join(' ')
         .toLowerCase()
