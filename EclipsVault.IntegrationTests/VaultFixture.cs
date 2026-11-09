@@ -73,6 +73,9 @@ public sealed partial class VaultFixture : IAsyncLifetime
 
     public bool MalformedLicense { get; init; }
 
+    /// <summary>A master key the vault loads only to unwrap data keys still sealed under it.</summary>
+    public string? RetiredMasterKey { get; init; }
+
     public async Task InitializeAsync()
     {
         await _database.StartAsync();
@@ -89,6 +92,7 @@ public sealed partial class VaultFixture : IAsyncLifetime
         SetEnvironment("Database__Provider", _database.Provider);
         SetEnvironment("ConnectionStrings__DefaultConnection", _database.ConnectionString());
         SetEnvironment("ECLIPSVAULT_KEK", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
+        if (RetiredMasterKey is not null) SetEnvironment("ECLIPSVAULT_KEK_RETIRED", RetiredMasterKey);
         SetEnvironment("ECLIPSVAULT_AUDIT_SIGNING_KEY", Convert.ToBase64String(signingKey.ExportPkcs8PrivateKey()));
         SetEnvironment("DataProtection__KeyRingPath", _keyRing.FullName);
         SetEnvironment("Seed__AdminPassword", _adminPassword);
