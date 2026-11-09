@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using EclipsVault.Infrastructure.Persistence;
@@ -15,6 +17,8 @@ namespace EclipsVault.IntegrationTests;
 internal static class ProofDisclosure
 {
     private static readonly string LogFolder = Path.Combine(AppContext.BaseDirectory, "logs");
+
+    private static readonly DateTimeOffset ProcessStarted = new(Process.GetCurrentProcess().StartTime);
 
     /// <summary>
     /// Fails when any of <paramref name="secrets"/> appears in an audit row after <paramref name="sequence"/>,
@@ -54,38 +58,75 @@ internal static class ProofDisclosure
 
     internal static bool ContainsSecret(string text, string secret)
     {
-        // A short numeric code can occur by chance inside an opaque trace or session identifier.
-        return secret.Length == 6 && secret.All(char.IsAsciiDigit)
-            ? Regex.IsMatch(text, $"(?<![A-Za-z0-9]){Regex.Escape(secret)}(?![A-Za-z0-9])")
-            : text.Contains(secret, StringComparison.Ordinal);
+        // A six-digit code can sit inside a trace identifier, or on one side of a logged decimal.
+        if (secret.Length != 6 || !secret.All(char.IsAsciiDigit))
+            return text.Contains(secret, StringComparison.Ordinal);
+
+        return Regex.IsMatch(
+            text,
+            $@"(?<![A-Za-z0-9])(?<![0-9]\.){Regex.Escape(secret)}(?!\.[0-9])(?![A-Za-z0-9])");
     }
 
-    private static async Task<string> ReadLogsAsync()
+    internal static bool LogFileWasWrittenDuringThisRun(DateTime lastWriteUtc, DateTimeOffset started)
+        => lastWriteUtc >= started.UtcDateTime;
+
+    internal static string LogTextFromThisRun(string raw, DateTimeOffset started)
     {
         var contents = new List<string>();
-        foreach (var file in Directory.EnumerateFiles(LogFolder, "*.clef"))
+        foreach (var rawLine in raw.Split('\n'))
         {
-            // The vault keeps writing while the test reads.
-            await using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            using var reader = new StreamReader(stream);
-            var raw = await reader.ReadToEndAsync();
-            contents.Add(raw);
-            foreach (var line in raw.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            var line = rawLine.TrimEnd('\r');
+            if (line.Length == 0)
+                continue;
+
+            try
             {
-                try
-                {
-                    using var document = JsonDocument.Parse(line);
-                    contents.AddRange(StringValues(document.RootElement));
-                }
-                catch (JsonException)
-                {
-                    // A concurrently written final line may be incomplete; the raw text is still checked.
-                }
+                using var document = JsonDocument.Parse(line);
+                if (WrittenBefore(document.RootElement, started))
+                    continue;
+
+                contents.Add(line);
+                contents.AddRange(StringValues(document.RootElement));
+            }
+            catch (JsonException)
+            {
+                // A line that cannot be dated, such as one still being written, is checked as raw text.
+                contents.Add(line);
             }
         }
 
         return string.Join('\n', contents);
     }
+
+    private static async Task<string> ReadLogsAsync()
+    {
+        // Daily files stay for two weeks, and today's file keeps earlier runs.
+        var contents = new List<string>();
+        foreach (var file in Directory.EnumerateFiles(LogFolder, "*.clef"))
+        {
+            if (!LogFileWasWrittenDuringThisRun(File.GetLastWriteTimeUtc(file), ProcessStarted))
+                continue;
+
+            // The vault keeps writing while the test reads.
+            await using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+            var text = LogTextFromThisRun(await reader.ReadToEndAsync(), ProcessStarted);
+            if (text.Length > 0)
+                contents.Add(text);
+        }
+
+        return string.Join('\n', contents);
+    }
+
+    // Only a valid timestamp can prove a line belongs to an earlier run; anything else is still checked.
+    private static bool WrittenBefore(JsonElement value, DateTimeOffset started)
+        => value.ValueKind == JsonValueKind.Object
+            && value.TryGetProperty("@t", out var stamp)
+            && stamp.ValueKind == JsonValueKind.String
+            && DateTimeOffset.TryParse(
+                stamp.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var written)
+            && written < started;
+
     private static IEnumerable<string> StringValues(JsonElement value) => value.ValueKind switch
     {
         JsonValueKind.String => [value.GetString()!],
