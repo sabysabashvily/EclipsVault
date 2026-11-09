@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 
 namespace EclipsVault.Infrastructure.Persistence.Locking;
@@ -29,6 +30,12 @@ internal sealed class SessionLock(DbContext db, Func<Task> release) : IAsyncDisp
         try
         {
             await release();
+        }
+        catch (DbException)
+        {
+            // Either the session is gone, and the lock with it, or the locker has retired the session
+            // so it cannot be reused while holding the lock. Throwing here would only replace the error
+            // that ended the holder's work, such as an audit failure, with this one.
         }
         finally
         {

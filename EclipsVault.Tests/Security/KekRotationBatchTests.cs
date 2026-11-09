@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using EclipsVault.Core.Application.Abstractions;
+using EclipsVault.Core.Application.KeyManagement;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
@@ -16,9 +17,9 @@ using Xunit;
 namespace EclipsVault.Tests.Security;
 
 /// <summary>
-/// A rotation pass clears each secret it moves from the secret cache, batch by batch, and stops only
-/// between batches. Runs the real service against in-memory SQLite; only the database locks and the
-/// cache are stand-ins.
+/// A rotation pass clears each secret it moves from the secret cache, batch by batch, stops only
+/// between batches, and leaves the KMS engine to re-wrap its own rows. Runs the real service against
+/// in-memory SQLite; only the database locks, the cache and the KMS engine are stand-ins.
 /// </summary>
 public sealed class KekRotationBatchTests : IDisposable
 {
@@ -64,20 +65,47 @@ public sealed class KekRotationBatchTests : IDisposable
         await db.Database.EnsureCreatedAsync();
         await SecretsUnderRetiredKeyAsync(db, count: 501);
         using var caller = new CancellationTokenSource();
-        _cache.OnEviction = caller.Cancel;
+        var leavesDuringFirstRewrap = new CancelsOnRewrap(
+            new AesGcmCryptoEngine(new Keys(CurrentKekId, CurrentKek, (RetiredKekId, RetiredKek)), Options.Create(new CryptoOptions())), caller);
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Rotation(db).RotateAsync(caller.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Rotation(db, leavesDuringFirstRewrap).RotateAsync(caller.Token));
 
         Assert.Equal(500, _cache.Evictions.Count);
+        Assert.Equal(1, await RotationsRecordedAsync());
         Assert.Equal(
             [(CurrentKekId, 500), (RetiredKekId, 1)],
             await db.Secrets.GroupBy(secret => secret.KekId).OrderByDescending(group => group.Count())
                 .Select(group => ValueTuple.Create(group.Key, group.Count())).ToListAsync());
     }
 
-    private KekRotationService Rotation(EclipsVaultDbContext db) => new(
+    [Fact]
+    public async Task Under_the_KMS_engine_a_pass_sends_each_row_not_under_the_current_key_to_its_rewrap()
+    {
+        await using var db = NewContext();
+        await db.Database.EnsureCreatedAsync();
+        var secret = new Secret
+        {
+            Id = Guid.NewGuid(),
+            Name = "kms-wrapped",
+            ProjectKey = "ROTATION",
+            Ciphertext = [1],
+            WrappedDek = Encoding.UTF8.GetBytes("vault:v1:wrapped"),
+            KekId = "vault:eclipsvault:v1",
+            Algorithm = "AES-256-GCM-AAD+VaultTransit",
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+        };
+        db.Secrets.Add(secret);
+        await db.SaveChangesAsync();
+
+        var result = await Rotation(db, new KmsRewrap()).RotateAsync(default);
+
+        Assert.Equal(new KekRotationResult(CurrentKekId, 1, 0, 0), result);
+        Assert.Equal("vault:eclipsvault:v2", await db.Secrets.Where(row => row.Id == secret.Id).Select(row => row.KekId).SingleAsync());
+    }
+
+    private KekRotationService Rotation(EclipsVaultDbContext db, ICryptoEngine? engine = null) => new(
         db,
-        new EngineFactory(new AesGcmCryptoEngine(new Keys(CurrentKekId, CurrentKek, (RetiredKekId, RetiredKek)), Options.Create(new CryptoOptions()))),
+        new EngineFactory(engine ?? new AesGcmCryptoEngine(new Keys(CurrentKekId, CurrentKek, (RetiredKekId, RetiredKek)), Options.Create(new CryptoOptions()))),
         new Keys(CurrentKekId, CurrentKek, (RetiredKekId, RetiredKek)),
         _cache,
         _chain,
@@ -124,18 +152,13 @@ public sealed class KekRotationBatchTests : IDisposable
     {
         public List<(Guid SecretId, int RotationsRecorded)> Evictions { get; } = [];
 
-        public Action OnEviction { get; set; } = () => { };
-
         public Task<EncryptedSecretEnvelope?> GetAsync(Guid secretId, CancellationToken ct = default)
             => Task.FromResult<EncryptedSecretEnvelope?>(null);
 
         public Task SetAsync(EncryptedSecretEnvelope envelope, CancellationToken ct = default) => Task.CompletedTask;
 
         public async Task EvictAsync(Guid secretId, CancellationToken ct = default)
-        {
-            OnEviction();
-            Evictions.Add((secretId, await rotationsRecorded()));
-        }
+            => Evictions.Add((secretId, await rotationsRecorded()));
     }
 
     /// <summary>SQLite has no lock manager, and these tests run one pass on one connection.</summary>
@@ -164,6 +187,35 @@ public sealed class KekRotationBatchTests : IDisposable
         public IReadOnlyList<string> KnownKekIds => [.. _keys.Keys];
 
         public byte[] ResolveKek(string kekId) => _keys[kekId];
+    }
+
+    /// <summary>Re-wraps as the KMS engine does: under its own latest key version, with an id of its own.</summary>
+    private sealed class KmsRewrap : ICryptoEngine
+    {
+        public string EngineId => VaultTransitCryptoEngine.EngineName;
+
+        public Task<SealedSecret> SealAsync(byte[] plaintext, byte[] associatedData, CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<byte[]> UnsealAsync(SealedSecret sealedSecret, byte[] associatedData, CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<SealedSecret> RewrapAsync(SealedSecret sealedSecret, CancellationToken ct)
+            => Task.FromResult(sealedSecret with { WrappedDek = Encoding.UTF8.GetBytes("vault:v2:wrapped"), KekId = "vault:eclipsvault:v2" });
+    }
+
+    /// <summary>The real engine, whose first re-wrap is where the caller leaves.</summary>
+    private sealed class CancelsOnRewrap(ICryptoEngine engine, CancellationTokenSource caller) : ICryptoEngine
+    {
+        public string EngineId => engine.EngineId;
+
+        public Task<SealedSecret> SealAsync(byte[] plaintext, byte[] associatedData, CancellationToken ct) => engine.SealAsync(plaintext, associatedData, ct);
+
+        public Task<byte[]> UnsealAsync(SealedSecret sealedSecret, byte[] associatedData, CancellationToken ct) => engine.UnsealAsync(sealedSecret, associatedData, ct);
+
+        public Task<SealedSecret> RewrapAsync(SealedSecret sealedSecret, CancellationToken ct)
+        {
+            caller.Cancel();
+            return engine.RewrapAsync(sealedSecret, ct);
+        }
     }
 
     private sealed class EngineFactory(ICryptoEngine engine) : ICryptoEngineFactory

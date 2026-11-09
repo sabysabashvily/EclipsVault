@@ -1,3 +1,5 @@
+using System.Data.Common;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace EclipsVault.Infrastructure.Persistence.Locking;
@@ -25,7 +27,7 @@ public sealed class SqlServerSessionLocker : ISessionLocker
             var result = (await db.Database.SqlQueryRaw<int>(AcquireSql, resource).ToListAsync(ct)).Single();
             if (result >= 0)
             {
-                return new SessionLock(db, () => db.Database.ExecuteSqlRawAsync(ReleaseSql, [resource], CancellationToken.None));
+                return new SessionLock(db, () => ReleaseAsync(db, resource));
             }
         }
         catch
@@ -36,5 +38,19 @@ public sealed class SqlServerSessionLocker : ISessionLocker
 
         await db.Database.CloseConnectionAsync();
         return null;
+    }
+
+    private static async Task ReleaseAsync(DbContext db, string resource)
+    {
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(ReleaseSql, [resource], CancellationToken.None);
+        }
+        catch (DbException)
+        {
+            // Retire the pooled session rather than lend it out still holding the lock.
+            SqlConnection.ClearPool((SqlConnection)db.Database.GetDbConnection());
+            throw;
+        }
     }
 }

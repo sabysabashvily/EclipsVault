@@ -31,12 +31,8 @@ public sealed class KekRotationTests(KekRotationFixture fixture)
     public async Task A_pass_over_more_than_one_batch_records_one_KekRotated_row_per_batch_and_no_SecretUpdated_row()
     {
         await RotateAsync();
-        var secretIds = new List<Guid>();
-        for (var index = 0; index < 501; index++)
-        {
-            secretIds.Add(await SecretsUnderMasterKey.CreateAsync(_vault, fixture.RetiredMasterKey, $"batch-{index:D3}", "batched value"));
-        }
-        await SecretsUnderMasterKey.ReplaceValueAsync(_vault, fixture.RetiredMasterKey, secretIds[0], "batched value, replaced");
+        var secretIds = await SecretsUnderMasterKey.CreateManyAsync(_vault, fixture.RetiredMasterKey, "batch", count: 501);
+        await SecretsUnderMasterKey.ReplaceValueAsync(_vault, fixture.RetiredMasterKey, secretIds[0], "replaced value");
         var before = await AuditTrail.HeadAsync(_vault);
 
         var result = await RotateAsync();

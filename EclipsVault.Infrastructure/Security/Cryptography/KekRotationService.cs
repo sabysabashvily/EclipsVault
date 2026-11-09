@@ -95,25 +95,30 @@ public sealed class KekRotationService : IKekRotationService
         var retired = known.Where(id => id != current).ToList();
         var engine = _cryptoFactory.Create();
 
+        // The KMS engine's key ids name its own key versions, not master keys loaded here, so under
+        // it every row still goes to its re-wrap, which knows which versions it holds.
+        var keysAreLoadedHere = engine.EngineId == AesGcmCryptoEngine.EngineName;
+
         var secrets = await RotateRowsAsync(
             _db.Secrets.AsNoTracking()
-                .Where(s => !s.IsShredded && retired.Contains(s.KekId))
+                .Where(s => !s.IsShredded && s.KekId != current && (!keysAreLoadedHere || retired.Contains(s.KekId)))
                 .Select(s => new ReadEnvelope { Id = s.Id, Ciphertext = s.Ciphertext, WrappedDek = s.WrappedDek, KekId = s.KekId, Algorithm = s.Algorithm }),
             areSecrets: true, engine, ct);
 
         var versions = await RotateRowsAsync(
             _db.SecretVersions.AsNoTracking()
-                .Where(v => retired.Contains(v.KekId))
+                .Where(v => v.KekId != current && (!keysAreLoadedHere || retired.Contains(v.KekId)))
                 .Select(v => new ReadEnvelope { Id = v.Id, Ciphertext = v.Ciphertext, WrappedDek = v.WrappedDek, KekId = v.KekId, Algorithm = v.Algorithm }),
             areSecrets: false, engine, ct);
 
-        var onMissingKeys = await _db.Secrets.CountAsync(s => !s.IsShredded && !known.Contains(s.KekId), ct)
-            + await _db.SecretVersions.CountAsync(v => !known.Contains(v.KekId), ct);
+        var onMissingKeys = keysAreLoadedHere
+            ? await _db.Secrets.CountAsync(s => !s.IsShredded && !known.Contains(s.KekId), ct)
+                + await _db.SecretVersions.CountAsync(v => !known.Contains(v.KekId), ct)
+            : 0;
 
         return new KekRotationResult(current, secrets, versions, onMissingKeys);
     }
 
-    /// <summary>Walks <paramref name="pending"/> in id order, one batch at a time, and returns how many rows moved.</summary>
     private async Task<int> RotateRowsAsync(IQueryable<ReadEnvelope> pending, bool areSecrets, ICryptoEngine engine, CancellationToken ct)
     {
         var moved = 0;
@@ -134,6 +139,9 @@ public sealed class KekRotationService : IKekRotationService
             }
 
             moved += await CommitBatchAsync(batch, areSecrets, engine);
+
+            // Past every row the batch read, moved or skipped, so a row that keeps changing cannot
+            // hold the pass in place.
             after = batch[^1].Id;
         }
     }

@@ -29,6 +29,18 @@ internal static class SecretsUnderMasterKey
             default);
     }
 
+    /// <summary>Creates <paramref name="count"/> secrets named <paramref name="namePrefix"/>-000 onwards, in that order.</summary>
+    public static async Task<List<Guid>> CreateManyAsync(VaultFixture vault, string masterKey, string namePrefix, int count)
+    {
+        var ids = new List<Guid>(count);
+        for (var index = 0; index < count; index++)
+        {
+            ids.Add(await CreateAsync(vault, masterKey, $"{namePrefix}-{index:D3}", "value"));
+        }
+
+        return ids;
+    }
+
     /// <summary>Replaces the secret's value; the value it replaces is archived as a version, both under <paramref name="masterKey"/>.</summary>
     public static async Task ReplaceValueAsync(VaultFixture vault, string masterKey, Guid secretId, string value)
     {
