@@ -72,19 +72,17 @@ internal static class ProofDisclosure
 
     internal static string LogTextFromThisRun(string raw, DateTimeOffset started)
     {
-        var lines = raw.Split('\n');
         var contents = new List<string>();
-        for (var i = 0; i < lines.Length; i++)
+        foreach (var rawLine in raw.Split('\n'))
         {
-            var line = lines[i].TrimEnd('\r');
+            var line = rawLine.TrimEnd('\r');
             if (line.Length == 0)
                 continue;
 
-            var unfinished = i == lines.Length - 1 && !raw.EndsWith('\n') && !raw.EndsWith('\r');
             try
             {
                 using var document = JsonDocument.Parse(line);
-                if (!WrittenAtOrAfter(document.RootElement, started))
+                if (WrittenBefore(document.RootElement, started))
                     continue;
 
                 contents.Add(line);
@@ -92,10 +90,7 @@ internal static class ProofDisclosure
             }
             catch (JsonException)
             {
-                if (!unfinished)
-                    continue;
-
-                // A concurrently written final line may be incomplete; the raw text is still checked.
+                // A line that cannot be dated, such as one still being written, is checked as raw text.
                 contents.Add(line);
             }
         }
@@ -123,15 +118,13 @@ internal static class ProofDisclosure
         return string.Join('\n', contents);
     }
 
-    private static bool WrittenAtOrAfter(JsonElement value, DateTimeOffset started)
-    {
-        if (!value.TryGetProperty("@t", out var stamp) || stamp.ValueKind != JsonValueKind.String)
-            return false;
-
-        return DateTimeOffset.TryParse(
+    // Only a valid timestamp can prove a line belongs to an earlier run; anything else is still checked.
+    private static bool WrittenBefore(JsonElement value, DateTimeOffset started)
+        => value.TryGetProperty("@t", out var stamp)
+            && stamp.ValueKind == JsonValueKind.String
+            && DateTimeOffset.TryParse(
                 stamp.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var written)
-            && written >= started;
-    }
+            && written < started;
 
     private static IEnumerable<string> StringValues(JsonElement value) => value.ValueKind switch
     {

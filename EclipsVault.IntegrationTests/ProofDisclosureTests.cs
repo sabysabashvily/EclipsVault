@@ -58,4 +58,18 @@ public sealed class ProofDisclosureTests
         Assert.DoesNotContain("11:00:00", text, StringComparison.Ordinal);
         Assert.Contains("/api/ui/prof", text, StringComparison.Ordinal);
     }
+
+    [Theory]
+    [InlineData("{\"code\":\"145708\"}\n")]
+    [InlineData("{\"@t\":42,\"code\":\"145708\"}\n")]
+    [InlineData("{\"@t\":\"not a time\",\"code\":\"145708\"}\n")]
+    [InlineData("{\"code\":\"145708\" malformed\n")]
+    public void A_log_line_that_cannot_be_dated_is_still_checked(string undated)
+    {
+        var raw = "{\"@t\":\"2026-11-08T12:00:02.0000000Z\",\"path\":\"/api/ui/profile\"}\n" + undated;
+
+        var text = ProofDisclosure.LogTextFromThisRun(raw, RunStarted);
+
+        Assert.True(ProofDisclosure.ContainsSecret(text, "145708"));
+    }
 }
