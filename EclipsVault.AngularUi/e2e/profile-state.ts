@@ -1,4 +1,7 @@
 import { execFileSync } from 'node:child_process';
+import { setTimeout } from 'node:timers/promises';
+
+const profileUsername = 'e2e-profile-owner';
 
 /** Expiry cannot be reached through a production screen, so only this run's disposable DB is changed. */
 export function expireProfileOperation(operationId: string): void {
@@ -96,8 +99,85 @@ export function rejectAuditWrites(reject: boolean): void {
 export function profileCredentialGeneration(): number {
   return Number(
     database(
-      "SET NOCOUNT ON; SELECT CredentialGeneration FROM Users WHERE Username = 'e2e-profile-owner';",
+      `SET NOCOUNT ON; SELECT CredentialGeneration FROM Users WHERE Username = '${profileUsername}';`,
     ),
+  );
+}
+
+/** The step the profile account has already spent, or -1 when it has never accepted one. */
+export function readProfileTotpStep(): number {
+  const answer = database(
+    `SET NOCOUNT ON; SELECT COALESCE(LastTotpStep, -1) FROM Users WHERE Username = '${profileUsername}';`,
+  ).trim();
+  const step = Number(answer);
+  if (!answer || !Number.isInteger(step)) {
+    throw new Error(`The authenticator step was not readable; the database answered: ${answer}`);
+  }
+  return step;
+}
+
+/**
+ * Waits until this run's database says the rolling minute after the latest mailbox send has passed.
+ * The server's clock decides, so a slow step before the resend shortens the wait and a slow server
+ * clock lengthens it. The minute itself is unchanged.
+ */
+export async function waitForMailboxSendBudget(): Promise<void> {
+  const margin = 1_000;
+  for (;;) {
+    const remaining = millisecondsUntilMailboxSendAllowed();
+    if (remaining <= -margin) return;
+    await setTimeout(Math.max(remaining, 0) + margin);
+  }
+}
+
+function millisecondsUntilMailboxSendAllowed(): number {
+  const answer = database(
+    'SET NOCOUNT ON; ' +
+      'SELECT CASE WHEN MAX(SentAtUtc) IS NULL THEN NULL ' +
+      'ELSE DATEDIFF_BIG(millisecond, SYSUTCDATETIME(), DATEADD(minute, 1, MAX(SentAtUtc))) END ' +
+      'FROM EmailVerificationSends WHERE AccountId = ' +
+      `(SELECT Id FROM Users WHERE Username = '${profileUsername}');`,
+  ).trim();
+  if (!answer || answer.toUpperCase() === 'NULL') {
+    throw new Error('No mailbox send was recorded for the profile account');
+  }
+  const remaining = Number(answer);
+  if (!Number.isInteger(remaining) || remaining > 120_000) {
+    throw new Error(`The mailbox send clock was not readable; the database answered: ${answer}`);
+  }
+  return remaining;
+}
+
+/**
+ * Deletes this run's sign-in counters so the shared proxy address starts the scenario with a full
+ * budget. The key is the instance name glued to "auth-throttle", which is how the vault builds it.
+ */
+export function clearSignInBudget(): void {
+  redis(
+    'set -f; keys=$(redis-cli --scan --pattern eclipsvaultauth-throttle:*); ' +
+      'if [ -n "$keys" ]; then redis-cli DEL $keys >/dev/null; fi',
+  );
+}
+
+function redis(script: string): void {
+  const project = process.env['E2E_COMPOSE_PROJECT'];
+  if (!project) throw new Error('The browser runner must name its own disposable stack');
+  execFileSync(
+    'docker',
+    [
+      'compose',
+      '--project-name',
+      project,
+      '--file',
+      'e2e/compose.yml',
+      'exec',
+      '-T',
+      'redis',
+      'sh',
+      '-c',
+      script,
+    ],
+    { stdio: 'pipe' },
   );
 }
 

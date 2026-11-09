@@ -7,8 +7,11 @@ using EclipsVault.Core.Application.Passkeys;
 using EclipsVault.Core.Application.Sessions;
 using EclipsVault.Core.Application.StepUp;
 using EclipsVault.Core.Domain.Entities;
+using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Infrastructure.Persistence;
+using EclipsVault.Web.Authentication;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -47,6 +50,34 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         Assert.Equal(2, stored.FailedAccessCount);
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         Assert.NotNull(await auth.VerifyTotpAsync(account.Id, stamp, code, default));
+    }
+
+    [Fact]
+    public async Task A_refused_sign_in_outcome_issues_no_session()
+    {
+        var vault = failure.Vault;
+        await vault.SignInNewAccountAsync("it-ledger-totp-outcome", IPAddress.Parse("203.0.113.177"));
+        var account = await ProfileHttp.AccountAsync(vault, "it-ledger-totp-outcome");
+        using var request = vault.Services.CreateScope();
+        var auth = request.ServiceProvider.GetRequiredService<IVaultAuthenticationService>();
+        var stamp = await CurrentStampAsync(vault, account);
+        var proven = await auth.VerifyTotpAsync(account.Id, stamp, Totp.Code(account.TotpSecret!, Totp.CurrentStep() + 1), default);
+        var before = await AuditTrail.HeadAsync(vault);
+
+        await failure.RejectAuditWritesAsync();
+        try
+        {
+            var http = new DefaultHttpContext { RequestServices = request.ServiceProvider };
+            await Assert.ThrowsAsync<AuditWriteFailedException>(() => request.ServiceProvider.GetRequiredService<SessionIssuer>()
+                .SignInAsync(http, proven!, stamp, new SignInAudit(AuditAction.LoginSucceeded, "Password + TOTP"), default));
+            Assert.False(http.Response.Headers.ContainsKey("Set-Cookie"));
+        }
+        finally
+        {
+            await failure.RestoreAuditWritesAsync();
+        }
+
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
     [Fact]

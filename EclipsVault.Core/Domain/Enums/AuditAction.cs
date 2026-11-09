@@ -18,6 +18,19 @@ public enum AuditAction
     LoginSucceeded = 11,
     TotpFailed = 12,
     TotpEnrolled = 13,
+
+    /// <summary>
+    /// A sign-in proved a factor and then was refused a session, because the account's
+    /// credentials were no longer the ones that proof was for. Not a sign-in.
+    /// </summary>
+    SignInRefused = 16,
+
+    /// <summary>
+    /// A sign-in factor passed and its bookkeeping (a spent authenticator step, a passkey counter,
+    /// a cleared failure count) committed with this row. Not a sign-in: the session is recorded
+    /// when it is issued.
+    /// </summary>
+    SignInFactorVerified = 17,
     HoneyTokenTripped = 20,
     SessionRevoked = 21,
     UserCreated = 30,

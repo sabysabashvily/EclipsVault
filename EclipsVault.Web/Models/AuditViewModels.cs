@@ -34,6 +34,8 @@ public static class AuditDisplay
         AuditAction.SecretShareRevoked => ("Share revoked", "warn"),
         AuditAction.LoginFailed => ("Login failed", "warn"),
         AuditAction.LoginSucceeded => ("Signed in", "ok"),
+        AuditAction.SignInRefused => ("Sign-in refused", "warn"),
+        AuditAction.SignInFactorVerified => ("Sign-in factor verified", "muted"),
         AuditAction.TotpFailed => ("TOTP failed", "warn"),
         AuditAction.TotpEnrolled => ("TOTP enrolled", "ok"),
         AuditAction.HoneyTokenTripped => ("Honey token", "critical"),

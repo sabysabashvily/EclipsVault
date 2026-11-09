@@ -65,9 +65,6 @@ public sealed class AccountController : Controller
         _logger = logger;
     }
 
-    private Task AuditRecoveryAsync(AuditAction action, Guid userId, string username, string details, CancellationToken ct)
-        => _audit.WriteAsync(new AuditEntry { Action = action, ResourceType = "User", ResourceId = userId, ActorUserId = userId, ActorUsername = username, Details = details }, ct);
-
     [AllowAnonymous]
     [HttpGet]
     public IActionResult Login(string? returnUrl)
@@ -175,7 +172,7 @@ public sealed class AccountController : Controller
             return View(model);
         }
 
-        if (!await _issuer.SignInAsync(HttpContext, user, stamp))
+        if (!await _issuer.SignInAsync(HttpContext, user, stamp, new SignInAudit(AuditAction.LoginSucceeded, "Password + TOTP"), ct))
         {
             return await RestartSignInAsync(model.ReturnUrl);
         }
@@ -222,7 +219,7 @@ public sealed class AccountController : Controller
             return View(model);
         }
 
-        if (!await _issuer.SignInAsync(HttpContext, user, stamp))
+        if (!await _issuer.SignInAsync(HttpContext, user, stamp, new SignInAudit(AuditAction.LoginSucceeded, "Password + recovery code"), ct))
         {
             return await RestartSignInAsync(model.ReturnUrl);
         }
@@ -281,7 +278,7 @@ public sealed class AccountController : Controller
                 return await RedisplayEnrollmentAsync(userId, stamp, model, ct);
             }
 
-            if (!await _issuer.SignInAsync(HttpContext, user, stamp))
+            if (!await _issuer.SignInAsync(HttpContext, user, stamp, new SignInAudit(AuditAction.LoginSucceeded, "Password + TOTP enrollment"), ct))
             {
                 return await RestartSignInAsync(model.ReturnUrl);
             }
@@ -331,7 +328,7 @@ public sealed class AccountController : Controller
             return Json(new { success = false, error = result.Error ?? "Passkey sign-in failed." });
         }
 
-        if (!await _issuer.SignInAsync(HttpContext, result.User, result.Stamp))
+        if (!await _issuer.SignInAsync(HttpContext, result.User, result.Stamp, new SignInAudit(AuditAction.PasskeyLogin, "Passwordless sign-in with a passkey"), ct))
         {
             return Json(new { success = false, error = "Sign-in timed out. Try again." });
         }
@@ -375,21 +372,19 @@ public sealed class AccountController : Controller
             return View(model);
         }
 
-        var blockLifted = sourceIp is not null && await _blacklist.UnblockAddressAsync(sourceIp, ct);
-        await AuditRecoveryAsync(
-            AuditAction.BreakGlassRecovery, user.Id, user.Username,
-            $"Break-glass recovery from {sourceIp}; block lifted: {blockLifted}", ct);
-        _logger.LogWarning(
-            "Break-glass recovery completed by {Username} from {SourceIp}; block lifted: {BlockLifted}",
-            user.Username, sourceIp, blockLifted);
-
-        if (!await _issuer.SignInAsync(HttpContext, user, stamp))
+        var finished = await new BreakGlassSignIn(_issuer, _blacklist, _audit)
+            .FinishAsync(HttpContext, user, stamp, sourceIp, ct);
+        if (!finished.SessionIssued)
         {
             ModelState.AddModelError(string.Empty, "Recovery could not be completed with these credentials.");
             return View(model);
         }
 
-        this.FlashSuccess(blockLifted
+        _logger.LogWarning(
+            "Break-glass recovery completed by {Username} from {SourceIp}; block lifted: {BlockLifted}",
+            user.Username, sourceIp, finished.BlockLifted);
+
+        this.FlashSuccess(finished.BlockLifted
             ? "The intrusion-defence block on your network was lifted and your session restored."
             : "Access restored. Your network was not blocked.");
         return RedirectToAction("Index", "Home");
@@ -504,7 +499,7 @@ public sealed class AccountController : Controller
         var user = decision.User;
         if (decision.SecondFactorSatisfied)
         {
-            if (!await _issuer.SignInAsync(HttpContext, user, decision.Stamp))
+            if (!await _issuer.SignInAsync(HttpContext, user, decision.Stamp, new SignInAudit(AuditAction.LoginSucceeded, "Single sign-on"), ct))
             {
                 return await RestartSignInAsync(returnUrl);
             }

@@ -172,10 +172,23 @@ failure with short retention.
 
 ## Working rules
 
-- For delegated agents, use only GPT Sol 6.1 (`gpt-6.1-sol`) with extra-high reasoning
-  (`reasoningEffort: xhigh`) or Claude Opus 5.5 (`claude-opus-5-5`) with high reasoning
-  (`effort: high`). Pass these settings as tool options. If one is unavailable, use the other;
-  if both are unavailable, report the blocker before choosing another model.
+- For delegated agents, use only Claude Opus 5.5 (`claude-opus-5-5`) with high reasoning
+  (`effort: high`), the default, or GPT Sol 6.1 (`gpt-6.1-sol`) with extra-high reasoning
+  (`reasoningEffort: xhigh`), the fallback and the reviewer of Opus's work. Pass these settings as
+  tool options. If one is unavailable, use the other; if both are unavailable, report the blocker
+  before choosing another model.
+- Cursor cloud agents are the exception: the owner starts them, and the model is the one chosen in
+  Cursor's picker, which a prompt cannot change. The owner's Cursor plan includes only Cursor's own
+  models (Grok), so Cursor agents take ordinary tickets: tests and test infrastructure, docs,
+  scripts, packaging, and browser-suite runs. Any change to encryption, authorization, the audit
+  chain, MFA, licensing, or dynamic secrets is not a Cursor ticket; it runs in a local Claude Opus
+  5.5 session. A cloud agent handed one stops before writing code and says so, as does one whose
+  brief names a model it is not. GPT Sol 6.1 and Thermos review every pull request before the
+  owner merges it.
+- A cloud agent works on its own `cursor/…` branch, pushes only that branch, and hands back a pull
+  request. `main` is protected, so every change reaches it through a pull request with green CI.
+- Prove a change before handing it back: `scripts/check.sh` for build and tests, and the
+  `verify-eclipsvault` skill for anything a user sees in the web UI.
 - Do not merge pull requests, push tags, force-push, delete branches, or rewrite history unless the
   owner asks for that specific action. Before any branch deletion, prove the branch is contained in
   `main` with `git merge-base --is-ancestor`.
