@@ -134,6 +134,7 @@ describe('Networks', () => {
     button(page, 'Try again').click();
     await reload(fixture, empty);
     expect(page.textContent).not.toContain('Could not load networks.');
+    expect(page.querySelector('.current-ip-value')?.textContent).toContain('10.8.0.5');
   });
 
   it('shows a trusted current address with its badge and no Trust button', async () => {
