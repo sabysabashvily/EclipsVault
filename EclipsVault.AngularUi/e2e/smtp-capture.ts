@@ -29,17 +29,19 @@ export async function provisioningEmail(
 }
 
 async function captured(subject: string): Promise<CapturedMessage[]> {
-  const inbox = (await (await fetch(`${captureUrl()}/api/v1/messages`)).json()) as {
-    messages: CapturedMessage[];
-  };
+  const inbox = await captureJson<{ messages: CapturedMessage[] }>('/api/v1/messages');
   return inbox.messages.filter((mail) => mail.Subject === subject);
 }
 
 async function bodyOf(message: CapturedMessage): Promise<string> {
-  const body = (await (await fetch(`${captureUrl()}/api/v1/message/${message.ID}`)).json()) as {
-    Text: string;
-  };
-  return body.Text;
+  return (await captureJson<{ Text: string }>(`/api/v1/message/${message.ID}`)).Text;
+}
+
+/** Names the endpoint and status when the capture fails, instead of a JSON shape error later. */
+async function captureJson<T>(path: string): Promise<T> {
+  const response = await fetch(`${captureUrl()}${path}`);
+  if (!response.ok) throw new Error(`The capture server answered ${response.status} for ${path}`);
+  return (await response.json()) as T;
 }
 
 /** Looked up on every read: the Profile outage test restarts the capture on a new host port. */
