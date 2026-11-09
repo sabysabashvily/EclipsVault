@@ -64,6 +64,7 @@ public sealed class ProofDisclosureTests
     [InlineData("{\"@t\":42,\"code\":\"145708\"}\n")]
     [InlineData("{\"@t\":\"not a time\",\"code\":\"145708\"}\n")]
     [InlineData("{\"code\":\"145708\" malformed\n")]
+    [InlineData("[\"145708\"]\n")]
     public void A_log_line_that_cannot_be_dated_is_still_checked(string undated)
     {
         var raw = "{\"@t\":\"2026-11-08T12:00:02.0000000Z\",\"path\":\"/api/ui/profile\"}\n" + undated;

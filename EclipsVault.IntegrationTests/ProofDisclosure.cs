@@ -120,7 +120,8 @@ internal static class ProofDisclosure
 
     // Only a valid timestamp can prove a line belongs to an earlier run; anything else is still checked.
     private static bool WrittenBefore(JsonElement value, DateTimeOffset started)
-        => value.TryGetProperty("@t", out var stamp)
+        => value.ValueKind == JsonValueKind.Object
+            && value.TryGetProperty("@t", out var stamp)
             && stamp.ValueKind == JsonValueKind.String
             && DateTimeOffset.TryParse(
                 stamp.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var written)
