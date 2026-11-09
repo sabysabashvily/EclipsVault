@@ -5,6 +5,9 @@ import { savedAdministratorCookies } from './administrator-cookies';
 import { refreshAdministratorProof } from './administrator-proof';
 import { Notifications } from './notifications';
 import { provisioningEmail } from './smtp-capture';
+import { AppShell } from './app-shell';
+import { YourData } from './data';
+import { SecretsList } from './secrets-list';
 
 test.describe.configure({ mode: 'serial' });
 let delivered = { address: '', subject: '' };
@@ -73,6 +76,26 @@ test('the palette in the Angular shell opens Notifications', async ({ page }) =>
   const notifications = new Notifications(page);
   await notifications.fromPalette('/Access');
   await expect(notifications.heading).toBeVisible();
+});
+
+test('the sidebar on Notifications returns to the Legacy Secrets list', async ({ page }) => {
+  await page.context().addCookies(await savedAdministratorCookies());
+  const notifications = new Notifications(page);
+  await notifications.open();
+  await expect(notifications.heading).toBeVisible();
+  await new AppShell(page).secrets.click();
+  await expect(new SecretsList(page).heading).toBeVisible();
+  await expect(page).toHaveURL(/\/Secrets$/);
+});
+
+test('the sidebar on Notifications opens Your data in the Angular UI', async ({ page }) => {
+  await page.context().addCookies(await savedAdministratorCookies());
+  const notifications = new Notifications(page);
+  await notifications.open();
+  await expect(notifications.heading).toBeVisible();
+  await new AppShell(page).yourData.click();
+  await expect(new YourData(page).heading).toBeVisible();
+  await expect(page).toHaveURL(/\/Data$/);
 });
 
 for (const theme of ['dark', 'light'] as const) {

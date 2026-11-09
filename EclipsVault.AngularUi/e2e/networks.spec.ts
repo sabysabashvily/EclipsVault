@@ -5,6 +5,9 @@ import { Networks, blockInRunStore } from './networks';
 import { freshTotp, currentTotpStep } from './totp';
 import { savedAdministratorCookies } from './administrator-cookies';
 import { refreshAdministratorProof } from './administrator-proof';
+import { AppShell } from './app-shell';
+import { YourData } from './data';
+import { SecretsList } from './secrets-list';
 
 test.describe.configure({ mode: 'serial' });
 let administratorCookies: Awaited<ReturnType<BrowserContext['cookies']>> = [];
@@ -142,6 +145,26 @@ test('the palette in the Angular shell opens Networks', async ({ page }) => {
   const networks = new Networks(page);
   await networks.fromPalette('/Access');
   await expect(networks.heading).toBeVisible();
+});
+
+test('the sidebar on Networks returns to the Legacy Secrets list', async ({ page }) => {
+  await page.context().addCookies(administratorCookies);
+  const networks = new Networks(page);
+  await networks.open();
+  await expect(networks.heading).toBeVisible();
+  await new AppShell(page).secrets.click();
+  await expect(new SecretsList(page).heading).toBeVisible();
+  await expect(page).toHaveURL(/\/Secrets$/);
+});
+
+test('the sidebar on Networks opens Your data in the Angular UI', async ({ page }) => {
+  await page.context().addCookies(administratorCookies);
+  const networks = new Networks(page);
+  await networks.open();
+  await expect(networks.heading).toBeVisible();
+  await new AppShell(page).yourData.click();
+  await expect(new YourData(page).heading).toBeVisible();
+  await expect(page).toHaveURL(/\/Data$/);
 });
 
 const appearances = [
