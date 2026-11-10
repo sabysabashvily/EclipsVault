@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text.Json;
 using EclipsVault.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -67,6 +68,39 @@ public sealed class InvalidLicenseApiTests(ClosedProductionWindowFixture fixture
         Assert.Equal("The license is not a readable EclipsVault token.", body.GetProperty("message").GetString());
         Assert.Equal(JsonValueKind.Null, body.GetProperty("licence").ValueKind);
         Assert.False(body.GetProperty("updatesLapsed").GetBoolean());
+        Assert.Empty(await database.FeatureEvaluations.ToListAsync());
+    }
+}
+
+[Collection(SingleAdministratorCollection.Name)]
+public sealed class ExpiredLicenseApiTests(SingleAdministratorFixture fixture)
+{
+    [Fact]
+    public async Task An_expired_licence_answers_normally_still_serves_secrets_and_starts_no_evaluation()
+    {
+        using var scope = fixture.Vault.Services.CreateScope();
+        var database = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+        Assert.Empty(await database.FeatureEvaluations.ToListAsync());
+        var admin = await fixture.Vault.AdminClientAsync();
+
+        var response = await admin.GetAsync("/api/ui/license");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(response.Headers.CacheControl?.NoStore);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Expired", body.GetProperty("status").GetString());
+        Assert.Equal("The license expired on 2026-11-10.", body.GetProperty("message").GetString());
+        Assert.Equal("EclipsVault test (expired)", body.GetProperty("licence").GetProperty("issuedTo").GetString());
+        Assert.Empty(await database.FeatureEvaluations.ToListAsync());
+
+        var value = "it-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+        var details = await LegacySharing.CreateSecretAsync(admin, "it-expired-licence-secret", value);
+        var token = VaultFixture.FormTokenOf(await admin.GetStringAsync(details), details);
+        var revealed = await admin.PostAsync(
+            details.Replace("/Details/", "/Reveal/", StringComparison.Ordinal),
+            new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token }));
+        Assert.Equal(HttpStatusCode.OK, revealed.StatusCode);
+        Assert.Contains(value, await revealed.Content.ReadAsStringAsync(), StringComparison.Ordinal);
         Assert.Empty(await database.FeatureEvaluations.ToListAsync());
     }
 }
