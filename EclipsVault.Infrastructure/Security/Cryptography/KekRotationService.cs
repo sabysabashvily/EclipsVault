@@ -133,7 +133,10 @@ public sealed class KekRotationService : IKekRotationService
         return new KekRotationResult(current, secrets, versions, onMissingKeys);
     }
 
-    /// <summary>Tells <paramref name="onCommitted"/> how many rows each batch moved, once that batch has committed.</summary>
+    /// <summary>
+    /// Reports each batch's rows to <paramref name="onCommitted"/> as it commits, so a pass stopped by a
+    /// later batch still knows what the earlier ones moved.
+    /// </summary>
     private async Task RotateRowsAsync(
         IQueryable<ReadEnvelope> pending, bool areSecrets, ICryptoEngine engine, Action<int> onCommitted, CancellationToken ct)
     {

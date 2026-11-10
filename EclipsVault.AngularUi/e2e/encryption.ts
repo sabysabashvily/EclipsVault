@@ -12,7 +12,6 @@ export class EncryptionKeys {
   readonly confirmation;
   readonly keepKeys;
   readonly continue;
-  /** Every rotation this page has asked the vault for. */
   readonly rotationsSent: string[] = [];
   constructor(private readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Encryption keys', exact: true });

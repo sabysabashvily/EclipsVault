@@ -48,6 +48,15 @@ internal static class SecretsUnderMasterKey
         await SecretsSealedUnder(scope, masterKey).RotateAsync(secretId, value, changeNote: null, renewTtlDays: null, default);
     }
 
+    /// <summary>Replaces each secret's value once, so each leaves one archived version under <paramref name="masterKey"/>.</summary>
+    public static async Task ReplaceEachValueAsync(VaultFixture vault, string masterKey, IEnumerable<Guid> secretIds, string value)
+    {
+        foreach (var secretId in secretIds)
+        {
+            await ReplaceValueAsync(vault, masterKey, secretId, value);
+        }
+    }
+
     private static SecretService SecretsSealedUnder(IServiceScope scope, string masterKey)
         => ActivatorUtilities.CreateInstance<SecretService>(scope.ServiceProvider, new EngineUnder(masterKey));
 

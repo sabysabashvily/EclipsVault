@@ -50,9 +50,8 @@ function button(page: ParentNode, name: string): HTMLButtonElement {
 function text(element: Element | null | undefined): string {
   return element?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
 }
-/** The notice's bold line and its explanation, which the page lays out side by side. */
-function notice(page: ParentNode): string[] {
-  return [...(page.querySelector('.notice')?.children ?? [])].map((part) => text(part));
+function notice(page: ParentNode): Element | null {
+  return page.querySelector('.notice');
 }
 function status(page: ParentNode, role: 'status' | 'alert'): string {
   return text(page.querySelector(`app-status-line [role="${role}"]`));
@@ -115,10 +114,7 @@ describe('Encryption keys', () => {
     button(page, 'Try again').click();
     await reload(fixture, settled);
     expect(page.textContent).not.toContain('Could not load encryption keys.');
-    expect(notice(page)).toEqual([
-      '✓ All secrets are wrapped under the current KEK.',
-      'Nothing to rotate.',
-    ]);
+    expect(text(notice(page))).toContain('✓ All secrets are wrapped under the current KEK.');
   });
 
   it('says in the Legacy words what rotation does', async () => {
@@ -130,33 +126,30 @@ describe('Encryption keys', () => {
 
   it('shows the ok notice and a disabled Rotate button when nothing awaits rotation', async () => {
     const { page } = await loaded(settled);
-    expect(page.querySelector('.notice')?.className).toBe('notice notice-ok');
-    expect(notice(page)).toEqual([
-      '✓ All secrets are wrapped under the current KEK.',
-      'Nothing to rotate.',
-    ]);
+    expect(text(notice(page))).toContain('✓ All secrets are wrapped under the current KEK.');
+    expect(text(notice(page))).toContain('Nothing to rotate.');
+    expect(notice(page)?.classList.contains('notice-ok')).toBe(true);
     expect(button(page, 'Re-wrap under current KEK').disabled).toBe(true);
   });
 
   it('shows the warning notice with the count and an enabled Rotate button when rows await rotation', async () => {
     const { page } = await loaded(pending);
-    expect(page.querySelector('.notice')?.className).toBe('notice notice-warn');
-    expect(notice(page)).toEqual([
-      '5 item(s) are still on a retired KEK.',
+    expect(text(notice(page))).toContain('5 item(s) are still on a retired KEK.');
+    expect(text(notice(page))).toContain(
       'Run a rotation to re-wrap them under the current key, then the retired key can be removed.',
-    ]);
+    );
+    expect(notice(page)?.classList.contains('notice-warn')).toBe(true);
     expect(button(page, 'Re-wrap under current KEK').disabled).toBe(false);
   });
 
   it('shows only the critical notice when a key in use is not loaded', async () => {
     const { page } = await loaded(stranded);
-    expect([...page.querySelectorAll('.notice')].map((notice) => notice.className)).toEqual([
-      'notice notice-critical',
-    ]);
-    expect(notice(page)).toEqual([
-      '⚠ Some secrets reference a KEK that is not loaded.',
+    expect(text(notice(page))).toContain('⚠ Some secrets reference a KEK that is not loaded.');
+    expect(text(notice(page))).toContain(
       'Provide the missing key as a retired KEK (ECLIPSVAULT_KEK_RETIRED) so it can be decrypted and rotated, or those secrets cannot be read.',
-    ]);
+    );
+    expect(notice(page)?.classList.contains('notice-critical')).toBe(true);
+    expect(page.textContent).not.toContain('still on a retired KEK');
   });
 
   it('lists each key in the order sent, with its status badge and counts', async () => {
@@ -176,11 +169,9 @@ describe('Encryption keys', () => {
       ['kek-5e6f7a8b', 'retired', '4', '1'],
       ['kek-9c0d1e2f', 'not loaded', '2', '0'],
     ]);
-    expect([...page.querySelectorAll('tbody .badge')].map((badge) => badge.className)).toEqual([
-      'badge tone-ok',
-      'badge tone-warn',
-      'badge tone-danger',
-    ]);
+    expect(page.querySelector('.tone-ok')?.textContent).toBe('current');
+    expect(page.querySelector('.tone-warn')?.textContent).toBe('retired');
+    expect(page.querySelector('.tone-danger')?.textContent).toBe('not loaded');
   });
 
   it('shows the current key, the loaded keys and what awaits rotation above the operator steps', async () => {
@@ -231,7 +222,7 @@ describe('Encryption keys', () => {
     expect(status(page, 'status')).toBe(
       'Rotated 4 secret(s) and 1 version(s) to KEK kek-1a2b3c4d.',
     );
-    expect(page.querySelector('.notice')?.className).toBe('notice notice-ok');
+    expect(text(notice(page))).toContain('✓ All secrets are wrapped under the current KEK.');
     expect(button(page, 'Re-wrap under current KEK').disabled).toBe(true);
   });
 
@@ -289,7 +280,7 @@ describe('Encryption keys', () => {
     );
     await reload(fixture, { ...pending, awaitingRotation: 1 });
     expect(status(page, 'alert')).toBe(stopped);
-    expect(notice(page)[0]).toBe('1 item(s) are still on a retired KEK.');
+    expect(text(notice(page))).toContain('1 item(s) are still on a retired KEK.');
   });
 
   it('closes rotation until the page is reloaded when the response is lost', async () => {

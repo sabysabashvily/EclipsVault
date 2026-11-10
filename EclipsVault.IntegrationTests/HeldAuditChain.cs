@@ -46,6 +46,19 @@ internal sealed class HeldAuditChain : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Lets the one writer queued behind this holder commit, and returns a new holder that took the
+    /// chain straight after it. Whatever that writer does next queues behind the new holder.
+    /// </summary>
+    public async Task<HeldAuditChain> HandOverAfterNextWriterAsync(VaultFixture vault)
+    {
+        await WaitForQueuedWritersAsync(1);
+        var next = TakeAsync(vault);
+        await WaitForQueuedWritersAsync(2);
+        await DisposeAsync();
+        return await next;
+    }
+
     /// <summary>Commits what the holder wrote and releases the chain.</summary>
     public Task CommitAsync() => _transaction.CommitAsync();
 

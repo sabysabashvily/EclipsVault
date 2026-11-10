@@ -200,21 +200,33 @@ public sealed class EncryptionApiTests(KekRotationFixture fixture)
     }
 
     [Theory]
-    [InlineData("POST", "/Encryption", HttpStatusCode.MethodNotAllowed)]
-    [InlineData("PUT", "/eNcRyPtIoN/", HttpStatusCode.MethodNotAllowed)]
-    [InlineData("POST", "/Encryption/Index", HttpStatusCode.MethodNotAllowed)]
-    [InlineData("DELETE", "/ENCRYPTION/INDEX", HttpStatusCode.MethodNotAllowed)]
-    [InlineData("POST", "/Encryption/Rotate", HttpStatusCode.NotFound)]
-    [InlineData("POST", "/eNcRyPtIoN/rOtAtE", HttpStatusCode.NotFound)]
-    [InlineData("GET", "/Encryption/Rotate", HttpStatusCode.NotFound)]
-    [InlineData("GET", "/Encryption/Index/11111111-1111-1111-1111-111111111111", HttpStatusCode.NotFound)]
-    public async Task Retired_handlers_no_longer_answer(string method, string path, HttpStatusCode expected)
+    [InlineData("POST", "/Encryption")]
+    [InlineData("PUT", "/eNcRyPtIoN/")]
+    [InlineData("POST", "/Encryption/Index")]
+    [InlineData("DELETE", "/ENCRYPTION/INDEX")]
+    public async Task The_page_paths_refuse_every_method_but_GET_and_HEAD(string method, string path)
+    {
+        var response = await SendAsAdministratorAsync(method, path);
+
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("POST", "/Encryption/Rotate")]
+    [InlineData("POST", "/eNcRyPtIoN/rOtAtE")]
+    [InlineData("GET", "/Encryption/Rotate")]
+    [InlineData("GET", "/Encryption/Index/11111111-1111-1111-1111-111111111111")]
+    public async Task The_Legacy_rotate_action_and_deeper_paths_are_not_found(string method, string path)
+    {
+        var response = await SendAsAdministratorAsync(method, path);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    private async Task<HttpResponseMessage> SendAsAdministratorAsync(string method, string path)
     {
         var admin = await _vault.AdminClientAsync();
-        var response = await UiApiRequest.SendWithTokenAsync(admin, await UiApiRequest.AntiforgeryTokenAsync(admin),
-            new HttpMethod(method), path);
-
-        Assert.Equal(expected, response.StatusCode);
+        return await UiApiRequest.SendWithTokenAsync(admin, await UiApiRequest.AntiforgeryTokenAsync(admin), new HttpMethod(method), path);
     }
 
     private async Task<KekRotationResult> RotateAsync()
