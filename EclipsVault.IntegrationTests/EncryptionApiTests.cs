@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.KeyManagement;
 using EclipsVault.Core.Application.Secrets;
 using EclipsVault.Core.Domain.Enums;
