@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using EclipsVault.Core.Application.Secrets;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
@@ -168,13 +169,36 @@ public sealed class KekRotationService : IKekRotationService
     /// Re-wraps each row the batch read, but writes it only if its wrapped data key and master key id
     /// are still what was read; a row changed, deleted or shredded since is left alone, and counts as
     /// not moved. A changed value is already sealed under the current master key with a new data key.
+    /// A row whose re-wrap changes nothing, or whose data key does not open, is not written either.
     /// </summary>
     private async Task<int> CommitBatchAsync(IReadOnlyList<ReadEnvelope> batch, bool areSecrets, ICryptoEngine engine)
     {
         var rewraps = new List<(ReadEnvelope Read, SealedSecret Rewrapped)>(batch.Count);
         foreach (var row in batch)
         {
-            rewraps.Add((row, await engine.RewrapAsync(row.ToSealedSecret(), CancellationToken.None)));
+            SealedSecret rewrapped;
+            try
+            {
+                rewrapped = await engine.RewrapAsync(row.ToSealedSecret(), CancellationToken.None);
+            }
+            catch (CryptographicException)
+            {
+                // A data key that no longer opens under its own master key stays pending, as a row
+                // under a missing key does, so one damaged row cannot stop every pass at itself.
+                continue;
+            }
+
+            // The KMS engine returns a row already on its latest key version unchanged; writing it
+            // would record a re-wrap that never happened.
+            if (rewrapped.KekId != row.KekId || !rewrapped.WrappedDek.AsSpan().SequenceEqual(row.WrappedDek))
+            {
+                rewraps.Add((row, rewrapped));
+            }
+        }
+
+        if (rewraps.Count == 0)
+        {
+            return 0;
         }
 
         await using var transaction = await _db.Database.BeginTransactionAsync(CancellationToken.None);

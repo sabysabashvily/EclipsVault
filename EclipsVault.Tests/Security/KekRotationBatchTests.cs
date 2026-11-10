@@ -94,6 +94,36 @@ public sealed class KekRotationBatchTests : IDisposable
     }
 
     [Fact]
+    public async Task Under_the_KMS_engine_a_row_already_on_the_latest_key_version_is_neither_written_nor_recorded()
+    {
+        await using var db = NewContext();
+        await db.Database.EnsureCreatedAsync();
+        db.Secrets.Add(SecretUnder("vault:eclipsvault:v1", "kms-wrapped"));
+        await db.SaveChangesAsync();
+
+        var result = await Rotation(db, new KmsAlreadyLatest()).RotateAsync(default);
+
+        Assert.Equal(new KekRotationResult(CurrentKekId, 0, 0, 0), result);
+        Assert.Equal(0, await RotationsRecordedAsync());
+    }
+
+    [Fact]
+    public async Task A_row_whose_data_key_does_not_open_stays_pending_while_the_rest_move()
+    {
+        await using var db = NewContext();
+        await db.Database.EnsureCreatedAsync();
+        var secrets = await SecretsUnderRetiredKeyAsync(db, count: 2);
+        var damaged = secrets[0];
+        damaged.WrappedDek = [.. damaged.WrappedDek[..^1], (byte)(damaged.WrappedDek[^1] ^ 1)];
+        await db.SaveChangesAsync();
+
+        var result = await Rotation(db).RotateAsync(default);
+
+        Assert.Equal(new KekRotationResult(CurrentKekId, 1, 0, 0), result);
+        Assert.Equal(RetiredKekId, await db.Secrets.Where(row => row.Id == damaged.Id).Select(row => row.KekId).SingleAsync());
+    }
+
+    [Fact]
     public async Task The_status_counts_rows_a_pass_can_move_apart_from_rows_under_keys_that_are_not_loaded()
     {
         await using var db = NewContext();
@@ -230,6 +260,18 @@ public sealed class KekRotationBatchTests : IDisposable
 
         public Task<SealedSecret> RewrapAsync(SealedSecret sealedSecret, CancellationToken ct)
             => Task.FromResult(sealedSecret with { WrappedDek = Encoding.UTF8.GetBytes("vault:v2:wrapped"), KekId = "vault:eclipsvault:v2" });
+    }
+
+    /// <summary>The KMS engine for a row already on its latest key version: it hands the envelope back unchanged.</summary>
+    private sealed class KmsAlreadyLatest : ICryptoEngine
+    {
+        public string EngineId => VaultTransitCryptoEngine.EngineName;
+
+        public Task<SealedSecret> SealAsync(byte[] plaintext, byte[] associatedData, CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<byte[]> UnsealAsync(SealedSecret sealedSecret, byte[] associatedData, CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<SealedSecret> RewrapAsync(SealedSecret sealedSecret, CancellationToken ct) => Task.FromResult(sealedSecret);
     }
 
     /// <summary>The real engine, whose first re-wrap is where the caller leaves.</summary>
