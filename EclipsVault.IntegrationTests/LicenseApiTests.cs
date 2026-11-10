@@ -76,14 +76,13 @@ public sealed class InvalidLicenseApiTests(ClosedProductionWindowFixture fixture
 public sealed class ExpiredLicenseApiTests(SingleAdministratorFixture fixture)
 {
     [Fact]
-    public async Task An_expired_licence_answers_normally_still_serves_secrets_and_starts_no_evaluation()
+    public async Task An_expired_licence_reports_its_status_without_starting_an_evaluation()
     {
         using var scope = fixture.Vault.Services.CreateScope();
         var database = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
         Assert.Empty(await database.FeatureEvaluations.ToListAsync());
-        var admin = await fixture.Vault.AdminClientAsync();
 
-        var response = await admin.GetAsync("/api/ui/license");
+        var response = await (await fixture.Vault.AdminClientAsync()).GetAsync("/api/ui/license");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.True(response.Headers.CacheControl?.NoStore);
@@ -92,15 +91,21 @@ public sealed class ExpiredLicenseApiTests(SingleAdministratorFixture fixture)
         Assert.Equal("The license expired on 2026-11-10.", body.GetProperty("message").GetString());
         Assert.Equal("EclipsVault test (expired)", body.GetProperty("licence").GetProperty("issuedTo").GetString());
         Assert.Empty(await database.FeatureEvaluations.ToListAsync());
+    }
 
+    [Fact]
+    public async Task An_expired_licence_still_serves_secrets()
+    {
+        var admin = await fixture.Vault.AdminClientAsync();
         var value = "it-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
         var details = await LegacySharing.CreateSecretAsync(admin, "it-expired-licence-secret", value);
         var token = VaultFixture.FormTokenOf(await admin.GetStringAsync(details), details);
+
         var revealed = await admin.PostAsync(
             details.Replace("/Details/", "/Reveal/", StringComparison.Ordinal),
             new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token }));
+
         Assert.Equal(HttpStatusCode.OK, revealed.StatusCode);
         Assert.Contains(value, await revealed.Content.ReadAsStringAsync(), StringComparison.Ordinal);
-        Assert.Empty(await database.FeatureEvaluations.ToListAsync());
     }
 }

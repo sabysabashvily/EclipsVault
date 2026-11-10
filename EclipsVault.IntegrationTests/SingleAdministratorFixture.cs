@@ -7,11 +7,11 @@ namespace EclipsVault.IntegrationTests;
 /// administrator is always enabled, so the last-administrator rule is reachable only by demoting
 /// yourself in a vault with no other; the ordinary vault's tests create many administrators.
 /// It also carries an expired, vendor-signed licence: only a separate host can start with one, and
-/// none of its tests depends on licence state.
+/// its other tests do not depend on licence state.
 /// </summary>
 public sealed class SingleAdministratorFixture : IAsyncLifetime
 {
-    public VaultFixture Vault { get; } = new() { License = ExpiredTrialLicence.Token };
+    public VaultFixture Vault { get; } = new() { License = ExpiredTrialLicense.Token };
 
     public Task InitializeAsync() => Vault.InitializeAsync();
 
