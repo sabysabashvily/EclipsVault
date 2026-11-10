@@ -89,8 +89,8 @@ serves the Angular files, both APIs, and the Legacy pages that remain. One datab
 Redis is there only when enabled. Core and Infrastructure are components inside Web, not containers.
 Node only builds the image.
 
-SMTP, Vault Transit, and an identity provider are present only when configured. Development, the
-talk's disposable demonstration, and production are three ways of running that Web application. The
+SMTP, Vault Transit, and an identity provider are present only when configured. Development and
+production are the two deployments. The talk's demonstration is a disposable Development run. The
 picture is [diagrams.md](diagrams.md).
 
 ### On screen (ქართული)
@@ -101,8 +101,8 @@ API-ს და დარჩენილ Legacy გვერდებს აწ�
 ჩართულია. Core და Infrastructure Web-ის კომპონენტებია, არა კონტეინერები. Node მხოლოდ იმიჯს აწყობს.
 
 SMTP, Vault Transit და იდენტობის მომწოდებელი მხოლოდ მაშინ დგას, როცა კონფიგურაციაშია.
-Development, მოხსენების ერთჯერადი დემონსტრაცია და production ამ Web აპლიკაციის სამი გაშვებაა.
-სურათი [diagrams.md](diagrams.md)-შია.
+Development და production ორი განთავსებაა. მოხსენების დემონსტრაცია Development-ის ერთჯერადი
+გაშვებაა. სურათი [diagrams.md](diagrams.md)-შია.
 
 ### Speaker shows
 

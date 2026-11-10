@@ -120,32 +120,40 @@ boundary. / Angular UI, Web აპლიკაცია და ერთი ბ�
 
 ## 3. Web component
 
-Components inside the Web application container from section 2. The Angular UI container runs in
-the browser and is not repeated here; the static files below are what that container loads from
-Web. Controllers stay thin; the access rule lives in Core.
+Components inside the Web application container from section 2. The vault account reaches the
+Angular files, the Legacy pages, and the UI API from outside. An application that uses a service
+account is the only caller of the Public API. The database stays outside the boundary.
+SecretService and AuditSink reach it through EF Core. Controllers stay thin; the access rule
+lives in Core.
 
 ```mermaid
+%%{init: {"flowchart": {"wrappingWidth": 560}} }%%
 flowchart TB
-  browser["Browser<br/>[Person]"]
-  static["Angular bundles and index<br/>[Component]<br/>static files"]
-  legacy["Legacy pages<br/>[Component]<br/>Razor"]
-  uiapi["UI API /api/ui<br/>[Component]<br/>ASP.NET Core"]
-  publicapi["Public API /api/v1<br/>[Component]<br/>ASP.NET Core"]
-  cookies["Cookie authentication<br/>[Component]<br/>ASP.NET Core"]
-  apikey["ApiKeyAuthenticationHandler<br/>[Component]<br/>ASP.NET Core"]
-  secrets["SecretsController<br/>[Component]<br/>ASP.NET Core"]
-  auditpage["AuditController<br/>[Component]<br/>ASP.NET Core"]
-  handler["SecretAccessHandler<br/>[Component]<br/>C#"]
-  policy["SecretAccessPolicy<br/>[Component]<br/>C#"]
-  secretSvc["SecretService<br/>[Component]<br/>C#"]
-  sink["AuditSink<br/>[Component]<br/>C#"]
-  engine["Crypto engine<br/>[Component]<br/>C#"]
-  workers["Hosted workers<br/>[Component]<br/>IHostedService"]
+  person["Vault account in a browser<br/>[Person]"]
+  app["Application using a service account<br/>[External system]"]
+  db["Database<br/>[Container: PostgreSQL or SQL Server]"]
 
-  browser --> static
-  browser --> legacy
-  browser --> uiapi
-  browser --> publicapi
+  subgraph web ["Web application<br/>[Container: ASP.NET Core, .NET 10]"]
+    static["Angular bundles and index<br/>[Component]<br/>static files"]
+    legacy["Legacy pages<br/>[Component]<br/>Razor"]
+    uiapi["UI API /api/ui<br/>[Component]<br/>ASP.NET Core"]
+    publicapi["Public API /api/v1<br/>[Component]<br/>ASP.NET Core"]
+    cookies["Cookie authentication<br/>[Component]<br/>ASP.NET Core"]
+    apikey["ApiKeyAuthenticationHandler<br/>[Component]<br/>ASP.NET Core"]
+    secrets["SecretsController<br/>[Component]<br/>ASP.NET Core"]
+    auditpage["AuditController<br/>[Component]<br/>ASP.NET Core"]
+    handler["SecretAccessHandler<br/>[Component]<br/>C#"]
+    policy["SecretAccessPolicy<br/>[Component]<br/>C#"]
+    secretSvc["SecretService<br/>[Component]<br/>C#"]
+    sink["AuditSink<br/>[Component]<br/>C#"]
+    engine["Crypto engine<br/>[Component]<br/>C#"]
+    workers["Hosted workers<br/>[Component]<br/>IHostedService"]
+  end
+
+  person -->|uses| static
+  person -->|uses| legacy
+  person -->|session cookie| uiapi
+  app -->|API key| publicapi
   legacy --> cookies
   uiapi --> cookies
   publicapi --> apikey
@@ -158,15 +166,20 @@ flowchart TB
   secretSvc --> engine
   cookies --> auditpage
   workers --- sink
+  secretSvc -->|EF Core| db
+  sink -->|EF Core| db
 ```
 
-Caption / წარწერა: the same access policy serves a session and an API key. The audit page is a
-Legacy administrator page on this revision. / ერთი და იგივე წვდომის წესი ემსახურება სესიასაც და
-API გასაღებსაც. ამ რევიზიაზე აუდიტის გვერდი Legacy ადმინისტრატორის გვერდია.
+Caption / წარწერა: The vault account reaches the Angular files, the Legacy pages, and the UI API.
+Only an application that uses a service account calls the Public API. SecretService and AuditSink
+persist through EF Core to the database outside the Web application. / საცავის ანგარიში აღწევს
+Angular-ის ფაილებს, Legacy გვერდებს და UI API-ს. საჯარო API-ს მხოლოდ ის აპლიკაცია იძახებს,
+რომელიც სერვისის ანგარიშს იყენებს. SecretService და AuditSink მონაცემებს EF Core-ით წერენ ბაზაში,
+რომელიც Web აპლიკაციის გარეთ დგას.
 
 | Element | Source at `0bb59de` | State |
 |---|---|---|
-| Browser `[Person]` | ADR-0002: the browser holds the session cookie and no access token | current |
+| Vault account in a browser `[Person]` | `CONTEXT.md` vault account; ADR-0002: the browser holds the session cookie and no access token | current |
 | Angular bundles and index `[Component]` | `AngularUiRoutes`: document outside `wwwroot`, bundles under `wwwroot/ui`. These are files the section 2 Angular UI container loads | current |
 | Route table, session or `AdminOnly` | `AngularUiRoutes.Paths` and `administratorPaths` | current. `/Audit` is not in the list |
 | UI API and Public API `[Component]` | ADR-0005: neither accepts the other's credential | current |
@@ -181,10 +194,13 @@ API გასაღებსაც. ამ რევიზიაზე აუდ
 | `AuditController` `[Component]` | `AuditController` with `VaultPolicies.AdminOnly` | current. Area 6b plans an Angular page; not built |
 | Hosted workers `[Component]` | `Program.cs` registers `SecretLifecycleWorker`, `DynamicLeaseWorker`, and `LicenseStartupCheck`; `DependencyInjection` hosts `AuditGroupCommitter`. Threads in the Web application, not containers | current |
 | Server decides what the UI may show | ADR-0012 | current |
-| Browser to Angular files | `Program.cs` `UseStaticFiles`; `AngularUiRoutes.ServeIndex` | current |
-| Browser to Legacy pages | `Program.cs` default controller route; paths absent from `AngularUiRoutes` | current |
-| Legacy and UI API through the session cookie | `Program.cs` cookie scheme; ADR-0002 | current |
-| Public API through the API key handler | `SecretsApiController` `[Authorize(AuthenticationSchemes = AuthSchemes.ApiKey)]` | current |
+| Web application boundary `[Container: ASP.NET Core, .NET 10]` | Same container as section 2. The components below are inside it | current |
+| Vault account to Angular files, Legacy pages, and the UI API | `Program.cs` `UseStaticFiles`; `AngularUiRoutes.ServeIndex`; default controller route for paths absent from `AngularUiRoutes`. No arrow to the Public API | current |
+| Legacy pages and the UI API through the session cookie | `Program.cs` cookie scheme; ADR-0002 | current |
+| Application using a service account `[External system]` | `CONTEXT.md` service account. The only caller of `Public API /api/v1` in this picture | current |
+| Public API through the API key handler | `SecretsApiController` `[Authorize(AuthenticationSchemes = AuthSchemes.ApiKey)]`; ADR-0005 | current |
+| Database `[Container: PostgreSQL or SQL Server]`, outside Web | `DependencyInjection` `AddDbContext`; `DatabaseProvider.UseVaultDatabase`. Same container as section 2 | current, same on Area 6a |
+| SecretService and AuditSink to the database, EF Core | `SecretService` writes through its repository; `AuditSink` commits through `AuditGroupCommitter`. Both use the EF Core `EclipsVaultDbContext` | current |
 | Secrets controller to handler, handler to policy | `SecretsController.CheckAccessAsync`; `SecretAccessHandler` | current |
 | Secrets controller to `SecretService`, then sink and engine | `SecretService.RevealAsync` | current, same on Area 6a |
 | Session to audit page | `AuditController` `AdminOnly` | current |
@@ -246,50 +262,74 @@ names are in the demo draft so they can be avoided.
 
 ## 5. Deployment
 
-Three ways to run the Web application from section 2. The Angular UI container runs in the
-browser, from files that Web serves; this picture does not add a second server for it. Only
-Development and production are repository deployment descriptions. The demonstration is a proposed
-disposable use of Development. It was not launched. The groups are boundaries between those
-descriptions. The Dockerfile's Node stage and .NET SDK stage build the image and are not boxes
-here.
+Two places the section 2 containers run. Each place is a deployment node. The containers sit
+inside the node where they run. The Angular UI runs in a browser. In Development the Web
+application runs on the developer machine, and the database runs in a Compose project on Docker.
+In production a TLS reverse proxy stands in front of the Web image, and the database has its own
+server. The talk's demonstration is a disposable Development run, not a third deployment. The
+Dockerfile's Node stage and .NET SDK stage build the image and are not boxes here.
 
 ```mermaid
 %%{init: {"flowchart": {"wrappingWidth": 560}} }%%
 flowchart TB
-  subgraph development ["Boundary: Development"]
-    compose["Compose dependencies<br/>[Container: Docker]<br/>loopback"]
-    host["Web on the host<br/>[Container: ASP.NET Core]<br/>.NET 10, Development"]
+  subgraph development ["Development"]
+    subgraph browserDev ["Developer browser<br/>[Deployment node]"]
+      angularDev["Angular UI<br/>[Container: Angular, runs in the browser]"]
+    end
+    subgraph machine ["Developer machine<br/>[Deployment node]"]
+      webDev["Web application<br/>[Container: ASP.NET Core, .NET 10]"]
+      subgraph dockerDev ["Docker host<br/>[Deployment node: Docker Engine]"]
+        subgraph compose ["Compose project<br/>[Deployment node: Docker Compose]"]
+          dbDev["Database<br/>[Container: PostgreSQL or SQL Server]"]
+          redisDev["Redis<br/>[Container: Redis]<br/>when enabled"]
+        end
+      end
+    end
   end
-  subgraph demonstration ["Boundary: demonstration draft"]
-    disposable["Separate compose project<br/>[Container: Docker]<br/>disposable"]
-    demoapp["Same Development process<br/>[Container: ASP.NET Core]<br/>.NET 10"]
+  subgraph production ["Production"]
+    subgraph browserProd ["Browser<br/>[Deployment node]"]
+      angularProd["Angular UI<br/>[Container: Angular, runs in the browser]"]
+    end
+    proxy["TLS reverse proxy<br/>[Deployment node]"]
+    subgraph appHost ["Application host<br/>[Deployment node: Docker Engine]"]
+      webProd["Web application<br/>[Container: ASP.NET Core, .NET 10]"]
+    end
+    subgraph redisHost ["Redis host<br/>[Deployment node]<br/>when enabled"]
+      redisProd["Redis<br/>[Container: Redis]"]
+    end
+    subgraph dbSrv ["Database server<br/>[Deployment node]"]
+      dbProd["Database<br/>[Container: PostgreSQL or SQL Server]"]
+    end
   end
-  subgraph production ["Boundary: production"]
-    proxy["TLS reverse proxy<br/>[Container: reverse proxy]<br/>TLS"]
-    image["Web image<br/>[Container: ASP.NET Core]<br/>.NET 10, HTTP 8080"]
-    proddb["Operator database<br/>[Container: PostgreSQL or SQL Server]<br/>least privilege"]
-  end
-  compose --> host
-  disposable --> demoapp
-  proxy --> image
-  image --> proddb
+  angularDev -->|session cookie, UI API| webDev
+  webDev -->|one provider| dbDev
+  webDev -.->|when enabled| redisDev
+  angularProd -->|session cookie, UI API| proxy
+  proxy -->|plain HTTP| webProd
+  webProd -->|one provider| dbProd
+  webProd -.->|when enabled| redisProd
 ```
 
-Caption / წარწერა: the middle boundary reuses Development. It is not a third product mode, and this
-draft did not start it. / შუა საზღვარი Development-ს იყენებს. ის მესამე პროდუქტის რეჟიმი არ არის და
-ამ მონახაზმა ის არ გაუშვა.
+Caption / წარწერა: Development runs Web on the developer machine and the database in a Compose
+project on a Docker host. Production runs the Web image on a Docker host behind a TLS reverse
+proxy, with the database on its own server. The demonstration is one disposable Development run,
+not another deployment. / Development Web-ს დეველოპერის მანქანაზე უშვებს, ბაზას კი Docker ჰოსტზე
+Compose პროექტში. Production Web იმიჯს Docker ჰოსტზე უშვებს TLS შებრუნებული პროქსის უკან, ბაზა კი
+საკუთარ სერვერზეა. დემონსტრაცია Development-ის ერთი ერთჯერადი გაშვებაა, არა სხვა განთავსება.
 
 | Element | Source at `0bb59de` | State |
 |---|---|---|
-| Compose dependencies `[Container: Docker]` | `docker-compose.yml` header: laptop, public dev passwords, no TLS, loopback ports | current, same on Area 6a |
-| Compose services behind that container | `docker-compose.yml` service names `db`, `vault`, `mailpit`, `redis`, `keycloak` | current. Present does not mean the process uses them |
-| Web on the host `[Container: ASP.NET Core]` | `README.md` `dotnet run --project EclipsVault.Web`; Web is not a compose service; ADR-0008 | current |
-| Development seeds the demo world | `DbSeeder.SeedDevelopmentDataAsync`, called only when the host is Development | current |
-| Development applies migrations | `DatabaseMigrator` `environment.IsDevelopment()` | current |
-| Separate compose project and demonstration process | [demo-setup-reset.md](demo-setup-reset.md) | draft procedure, not executed |
-| TLS reverse proxy `[Container: reverse proxy]` | `docs/INSTALL.md`: TLS terminates at a proxy; the image serves plain HTTP | current |
-| Web image `[Container: ASP.NET Core]` | `Dockerfile` `ASPNETCORE_HTTP_PORTS=8080`; `docs/INSTALL.md` | current |
-| Operator database `[Container: PostgreSQL or SQL Server]` | `docs/INSTALL.md` section 2: least-privilege login, TLS on the connection. Same engine choice as section 2 | current. Values are the operator's, not in this draft |
+| Developer browser `[Deployment node]` and Angular UI container | ADR-0008: the Angular UI runs in the browser. Same container as section 2 | current |
+| Developer machine `[Deployment node]` and Web application container | `README.md` `dotnet run --project EclipsVault.Web`. Web is not a compose service; ADR-0008 | current |
+| Docker host `[Deployment node: Docker Engine]` | `docker-compose.yml` header: laptop, loopback ports, not a deployment of Web | current, same on Area 6a |
+| Compose project `[Deployment node: Docker Compose]` | `docker-compose.yml` services `db` and `redis`. Also starts `vault`, `mailpit`, and `keycloak`, which this picture does not draw | current. Present does not mean the process uses them |
+| Development database container | Compose service `db` is PostgreSQL. `Database:Provider` still selects PostgreSQL or SQL Server, as in section 2 | current, same on Area 6a |
+| Development Redis container, when enabled | Compose service `redis`; `appsettings.json` `Redis:Enabled` false | current |
+| TLS reverse proxy `[Deployment node]` | `docs/INSTALL.md`: TLS terminates at the proxy; the image serves plain HTTP on 8080 | current |
+| Application host `[Deployment node: Docker Engine]` and Web application container | `Dockerfile` runtime stage, `ASPNETCORE_HTTP_PORTS=8080`; `docs/INSTALL.md` | current |
+| Redis host `[Deployment node]`, when enabled | `docs/INSTALL.md` treats Redis as optional configuration, not part of the Web image. Section 2 container | current |
+| Database server `[Deployment node]` and database container | `docs/INSTALL.md` section 2: least-privilege login, TLS on the connection. Same engine choice as section 2 | current. Values are the operator's, not in this draft |
+| Demonstration, not drawn | [demo-setup-reset.md](demo-setup-reset.md): a disposable Development run, not a third deployment. Not executed | draft |
 | Node image-build stage, not drawn | `Dockerfile` `AS ui`, `npm run build` | build stage, not a runtime container. Same on Area 6a |
 | .NET SDK image-build stage, not drawn | `Dockerfile` `AS build`, `dotnet publish` | build stage, not a runtime container. Same on Area 6a |
 | Production bootstraps one administrator and no sample secrets | `DbSeeder` production path; `DbSeederTests` names that behaviour | current |
@@ -297,5 +337,5 @@ draft did not start it. / შუა საზღვარი Development-ს ი
 | Production provider, connection, KEK, audit signing key, key ring | `docs/INSTALL.md` section 2 | current. Values are the operator's, not in this draft |
 | Browser end-to-end stack | `AGENTS.md` browser section: production image, SQL Server, Redis, SMTP capture, TLS proxy | a test harness, not the talk and not production |
 
-The end-to-end harness is omitted from the picture so it is not mistaken for the demonstration.
-It is a fourth shape, used by Playwright, and it was not started.
+The end-to-end harness is omitted. It is a Playwright shape, not Development and not production,
+and it was not started.
