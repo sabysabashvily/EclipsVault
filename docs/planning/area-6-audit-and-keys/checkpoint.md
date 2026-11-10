@@ -152,7 +152,8 @@ For the owner:
   rotation itself is proven over HTTP on `KekRotationFixture`.
 - The 503's counts can under-report (a commit whose acknowledgement was lost) but never over-report.
 - The security reviewer noted that a timeout in the audit-chain hand-over helper can leave its next
-  holder waiting until fixture teardown. No such timeout occurred in the final suites.
+  holder holding the chain until fixture teardown. No such timeout occurred in the final suites;
+  #139 releases both holders on that path.
 - Feature-folder interfaces implemented in Infrastructure remain elsewhere (`ITrustedNetworkRepository`,
   `ISecretGrantRepository`, `IAccessRequestRepository`), against the AGENTS.md placement rule.
 
@@ -177,7 +178,7 @@ run skipped the PR-only commit-subject check. `main` remains `4feec8c`; no 6a PR
 #139 is in preparation. Its documentation work adds the owner's approved database-latency sentence
 to ADR-0029. Whole-part security, Standards and Spec reviews, required UI workflow verification,
 Thermos PR review and final PR CI remain pending. Prior ticket reviews do not replace these gates.
-The cache-error/count and test-lock notes remain in its compact coordinator handoff.
+The cache, count and test-lock notes are in #139's coordinator handoff, `logs/area-6/139-brief.md`.
 
 The owner set the complete delivery deadline to 24 November, including Areas 6–9, C4 documentation,
 bilingual Georgian/English slides and pitch, a rehearsed working demo and a recorded backup.

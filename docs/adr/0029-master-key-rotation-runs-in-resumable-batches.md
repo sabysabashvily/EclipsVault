@@ -28,16 +28,21 @@ each re-wrapped secret was recorded as an edit.
 ## Consequences
 
 - During and after an interrupted pass, rows sit under both the current and retired master keys. That
-  is safe because the retired key stays loaded until nothing awaits rotation, and running the pass
-  again continues where it stopped.
-- Other audited actions wait for the audit chain for at most one batch, not for the whole pass.
+  is safe as long as the operator keeps the retired key loaded until nothing awaits rotation; running
+  the pass again continues where it stopped.
+- Other audited actions wait for the audit chain for at most one batch, not for the whole pass. An
+  action that waits longer than the chain's 15-second limit still fails closed.
 - One batch holds the audit chain for one round trip per row; on a high-latency database, run
   rotation in a quiet window.
-- If the secret cache cannot be cleared after a batch commits, the pass stops with an error. Envelopes
-  already cached still name the retired master key and expire within the cache lifetime (5 minutes
-  by default), so keep the retired key loaded that long after the last pass.
+- A secret read while its batch commits can be cached with its old envelope, and a cache that cannot
+  be cleared after a batch commits stops the pass with an error. Either way such envelopes still name
+  the retired master key until they expire (5 minutes by default), so keep the retired key loaded
+  that long after the last pass.
 - If a batch's commit acknowledgement is lost, the counts a stopped pass reports can be lower than
   what moved. The status the page reloads afterwards is authoritative.
+- A row whose data key no longer opens under its own master key is skipped and stays pending, so one
+  damaged row cannot stop every pass. Under the KMS engine, a row already on the latest key version
+  is neither written nor recorded.
 
 ## Considered Options
 

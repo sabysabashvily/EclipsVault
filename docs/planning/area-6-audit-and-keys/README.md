@@ -1,7 +1,6 @@
 # Area 6 Audit log and Encryption keys planning records
 
-Audit log and Encryption keys (ADR-0017 step 6). Uncommitted until the first implementation ticket
-commits them.
+Audit log and Encryption keys (ADR-0017 step 6). Committed with part 6a's records in `4fe7c93`.
 
 - [Legacy survey and findings](survey.md).
 - [Grill checkpoint](checkpoint.md): rounds, questions and answers.
