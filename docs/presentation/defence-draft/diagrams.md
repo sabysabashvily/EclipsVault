@@ -209,20 +209,22 @@ Angular-ის ფაილებს, Legacy გვერდებს და UI 
 ## 4. Focused code: reveal
 
 Success path for an Internal secret that does not need step-up. This is the talk's secret. Each
-participant is a component of that path, except the browser, which is the person.
+participant is a component of that path, except the vault account, which is the person. In a
+sequence diagram `#` starts a comment, so the technology line is written `C#35;`, which renders
+as `C#`.
 
 ```mermaid
 sequenceDiagram
-  participant Browser as Browser<br/>[Person]
+  participant Account as Vault account in a browser<br/>[Person]
   participant Controller as SecretsController.Reveal<br/>[Component]<br/>ASP.NET Core
-  participant Details as SecretService.GetDetailsAsync<br/>[Component]<br/>C#
-  participant Access as SecretAccessHandler<br/>[Component]<br/>C#
-  participant Policy as SecretAccessPolicy<br/>[Component]<br/>C#
-  participant Reveal as SecretService.RevealAsync<br/>[Component]<br/>C#
-  participant Sink as AuditSink<br/>[Component]<br/>C#
-  participant Crypto as ICryptoEngine.UnsealAsync<br/>[Component]<br/>C#
+  participant Details as SecretService.GetDetailsAsync<br/>[Component]<br/>C#35;
+  participant Access as SecretAccessHandler<br/>[Component]<br/>C#35;
+  participant Policy as SecretAccessPolicy<br/>[Component]<br/>C#35;
+  participant Reveal as SecretService.RevealAsync<br/>[Component]<br/>C#35;
+  participant Sink as AuditSink<br/>[Component]<br/>C#35;
+  participant Crypto as ICryptoEngine.UnsealAsync<br/>[Component]<br/>C#35;
 
-  Browser->>Controller: POST reveal
+  Account->>Controller: POST reveal
   Controller->>Details: load envelope
   Details->>Sink: commit Viewed
   Controller->>Access: CheckAccessAsync
@@ -233,7 +235,7 @@ sequenceDiagram
   Reveal->>Sink: commit SecretRevealed
   Sink-->>Reveal: committed
   Reveal->>Crypto: unwrap data key and open value
-  Crypto-->>Browser: plaintext in the page
+  Crypto-->>Account: plaintext in the page
 ```
 
 Caption / წარწერა: `SecretRevealed` is committed before `UnsealAsync`. The earlier `Viewed` row is
@@ -242,7 +244,7 @@ the details load, and it is written before the access decision. / `SecretReveale
 
 | Element | Source at `0bb59de` | State |
 |---|---|---|
-| Browser `[Person]` | `VaultController` `[Authorize(Policy = VaultPolicies.Session)]` | current |
+| Vault account in a browser `[Person]` | `CONTEXT.md` vault account; `VaultController` `[Authorize(Policy = VaultPolicies.Session)]` | current |
 | `SecretsController.Reveal` `[Component]` | `SecretsController.Reveal` calls `GetDetailsAsync` then `CheckAccessAsync` | current, same on Area 6a |
 | `GetDetailsAsync` `[Component]` | `SecretService.GetDetailsAsync` audits `SecretMetadataViewed` | current, same on Area 6a |
 | Label `Viewed` | `AuditDisplay` | current |
