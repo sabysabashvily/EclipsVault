@@ -83,17 +83,7 @@ public sealed class KekRotationBatchTests : IDisposable
     {
         await using var db = NewContext();
         await db.Database.EnsureCreatedAsync();
-        var secret = new Secret
-        {
-            Id = Guid.NewGuid(),
-            Name = "kms-wrapped",
-            ProjectKey = "ROTATION",
-            Ciphertext = [1],
-            WrappedDek = Encoding.UTF8.GetBytes("vault:v1:wrapped"),
-            KekId = "vault:eclipsvault:v1",
-            Algorithm = "AES-256-GCM-AAD+VaultTransit",
-            CreatedAtUtc = DateTimeOffset.UtcNow,
-        };
+        var secret = SecretUnder("vault:eclipsvault:v1", "kms-wrapped");
         db.Secrets.Add(secret);
         await db.SaveChangesAsync();
 
@@ -102,6 +92,46 @@ public sealed class KekRotationBatchTests : IDisposable
         Assert.Equal(new KekRotationResult(CurrentKekId, 1, 0, 0), result);
         Assert.Equal("vault:eclipsvault:v2", await db.Secrets.Where(row => row.Id == secret.Id).Select(row => row.KekId).SingleAsync());
     }
+
+    [Fact]
+    public async Task The_status_counts_rows_a_pass_can_move_apart_from_rows_under_keys_that_are_not_loaded()
+    {
+        await using var db = NewContext();
+        await db.Database.EnsureCreatedAsync();
+        await SecretsUnderRetiredKeyAsync(db, count: 2);
+        db.Secrets.Add(SecretUnder("kek-missing", "under-a-missing-key"));
+        await db.SaveChangesAsync();
+
+        var status = await Rotation(db).GetStatusAsync(default);
+
+        Assert.Equal((2, 1), (status.AwaitingRotation, status.OnMissingKeys));
+    }
+
+    [Fact]
+    public async Task Under_the_KMS_engine_the_status_counts_every_row_not_under_the_current_key_as_awaiting_rotation()
+    {
+        await using var db = NewContext();
+        await db.Database.EnsureCreatedAsync();
+        db.Secrets.Add(SecretUnder("vault:eclipsvault:v1", "kms-wrapped"));
+        await db.SaveChangesAsync();
+
+        var status = await Rotation(db, new KmsRewrap()).GetStatusAsync(default);
+
+        Assert.Equal((1, 0), (status.AwaitingRotation, status.OnMissingKeys));
+    }
+
+    /// <summary>A row whose envelope no test opens: only the id of the key it names matters.</summary>
+    private static Secret SecretUnder(string kekId, string name) => new()
+    {
+        Id = Guid.NewGuid(),
+        Name = name,
+        ProjectKey = "ROTATION",
+        Ciphertext = [1],
+        WrappedDek = Encoding.UTF8.GetBytes("vault:v1:wrapped"),
+        KekId = kekId,
+        Algorithm = "AES-256-GCM-AAD+VaultTransit",
+        CreatedAtUtc = DateTimeOffset.UtcNow,
+    };
 
     private KekRotationService Rotation(EclipsVaultDbContext db, ICryptoEngine? engine = null) => new(
         db,

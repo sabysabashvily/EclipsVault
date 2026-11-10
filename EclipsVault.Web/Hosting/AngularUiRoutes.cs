@@ -84,7 +84,7 @@ public static class AngularUiRoutes
 
         string[] administratorPaths = ["/Admin/Users", "/Admin/CreateUser", "/Admin/EditUser/{id:guid}", "/Admin/Networks",
             "/ServiceAccounts", "/ServiceAccounts/Index", "/ServiceAccounts/Create", "/ServiceAccounts/Details/{id:guid}",
-            "/Notifications", "/Notifications/Index", "/License", "/License/Index"];
+            "/Notifications", "/Notifications/Index", "/License", "/License/Index", "/Encryption", "/Encryption/Index"];
         foreach (var path in administratorPaths)
         {
             endpoints.MapMethods(path, [HttpMethods.Get, HttpMethods.Head], ServeIndex)

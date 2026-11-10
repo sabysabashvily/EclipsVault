@@ -1,4 +1,3 @@
-using System.Net;
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.KeyManagement;
 using EclipsVault.Core.Application.Secrets;
@@ -191,24 +190,6 @@ public sealed class KekRotationTests(KekRotationFixture fixture)
 
         Assert.Equal(CurrentKekId, await KekIdOfSecretAsync(decoyId));
         Assert.DoesNotContain(await AuditTrail.RowsAfterAsync(_vault, before), row => row.Action == AuditAction.HoneyTokenTripped);
-    }
-
-    [Fact]
-    public async Task The_Legacy_Rotate_action_runs_the_pass_and_shows_its_counts()
-    {
-        await RotateAsync();
-        await SecretsUnderMasterKey.CreateAsync(_vault, fixture.RetiredMasterKey, "rotated-from-legacy", "value");
-        var admin = await _vault.AdminClientAsync();
-        var before = await AuditTrail.HeadAsync(_vault);
-
-        var token = VaultFixture.FormTokenOf(await admin.GetStringAsync("/Encryption"), "/Encryption");
-        var response = await admin.PostAsync("/Encryption/Rotate",
-            new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token }));
-
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Contains($"Rotated 1 secret(s) and 0 version(s) to KEK {CurrentKekId}.", await admin.GetStringAsync(response.Headers.Location));
-        var row = Assert.Single(await AuditTrail.RowsAfterAsync(_vault, before), row => row.Action == AuditAction.KekRotated);
-        Assert.Equal(VaultFixture.AdminUsername, row.Username);
     }
 
     private async Task<KekRotationResult> RotateAsync()

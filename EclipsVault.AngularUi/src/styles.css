@@ -651,6 +651,10 @@ button {
   border-color: rgba(48, 209, 88, 0.4);
   background: linear-gradient(180deg, var(--ok-soft), var(--bg-raised) 70%);
 }
+.notice-critical {
+  border-color: rgba(255, 69, 58, 0.5);
+  background: linear-gradient(180deg, var(--danger-soft), var(--bg-raised) 70%);
+}
 .notice strong {
   margin-right: 0.15rem;
 }

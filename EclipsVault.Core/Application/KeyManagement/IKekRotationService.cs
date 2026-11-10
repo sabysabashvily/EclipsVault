@@ -8,15 +8,17 @@ public sealed record KekUsage(string KekId, bool IsCurrent, bool IsKnown, int Se
     public int Total => SecretCount + VersionCount;
 }
 
-/// <summary>Snapshot of the key-encryption-key estate for the admin Encryption page.</summary>
+/// <summary>
+/// Snapshot of the key-encryption-key estate for the admin Encryption page.
+/// <paramref name="AwaitingRotation"/> counts the secrets and versions a pass can move;
+/// <paramref name="OnMissingKeys"/> counts those left under master keys that are not loaded.
+/// </summary>
 public sealed record KekStatus(
     string CurrentKekId,
     IReadOnlyList<string> KnownKekIds,
-    IReadOnlyList<KekUsage> Usage)
-{
-    /// <summary>Items still wrapped under a KEK other than the current one (i.e. awaiting rotation).</summary>
-    public int PendingRewrap => Usage.Where(u => !u.IsCurrent).Sum(u => u.Total);
-}
+    IReadOnlyList<KekUsage> Usage,
+    int AwaitingRotation,
+    int OnMissingKeys);
 
 /// <summary>
 /// Outcome of a rotation pass. <paramref name="OnMissingKeys"/> counts the secrets and versions left
@@ -37,8 +39,8 @@ public interface IKekRotationService
 
     /// <summary>
     /// Runs one pass in batches (ADR-0029). Throws <see cref="KekRotationRunningException"/>, having changed
-    /// nothing, while another pass runs, and <see cref="AuditWriteFailedException"/> when a batch cannot be
-    /// recorded; the batches committed before it stay.
+    /// nothing, while another pass runs, and <see cref="KekRotationStoppedException"/> when a batch cannot be
+    /// recorded; the batches committed before it stay, and the exception counts what they moved.
     /// </summary>
     Task<KekRotationResult> RotateAsync(CancellationToken ct);
 }
