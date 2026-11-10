@@ -161,9 +161,9 @@ flowchart TB
   publicapi --> apikey
   apikey --> secretsApi
   secretsApi -->|SecretAccess| handler
+  secretsApi -->|RevealAsync, after allow| secretSvc
   secrets --> handler
   handler --> policy
-  policy -->|allow, then RevealAsync| secretSvc
   secrets --> secretSvc
   secretSvc --> sink
   secretSvc --> engine
@@ -177,14 +177,16 @@ Caption / წარწერა: The vault account reaches the Angular files, th
 The UI API arrow ends at cookie authentication and does not call `SecretsController`, because the
 secret pages are not Angular routes yet. The Legacy pages reach `SecretsController` through that
 cookie authentication. The Public API reaches `SecretsApiController` through the API key handler.
-That controller authorizes through `SecretAccessHandler` before `SecretService.RevealAsync`.
+That controller asks `SecretAccessHandler`, and `SecretAccessPolicy` only answers allow or deny.
+After allow, `SecretsApiController` calls `RevealAsync`, as `SecretsController` does.
 SecretService and AuditSink persist through EF Core to the database outside the Web application. /
 საცავის ანგარიში აღწევს Angular-ის ფაილებს, Legacy გვერდებს და UI API-ს. UI API-ს ისარი ქუქის
 ავთენტიფიკაციაზე ჩერდება და `SecretsController`-ს არ იძახებს, რადგან საიდუმლოს გვერდები ჯერ
 Angular-ის მარშრუტები არ არის. Legacy გვერდები `SecretsController`-ს იმ ქუქის ავთენტიფიკაციით
 აღწევენ. საჯარო API `SecretsApiController`-ს API გასაღების დამმუშავებლით აღწევს. ეს კონტროლერი
-`SecretService.RevealAsync`-მდე `SecretAccessHandler`-ით ამოწმებს უფლებას. SecretService და
-AuditSink მონაცემებს EF Core-ით წერენ ბაზაში, რომელიც Web აპლიკაციის გარეთ დგას.
+`SecretAccessHandler`-ს ეკითხება, და `SecretAccessPolicy` მხოლოდ უფლებას ან უარს პასუხობს.
+უფლების შემდეგ `SecretsApiController` იძახებს `RevealAsync`-ს, როგორც `SecretsController`.
+SecretService და AuditSink მონაცემებს EF Core-ით წერენ ბაზაში, რომელიც Web აპლიკაციის გარეთ დგას.
 
 | Element | Source at `0bb59de` | State |
 |---|---|---|
@@ -195,9 +197,9 @@ AuditSink მონაცემებს EF Core-ით წერენ ბა�
 | UI API problem responses | ADR-0006; `Program.cs` `MapFallback("/api/ui/{**path}")` | current |
 | Cookie authentication `[Component]` | `Program.cs` `EclipsVault.Session`, `EclipsVault.MfaPending`, `HttpOnly`, `Secure`, `SameSite=Strict` | current, same on Area 6a |
 | `ApiKeyAuthenticationHandler` `[Component]` | `ApiKeyAuthenticationHandler` | current |
-| `SecretsApiController` `[Component]` to `SecretAccessHandler` | `SecretsApiController` on `api/v1/secrets` authorizes through `SecretAccess` before `RevealAsync`. It is not `SecretsController` | current |
+| `SecretsApiController` to `SecretAccessHandler`, then `RevealAsync` | `SecretsApiController` on `api/v1/secrets` asks `SecretAccess` and, after allow, calls `SecretService.RevealAsync`. `SecretAccessPolicy` only answers allow or deny. It is not `SecretsController` | current |
 | `SecretsController` `[Component]` | `SecretsController`. Reached from the Legacy pages through cookie authentication. The UI API arrow stops at cookie authentication | current |
-| `SecretAccessHandler` and `SecretAccessPolicy` `[Component]` | `SecretAccessHandler` delegates to `SecretAccessPolicy` | current |
+| `SecretAccessHandler` and `SecretAccessPolicy` `[Component]` | `SecretAccessHandler` delegates to `SecretAccessPolicy`, which answers allow or deny and does not call `SecretService` | current |
 | `SecretService` `[Component]` | `SecretService` | current, same on Area 6a |
 | `AuditSink` `[Component]` | `AuditSink`; `AuditGroupCommitter` | current |
 | Crypto engine `[Component]` | `CryptoEngineFactory`; `AesGcmCryptoEngine`; `VaultTransitCryptoEngine` | current |
