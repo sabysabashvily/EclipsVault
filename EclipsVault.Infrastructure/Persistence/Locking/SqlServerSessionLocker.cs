@@ -24,7 +24,9 @@ public sealed class SqlServerSessionLocker : ISessionLocker
         try
         {
             // Not composed with Single(): EF would wrap the batch in a subquery, which a DECLARE cannot be.
-            var result = (await db.Database.SqlQueryRaw<int>(AcquireSql, resource).ToListAsync(ct)).Single();
+            // Never cancelled: a caller leaving after the lock was granted would skip its release, and
+            // the zero timeout answers at once anyway.
+            var result = (await db.Database.SqlQueryRaw<int>(AcquireSql, resource).ToListAsync(CancellationToken.None)).Single();
             if (result >= 0)
             {
                 return new SessionLock(db, () => ReleaseAsync(db, resource));

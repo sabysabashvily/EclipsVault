@@ -11,7 +11,9 @@ public sealed class PostgresSessionLocker : ISessionLocker
         await db.Database.OpenConnectionAsync(ct);
         try
         {
-            var taken = (await db.Database.SqlQueryRaw<bool>("SELECT pg_try_advisory_lock({0}) AS \"Value\"", key).ToListAsync(ct)).Single();
+            // Never cancelled: a caller leaving after the lock was granted would skip its release, and
+            // pg_try_advisory_lock answers at once anyway.
+            var taken = (await db.Database.SqlQueryRaw<bool>("SELECT pg_try_advisory_lock({0}) AS \"Value\"", key).ToListAsync(CancellationToken.None)).Single();
             if (taken)
             {
                 return new SessionLock(db, () => db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_unlock({0})", [key], CancellationToken.None));
