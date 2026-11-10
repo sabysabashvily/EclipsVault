@@ -54,7 +54,18 @@ internal sealed class HeldAuditChain : IAsyncDisposable
     {
         await WaitForQueuedWritersAsync(1);
         var next = TakeAsync(vault);
-        await WaitForQueuedWritersAsync(2);
+        try
+        {
+            await WaitForQueuedWritersAsync(2);
+        }
+        catch
+        {
+            // Release both holders, or the queued one takes the chain and keeps it for later tests.
+            await DisposeAsync();
+            await (await next).DisposeAsync();
+            throw;
+        }
+
         await DisposeAsync();
         return await next;
     }
