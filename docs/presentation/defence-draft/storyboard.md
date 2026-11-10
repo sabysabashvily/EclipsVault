@@ -83,25 +83,26 @@ Timing: unallocated (assessment PDF not supplied).
 
 ### On screen (English)
 
-One Web process serves the browser and both APIs. Angular is built by Node, then served by Web from
-the same origin. Core and Infrastructure are code modules inside that process, not containers.
-Hosted workers run in Web.
+The container picture has the runtime containers inside one system. The Angular UI runs in the
+browser and calls the UI API with the session cookie. The Web application, ASP.NET Core on .NET 10,
+serves the Angular files, both APIs, and the Legacy pages that remain. One database is selected.
+Redis is there only when enabled. Core and Infrastructure are components inside Web, not containers.
+Node only builds the image.
 
-One database provider is selected, PostgreSQL or SQL Server. Redis, SMTP, HashiCorp Vault, and an
-identity provider are present only when configured. Development, the talk's disposable demonstration,
-and production are three different ways of running that same process. The picture is
-[diagrams.md](diagrams.md).
+SMTP, Vault Transit, and an identity provider are present only when configured. Development, the
+talk's disposable demonstration, and production are three ways of running that Web application. The
+picture is [diagrams.md](diagrams.md).
 
 ### On screen (ქართული)
 
-ერთი Web პროცესი ემსახურება ბრაუზერს და ორივე API-ს. Angular-ს Node აწყობს, შემდეგ Web იმავე
-წყაროდან აწვდის. Core და Infrastructure ამ პროცესის კოდის მოდულებია, არა კონტეინერები. ფონური
-მუშაკები Web-ში ეშვება.
+კონტეინერის სურათში ერთი სისტემის გაშვების კონტეინერებია. Angular UI ბრაუზერში ეშვება და UI
+API-ს სესიის ქუქით იძახებს. Web აპლიკაცია, ASP.NET Core .NET 10-ზე, Angular-ის ფაილებს, ორივე
+API-ს და დარჩენილ Legacy გვერდებს აწვდის. არჩეულია ერთი ბაზა. Redis მხოლოდ მაშინ დგას, როცა
+ჩართულია. Core და Infrastructure Web-ის კომპონენტებია, არა კონტეინერები. Node მხოლოდ იმიჯს აწყობს.
 
-არჩეულია ერთი ბაზის მომწოდებელი, PostgreSQL ან SQL Server. Redis, SMTP, HashiCorp Vault და
-იდენტობის მომწოდებელი მხოლოდ მაშინ დგას, როცა კონფიგურაციაშია. Development, მოხსენების ერთჯერადი
-დემონსტრაცია და production ერთი და იმავე პროცესის სამი განსხვავებული გაშვებაა. სურათი
-[diagrams.md](diagrams.md)-შია.
+SMTP, Vault Transit და იდენტობის მომწოდებელი მხოლოდ მაშინ დგას, როცა კონფიგურაციაშია.
+Development, მოხსენების ერთჯერადი დემონსტრაცია და production ამ Web აპლიკაციის სამი გაშვებაა.
+სურათი [diagrams.md](diagrams.md)-შია.
 
 ### Speaker shows
 

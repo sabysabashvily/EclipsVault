@@ -193,17 +193,21 @@ Source: `DynamicSecretLease`; `DynamicSecretService`; `DynamicLeaseWorker`.
 
 ### English
 
-No, and no. Core and Infrastructure are project references inside the Web process. The Dockerfile's
-Node stage builds the Angular files and is not the runtime image. The runtime image starts
-`EclipsVault.Web.dll`. Redis and the other compose services are used only when configuration selects
-them. Source: the project files named in [diagrams.md](diagrams.md); `Dockerfile`; ADR-0008.
+No, and no. Core and Infrastructure are components inside the Web application, not containers. The
+Angular UI is a container, and it runs in the browser from files Web serves; the image does not
+start a second server for it. The Dockerfile's Node stage builds those files and is not the runtime
+image. The runtime image starts `EclipsVault.Web.dll`. Redis and the other compose services are
+used only when configuration selects them. Source: [diagrams.md](diagrams.md) sections 2 and 3;
+`Dockerfile`; ADR-0008.
 
 ### ქართული
 
-არა და არა. Core და Infrastructure Web პროცესის პროექტის მითითებებია. Dockerfile-ის Node საფეხური
-Angular-ის ფაილებს აწყობს და გაშვების იმიჯი არ არის. გაშვების იმიჯი იწყებს `EclipsVault.Web.dll`-ს.
-Redis და compose-ის სხვა სერვისები მხოლოდ მაშინ გამოიყენება, როცა კონფიგურაცია ირჩევს მათ. წყარო:
-[diagrams.md](diagrams.md)-ში დასახელებული პროექტის ფაილები; `Dockerfile`; ADR-0008.
+არა და არა. Core და Infrastructure Web აპლიკაციის კომპონენტებია, არა კონტეინერები. Angular UI
+კონტეინერია და ბრაუზერში ეშვება იმ ფაილებიდან, რომლებსაც Web აწვდის; იმიჯი მისთვის მეორე სერვერს
+არ იწყებს. Dockerfile-ის Node საფეხური ამ ფაილებს აწყობს და გაშვების იმიჯი არ არის. გაშვების
+იმიჯი იწყებს `EclipsVault.Web.dll`-ს. Redis და compose-ის სხვა სერვისები მხოლოდ მაშინ
+გამოიყენება, როცა კონფიგურაცია ირჩევს მათ. წყარო: [diagrams.md](diagrams.md) ნაწილი 2 და 3;
+`Dockerfile`; ADR-0008.
 
 ## Is this the production deployment?
 

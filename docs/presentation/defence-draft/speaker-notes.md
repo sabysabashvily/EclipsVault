@@ -85,10 +85,13 @@ administrator is a vault account with Top Secret clearance, not a separate role.
 
 ### English
 
-Point at the context picture first: a person, a service account, the vault, one database, and the
-optional neighbours. Then the container picture. The only long-running application container in a
-production image is Web. Node is a build stage in the Dockerfile and is not copied into the runtime
-image. The Angular files are.
+Point at the context picture first: one person, the vault, and the external systems. The
+application that uses a service account is an external system, not a person. Then the container
+picture. Inside the boundary, the Angular UI runs in the browser and calls the UI API with the
+session cookie. The Web application is ASP.NET Core on .NET 10 and serves those files, both APIs,
+and the Legacy pages that remain. One database is selected. Redis appears only when enabled. Node
+is a build stage in the Dockerfile and is not a box in that picture. The Angular files are what the
+browser runs.
 
 Say "module" when you point at Core and Infrastructure. Web references both projects.
 Infrastructure references Core. Core references no NuGet package. `EclipsVault.AuditVerifier`
@@ -106,9 +109,12 @@ seed. Redis in the compose file does nothing until `Redis:Enabled` is true; the 
 
 ### ქართული
 
-ჯერ კონტექსტის სურათს მიუთითეთ: ადამიანი, სერვისის ანგარიში, საცავი, ერთი ბაზა და არასავალდებულო
-მეზობლები. შემდეგ კონტეინერის სურათს. production იმიჯში დიდხანს მუშა აპლიკაციის კონტეინერი Web-ია.
-Node Dockerfile-ის აწყობის საფეხურია და გაშვების იმიჯში არ გადადის. Angular-ის ფაილები გადადის.
+ჯერ კონტექსტის სურათს მიუთითეთ: ერთი პიროვნება, საცავი და გარე სისტემები. აპლიკაცია, რომელიც
+სერვისის ანგარიშს იყენებს, გარე სისტემაა, არა პიროვნება. შემდეგ კონტეინერის სურათს. საზღვრის
+შიგნით Angular UI ბრაუზერში ეშვება და UI API-ს სესიის ქუქით იძახებს. Web აპლიკაცია ASP.NET Core-ა
+.NET 10-ზე და ამ ფაილებს, ორივე API-ს და დარჩენილ Legacy გვერდებს აწვდის. არჩეულია ერთი ბაზა.
+Redis მხოლოდ მაშინ ჩანს, როცა ჩართულია. Node Dockerfile-ის აწყობის საფეხურია და ამ სურათში უჯრა არ
+არის. Angular-ის ფაილები ისაა, რასაც ბრაუზერი უშვებს.
 
 Core-სა და Infrastructure-ზე თითის დაჭერისას თქვით „მოდული“. Web ორივე პროექტს იყენებს.
 Infrastructure იყენებს Core-ს. Core-ს NuGet პაკეტი არ აქვს. `EclipsVault.AuditVerifier` მხოლოდ Core-ს
