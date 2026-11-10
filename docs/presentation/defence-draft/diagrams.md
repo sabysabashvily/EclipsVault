@@ -90,7 +90,7 @@ flowchart TB
   app -->|API key, Public API| web
   web -->|one provider| db
   web -.->|when enabled| redis
-  idp -.->|when enabled| web
+  web -.->|identity only, when enabled| idp
   web -.->|when selected| smtp
   web -.->|when selected| kms
 ```
@@ -140,6 +140,7 @@ flowchart TB
     publicapi["Public API /api/v1<br/>[Component]<br/>ASP.NET Core"]
     cookies["Cookie authentication<br/>[Component]<br/>ASP.NET Core"]
     apikey["ApiKeyAuthenticationHandler<br/>[Component]<br/>ASP.NET Core"]
+    secretsApi["SecretsApiController<br/>[Component]<br/>ASP.NET Core"]
     secrets["SecretsController<br/>[Component]<br/>ASP.NET Core"]
     auditpage["AuditController<br/>[Component]<br/>ASP.NET Core"]
     handler["SecretAccessHandler<br/>[Component]<br/>C#"]
@@ -154,11 +155,12 @@ flowchart TB
   person -->|uses| legacy
   person -->|session cookie| uiapi
   app -->|API key| publicapi
-  legacy --> cookies
-  uiapi --> cookies
+  legacy -->|session cookie| cookies
+  cookies -->|Legacy pages| secrets
+  uiapi -->|session cookie| cookies
   publicapi --> apikey
-  cookies --> secrets
-  apikey --> secrets
+  apikey --> secretsApi
+  secretsApi --> secretSvc
   secrets --> handler
   handler --> policy
   secrets --> secretSvc
@@ -171,11 +173,16 @@ flowchart TB
 ```
 
 Caption / წარწერა: The vault account reaches the Angular files, the Legacy pages, and the UI API.
-Only an application that uses a service account calls the Public API. SecretService and AuditSink
-persist through EF Core to the database outside the Web application. / საცავის ანგარიში აღწევს
-Angular-ის ფაილებს, Legacy გვერდებს და UI API-ს. საჯარო API-ს მხოლოდ ის აპლიკაცია იძახებს,
-რომელიც სერვისის ანგარიშს იყენებს. SecretService და AuditSink მონაცემებს EF Core-ით წერენ ბაზაში,
-რომელიც Web აპლიკაციის გარეთ დგას.
+The UI API arrow ends at cookie authentication and does not call `SecretsController`, because the
+secret pages are not Angular routes yet. The Legacy pages reach `SecretsController` through that
+cookie authentication. The Public API reaches `SecretsApiController` through the API key handler,
+and that controller calls `SecretService`. SecretService and AuditSink persist through EF Core to
+the database outside the Web application. / საცავის ანგარიში აღწევს Angular-ის ფაილებს, Legacy
+გვერდებს და UI API-ს. UI API-ს ისარი ქუქის ავთენტიფიკაციაზე ჩერდება და `SecretsController`-ს არ
+იძახებს, რადგან საიდუმლოს გვერდები ჯერ Angular-ის მარშრუტები არ არის. Legacy გვერდები
+`SecretsController`-ს იმ ქუქის ავთენტიფიკაციით აღწევენ. საჯარო API `SecretsApiController`-ს API
+გასაღების დამმუშავებლით აღწევს, და ეს კონტროლერი `SecretService`-ს იძახებს. SecretService და
+AuditSink მონაცემებს EF Core-ით წერენ ბაზაში, რომელიც Web აპლიკაციის გარეთ დგას.
 
 | Element | Source at `0bb59de` | State |
 |---|---|---|
@@ -186,7 +193,8 @@ Angular-ის ფაილებს, Legacy გვერდებს და UI 
 | UI API problem responses | ADR-0006; `Program.cs` `MapFallback("/api/ui/{**path}")` | current |
 | Cookie authentication `[Component]` | `Program.cs` `EclipsVault.Session`, `EclipsVault.MfaPending`, `HttpOnly`, `Secure`, `SameSite=Strict` | current, same on Area 6a |
 | `ApiKeyAuthenticationHandler` `[Component]` | `ApiKeyAuthenticationHandler` | current |
-| `SecretsController` `[Component]` | `SecretsController` | current |
+| `SecretsApiController` `[Component]` | `SecretsApiController` on `api/v1/secrets`. It calls `SecretService` after the API key handler. It is not `SecretsController` | current |
+| `SecretsController` `[Component]` | `SecretsController`. Reached from the Legacy pages through cookie authentication. The UI API arrow stops at cookie authentication | current |
 | `SecretAccessHandler` and `SecretAccessPolicy` `[Component]` | `SecretAccessHandler` delegates to `SecretAccessPolicy` | current |
 | `SecretService` `[Component]` | `SecretService` | current, same on Area 6a |
 | `AuditSink` `[Component]` | `AuditSink`; `AuditGroupCommitter` | current |
@@ -198,7 +206,7 @@ Angular-ის ფაილებს, Legacy გვერდებს და UI 
 | Vault account to Angular files, Legacy pages, and the UI API | `Program.cs` `UseStaticFiles`; `AngularUiRoutes.ServeIndex`; default controller route for paths absent from `AngularUiRoutes`. No arrow to the Public API | current |
 | Legacy pages and the UI API through the session cookie | `Program.cs` cookie scheme; ADR-0002 | current |
 | Application using a service account `[External system]` | `CONTEXT.md` service account. The only caller of `Public API /api/v1` in this picture | current |
-| Public API through the API key handler | `SecretsApiController` `[Authorize(AuthenticationSchemes = AuthSchemes.ApiKey)]`; ADR-0005 | current |
+| Public API through the API key handler to `SecretsApiController` | `SecretsApiController` `[Authorize(AuthenticationSchemes = AuthSchemes.ApiKey)]`; ADR-0005. No arrow from the API key handler to `SecretsController` | current |
 | Database `[Container: PostgreSQL or SQL Server]`, outside Web | `DependencyInjection` `AddDbContext`; `DatabaseProvider.UseVaultDatabase`. Same container as section 2 | current, same on Area 6a |
 | SecretService and AuditSink to the database, EF Core | `SecretService` writes through its repository; `AuditSink` commits through `AuditGroupCommitter`. Both use the EF Core `EclipsVaultDbContext` | current |
 | Secrets controller to handler, handler to policy | `SecretsController.CheckAccessAsync`; `SecretAccessHandler` | current |
@@ -235,7 +243,8 @@ sequenceDiagram
   Reveal->>Sink: commit SecretRevealed
   Sink-->>Reveal: committed
   Reveal->>Crypto: unwrap data key and open value
-  Crypto-->>Account: plaintext in the page
+  Crypto-->>Controller: plaintext
+  Controller-->>Account: Legacy details page
 ```
 
 Caption / წარწერა: `SecretRevealed` is committed before `UnsealAsync`. The earlier `Viewed` row is
@@ -256,7 +265,7 @@ the details load, and it is written before the access decision. / `SecretReveale
 | Failure type | `AuditWriteFailedException` from `AuditSink` | current. Area 6a touches the exception file; the reveal call order does not change |
 | `UnsealAsync` `[Component]` | `AesGcmCryptoEngine.UnsealAsync` unwraps the data key with the master key, then opens the payload | current |
 | Screen label `Revealed` | `AuditDisplay` for `AuditAction.SecretRevealed` | current |
-| Plaintext reaches the browser after success | `SecretsController.Reveal` returns the details view with `revealed.Value` | current. Do not record that screen |
+| Plaintext returns to `SecretsController.Reveal`, then the vault account | `SecretsController.Reveal` returns the Legacy details view with `revealed.Value` | current. Do not record that screen |
 
 Honey-token trips are not in this sequence. `GetDetailsAsync` and `RevealAsync` call
 `TripHoneyTokenIfNeededAsync` before their audit write. The talk never uses that path. The decoy
@@ -274,7 +283,7 @@ Dockerfile's Node stage and .NET SDK stage build the image and are not boxes her
 ```mermaid
 %%{init: {"flowchart": {"wrappingWidth": 560}} }%%
 flowchart TB
-  subgraph development ["Development"]
+  subgraph development ["Development<br/>[Deployment node]"]
     subgraph browserDev ["Developer browser<br/>[Deployment node]"]
       angularDev["Angular UI<br/>[Container: Angular, runs in the browser]"]
     end
@@ -282,13 +291,13 @@ flowchart TB
       webDev["Web application<br/>[Container: ASP.NET Core, .NET 10]"]
       subgraph dockerDev ["Docker host<br/>[Deployment node: Docker Engine]"]
         subgraph compose ["Compose project<br/>[Deployment node: Docker Compose]"]
-          dbDev["Database<br/>[Container: PostgreSQL or SQL Server]"]
+          dbDev["Database<br/>[Container: PostgreSQL]"]
           redisDev["Redis<br/>[Container: Redis]<br/>when enabled"]
         end
       end
     end
   end
-  subgraph production ["Production"]
+  subgraph production ["Production<br/>[Deployment node]"]
     subgraph browserProd ["Browser<br/>[Deployment node]"]
       angularProd["Angular UI<br/>[Container: Angular, runs in the browser]"]
     end
@@ -312,12 +321,15 @@ flowchart TB
   webProd -.->|when enabled| redisProd
 ```
 
-Caption / წარწერა: Development runs Web on the developer machine and the database in a Compose
-project on a Docker host. Production runs the Web image on a Docker host behind a TLS reverse
-proxy, with the database on its own server. The demonstration is one disposable Development run,
-not another deployment. / Development Web-ს დეველოპერის მანქანაზე უშვებს, ბაზას კი Docker ჰოსტზე
-Compose პროექტში. Production Web იმიჯს Docker ჰოსტზე უშვებს TLS შებრუნებული პროქსის უკან, ბაზა კი
-საკუთარ სერვერზეა. დემონსტრაცია Development-ის ერთი ერთჯერადი გაშვებაა, არა სხვა განთავსება.
+Caption / წარწერა: Development and production are deployment nodes. Development runs Web on the
+developer machine and PostgreSQL in the Compose project, because that project's `db` service is
+PostgreSQL. Production runs the Web image on a Docker host behind a TLS reverse proxy, and its
+database node may be PostgreSQL or SQL Server. The demonstration is one disposable Development
+run, not another deployment. / Development და production განთავსების კვანძებია. Development Web-ს
+დეველოპერის მანქანაზე უშვებს, PostgreSQL-ს კი Compose პროექტში, რადგან ამ პროექტის `db` სერვისი
+PostgreSQL-ია. Production Web იმიჯს Docker ჰოსტზე უშვებს TLS შებრუნებული პროქსის უკან, და მისი
+ბაზის კვანძი შეიძლება იყოს PostgreSQL ან SQL Server. დემონსტრაცია Development-ის ერთი ერთჯერადი
+გაშვებაა, არა სხვა განთავსება.
 
 | Element | Source at `0bb59de` | State |
 |---|---|---|
@@ -325,7 +337,7 @@ Compose პროექტში. Production Web იმიჯს Docker ჰო�
 | Developer machine `[Deployment node]` and Web application container | `README.md` `dotnet run --project EclipsVault.Web`. Web is not a compose service; ADR-0008 | current |
 | Docker host `[Deployment node: Docker Engine]` | `docker-compose.yml` header: laptop, loopback ports, not a deployment of Web | current, same on Area 6a |
 | Compose project `[Deployment node: Docker Compose]` | `docker-compose.yml` services `db` and `redis`. Also starts `vault`, `mailpit`, and `keycloak`, which this picture does not draw | current. Present does not mean the process uses them |
-| Development database container | Compose service `db` is PostgreSQL. `Database:Provider` still selects PostgreSQL or SQL Server, as in section 2 | current, same on Area 6a |
+| Development database `[Container: PostgreSQL]` | Compose service `db` is PostgreSQL only. SQL Server is not started by this Compose file | current, same on Area 6a |
 | Development Redis container, when enabled | Compose service `redis`; `appsettings.json` `Redis:Enabled` false | current |
 | TLS reverse proxy `[Deployment node]` | `docs/INSTALL.md`: TLS terminates at the proxy; the image serves plain HTTP on 8080 | current |
 | Application host `[Deployment node: Docker Engine]` and Web application container | `Dockerfile` runtime stage, `ASPNETCORE_HTTP_PORTS=8080`; `docs/INSTALL.md` | current |

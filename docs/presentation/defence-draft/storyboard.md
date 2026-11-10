@@ -199,10 +199,12 @@ was given. It does not watch the live database afterwards. Entries after the lat
 outside that signature. Someone who can delete checkpoints, or edit only the later rows and rehash
 them, is outside what today's Verify button proves.
 
-Three Audit log changes are planned, not built: check the chain against the checkpoints, record a
-checkpoint in the same transaction as its audit row, and stream the export only after a fresh
-step-up and a committed export row. The bundle format stays version 2. An older verifier still has
-the compatibility limit in the [README](README.md) of this folder.
+These are among the planned Audit log changes, not built: check the chain against the checkpoints,
+record a checkpoint in the same transaction as its audit row, and stream the export only after a
+fresh step-up and a committed export row. ADR-0030 also plans a recorded log view
+(`AuditLogViewed`), a recorded verification (`AuditChainVerified`), and one-at-a-time Verify and
+Export. All of these are specified, not merged. The bundle format stays version 2. An older
+verifier still has the compatibility limit in the [README](README.md) of this folder.
 
 ### On screen (ქართული)
 
@@ -217,11 +219,13 @@ Verify ამ გავლას ხელმოწერილ საკონ�
 მხოლოდ გვიანი ჩანაწერების შეცვლა და თავიდან დაჰეშვა, დღევანდელი Verify ღილაკის მტკიცებულების
 გარეთაა.
 
-აუდიტის ჟურნალის სამი ცვლილება დაგეგმილია, არა აშენებული: ჯაჭვის შედარება საკონტროლო წერტილებთან,
-საკონტროლო წერტილის ჩაწერა იმავე ტრანზაქციაში, რომელშიც მისი აუდიტის ჩანაწერი იწერება, და ექსპორტის ნაკადად
-გაგზავნა მხოლოდ ახალი გაძლიერებული დადასტურებისა და დაფიქსირებული ექსპორტის ჩანაწერის შემდეგ.
-შეკვრის ფორმატი ვერსია 2 რჩება. ძველ შემმოწმებელს კვლავ აქვს თავსებადობის საზღვარი ამ საქაღალდის
-[README](README.md)-ში.
+ეს დაგეგმილ აუდიტის ჟურნალის ცვლილებებს შორისაა, არა აშენებული: ჯაჭვის შედარება საკონტროლო
+წერტილებთან, საკონტროლო წერტილის ჩაწერა იმავე ტრანზაქციაში, რომელშიც მისი აუდიტის ჩანაწერი
+იწერება, და ექსპორტის ნაკადად გაგზავნა მხოლოდ ახალი გაძლიერებული დადასტურებისა და დაფიქსირებული
+ექსპორტის ჩანაწერის შემდეგ. ADR-0030 ასევე გეგმავს ჩაწერილ ჟურნალის ნახვას (`AuditLogViewed`),
+ჩაწერილ შემოწმებას (`AuditChainVerified`) და Verify-სა და Export-ს თითო-თითოდ. ყველა ეს
+სპეციფიცირებულია, შერწყმული არ არის. შეკვრის ფორმატი ვერსია 2 რჩება. ძველ შემმოწმებელს კვლავ აქვს
+თავსებადობის საზღვარი ამ საქაღალდის [README](README.md)-ში.
 
 ### Speaker shows
 

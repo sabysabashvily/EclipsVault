@@ -28,30 +28,62 @@ or into a screenshot. The talk needs the name, not the value.
 
 ## Credentials
 
-Generate the two seed passwords on the machine that will run the vault. Keep them in the shell of
-that run. Do not write them into this file, a slide, a ticket, or a picture.
+Copy `EclipsVault.Web/appsettings.Development.json.template` to
+`EclipsVault.Web/appsettings.Development.json`. That copy is never committed. Generate the two
+seed passwords on the machine that will run the vault, and put them in that file as
+`Seed:AdminPassword` and `Seed:DevPassword`, or pass `Seed__AdminPassword` and `Seed__DevPassword`
+in the shell. Keep them in that file or that shell. Do not write them into this document, a slide,
+a ticket, or a picture.
 
-If `Seed__AdminPassword` and `Seed__DevPassword` are unset, Development uses the passwords published
-in `DbSeeder.cs`. Do not display those either. Production refuses that published administrator
-password. Source: `DbSeederTests.Production_refuses_the_development_password_published_in_this_repository`.
+The passwords published in `DbSeeder.cs` are used only when `Seed:AdminPassword` and
+`Seed:DevPassword` are absent from configuration as a whole. Unsetting the environment variables
+is not enough: a copied `appsettings.Development.json` can still set them. Do not display the
+published passwords either. Production refuses that published administrator password. Source:
+`DbSeeder.cs`; `DbSeederTests.Production_refuses_the_development_password_published_in_this_repository`.
+
+Generate a master key in the shell and leave it there, for example
+`export ECLIPSVAULT_KEK="$(openssl rand -base64 32)"`. The committed `appsettings.json` turns off
+the development key fallbacks (`Crypto:AllowDevelopmentKekFallback` is false), so the process
+needs this variable. Do the same for `ECLIPSVAULT_AUDIT_SIGNING_KEY` if you set one. Never write
+a real key or password into `appsettings.Development.json` beyond the disposable seed passwords
+for this run, and never paste a key into this document.
+
+პაროლები და მასტერ-გასაღები ამ გაშვების ფაილში ან გარსში დარჩეს. `DbSeeder.cs`-ის გამოქვეყნებული
+პაროლები მხოლოდ მაშინ გამოიყენება, როცა `Seed:AdminPassword` და `Seed:DevPassword` კონფიგურაციაში
+საერთოდ არ არის. გარემოს ცვლადების მოხსნა საკმარისი არ არის, თუ
+`appsettings.Development.json` მათ აყენებს. მასტერ-გასაღები გარსში შექმენით, მაგალითად
+`export ECLIPSVAULT_KEK="$(openssl rand -base64 32)"`, რადგან ჩადებული `appsettings.json`
+განვითარების გასაღების სარეზერვო გზებს თიშავს. ნამდვილი გასაღები ან პაროლი ამ დოკუმენტში ნუ
+ჩაწერთ.
 
 First sign-in enrolls an authenticator. Do that with the projector off, before the room is
 watching. Do not photograph the QR code, the recovery codes, the cookie store, or any private key.
-`ECLIPSVAULT_KEK` and `ECLIPSVAULT_AUDIT_SIGNING_KEY` stay in the environment of the process. Do
-not print them. Development can fall back to a local key only in the way `appsettings` and the
-seeder already describe; do not invent a key and paste it here.
+Do not print `ECLIPSVAULT_KEK` or `ECLIPSVAULT_AUDIT_SIGNING_KEY`.
 
 ## Setup draft
 
-Use a compose project name that is not the checkout's default. The default project shares the
-volume `eclipsvault-postgres` with ordinary development, and a later reset would delete that data.
+Use a compose project name that is not the checkout's default. The default project uses the
+volume `eclipsvault-postgres`. A later reset of the talk project must not delete that volume.
 Source: `README.md` on named volumes, and the `volumes` block in `docker-compose.yml`.
 
-From the repository root, the shape is:
+`docker-compose.yml` sets fixed `container_name` values, including `eclipsvault-postgres` and the
+other services. Those names are not project-scoped. A second project started with
+`-p eclipsvault-defence-draft` fails while the ordinary containers exist. Stop the ordinary
+project first, without deleting its volume:
 
 ```sh
+docker compose down
 docker compose -p eclipsvault-defence-draft up -d --wait
 ```
+
+`docker compose down` has no `-v`, so the ordinary volume is kept. Do not add `-v` to that first
+command.
+
+`docker-compose.yml` აყენებს ფიქსირებულ `container_name` მნიშვნელობებს, მათ შორის
+`eclipsvault-postgres`-ს. ეს სახელები პროექტზე არ არის მიბმული. სანამ ჩვეულებრივი კონტეინერები
+დგას, `-p eclipsvault-defence-draft` ვერ გაეშვება. ჯერ გააჩერეთ ჩვეულებრივი პროექტი `docker
+compose down`-ით, `-v`-ის გარეშე, რომ მისი ტომი შენარჩუნდეს, და მხოლოდ შემდეგ გაუშვით
+სახელდებული პროექტი.
 
 Then build the Angular UI from `EclipsVault.AngularUi` with the Node version in its `.nvmrc`,
 because some pages are Angular even though the secret and audit pages are still Legacy. Source:
@@ -80,8 +112,9 @@ way for this talk so the picture matches the default code. Source: `appsettings.
 3. Move to another page before any capture. The value is on that details page. Source:
    `SecretsController.Reveal`.
 4. Sign out. Sign in as `vault-admin` and complete that account's second factor off camera.
-5. Open `/Audit`. Find the row labelled `Revealed` for `Phoenix_Dev_Database_Password` and
-   `dev-user`. A `Viewed` row for the same name is the details load. Source: `AuditDisplay`.
+5. Open `/Audit`. The log lists the newest row first. Find the row labelled `Revealed` for
+   `Phoenix_Dev_Database_Password` and `dev-user`. The `Viewed` row below it is the details load.
+   Source: `AuditLogReader.ListRecentAsync`; `AuditDisplay`.
 6. Stop. Do not press Verify and call the result a checkpoint proof. Do not press Export.
 
 If the secret is missing, the disposable database was not empty at seed time, or the process was
@@ -113,7 +146,11 @@ Source for the volume behaviour: `README.md`, "`docker compose down` leaves volu
 removes volumes deletes the data".
 
 Also stop the `dotnet` process you started, and unset `Seed__AdminPassword`, `Seed__DevPassword`,
-and `ECLIPSVAULT_KEK` in that shell. Do not delete a Docker image you did not build for this run.
+`ECLIPSVAULT_KEK`, and `ECLIPSVAULT_AUDIT_SIGNING_KEY` in that shell. Do not delete a Docker image
+you did not build for this run.
+
+ასევე გააჩერეთ `dotnet` პროცესი და ამ გარსში მოხსენით `Seed__AdminPassword`, `Seed__DevPassword`,
+`ECLIPSVAULT_KEK` და `ECLIPSVAULT_AUDIT_SIGNING_KEY`.
 
 If the talk was pointed at the ordinary development volume by mistake, do not run `down -v` to
 "clean the demo". That deletes the development database. Leave it, and say the reset was not done.

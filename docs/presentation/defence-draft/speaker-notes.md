@@ -101,9 +101,9 @@ Name the hosted workers that `Program.cs` and `DependencyInjection` actually reg
 `AuditGroupCommitter`, `SecretLifecycleWorker`, `DynamicLeaseWorker`, and `LicenseStartupCheck`.
 They are threads in Web, not extra containers.
 
-Close with the three run modes, without pretending they were all started. Development is
-`docker-compose.yml` plus `dotnet run`. The talk's demonstration is a disposable use of that
-Development world. Production is the image in the Dockerfile, behind a TLS proxy, with no demo
+Close with two deployments, Development and production; the demonstration is one Development
+run. Do not pretend either was started for this draft. Development is `docker-compose.yml` plus
+`dotnet run`. Production is the image in the Dockerfile, behind a TLS proxy, with no demo
 seed. Redis in the compose file does nothing until `Redis:Enabled` is true; the committed
 `appsettings.json` sets it false.
 
@@ -124,9 +124,10 @@ Infrastructure იყენებს Core-ს. Core-ს NuGet პაკეტი
 `AuditGroupCommitter`, `SecretLifecycleWorker`, `DynamicLeaseWorker` და `LicenseStartupCheck`. ისინი
 Web-ის ნაკადებია, არა დამატებითი კონტეინერები.
 
-დაასრულეთ სამი გაშვების რეჟიმით და ნუ მოიტყუებით, თითქოს სამივე გაეშვა. Development არის
-`docker-compose.yml` პლუს `dotnet run`. მოხსენების დემონსტრაცია ამ Development სამყაროს ერთჯერადი
-გამოყენებაა. Production არის Dockerfile-ის იმიჯი, TLS პროქსის უკან, სადემონსტრაციო სამყაროს გარეშე. compose
+დაასრულეთ ორი განთავსებით, Development-ით და production-ით; დემონსტრაცია ერთი Development
+გაშვებაა. ნუ მოიტყუებით, თითქოს რომელიმე ამ მონახაზისთვის გაეშვა. Development არის
+`docker-compose.yml` პლუს `dotnet run`. Production არის Dockerfile-ის იმიჯი, TLS პროქსის უკან,
+სადემონსტრაციო სამყაროს გარეშე. compose
 ფაილში Redis არაფერს აკეთებს, სანამ `Redis:Enabled` ჭეშმარიტი არ არის; ჩადებული `appsettings.json`
 მას მცდარზე აყენებს.
 
@@ -185,9 +186,9 @@ Narration while it works:
 "This account is the Phoenix member. The secret list is still a Legacy page; secrets have not moved
 to the Angular route table on this revision. I reveal one Internal secret. The value appears in the
 page, so I leave it before anyone records the screen. I sign out and return as the administrator.
-The audit log is also still Legacy, and only an administrator can open it. The row I want says
-`Revealed`, names `Phoenix_Dev_Database_Password`, and names this account. The `Viewed` row above it
-is the details page, not the decryption."
+The audit log is also still Legacy, and only an administrator can open it. It lists the newest
+row first. The row I want says `Revealed`, names `Phoenix_Dev_Database_Password`, and names this
+account. The `Viewed` row below it is the details page, not the decryption."
 
 If the authenticator enrollment screen appears, stop the projection. That screen is first-run
 enrollment, and it does not belong in a recording. The same is true of recovery codes.
@@ -205,9 +206,9 @@ If a step-up form appears, you are not on the Internal secret. Stop. Do not type
 „ეს ანგარიში Phoenix-ის წევრია. საიდუმლოების სია ჯერ Legacy გვერდია; ამ რევიზიაზე საიდუმლოები
 Angular-ის მარშრუტების ცხრილში არ გადასულა. ერთ Internal საიდუმლოს ვხსნი. მნიშვნელობა გვერდზე
 ჩნდება, ამიტომ ვტოვებ მას, სანამ ვინმე ეკრანს ჩაიწერს. გამოვდივარ და ადმინისტრატორად ვბრუნდები.
-აუდიტის ჟურნალიც ჯერ Legacy-ა და მხოლოდ ადმინისტრატორს შეუძლია მისი გახსნა. ჩანაწერი, რომელიც
-მჭირდება, ამბობს `Revealed`, ასახელებს `Phoenix_Dev_Database_Password`-ს და ამ ანგარიშს. ზემოთ
-`Viewed` დეტალების გვერდია, არა გაშიფვრა.“
+აუდიტის ჟურნალიც ჯერ Legacy-ა და მხოლოდ ადმინისტრატორს შეუძლია მისი გახსნა. ის ჯერ უახლეს
+ჩანაწერს აჩვენებს. ჩანაწერი, რომელიც მჭირდება, ამბობს `Revealed`, ასახელებს
+`Phoenix_Dev_Database_Password`-ს და ამ ანგარიშს. ქვემოთ `Viewed` დეტალების გვერდია, არა გაშიფვრა.“
 
 თუ ავთენტიფიკატორის ჩარიცხვის ეკრანი გამოჩნდება, პროექცია გააჩერეთ. ეს პირველი გაშვების ჩარიცხვაა და
 ჩანაწერში არ ეკუთვნის. იგივე ეხება აღდგენის კოდებს.

@@ -46,11 +46,15 @@ head, the diagram table says so.
 **Planned** means Area 6 part 6b, Audit log. The specification is on the unmerged Area 6a branch, in
 `docs/planning/area-6-audit-and-keys/issues/6b/spec.md` and `docs/adr/0030-the-audit-log-claims-only-what-it-proves.md`
 at `ab7997e`. There is no `area-6b-audit-log` implementation in either revision read here. Until that
-work is verified and merged, these three stay planned:
+work is verified and merged, these are among the planned changes. All of them are specified,
+not merged:
 
 - checkpoint-boundary verification
 - atomic checkpoint recording
 - streamed step-up export
+- a recorded log view (`AuditLogViewed`)
+- a recorded verification (`AuditChainVerified`)
+- one-at-a-time Verify and Export
 
 The in-app Verify action re-walks the rows that are present. It does not, by itself, prove that every
 deletion or rewrite is detectable no matter where the latest signed checkpoint sits. See
