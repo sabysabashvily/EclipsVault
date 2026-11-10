@@ -18,6 +18,7 @@ security guarantee. Nothing in it was produced by launching a vault.
 | [storyboard.md](storyboard.md) | Eight slides, English then Georgian, no timings |
 | [speaker-notes.md](speaker-notes.md) | What to say, and what not to claim |
 | [diagrams.md](diagrams.md) | Context, container, Web component, reveal code, deployment |
+| [diagrams.html](diagrams.html) | The same five pictures, rendered, with bilingual captions |
 | [security-flows.md](security-flows.md) | Sign-in, access, reveal, keys, checkpoint, dynamic lease |
 | [demo-setup-reset.md](demo-setup-reset.md) | Disposable Development setup and reset. Not run |
 | [questions.md](questions.md) | Likely questions, with the answer the source supports |
@@ -87,5 +88,5 @@ re-check. Those remain the owner's merge gates. This documentation change did no
 - The local Georgian diploma: not in this checkout. The story follows the summary in the ticket,
   `CONTEXT.md`, the ADRs on `main`, and the source named below.
 - No vault was started. Setup, reset, rehearsal, and recording are unchecked.
-- `scripts/check.sh` was not run. This change does not modify the program, and the repository has no
-  documentation renderer or markdown linter on `PATH` (`markdownlint` and `vale` were absent).
+- `scripts/check.sh` was not run. This change does not modify the program. `markdownlint` and `vale`
+  were not on `PATH`. The five pictures are rendered with `pele` from `render/`.
