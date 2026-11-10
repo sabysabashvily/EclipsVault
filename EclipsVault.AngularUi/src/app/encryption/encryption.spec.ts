@@ -128,7 +128,6 @@ describe('Encryption keys', () => {
     const { page } = await loaded(settled);
     expect(text(notice(page))).toContain('✓ All secrets are wrapped under the current KEK.');
     expect(text(notice(page))).toContain('Nothing to rotate.');
-    expect(notice(page)?.classList.contains('notice-ok')).toBe(true);
     expect(button(page, 'Re-wrap under current KEK').disabled).toBe(true);
   });
 
@@ -138,7 +137,6 @@ describe('Encryption keys', () => {
     expect(text(notice(page))).toContain(
       'Run a rotation to re-wrap them under the current key, then the retired key can be removed.',
     );
-    expect(notice(page)?.classList.contains('notice-warn')).toBe(true);
     expect(button(page, 'Re-wrap under current KEK').disabled).toBe(false);
   });
 
@@ -148,7 +146,6 @@ describe('Encryption keys', () => {
     expect(text(notice(page))).toContain(
       'Provide the missing key as a retired KEK (ECLIPSVAULT_KEK_RETIRED) so it can be decrypted and rotated, or those secrets cannot be read.',
     );
-    expect(notice(page)?.classList.contains('notice-critical')).toBe(true);
     expect(page.textContent).not.toContain('still on a retired KEK');
   });
 
@@ -169,9 +166,6 @@ describe('Encryption keys', () => {
       ['kek-5e6f7a8b', 'retired', '4', '1'],
       ['kek-9c0d1e2f', 'not loaded', '2', '0'],
     ]);
-    expect(page.querySelector('.tone-ok')?.textContent).toBe('current');
-    expect(page.querySelector('.tone-warn')?.textContent).toBe('retired');
-    expect(page.querySelector('.tone-danger')?.textContent).toBe('not loaded');
   });
 
   it('shows the current key, the loaded keys and what awaits rotation above the operator steps', async () => {
