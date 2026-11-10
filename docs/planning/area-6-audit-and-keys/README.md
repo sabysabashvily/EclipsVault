@@ -11,3 +11,7 @@ commits them.
 The glossary is in [CONTEXT.md](../../../CONTEXT.md); architectural decisions are in [docs/adr](../../adr/).
 Lessons from Areas 1–5 are in [area 5's lessons](../area-5-administration/lessons.md), extended in
 [checkpoint.md](checkpoint.md) with what Area 5 taught.
+
+The [24 November delivery plan](../delivery-2026-11-24.md) records cross-area checkpoints, capacity
+allocation, parallel documentation and presentation work, and the sizing deadline. Area status
+continues to live in this folder and the published issues.

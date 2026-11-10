@@ -31,6 +31,8 @@ each re-wrapped secret was recorded as an edit.
   is safe because the retired key stays loaded until nothing awaits rotation, and running the pass
   again continues where it stopped.
 - Other audited actions wait for the audit chain for at most one batch, not for the whole pass.
+- One batch holds the audit chain for one round trip per row; on a high-latency database, run
+  rotation in a quiet window.
 
 ## Considered Options
 

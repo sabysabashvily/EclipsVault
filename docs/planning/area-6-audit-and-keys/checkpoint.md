@@ -166,3 +166,24 @@ Run `scripts/check.sh`, then
 `ECLIPSVAULT_TEST_DATABASE_PROVIDER=Postgres dotnet test EclipsVault.IntegrationTests -c Release --no-build --filter "FullyQualifiedName~EncryptionApiTests|FullyQualifiedName~KekRotation"`,
 and `scripts/check.sh e2e encryption.spec.ts` for the page. Ticket 3 (#139) starts from the HEAD after
 this commit.
+
+## Coordination: 10 November delivery plan and #139
+
+The coordinator verified branch `area-6a-encryption-keys` at `552cf63`, clean tracked state and the
+matching remote head. #137 and #138 are closed. CI run 42816045094 passed all 10 executed jobs on
+that head, including both database suites and the full browser suite and guard probes. The manual
+run skipped the PR-only commit-subject check. `main` remains `4feec8c`; no 6a PR exists yet.
+
+#139 is in preparation. Its documentation work adds the owner's approved database-latency sentence
+to ADR-0029. Whole-part security, Standards and Spec reviews, required UI workflow verification,
+Thermos PR review and final PR CI remain pending. Prior ticket reviews do not replace these gates.
+The cache-error/count and test-lock notes remain in its compact coordinator handoff.
+
+The owner set the complete delivery deadline to 24 November, including Areas 6–9, C4 documentation,
+bilingual Georgian/English slides and pitch, a rehearsed working demo and a recorded backup.
+See the [delivery plan](../delivery-2026-11-24.md). Remaining-work sizing is due 11 November.
+The 19 November feature-completion target is at risk until the serial protected work and review
+capacity are sized. Area 6b must still start from merged `main` after the owner merges 6a.
+
+The owner clarified that Thermos is the owner-started Cursor Cloud review. It remains separate
+from local Claude's required security review. Presentation timing awaits the owner's PDF.
