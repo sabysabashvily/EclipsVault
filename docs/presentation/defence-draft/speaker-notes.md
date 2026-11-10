@@ -231,11 +231,13 @@ offline verifier does, for the bundle in its hand. A bundle an auditor already s
 disagrees with a later rewrite. That is why a retained export matters, and it is also why I will
 not say every deletion is detectable whatever the latest checkpoint is."
 
-Then the three planned items, with the word planned. They are the Area 6b specification on the
-unmerged branch: anchor Verify to checkpoints signed by the current key, commit
-`AuditCheckpointCreated` with the checkpoint, and stream the export after the export audit row and
-a fresh step-up. Today's `AuditController.Export` has no step-up, and `CreateCheckpointAsync` saves
-the checkpoint and writes the audit row afterwards.
+Then the planned Audit log changes, with the word planned. These three are among them: anchor
+Verify to checkpoints signed by the current key, commit `AuditCheckpointCreated` with the
+checkpoint, and stream the export after the export audit row and a fresh step-up. ADR-0030 also
+plans a recorded log view (`AuditLogViewed`), a recorded verification (`AuditChainVerified`), and
+one-at-a-time Verify and Export. All of these are specified on the unmerged branch, not merged.
+Today's `AuditController.Export` has no step-up, and `CreateCheckpointAsync` saves the checkpoint
+and writes the audit row afterwards.
 
 Keep the old-verifier note. A current verifier accepts bundle formats `eclipsvault.audit-bundle/1`
 and `/2`, and refuses a newer format without saying the row was edited. The 1.0.0 verifier, which
@@ -259,12 +261,14 @@ fact.
 შენახული შეკვრა გვიან გადაწერას მაინც არ დაემთხვევა. ამიტომ შენახული ექსპორტი მნიშვნელოვანია, და
 ამიტომაც არ ვიტყვი, რომ ყოველი წაშლა აღმოჩენადია, როგორიც უნდა იყოს ბოლო საკონტროლო წერტილი.“
 
-შემდეგ სამი დაგეგმილი პუნქტი, სიტყვით „დაგეგმილი“. ეს არის Area 6b-ის სპეციფიკაცია შეურწყმელ
-ტოტზე: Verify მიემაგროს მიმდინარე გასაღებით ხელმოწერილ საკონტროლო წერტილებს, `AuditCheckpointCreated`
+შემდეგ დაგეგმილი აუდიტის ჟურნალის ცვლილებები, სიტყვით „დაგეგმილი“. ეს სამი მათ შორისაა: Verify
+მიემაგროს მიმდინარე გასაღებით ხელმოწერილ საკონტროლო წერტილებს, `AuditCheckpointCreated`
 საკონტროლო წერტილთან ერთად დაფიქსირდეს, და ექსპორტი ნაკადად წავიდეს ექსპორტის აუდიტის ჩანაწერისა და
-ახალი გაძლიერებული დადასტურების შემდეგ. დღევანდელ `AuditController.Export`-ს გაძლიერებული
-დადასტურება არ აქვს, და `CreateCheckpointAsync` ჯერ საკონტროლო წერტილს ინახავს და აუდიტის ჩანაწერს
-შემდეგ წერს.
+ახალი გაძლიერებული დადასტურების შემდეგ. ADR-0030 ასევე გეგმავს ჩაწერილ ჟურნალის ნახვას
+(`AuditLogViewed`), ჩაწერილ შემოწმებას (`AuditChainVerified`) და Verify-სა და Export-ს
+თითო-თითოდ. ყველა ეს შეურწყმელ ტოტზეა სპეციფიცირებული, შერწყმული არ არის. დღევანდელ
+`AuditController.Export`-ს გაძლიერებული დადასტურება არ აქვს, და `CreateCheckpointAsync` ჯერ
+საკონტროლო წერტილს ინახავს და აუდიტის ჩანაწერს შემდეგ წერს.
 
 დაიცავით ძველი შემმოწმებლის შენიშვნა. მიმდინარე შემმოწმებელი იღებს შეკვრის ფორმატებს
 `eclipsvault.audit-bundle/1` და `/2`, და უფრო ახალ ფორმატს უარყოფს ისე, რომ ჩანაწერს შეცვლილს არ

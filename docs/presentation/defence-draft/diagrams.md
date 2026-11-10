@@ -108,7 +108,7 @@ boundary. / Angular UI, Web აპლიკაცია და ერთი ბ�
 |---|---|---|
 | Vault account in a browser `[Person]` | `CONTEXT.md` vault account; outside the system boundary | current vocabulary |
 | Application using a service account `[External system]` | `CONTEXT.md` service account; outside the system boundary | current vocabulary |
-| Identity provider, SMTP server, Vault Transit | Same configuration gates as section 1. Each arrow ends at the Web application, which is the container that calls them | current |
+| Identity provider, SMTP server, Vault Transit | Same configuration gates as section 1. Each arrow leaves the Web application and ends at that external system. Web is the container that calls them | current |
 | EclipsVault `[Software System]` boundary | ADR-0008: one system, one origin | current |
 | Angular UI `[Container: Angular, runs in the browser]` | ADR-0008 and `Dockerfile` `ui` stage: the built files run in the browser. `AngularUiRoutes` serves the document from Web | current |
 | Arrow from Angular UI to Web, session cookie and UI API | ADR-0002; ADR-0005; `Program.cs` cookie `EclipsVault.Session` | current, same on Area 6a |
@@ -160,9 +160,10 @@ flowchart TB
   uiapi -->|session cookie| cookies
   publicapi --> apikey
   apikey --> secretsApi
-  secretsApi --> secretSvc
+  secretsApi -->|SecretAccess| handler
   secrets --> handler
   handler --> policy
+  policy -->|allow, then RevealAsync| secretSvc
   secrets --> secretSvc
   secretSvc --> sink
   secretSvc --> engine
@@ -175,13 +176,14 @@ flowchart TB
 Caption / წარწერა: The vault account reaches the Angular files, the Legacy pages, and the UI API.
 The UI API arrow ends at cookie authentication and does not call `SecretsController`, because the
 secret pages are not Angular routes yet. The Legacy pages reach `SecretsController` through that
-cookie authentication. The Public API reaches `SecretsApiController` through the API key handler,
-and that controller calls `SecretService`. SecretService and AuditSink persist through EF Core to
-the database outside the Web application. / საცავის ანგარიში აღწევს Angular-ის ფაილებს, Legacy
-გვერდებს და UI API-ს. UI API-ს ისარი ქუქის ავთენტიფიკაციაზე ჩერდება და `SecretsController`-ს არ
-იძახებს, რადგან საიდუმლოს გვერდები ჯერ Angular-ის მარშრუტები არ არის. Legacy გვერდები
-`SecretsController`-ს იმ ქუქის ავთენტიფიკაციით აღწევენ. საჯარო API `SecretsApiController`-ს API
-გასაღების დამმუშავებლით აღწევს, და ეს კონტროლერი `SecretService`-ს იძახებს. SecretService და
+cookie authentication. The Public API reaches `SecretsApiController` through the API key handler.
+That controller authorizes through `SecretAccessHandler` before `SecretService.RevealAsync`.
+SecretService and AuditSink persist through EF Core to the database outside the Web application. /
+საცავის ანგარიში აღწევს Angular-ის ფაილებს, Legacy გვერდებს და UI API-ს. UI API-ს ისარი ქუქის
+ავთენტიფიკაციაზე ჩერდება და `SecretsController`-ს არ იძახებს, რადგან საიდუმლოს გვერდები ჯერ
+Angular-ის მარშრუტები არ არის. Legacy გვერდები `SecretsController`-ს იმ ქუქის ავთენტიფიკაციით
+აღწევენ. საჯარო API `SecretsApiController`-ს API გასაღების დამმუშავებლით აღწევს. ეს კონტროლერი
+`SecretService.RevealAsync`-მდე `SecretAccessHandler`-ით ამოწმებს უფლებას. SecretService და
 AuditSink მონაცემებს EF Core-ით წერენ ბაზაში, რომელიც Web აპლიკაციის გარეთ დგას.
 
 | Element | Source at `0bb59de` | State |
@@ -193,7 +195,7 @@ AuditSink მონაცემებს EF Core-ით წერენ ბა�
 | UI API problem responses | ADR-0006; `Program.cs` `MapFallback("/api/ui/{**path}")` | current |
 | Cookie authentication `[Component]` | `Program.cs` `EclipsVault.Session`, `EclipsVault.MfaPending`, `HttpOnly`, `Secure`, `SameSite=Strict` | current, same on Area 6a |
 | `ApiKeyAuthenticationHandler` `[Component]` | `ApiKeyAuthenticationHandler` | current |
-| `SecretsApiController` `[Component]` | `SecretsApiController` on `api/v1/secrets`. It calls `SecretService` after the API key handler. It is not `SecretsController` | current |
+| `SecretsApiController` `[Component]` to `SecretAccessHandler` | `SecretsApiController` on `api/v1/secrets` authorizes through `SecretAccess` before `RevealAsync`. It is not `SecretsController` | current |
 | `SecretsController` `[Component]` | `SecretsController`. Reached from the Legacy pages through cookie authentication. The UI API arrow stops at cookie authentication | current |
 | `SecretAccessHandler` and `SecretAccessPolicy` `[Component]` | `SecretAccessHandler` delegates to `SecretAccessPolicy` | current |
 | `SecretService` `[Component]` | `SecretService` | current, same on Area 6a |
