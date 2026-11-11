@@ -35,9 +35,11 @@ each re-wrapped secret was recorded as an edit.
 - One batch holds the audit chain for one round trip per row; on a high-latency database, run
   rotation in a quiet window.
 - A secret read while its batch commits can be cached with its old envelope, and a cache that cannot
-  be cleared after a batch commits stops the pass with an error. Either way such envelopes still name
-  the retired master key until they expire (5 minutes by default), so keep the retired key loaded
-  that long after the last pass.
+  be cleared after a batch commits stops the pass with an error. Either way such an envelope still
+  names the retired master key until it expires (5 minutes by default). A reveal that finds one after
+  that key is unloaded drops it and reads the row again, so once nothing awaits rotation, secrets no
+  longer need the retired key. Rotation does not re-wrap the Data Protection key ring, which is sealed
+  with the master key too.
 - If a batch's commit acknowledgement is lost, the counts a stopped pass reports can be lower than
   what moved. The status the page reloads afterwards is authoritative.
 - A row whose data key no longer opens under its own master key is skipped and stays pending, so one

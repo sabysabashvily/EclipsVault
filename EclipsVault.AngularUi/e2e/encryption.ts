@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import type { components } from '../src/app/ui-api/schema.generated';
+import { expect } from './fixtures';
 import { openPalette } from './palette';
 
 type Encryption = components['schemas']['EncryptionResponse'];
@@ -43,7 +44,13 @@ export class EncryptionKeys {
     const retired = 'kek-0e2e0e2e';
     await this.page.route('**/api/ui/encryption', async (route) => {
       const response = await route.fetch();
-      const status = (await response.json()) as Encryption;
+      const body: unknown = await response.json();
+      expect(body).toMatchObject({
+        currentKekId: expect.any(String),
+        loadedKekIds: expect.any(Array),
+        keys: expect.any(Array),
+      });
+      const status = body as Encryption;
       const pending: Encryption = {
         ...status,
         loadedKekIds: [...status.loadedKekIds, retired],

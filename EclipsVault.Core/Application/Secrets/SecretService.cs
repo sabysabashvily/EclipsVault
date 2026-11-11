@@ -90,8 +90,24 @@ public sealed class SecretService : ISecretService
         // If it cannot be written, no plaintext ever exists for this request.
         await AuditSecretAsync(envelope.Id, envelope.Name, AuditAction.SecretRevealed, ct);
 
-        return await DecryptToDtoAsync(
-            envelope, SecretBinding.ForCurrentValue(envelope.Id), envelope.Id, envelope.Name, ct);
+        try
+        {
+            return await DecryptToDtoAsync(
+                envelope, SecretBinding.ForCurrentValue(envelope.Id), envelope.Id, envelope.Name, ct);
+        }
+        catch (CryptoConfigurationException)
+        {
+            // A cached envelope can outlive its row's move to the current master key and still name
+            // a key the operator has since unloaded (ADR-0029). The row itself has moved, so read it again.
+            await _cache.EvictAsync(id, ct);
+            var row = await GetEnvelopeAsync(id, ct);
+            if (row.KekId == envelope.KekId)
+            {
+                throw;
+            }
+
+            return await DecryptToDtoAsync(row, SecretBinding.ForCurrentValue(row.Id), row.Id, row.Name, ct);
+        }
     }
 
     public async Task<Guid> CreateAsync(CreateSecretRequest request, CancellationToken ct)
