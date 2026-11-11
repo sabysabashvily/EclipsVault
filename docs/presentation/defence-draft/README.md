@@ -1,12 +1,13 @@
-# Defence draft / თავდაცვის მონახაზი
+# Defence draft / დაცვის მონახაზი
 
 English and Georgian storyboard for one talk about EclipsVault. The talk starts with a synthetic
-Phoenix team opening one synthetic secret, then looks at that reveal in the audit log. Slide timing
-is unallocated: the assessment PDF was not in this checkout and was not fetched.
+Phoenix team opening one synthetic secret, then looks at that reveal in the audit log. The owner confirmed a presentation cap of 30 minutes. Detailed slide timing is still
+unallocated; the supplied C4 guide contains no timing rule.
 
 ეს არის EclipsVault-ის ერთი მოხსენების ინგლისურ-ქართული მონახაზი. მოხსენება იწყება სინთეზური Phoenix
 გუნდით, რომელიც ერთ სინთეზურ საიდუმლოს ხსნის, შემდეგ კი ამ გახსნას აუდიტის ჟურნალში ამოწმებს.
-სლაიდების დრო გამოყოფილი არ არის: შეფასების PDF ამ სამუშაო ასლში არ იყო და არ მოძებნილა.
+პრეზენტაციის დადასტურებული ზედა ზღვარია 30 წუთი. სლაიდებზე დროის ზუსტი განაწილება
+ჯერ დასაზუსტებელია; მოწოდებული C4 გზამკვლევი ხანგრძლივობას არ განსაზღვრავს.
 
 This folder is a draft for a later rehearsal. It does not record a deployment, a recording, or a
 security guarantee. Nothing in it was produced by launching a vault.
@@ -15,7 +16,7 @@ security guarantee. Nothing in it was produced by launching a vault.
 
 | File | What it is |
 |---|---|
-| [storyboard.md](storyboard.md) | Eight slides, English then Georgian, no timings |
+| [storyboard.md](storyboard.md) | Eight bilingual slides within a 30-minute cap; detailed allocation pending |
 | [speaker-notes.md](speaker-notes.md) | What to say, and what not to claim |
 | [diagrams.md](diagrams.md) | Context, container, Web component, reveal code, deployment |
 | [diagrams.html](diagrams.html) | The same five pictures, rendered, with bilingual captions |
@@ -87,8 +88,9 @@ re-check. Those remain the owner's merge gates. This documentation change did no
 
 ## What stays unresolved
 
-- Assessment PDF: not supplied, so no duration, weighting, or required slide count beyond the eight
-  named in the ticket.
+- Presentation cap: at most 30 minutes, confirmed by the owner. Detailed slide allocation and
+  marking criteria remain unconfirmed. The supplied C4 guide requires context/container diagrams
+  and PDF export; it gives no timing rule.
 - The local Georgian diploma: not in this checkout. The story follows the summary in the ticket,
   `CONTEXT.md`, the ADRs on `main`, and the source named below.
 - No vault was started. Setup, reset, rehearsal, and recording are unchecked.

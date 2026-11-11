@@ -1,7 +1,7 @@
 # Storyboard / სცენარი
 
-Eight slides, in this order. Each slide has the same beat in English and in Georgian. Timing is
-unallocated until the assessment PDF arrives. Visuals for slides 3, 4, and 6 are in
+Eight slides, in this order. Each slide has the same beat in English and in Georgian. The owner confirmed a presentation cap of 30 minutes. Detailed slide timing is
+unallocated; the supplied C4 guide contains no timing rule. Visuals for slides 3, 4, and 6 are in
 [diagrams.md](diagrams.md) and [security-flows.md](security-flows.md).
 
 The working story is one path. A synthetic Phoenix team has a vault account on project `PHOENIX`.
@@ -10,9 +10,9 @@ then finds the `Revealed` row in the audit log. Do not open another secret durin
 
 ## Slide 1 — Problem / პრობლემა
 
-Timing: unallocated (assessment PDF not supplied).
+Timing: allocation pending within the presentation's 30-minute cap.
 
-დრო: გამოყოფილი არ არის (შეფასების PDF არ არის მოწოდებული).
+დრო: სლაიდზე ჯერ არ განაწილებულა; პრეზენტაციის ზედა ზღვარია 30 წუთი.
 
 ### On screen (English)
 
@@ -36,9 +36,9 @@ No product screen yet. The next slide names the four checks.
 
 ## Slide 2 — Server-enforced access / სერვერის მიერ დაცული წვდომა
 
-Timing: unallocated (assessment PDF not supplied).
+Timing: allocation pending within the presentation's 30-minute cap.
 
-დრო: გამოყოფილი არ არის (შეფასების PDF არ არის მოწოდებული).
+დრო: სლაიდზე ჯერ არ განაწილებულა; პრეზენტაციის ზედა ზღვარია 30 წუთი.
 
 ### On screen (English)
 
@@ -77,9 +77,9 @@ The four rules, then the one sentence that this live secret is the easy case on 
 
 ## Slide 3 — Architecture / არქიტექტურა
 
-Timing: unallocated (assessment PDF not supplied).
+Timing: allocation pending within the presentation's 30-minute cap.
 
-დრო: გამოყოფილი არ არის (შეფასების PDF არ არის მოწოდებული).
+დრო: სლაიდზე ჯერ არ განაწილებულა; პრეზენტაციის ზედა ზღვარია 30 წუთი.
 
 ### On screen (English)
 
@@ -111,9 +111,9 @@ Infrastructure as their own deployable boxes.
 
 ## Slide 4 — Reveal ordering / გახსნის რიგითობა
 
-Timing: unallocated (assessment PDF not supplied).
+Timing: allocation pending within the presentation's 30-minute cap.
 
-დრო: გამოყოფილი არ არის (შეფასების PDF არ არის მოწოდებული).
+დრო: სლაიდზე ჯერ არ განაწილებულა; პრეზენტაციის ზედა ზღვარია 30 წუთი.
 
 ### On screen (English)
 
@@ -148,9 +148,9 @@ audit row: the metadata `Viewed` row is written inside `GetDetailsAsync`, before
 
 ## Slide 5 — Live journey / ცოცხალი გზა
 
-Timing: unallocated (assessment PDF not supplied).
+Timing: allocation pending within the presentation's 30-minute cap.
 
-დრო: გამოყოფილი არ არის (შეფასების PDF არ არის მოწოდებული).
+დრო: სლაიდზე ჯერ არ განაწილებულა; პრეზენტაციის ზედა ზღვარია 30 წუთი.
 
 ### On screen (English)
 
@@ -183,9 +183,9 @@ value. Do not open `Production_AWS_Root_Key` or `Global_SQL_SA_Password`.
 
 ## Slide 6 — Checkpoint proof boundary / საკონტროლო წერტილის მტკიცებულების საზღვარი
 
-Timing: unallocated (assessment PDF not supplied).
+Timing: allocation pending within the presentation's 30-minute cap.
 
-დრო: გამოყოფილი არ არის (შეფასების PDF არ არის მოწოდებული).
+დრო: სლაიდზე ჯერ არ განაწილებულა; პრეზენტაციის ზედა ზღვარია 30 წუთი.
 
 ### On screen (English)
 
@@ -234,9 +234,9 @@ with a verifier new enough for that bundle. Do not say every deletion is detecta
 
 ## Slide 7 — Final revision and test evidence / საბოლოო რევიზია და ტესტის მტკიცებულება
 
-Timing: unallocated (assessment PDF not supplied).
+Timing: allocation pending within the presentation's 30-minute cap.
 
-დრო: გამოყოფილი არ არის (შეფასების PDF არ არის მოწოდებული).
+დრო: სლაიდზე ჯერ არ განაწილებულა; პრეზენტაციის ზედა ზღვარია 30 წუთი.
 
 ### On screen (English)
 
@@ -273,9 +273,9 @@ count.
 
 ## Slide 8 — Lessons and limitations / დასკვნები და საზღვრები
 
-Timing: unallocated (assessment PDF not supplied).
+Timing: allocation pending within the presentation's 30-minute cap.
 
-დრო: გამოყოფილი არ არის (შეფასების PDF არ არის მოწოდებული).
+დრო: სლაიდზე ჯერ არ განაწილებულა; პრეზენტაციის ზედა ზღვარია 30 წუთი.
 
 ### On screen (English)
 

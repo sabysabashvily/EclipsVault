@@ -250,10 +250,11 @@ keys page.
 
 ### English
 
-Not in this draft. The assessment PDF was not supplied and was not fetched. Every slide is
-unallocated. Do not invent a duration.
+The owner confirmed a presentation cap of 30 minutes. Detailed slide allocation and marking
+criteria are still unconfirmed. The supplied C4 guide sets diagram requirements, not talk timing.
 
 ### ქართული
 
-ამ მონახაზში არ არის. შეფასების PDF არ მოწოდებულა და არ მოძებნილა. ყოველი სლაიდი გამოყოფილი დროის
-გარეშეა. ხანგრძლივობა ნუ მოიფიქრებთ.
+პრეზენტაციის დადასტურებული ზედა ზღვარია 30 წუთი. სლაიდებზე დროის ზუსტი განაწილება და შეფასების
+კრიტერიუმები ჯერ დასაზუსტებელია. მოწოდებული C4 გზამკვლევი ადგენს დიაგრამების მოთხოვნებს და არა
+პრეზენტაციის ხანგრძლივობას.

@@ -133,8 +133,12 @@ licence feature gate. This draft did not issue one.
 | 2 | A name and a password are minted. The backend creates the login first. | `CredentialMint`; `DynamicSecretService` |
 | 3 | The lease row stores identity, expiry, and status. It has no password field. | `DynamicSecretLease` class comment and properties |
 | 4 | The password is returned once in `IssuedCredentialDto`. | `DynamicSecretService` return |
-| 5 | If the lease insert fails, the mint is revoked. | `DynamicSecretService` catch around `AddLeaseAsync` |
+| 5 | If the lease insert fails, revocation is attempted on a best-effort basis. Cleanup failures are silently suppressed in this revision. | `DynamicSecretService` catch around `AddLeaseAsync`; `TryRevokeQuietlyAsync` |
 | 6 | `DynamicLeaseWorker` destroys due leases. A failed destroy is recorded on the lease. | `DynamicLeaseWorker` class comment |
+
+An attempted revocation is not proof that the temporary credential was removed. A failed
+cleanup can leave a live credential without a recorded lease. Area 7c plans to log cleanup failures;
+that change does not guarantee revocation.
 
 The Development seed creates two role recipes, `phoenix_db_reader` and `global_db_writer`. They are
 not part of the five-step journey. Source: `DbSeeder.SeedDynamicSecretRolesAsync`.
