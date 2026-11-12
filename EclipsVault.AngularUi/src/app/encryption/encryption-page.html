@@ -2,8 +2,9 @@
   <div>
     <h1>Encryption keys</h1>
     <p class="page-sub">
-      Each secret's data key is wrapped by a master KEK. Rotation re-wraps every secret under the
-      current KEK and retires the old one — the payload itself is never re-encrypted.
+      Each secret's data key is wrapped by a master KEK. Rotation re-wraps secrets and their
+      versions under the current KEK; the payload itself is never re-encrypted. The Data Protection
+      key ring still needs its existing keys.
     </p>
   </div>
 </div>
@@ -26,8 +27,8 @@
     <div class="notice notice-warn">
       <strong>{{ awaitingRotation() }} item(s) are still on a retired KEK.</strong>
       <span
-        >Run a rotation to re-wrap them under the current key, then the retired key can be
-        removed.</span
+        >Run a rotation to re-wrap them under the current key. Keep retired keys loaded while the
+        Data Protection key ring needs them.</span
       >
     </div>
   } @else {
@@ -80,8 +81,10 @@
       </dl>
       <p class="hint muted">
         To rotate: generate a new key, set it as <code>ECLIPSVAULT_KEK</code>, move the previous key
-        to <code>ECLIPSVAULT_KEK_RETIRED</code>, restart, then run the rotation below. Once it
-        completes, the retired key can be removed.
+        to <code>ECLIPSVAULT_KEK_RETIRED</code>, restart, then run the rotation below. Rotation
+        re-wraps secrets and their archived versions. It does not re-wrap the Data Protection key
+        ring. Keep retired master keys loaded while the ring needs them; a zero pending count does
+        not mean a retired key can be removed.
       </p>
       <button
         type="button"

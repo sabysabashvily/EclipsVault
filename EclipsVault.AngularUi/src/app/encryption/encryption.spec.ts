@@ -117,10 +117,10 @@ describe('Encryption keys', () => {
     expect(text(notice(page))).toContain('✓ All secrets are wrapped under the current KEK.');
   });
 
-  it('says in the Legacy words what rotation does', async () => {
+  it('explains that rotation leaves the Data Protection key ring unchanged', async () => {
     const { page } = await loaded(settled);
     expect(text(page.querySelector('.page-sub'))).toBe(
-      "Each secret's data key is wrapped by a master KEK. Rotation re-wraps every secret under the current KEK and retires the old one — the payload itself is never re-encrypted.",
+      "Each secret's data key is wrapped by a master KEK. Rotation re-wraps secrets and their versions under the current KEK; the payload itself is never re-encrypted. The Data Protection key ring still needs its existing keys.",
     );
   });
 
@@ -135,7 +135,7 @@ describe('Encryption keys', () => {
     const { page } = await loaded(pending);
     expect(text(notice(page))).toContain('5 item(s) are still on a retired KEK.');
     expect(text(notice(page))).toContain(
-      'Run a rotation to re-wrap them under the current key, then the retired key can be removed.',
+      'Run a rotation to re-wrap them under the current key. Keep retired keys loaded while the Data Protection key ring needs them.',
     );
     expect(button(page, 'Re-wrap under current KEK').disabled).toBe(false);
   });
@@ -181,7 +181,7 @@ describe('Encryption keys', () => {
       '5 item(s)',
     ]);
     expect(text(page.querySelector('.hint'))).toBe(
-      'To rotate: generate a new key, set it as ECLIPSVAULT_KEK, move the previous key to ECLIPSVAULT_KEK_RETIRED, restart, then run the rotation below. Once it completes, the retired key can be removed.',
+      'To rotate: generate a new key, set it as ECLIPSVAULT_KEK, move the previous key to ECLIPSVAULT_KEK_RETIRED, restart, then run the rotation below. Rotation re-wraps secrets and their archived versions. It does not re-wrap the Data Protection key ring. Keep retired master keys loaded while the ring needs them; a zero pending count does not mean a retired key can be removed.',
     );
   });
 

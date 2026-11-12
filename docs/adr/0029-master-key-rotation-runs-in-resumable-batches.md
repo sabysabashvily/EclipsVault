@@ -1,7 +1,8 @@
 # Master key rotation runs in resumable batches and never overwrites a changed secret
 
-Rotation re-wraps every secret's and archived version's data key under the current master key, so a
-retired master key can be removed. The Area 6 grill found that the Legacy pass loaded every pending
+Rotation re-wraps every secret's and archived version's data key under the current master key.
+It does not re-wrap the Data Protection key ring, so ring-dependent retired master keys must stay
+loaded. The Area 6 grill found that the Legacy pass loaded every pending
 row, re-wrapped them in memory and saved them in one transaction. A secret whose value changed in the
 meantime got its new ciphertext paired with its old data key and could no longer be decrypted; the
 single transaction held the audit chain, and so every other audited action, for the whole pass; two
@@ -27,19 +28,21 @@ each re-wrapped secret was recorded as an edit.
 
 ## Consequences
 
-- During and after an interrupted pass, rows sit under both the current and retired master keys. That
-  is safe as long as the operator keeps the retired key loaded until nothing awaits rotation; running
-  the pass again continues where it stopped.
+- During and after an interrupted pass, rows sit under both the current and retired master keys. Keep
+  retired keys loaded while any secret row or Data Protection ring entry still needs them; running
+  the pass again continues where it stopped. A zero pending count describes secrets and versions
+  only. Keep the keys with recovery material for backups that need them. Data Protection ring
+  migration remains separate protected work.
 - Other audited actions wait for the audit chain for at most one batch, not for the whole pass. An
   action that waits longer than the chain's 15-second limit still fails closed.
 - One batch holds the audit chain for one round trip per row; on a high-latency database, run
   rotation in a quiet window.
 - A secret read while its batch commits can be cached with its old envelope, and a cache that cannot
   be cleared after a batch commits stops the pass with an error. Either way such an envelope still
-  names the retired master key until it expires (5 minutes by default). A reveal that finds one after
-  that key is unloaded drops it and reads the row again, so once nothing awaits rotation, secrets no
-  longer need the retired key. Rotation does not re-wrap the Data Protection key ring, which is sealed
-  with the master key too.
+  names the retired master key until it expires (5 minutes by default). Recovery from such a stale
+  entry must read the current database envelope independently of cache success. Neither waiting a
+  cache lifetime nor reaching zero pending rows proves that a retired key can be removed: rotation
+  does not re-wrap the Data Protection key ring, which is sealed with the master key too.
 - If a batch's commit acknowledgement is lost, the counts a stopped pass reports can be lower than
   what moved. The status the page reloads afterwards is authoritative.
 - A row whose data key no longer opens under its own master key is skipped and stays pending, so one
