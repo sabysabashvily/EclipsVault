@@ -18,7 +18,7 @@ secrets or your servers. This guide is the production runbook; for feature detai
 
 | Variable | Purpose |
 |---|---|
-| `Database__Provider` | `Postgres` for PostgreSQL, or `SqlServer`. **Set it on a PostgreSQL install:** when it is unset the vault uses SQL Server, and a PostgreSQL connection string then fails at startup. |
+| `Database__Provider` | Required. `Postgres` for PostgreSQL, or `SqlServer`. The vault does not start until this is set. |
 | `ConnectionStrings__DefaultConnection` | Database connection string, for a least-privilege login with TLS enforced. PostgreSQL: `Host=db.example.internal;Port=5432;Database=eclipsvault;Username=eclipsvault_app;Password=…;SSL Mode=Require`. `Require` encrypts but does not check the server's certificate; `SSL Mode=VerifyFull` also verifies the certificate and the server's host name. SQL Server: `Server=db.example.internal;Database=eclipsvault;User Id=eclipsvault_app;Password=…;Encrypt=True;TrustServerCertificate=False`. |
 | `ECLIPSVAULT_KEK` | Master key: `openssl rand -base64 32`. Or use a KMS engine — set `Crypto__Engine=VaultTransit` and the `Vault` settings (see `docker-compose.yml` for the shape). |
 | `ECLIPSVAULT_AUDIT_SIGNING_KEY` | Base64 PKCS#8 P-256 private key for signing audit checkpoints. |
@@ -153,3 +153,20 @@ upgrade from a release whose sessions carry neither:
   change that parameter before upgrading. Every configured server must answer at startup: a vault
   that used to start while one endpoint was down now refuses until it is back. See
   [`BACKUP_AND_RECOVERY.md`](BACKUP_AND_RECOVERY.md).
+
+## 9. Upgrading to 2.0
+
+v1.x started on SQL Server when `Database__Provider` was unset. v2.0 has no default. An upgraded
+vault that still has the setting unset stops at startup, exits 1, and the log names the setting
+and its two values.
+
+Set `Database__Provider` to the engine this install already uses, and leave the connection string
+as it is:
+
+- `SqlServer` when the vault runs on SQL Server, including an install that never set the variable
+  and so used the v1.x default.
+- `Postgres` when the vault runs on PostgreSQL.
+
+Choosing the other engine would read that connection string as the wrong database. The migration
+command is unchanged: it follows `ECLIPSVAULT_DESIGN_PROVIDER`, and an unset value there still
+targets SQL Server.

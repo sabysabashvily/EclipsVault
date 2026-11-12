@@ -5,10 +5,12 @@ namespace EclipsVault.Infrastructure.Persistence;
 /// <summary>
 /// Which database the vault runs on, selected by <c>Database:Provider</c>.
 ///
-/// SQL Server remains the default so existing deployments are untouched. PostgreSQL is here because
-/// a licensed database is a line item on every self-hosted deployment, and the vault should not be
-/// the reason anyone pays one. Only two things ever depended on the engine: the chain lock (now
-/// behind <see cref="Locking.IAuditChainLocker"/>) and the partial index predicate's quoting.
+/// Startup requires the setting. There is no default: guessing SQL Server would hide a PostgreSQL
+/// install, and guessing PostgreSQL would point an upgraded SQL Server install at the wrong engine.
+/// PostgreSQL is supported because a licensed database is a line item on every self-hosted
+/// deployment, and the vault should not be the reason anyone pays one. Only two things ever
+/// depended on the engine: the chain lock (now behind <see cref="Locking.IAuditChainLocker"/>) and
+/// the partial index predicate's quoting.
 /// </summary>
 public static class DatabaseProvider
 {
