@@ -1,8 +1,8 @@
 namespace EclipsVault.IntegrationTests;
 
 /// <summary>
-/// A one-day Max trial the owner signed with the vendor key on 2026-11-09. It expired at
-/// 2026-11-10T16:23:09Z and stays expired, so a Production host reports Expired. It grants nothing.
+/// An expired, vendor-signed Max trial. Its 2026-11-10T16:23:09Z expiry keeps a
+/// Production host in Expired status without granting licensed features.
 /// </summary>
 internal static class ExpiredTrialLicense
 {
