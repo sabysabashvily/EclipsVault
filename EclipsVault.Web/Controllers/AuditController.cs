@@ -1,4 +1,5 @@
 using System.Text.Json;
+using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Extensions;
 using EclipsVault.Web.Models;
@@ -13,25 +14,52 @@ public sealed class AuditController : Controller
 {
     private const int PageSize = 200;
 
+    private const string AuditTrail = "AuditTrail";
+
     private static readonly JsonSerializerOptions BundleJson = new() { WriteIndented = true };
 
     private readonly IAuditLogReader _reader;
     private readonly IAuditCheckpointService _checkpoints;
+    private readonly IAuditSink _audit;
 
-    public AuditController(IAuditLogReader reader, IAuditCheckpointService checkpoints)
+    public AuditController(IAuditLogReader reader, IAuditCheckpointService checkpoints, IAuditSink audit)
     {
         _reader = reader;
         _checkpoints = checkpoints;
+        _audit = audit;
     }
 
     [HttpGet]
     public async Task<IActionResult> Index(CancellationToken ct)
-        => View(await BuildAsync(integrity: null, ct));
+    {
+        // Recorded before any entry is read: if the row cannot be written, the page is not shown.
+        await _audit.WriteAsync(new AuditEntry
+        {
+            Action = AuditAction.AuditLogViewed,
+            ResourceType = AuditTrail,
+            Details = $"Opened the newest {PageSize} entries"
+        }, ct);
+
+        return View(await BuildAsync(integrity: null, ct));
+    }
 
     /// <summary>Re-walks the hash chain and shows whether the trail has been tampered with.</summary>
     [HttpPost]
     public async Task<IActionResult> Verify(CancellationToken ct)
-        => View(nameof(Index), await BuildAsync(await _reader.VerifyIntegrityAsync(ct), ct));
+    {
+        var report = await _reader.VerifyIntegrityAsync(ct);
+        await _audit.WriteAsync(new AuditEntry
+        {
+            Action = AuditAction.AuditChainVerified,
+            ResourceType = AuditTrail,
+            Details = report.Intact
+                ? report.Message
+                : $"Tampering detected. {report.Message} (First broken entry: #{report.FirstBrokenSequence}.)",
+            IsCritical = !report.Intact
+        }, ct);
+
+        return View(nameof(Index), await BuildAsync(report, ct));
+    }
 
     /// <summary>Signs the current chain head so its integrity can later be proven to an outside party.</summary>
     [HttpPost]

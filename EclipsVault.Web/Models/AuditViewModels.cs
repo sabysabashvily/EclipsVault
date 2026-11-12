@@ -68,6 +68,8 @@ public static class AuditDisplay
         AuditAction.ApiKeyRevoked => ("API key revoked", "warn"),
         AuditAction.AuditCheckpointCreated => ("Checkpoint signed", "ok"),
         AuditAction.AuditBundleExported => ("Audit exported", "muted"),
+        AuditAction.AuditLogViewed => ("Audit log viewed", "muted"),
+        AuditAction.AuditChainVerified => ("Audit chain verified", "muted"),
         AuditAction.LicenseFeatureBlocked => ("Feature blocked (unlicensed)", "warn"),
         AuditAction.LicenseEvaluationStarted => ("Evaluation started", "muted"),
         AuditAction.PersonalDataExported => ("Data exported", "muted"),

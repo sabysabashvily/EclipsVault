@@ -1,6 +1,7 @@
 using EclipsVault.Core.Application.Licensing;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -42,15 +43,16 @@ public sealed class AuditCheckpointService : IAuditCheckpointService
 
         var checkpoint = SignHead(head.Value.Sequence, head.Value.Hash);
         _db.AuditCheckpoints.Add(checkpoint);
-        await _db.SaveChangesAsync(ct);
-
-        await _audit.WriteAsync(new AuditEntry
+        try
         {
-            Action = AuditAction.AuditCheckpointCreated,
-            ResourceType = nameof(AuditCheckpoint),
-            ResourceId = checkpoint.Id,
-            Details = $"Signed the audit chain at sequence {checkpoint.Sequence} with key {checkpoint.SigningKeyId}"
-        }, ct);
+            // The interceptor saves the checkpoint's audit row in the same transaction, so any failed
+            // save is the fail-closed audit failure and leaves no checkpoint.
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (Exception failure) when (failure is not OperationCanceledException)
+        {
+            throw new AuditWriteFailedException("The checkpoint and its audit row could not be stored.", failure);
+        }
 
         return ToDto(checkpoint);
     }
