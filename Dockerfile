@@ -4,11 +4,12 @@
 # Supply-chain note: both base images are pinned to a digest (the human-readable tag is kept
 # alongside for clarity). A floating tag means the image that builds tomorrow is not the one you
 # tested, and a supply-chain compromise would arrive with nothing in the diff — the same reasoning
-# docker-compose.yml applies to its own images. To move to a newer .NET patch, re-resolve and
-# replace both digests:
-#   docker buildx imagetools inspect mcr.microsoft.com/dotnet/sdk:10.0     # copy the Digest: line
-#   docker buildx imagetools inspect mcr.microsoft.com/dotnet/aspnet:10.0
-# Digests below pinned 2026-07-19.
+# docker-compose.yml applies to its own images. To move to a newer .NET patch, inspect the exact
+# patch tags you are moving to, then replace each FROM line's tag and digest together:
+#   docker buildx imagetools inspect mcr.microsoft.com/dotnet/sdk:<sdk-version>     # copy the Digest: line
+#   docker buildx imagetools inspect mcr.microsoft.com/dotnet/aspnet:<runtime-version>
+# .NET pinned 2026-11-13 to runtime 10.0.15, the first patch with the System.Formats.Cbor fix:
+# ASP.NET apps load Cbor from the shared framework in this image, not from the NuGet package.
 
 # The Angular UI (ADR-0008). Pinned the same way; the version matches EclipsVault.AngularUi/.nvmrc:
 #   docker buildx imagetools inspect node:24.22.0-bookworm-slim
@@ -21,7 +22,7 @@ RUN npm ci --ignore-scripts
 COPY EclipsVault.AngularUi/ ./
 RUN npm run build
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:ed034a8bf0b24ded0cbbac07e17825d8e9ebfe21e308191d0f7421eaf5ad4664 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0.404@sha256:fe0fd4e93bd2fbb47c883b7a6369e5c8d3db8bf01cdc5981f6ee35fbdf3ff4fb AS build
 WORKDIR /src
 COPY . .
 RUN dotnet restore EclipsVault.Web/EclipsVault.Web.csproj --locked-mode
@@ -40,7 +41,7 @@ RUN rm /app/runtimes/win-arm64/native/Microsoft.Data.SqlClient.SNI.dll \
        /app/runtimes/win-x86/native/Microsoft.Data.SqlClient.SNI.dll \
  && test -z "$(find /app/runtimes -name 'Microsoft.Data.SqlClient.SNI*')"
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:1fa23fc4872d95fd71c2833ebe65d7e84a43b2d51a31d119516852f13d9505a7 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.15@sha256:bfd912c83295ce66d4b706ebb8541b9f14259b0e76fbb88b2751f58ce2399d2e AS runtime
 WORKDIR /app
 
 # Run as a non-root user. Use the `app` account the base image already ships (its UID is published
