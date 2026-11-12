@@ -48,7 +48,7 @@ public sealed class AuditLogAuditFailureTests(AuditFailureFixture failure)
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await AuditLogRecordingTests.PostAsync(admin, "/Audit/Verify", token);
+            var response = await LegacyAuditPage.PostAsync(admin, "/Audit/Verify", token);
 
             Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
             Assert.Equal(AuditUnavailablePage, response.Headers.Location?.OriginalString);
@@ -72,7 +72,7 @@ public sealed class AuditLogAuditFailureTests(AuditFailureFixture failure)
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await AuditLogRecordingTests.PostAsync(admin, "/Audit/CreateCheckpoint", token);
+            var response = await LegacyAuditPage.PostAsync(admin, "/Audit/CreateCheckpoint", token);
 
             Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
             Assert.Equal(AuditUnavailablePage, response.Headers.Location?.OriginalString);

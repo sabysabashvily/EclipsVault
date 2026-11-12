@@ -24,7 +24,7 @@ public sealed class AuditTamperingTests(AuditTamperingFixture fixture)
         await SetDetailsAsync(rewritten, "rewritten by someone with database access");
         try
         {
-            response = await AuditLogRecordingTests.PostAsync(admin, "/Audit/Verify", token);
+            response = await LegacyAuditPage.PostAsync(admin, "/Audit/Verify", token);
         }
         finally
         {

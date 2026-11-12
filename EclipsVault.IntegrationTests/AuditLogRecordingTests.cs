@@ -40,10 +40,12 @@ public sealed class AuditLogRecordingTests(VaultFixture vault)
         var token = await LegacyAccessRequests.TokenAsync(session.Client);
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await PostAsync(session.Client, "/Audit/Verify", token);
+        var response = await LegacyAuditPage.PostAsync(session.Client, "/Audit/Verify", token);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("Hash chain intact.", await response.Content.ReadAsStringAsync());
+        var page = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Hash chain intact.", page);
+        Assert.Contains("Audit chain verified", page);
         var row = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before), row => row.Username == verifier);
         Assert.Equal(AuditAction.AuditChainVerified, row.Action);
         Assert.False(row.IsCritical);
@@ -58,7 +60,7 @@ public sealed class AuditLogRecordingTests(VaultFixture vault)
         var token = await LegacyAccessRequests.TokenAsync(session.Client);
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await PostAsync(session.Client, "/Audit/CreateCheckpoint", token);
+        var response = await LegacyAuditPage.PostAsync(session.Client, "/Audit/CreateCheckpoint", token);
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal("/Audit", response.Headers.Location?.OriginalString);
@@ -69,7 +71,4 @@ public sealed class AuditLogRecordingTests(VaultFixture vault)
             .AuditCheckpoints.SingleAsync(checkpoint => checkpoint.Id == row.ResourceId);
         Assert.Equal($"Signed the audit chain at sequence {checkpoint.Sequence} with key {checkpoint.SigningKeyId}", row.Details);
     }
-
-    internal static Task<HttpResponseMessage> PostAsync(HttpClient client, string path, string token)
-        => client.PostAsync(path, new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token }));
 }
