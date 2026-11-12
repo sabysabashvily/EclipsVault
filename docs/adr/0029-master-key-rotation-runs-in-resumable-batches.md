@@ -39,8 +39,9 @@ each re-wrapped secret was recorded as an edit.
   rotation in a quiet window.
 - A secret read while its batch commits can be cached with its old envelope, and a cache that cannot
   be cleared after a batch commits stops the pass with an error. Either way such an envelope still
-  names the retired master key until it expires (5 minutes by default). Recovery from such a stale
-  entry must read the current database envelope independently of cache success. Neither waiting a
+  names the retired master key until it expires (5 minutes by default). A reveal that finds one
+  after that key is unloaded reads the row from the database again, whatever the cache holds or fails
+  to do. Neither waiting a
   cache lifetime nor reaching zero pending rows proves that a retired key can be removed: rotation
   does not re-wrap the Data Protection key ring, which is sealed with the master key too.
 - If a batch's commit acknowledgement is lost, the counts a stopped pass reports can be lower than

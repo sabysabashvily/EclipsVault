@@ -98,9 +98,9 @@ public sealed class SecretService : ISecretService
         catch (CryptoConfigurationException)
         {
             // A cached envelope can outlive its row's move to the current master key and still name
-            // a key the operator has since unloaded (ADR-0029). The row itself has moved, so read it again.
-            await _cache.EvictAsync(id, ct);
-            var row = await GetEnvelopeAsync(id, ct);
+            // a key the operator has since unloaded (ADR-0029). The row itself has moved, so read it
+            // again from the database: the cache may still hold, or be refilled with, the stale entry.
+            var row = await LoadEnvelopeAsync(id, ct);
             if (row.KekId == envelope.KekId)
             {
                 throw;
@@ -415,6 +415,13 @@ public sealed class SecretService : ISecretService
             return cached;
         }
 
+        var envelope = await LoadEnvelopeAsync(id, ct);
+        await _cache.SetAsync(envelope, ct);
+        return envelope;
+    }
+
+    private async Task<EncryptedSecretEnvelope> LoadEnvelopeAsync(Guid id, CancellationToken ct)
+    {
         var entity = await _repository.FindAsync(id, ct);
         if (entity is null || entity.IsShredded ||
             (entity.ExpiresAtUtc is { } expiry && expiry <= _clock.GetUtcNow()))
@@ -422,14 +429,11 @@ public sealed class SecretService : ISecretService
             throw new SecretNotFoundException(id);
         }
 
-        var envelope = new EncryptedSecretEnvelope(
+        return new EncryptedSecretEnvelope(
             entity.Id, entity.Name, entity.ProjectKey, entity.Environment, entity.Sensitivity,
             entity.Ciphertext, entity.WrappedDek, entity.KekId, entity.Algorithm,
             entity.IsHoneyToken, entity.CreatedAtUtc, entity.UpdatedAtUtc, entity.ExpiresAtUtc,
             entity.IsManaged, entity.RotationPrincipal);
-
-        await _cache.SetAsync(envelope, ct);
-        return envelope;
     }
 
     private async Task TripHoneyTokenIfNeededAsync(EncryptedSecretEnvelope envelope, CancellationToken ct)

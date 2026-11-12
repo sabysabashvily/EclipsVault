@@ -23,28 +23,35 @@ public class StaleCachedEnvelopeTests
     [Fact]
     public async Task A_reveal_from_a_cached_envelope_under_an_unloaded_key_reads_the_row_again()
     {
-        var (service, cache, id) = await BuildAsync(rowIsRotated: true);
+        var (service, id) = await BuildAsync(rowIsRotated: true);
 
         var revealed = await service.RevealAsync(id, CancellationToken.None);
 
         Assert.Equal("s3cret", revealed.Value);
-        Assert.Equal("test-kek", cache.Entry?.KekId);
     }
 
     [Fact]
     public async Task A_row_still_under_the_unloaded_key_still_fails_the_reveal()
     {
-        var (service, _, id) = await BuildAsync(rowIsRotated: false);
+        var (service, id) = await BuildAsync(rowIsRotated: false);
 
         await Assert.ThrowsAsync<CryptoConfigurationException>(() => service.RevealAsync(id, CancellationToken.None));
         // One attempt, not two: under a KMS engine each failed unseal can take a full network timeout.
         Assert.Equal(1, _engine!.UnsealAttempts);
     }
 
+    [Fact]
+    public async Task A_row_shredded_since_it_was_cached_is_not_found()
+    {
+        var (service, id) = await BuildAsync(rowIsRotated: true, rowIsShredded: true);
+
+        await Assert.ThrowsAsync<SecretNotFoundException>(() => service.RevealAsync(id, CancellationToken.None));
+    }
+
     /// <summary>A cached envelope under the unloaded retired key, over a row that has or has not moved.</summary>
     private RetiredKeyUnloaded? _engine;
 
-    private async Task<(SecretService Service, OneEntryCache Cache, Guid Id)> BuildAsync(bool rowIsRotated)
+    private async Task<(SecretService Service, Guid Id)> BuildAsync(bool rowIsRotated, bool rowIsShredded = false)
     {
         var engine = new FakeCryptoEngine();
         var id = Guid.NewGuid();
@@ -60,15 +67,16 @@ public class StaleCachedEnvelopeTests
             WrappedDek = sealedValue.WrappedDek,
             KekId = rowIsRotated ? sealedValue.KekId : RetiredKek,
             Algorithm = sealedValue.Algorithm,
-            CreatedAtUtc = DateTimeOffset.UtcNow.AddDays(-1)
+            CreatedAtUtc = DateTimeOffset.UtcNow.AddDays(-1),
+            IsShredded = rowIsShredded
         };
-        var cache = new OneEntryCache(new EncryptedSecretEnvelope(
+        var cache = new StaleCache(new EncryptedSecretEnvelope(
             row.Id, row.Name, row.ProjectKey, row.Environment, row.Sensitivity, row.Ciphertext, [], RetiredKek,
             row.Algorithm, row.IsHoneyToken, row.CreatedAtUtc, null, null));
         var service = new SecretService(
             new OneRowRepository(row), _engine = new RetiredKeyUnloaded(engine), cache, new NoIntrusion(), new NullAuditSink(),
             new StubActor(), [], TimeProvider.System, new RecordingPremiumFeatureUsage());
-        return (service, cache, id);
+        return (service, id);
     }
 
     /// <summary>The engine after the operator has unloaded the retired key.</summary>
@@ -95,28 +103,20 @@ public class StaleCachedEnvelopeTests
             => inner.RewrapAsync(sealedSecret, ct);
     }
 
-    private sealed class OneEntryCache(EncryptedSecretEnvelope entry) : ISecretCache
+    /// <summary>
+    /// A cache that cannot be cleared or overwritten, and keeps serving the stale entry: an unreachable
+    /// Redis, or a read that started before the batch committed and fills the cache again.
+    /// </summary>
+    private sealed class StaleCache(EncryptedSecretEnvelope stale) : ISecretCache
     {
-        public EncryptedSecretEnvelope? Entry { get; private set; } = entry;
-
         public Task<EncryptedSecretEnvelope?> GetAsync(Guid secretId, CancellationToken ct = default)
-            => Task.FromResult(Entry?.Id == secretId ? Entry : null);
+            => Task.FromResult<EncryptedSecretEnvelope?>(stale);
 
         public Task SetAsync(EncryptedSecretEnvelope envelope, CancellationToken ct = default)
-        {
-            Entry = envelope;
-            return Task.CompletedTask;
-        }
+            => throw new InvalidOperationException("The cache is unreachable.");
 
         public Task EvictAsync(Guid secretId, CancellationToken ct = default)
-        {
-            if (Entry?.Id == secretId)
-            {
-                Entry = null;
-            }
-
-            return Task.CompletedTask;
-        }
+            => throw new InvalidOperationException("The cache is unreachable.");
     }
 
     private sealed class OneRowRepository(Secret row) : ISecretRepository
