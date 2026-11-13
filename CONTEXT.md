@@ -87,7 +87,7 @@ The key that encrypts one secret value. It is stored only wrapped by a master ke
 _Avoid_: DEK (in prose), secret key
 
 **Master key rotation**:
-Re-wrapping every data key under the current master key, so a retired master key can be removed. It never decrypts or re-encrypts a secret's value.
+Re-wrapping the data keys of secret values and their archived versions under the current master key. It never decrypts or re-encrypts those values and does not rotate the Data Protection key ring. Retired master keys remain necessary while stored data, that ring or backups need them.
 _Avoid_: Re-encryption, secret rotation (that changes a secret's value)
 
 ### Audit
