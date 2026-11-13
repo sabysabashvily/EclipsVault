@@ -156,11 +156,12 @@ upgrade from a release whose sessions carry neither:
 
 ## 9. Upgrading to 2.0
 
-v1.x started on SQL Server when `Database__Provider` was unset. v2.0 has no default. An upgraded
+v1.x started on SQL Server when `Database:Provider` was unset. v2.0 has no default. An upgraded
 vault that still has the setting unset stops at startup, exits 1, and the log names the setting
 and its two values.
 
-Set `Database__Provider` to the engine this install already uses, and leave the connection string
+Set `Database:Provider` (environment variable `Database__Provider`) to the engine this install
+already uses, and leave the connection string
 as it is:
 
 - `SqlServer` when the vault runs on SQL Server, including an install that never set the variable
