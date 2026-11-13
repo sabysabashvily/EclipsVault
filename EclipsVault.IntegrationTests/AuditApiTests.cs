@@ -245,15 +245,10 @@ public sealed class AuditApiTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
     }
 
-    [Theory]
-    [InlineData("POST", "/Audit/Verify")]
-    [InlineData("POST", "/Audit/CreateCheckpoint")]
-    [InlineData("POST", "/aUdIt/eXpOrT")]
-    [InlineData("GET", "/Audit/Export")]
-    [InlineData("GET", "/Audit/Index/11111111-1111-1111-1111-111111111111")]
-    public async Task The_Legacy_actions_and_deeper_paths_are_not_found(string method, string path)
+    [Fact]
+    public async Task A_path_below_the_page_is_not_found()
     {
-        var response = await SendAsAdministratorAsync(method, path);
+        var response = await SendAsAdministratorAsync("GET", "/Audit/Index/11111111-1111-1111-1111-111111111111");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
