@@ -44,6 +44,7 @@ export default defineConfig({
             '**/notifications.spec.ts',
             '**/license.spec.ts',
             '**/encryption.spec.ts',
+            '**/audit.spec.ts',
           ],
           use: { ...devices['Desktop Chrome'] },
         },
@@ -74,11 +75,19 @@ export default defineConfig({
           use: { ...devices['Desktop Chrome'] },
         },
         {
+          // Export needs the saved administrator session to have outlived its proof, so the Audit
+          // log runs after the long chain that ends with License.
+          name: 'audit',
+          testMatch: '**/audit.spec.ts',
+          dependencies: ['license'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
           // Users ends with the administrator's own Force logout, which ends the saved session that
-          // Networks, Notifications, License and Encryption keys reuse, so they run first.
+          // Networks, Notifications, License, Encryption keys and the Audit log reuse, so they run first.
           name: 'users',
           testMatch: '**/users.spec.ts',
-          dependencies: ['license', 'encryption'],
+          dependencies: ['license', 'encryption', 'audit'],
           use: { ...devices['Desktop Chrome'] },
         },
         {

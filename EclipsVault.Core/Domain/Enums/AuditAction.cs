@@ -91,6 +91,12 @@ public enum AuditAction
     /// <summary>A user downloaded a copy of their own account data (personal-data export).</summary>
     PersonalDataExported = 112,
 
+    /// <summary>An administrator opened the audit log. Access to the trail is itself audited.</summary>
+    AuditLogViewed = 113,
+
+    /// <summary>An administrator verified the audit chain. Critical when tampering was found.</summary>
+    AuditChainVerified = 114,
+
     // Step-up re-authentication for sensitive reveals.
     StepUpVerified = 120,
     StepUpFailed = 121,

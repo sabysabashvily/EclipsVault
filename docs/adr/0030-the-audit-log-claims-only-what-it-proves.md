@@ -19,17 +19,27 @@ and viewing or verifying the trail left no record.
 - **Export records itself before the first byte.** It signs the committed head, writes its audit row,
   then streams the entries up to that head. If the row cannot be written, nothing is sent. The bundle
   format stays version 2.
-- **Verify and Export run one at a time**; another request answers `409 audit_busy`.
+- **One verification and one export run at a time**; another of the same kind answers
+  `409 audit_busy`: "Another verification or export is running. Try again when it finishes."
 - **Export needs fresh proof** (ADR-0028's bulk-disclosure rule).
 - **Access is recorded, fail-closed.** Opening the audit log writes `AuditLogViewed`; Verify writes
   `AuditChainVerified` with its outcome, critical when tampering is found; a checkpoint commits with
-  its `AuditCheckpointCreated` row. If the row cannot be written, the action does not happen.
+  its `AuditCheckpointCreated` row. Export writes `AuditBundleExported`. If the row cannot be written,
+  the action does not happen and the vault answers `503 audit_unavailable`.
 
 ## Consequences
 
 - Someone with database access can still delete checkpoints, or change entries written after the
   latest one, without Verify noticing. Only bundles an auditor already holds expose that, so the
   advice to export on a schedule stands.
+- Entry and checkpoint times are stamped to whole microseconds, the finest PostgreSQL stores, so the
+  time read back is the one that was hashed or signed. SQL Server keeps the finer time, so its existing
+  entries are unchanged. Entries and checkpoints an earlier version wrote with PostgreSQL, on a host
+  whose clock reads finer than a microsecond (Linux, Windows), were stamped to 100 ns and stored
+  rounded: Verify, and the offline verifier on an exported bundle, report them as tampered. They are
+  not repaired, and Verify is not made to tolerate them.
+- Rows with sequence 0 or below sit outside the chain, and Verify does not check them. A row with
+  sequence 0 is chained at the next startup like any other.
 - The trail grows by one entry per page view and per verification. This is the record PCI DSS v4.0
   requirement 10.2.1.3 asks for.
 

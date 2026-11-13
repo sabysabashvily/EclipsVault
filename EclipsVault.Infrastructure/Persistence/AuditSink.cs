@@ -39,7 +39,7 @@ public sealed class AuditSink : IAuditSink
         var row = new AuditLog
         {
             Id = Guid.NewGuid(),
-            TimestampUtc = _clock.GetUtcNow(),
+            TimestampUtc = _clock.GetAuditUtcNow(),
             UserId = entry.ActorUserId ?? (entry.InheritActorUserId ? _actor.UserId : null),
             Username = entry.ActorUsername ?? _actor.Username ?? "system",
             SourceIp = _actor.SourceIp ?? "internal",

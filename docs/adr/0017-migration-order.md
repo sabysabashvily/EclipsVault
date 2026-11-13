@@ -24,5 +24,6 @@ Area 5 runs in two parts, each with its own spec, branch and PR, after its grill
 Area 6 runs in two parts, each with its own spec, branch and PR, after its grill found that master
 key rotation could destroy secrets and that Verify could report a tampered audit trail as intact
 (ADR-0029). Part 6a, Encryption keys, goes first because its defect loses data today. Part 6b, Audit
-log, branches from `main` after 6a merges. The two security reviews cover unrelated code: key
+log, merges after 6a. By the owner's decision it started from 6a's branch before 6a merged, and took
+`main` once 6a had. The two security reviews cover unrelated code: key
 material, then the audit chain.

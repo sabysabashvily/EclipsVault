@@ -1,6 +1,7 @@
 using EclipsVault.Core.Domain.Exceptions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.Net.Http.Headers;
 
 namespace EclipsVault.Web.Middleware;
 
@@ -100,6 +101,8 @@ public sealed class GlobalExceptionMiddleware
     /// <summary>Problem Details on the UI API; everywhere else the Legacy UI's error page for the same status.</summary>
     private static Task FailAsync(HttpContext context, int status, string code, string title)
     {
+        // A download that failed before its first byte must not answer its error as that file.
+        context.Response.Headers.Remove(HeaderNames.ContentDisposition);
         if (UiApiProblem.IsUiApi(context.Request))
         {
             return UiApiProblem.WriteAsync(context, status, code, title);

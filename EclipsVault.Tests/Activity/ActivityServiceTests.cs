@@ -1,3 +1,4 @@
+using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Activity;
 using EclipsVault.Core.Application.Auditing;
 using EclipsVault.Core.Domain.Enums;
@@ -41,8 +42,6 @@ public class ActivityServiceTests
             Guid actorUserId, IReadOnlyCollection<AuditAction> actions, int take, CancellationToken ct)
             => throw new NotSupportedException();
         public Task<int> CountCriticalSinceAsync(DateTimeOffset sinceUtc, CancellationToken ct)
-            => throw new NotSupportedException();
-        public Task<AuditIntegrityReport> VerifyIntegrityAsync(CancellationToken ct)
             => throw new NotSupportedException();
     }
 
@@ -88,7 +87,7 @@ public class ActivityServiceTests
     public async Task A_huge_page_number_skips_past_every_row_instead_of_wrapping(int page)
     {
         var reader = new FakeReader([]);
-        var feed = await new ActivityService(reader).GetForUserAsync(User, page, ActivityService.DefaultPageSize, CancellationToken.None);
+        var feed = await new ActivityService(reader).GetForUserAsync(User, page, 25, CancellationToken.None);
 
         Assert.Equal(int.MaxValue, reader.LastSkip);
         Assert.Equal(page, feed.Page);
@@ -124,9 +123,9 @@ public class ActivityServiceTests
         var feed = await new ActivityService(reader).GetForUserAsync(User, page: 0, pageSize: 0, CancellationToken.None);
 
         Assert.Equal(1, feed.Page);
-        Assert.Equal(ActivityService.DefaultPageSize, feed.PageSize);
+        Assert.Equal(25, feed.PageSize);
         Assert.Equal(0, reader.LastSkip);
-        Assert.Equal(ActivityService.DefaultPageSize + 1, reader.LastTake);
+        Assert.Equal(26, reader.LastTake);
     }
 
     [Fact]
@@ -135,8 +134,8 @@ public class ActivityServiceTests
         var reader = new FakeReader(Rows(1));
         var feed = await new ActivityService(reader).GetForUserAsync(User, page: 1, pageSize: 10_000, CancellationToken.None);
 
-        Assert.Equal(ActivityService.MaxPageSize, feed.PageSize);
-        Assert.Equal(ActivityService.MaxPageSize + 1, reader.LastTake);
+        Assert.Equal(100, feed.PageSize);
+        Assert.Equal(101, reader.LastTake);
     }
 
     [Fact]
@@ -146,8 +145,7 @@ public class ActivityServiceTests
         var feed = await new ActivityService(reader).GetForUserAsync(User, 1, 25, CancellationToken.None);
 
         var item = Assert.Single(feed.Items);
-        var expected = ActivityDescriber.Describe(AuditAction.SecretRevealed);
-        Assert.Equal(expected.Title, item.Title);
+        Assert.Equal("Revealed a secret value", item.Title);
         Assert.Equal(ActivityCategory.Secrets, item.Category);
         Assert.Equal(ActivitySeverity.Notable, item.Severity);
         Assert.Equal("prod/db-password", item.ResourceName);

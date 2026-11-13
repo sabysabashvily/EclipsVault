@@ -108,7 +108,6 @@ public class PersonalDataExportServiceTests
         public Task<IReadOnlyList<AuditEntryDto>> ListRecentAsync(int count, string? username, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<AuditEntryDto>> ListForActorByActionsAsync(Guid actorUserId, IReadOnlyCollection<AuditAction> actions, int take, CancellationToken ct) => throw new NotSupportedException();
         public Task<int> CountCriticalSinceAsync(DateTimeOffset sinceUtc, CancellationToken ct) => throw new NotSupportedException();
-        public Task<AuditIntegrityReport> VerifyIntegrityAsync(CancellationToken ct) => throw new NotSupportedException();
     }
 
     private static ProfileDto Profile() =>
@@ -149,8 +148,12 @@ public class PersonalDataExportServiceTests
         Assert.Equal(3, export.SignedInDevices.Count);
         Assert.Equal(4, export.AccessRequests.Count);
         Assert.Equal(5, export.RecentActivity.Count);
-        Assert.Equal(PersonalDataExport.CurrentSchemaVersion, export.SchemaVersion);
-        Assert.Equal(PersonalDataExport.StandardNotice, export.Notice);
+        Assert.Equal("1.0", export.SchemaVersion);
+        Assert.Equal(
+            "This file contains the account and security metadata EclipsVault holds about you. " +
+            "It never includes secret values, passwords, authenticator seeds, or backup codes — " +
+            "those are encrypted and access-controlled and are never exported.",
+            export.Notice);
     }
 
     [Fact]

@@ -188,3 +188,318 @@ capacity are sized. Area 6b must still start from merged `main` after the owner 
 
 The owner clarified that Thermos is the owner-started Cursor Cloud review. It remains separate
 from local Claude's required security review. Presentation timing awaits the owner's PDF.
+
+## Delivery: 6b ticket 1 (#140)
+
+Implemented 2026-11-13 by Claude Opus 5.5 (high) in the worktree
+`~/.t3/worktrees/EclipseVault/area-6b-audit-log`, on `area-6b-audit-log` from `6c108e4` (a merge of
+#147's head `1ad7b60` and #150's head `7b48efc`, by owner override: 6b started before #147 merged).
+Not pushed; no PR.
+
+Commits after `6c108e4`:
+
+- `bd2a25b` Record checkpoints, views and verifications of the audit trail
+- `9441300` Test the verify label and say which rows outlive a tampering test
+- this checkpoint section, committed last
+
+What changed (ADR-0030):
+
+- **Checkpoint (A3).** A new interceptor rule, `DescribeCheckpointChange`, adds the
+  `AuditCheckpointCreated` row in the same save as the checkpoint, so both commit or neither does.
+  `AuditCheckpointService` maps any failed save to `AuditWriteFailedException`. The row's text is unchanged.
+- **Viewing and verifying (A4).** The Legacy `AuditController` writes `AuditLogViewed` through
+  `IAuditSink` before reading any entry, and Verify writes `AuditChainVerified` with its outcome,
+  critical when tampering is found, before showing the result. A failed write shows the 503 page. Verify
+  writes no separate view row. A Legacy checkpoint still redirects to `/Audit`, which writes one.
+- **New actions** `AuditLogViewed = 113` and `AuditChainVerified = 114`, with labels "Audit log viewed" and
+  "Audit chain verified" (muted) and activity descriptions (Administration, Routine). The action is
+  stored as an int, so no migration was needed; both pending-model checks pass.
+- **Tests.** `AuditLogRecordingTests` runs on the shared vault and asserts only on its own new
+  administrators' rows. `AuditLogAuditFailureTests` runs on `AuditFailureFixture`.
+  `AuditTamperingFixture` is a new Production host in a collection that runs alone. Its test rewrites
+  one entry and restores it in `finally`. #141 can reuse it, but its verify rows stay critical, so tests
+  there must assert only on rows after their own head. `SelfServiceScopingTests` now reads `/Audit` last,
+  because a view row would otherwise change the administrator's own activity between its before and
+  after reads. The brief's claim that `ActivityDescriberTests` would fail was wrong: unmapped actions fall
+  back to a generated title. Explicit cases were added.
+
+Shown failing first against `6c108e4` with stub enum values (`logs/ticket-140/red-*.log`): 6 of 7 new
+integration tests failed on both databases. A checkpoint existed with auditing down (0→1 checkpoints),
+view and verify showed the page with auditing down, and they wrote no row.
+
+Checks at `9441300`: `scripts/check.sh` (locked restore, Release build 0 warnings, unit tests);
+`dotnet format --verify-no-changes`; both pending-model checks; 6 hook tests; new tests plus
+`SelfServiceScopingTests` 16/16 on each database; full integration 1187/1187 on PostgreSQL and
+1187/1187 on SQL Server.
+
+SQL Server runs 1–3 failed one to 16 untouched tests each, all of which passed alone. They failed with
+timeouts and dropped connections while load averaged about 10. The starting commit passed 1180/1180
+under similar load (`logs/ticket-140/sqlserver-flakes.md`).
+
+Reviews (ledger: `logs/ticket-140/review-ledger.md`):
+
+- **Security:** security-reviewer (Opus 5.5 high), with a re-check. Fail-closed recording, no
+  hand-built `AuditLog` and lock order are clean. L2 fixed. L1 (tampering is Routine in the personal
+  activity feed) was accepted by the coordinator.
+- **Standards and Spec:** by owner decision on 13 November, both ran on fresh Claude Opus 5.5 (high)
+  sessions, not GPT Sol 6.1, because Codex hit its usage limit. The Spec re-check also ran on Opus after a
+  second GPT limit. Both passed, and their re-checks closed every finding. GPT Sol 6.1 and Thermos still
+  review the whole 6b PR before merge.
+
+For the owner:
+
+- The interceptor has no `SaveChangesCanceledAsync`, so a request cancelled after the chain lock holds it
+  until its context is disposed. This affects every rule and is unverified.
+- The 6b PR should say that a Legacy checkpoint's redirect writes a view row.
+
+To restart: in the worktree, check `area-6b-audit-log` and a clean tree. Run `scripts/check.sh`, then
+`dotnet test EclipsVault.IntegrationTests -c Release --no-build --filter "FullyQualifiedName~AuditLogRecordingTests|FullyQualifiedName~AuditLogAuditFailureTests|FullyQualifiedName~AuditTamperingTests|FullyQualifiedName~SelfServiceScopingTests"`,
+with and without `ECLIPSVAULT_TEST_DATABASE_PROVIDER=Postgres`. Ticket 2 (#141) starts from the HEAD after
+this commit.
+
+## Delivery: 6b ticket 2 (#141)
+
+Implemented 2026-11-13 by Claude Opus 5.5 (high) in the worktree
+`~/.t3/worktrees/EclipseVault/area-6b-audit-log`, on `area-6b-audit-log` from `1e63e46` (#140's head plus
+the coordinator's merges of Area 6a and `main`). Pushed for CI only; no PR.
+
+Commits after `1e63e46`:
+
+- `fa6881d` Verify the audit trail against its signed checkpoints, one at a time
+- `70ee0bc` Check every checkpoint the current key signed, whatever its label says
+- `daa2633` Say that Verify never checks an audit row below sequence one
+- `a10990e` Stamp audit and checkpoint times to the microsecond PostgreSQL keeps (owner decision P1)
+- `bb7e543` Round the test's PostgreSQL time exactly, and name Windows as affected
+- `156d506` Report the first missing audit entry before a forged checkpoint (GPT Sol 6.1 xhigh, Spec G1)
+- `4d52a35` Make audit precision tests check stored hashes and literal times (GPT Sol 6.1 xhigh, Standards S1, S2)
+- this checkpoint section, committed last
+
+What changed (ADR-0030): Verify streams the chain and checks it against every checkpoint the current key
+signed, one verification at a time across replicas. `AuditClock.GetAuditUtcNow` truncates every audit and
+checkpoint time to whole microseconds at the sink, the interceptor and `SignHead`, so honest rows and
+checkpoints verify on PostgreSQL hosts whose clock reads finer than a microsecond (Linux, Windows). Rows
+already written there with a sub-microsecond digit are not repaired and Verify is not made tolerant (ADR-0030,
+README).
+
+Checks: A1 failed first on both databases. Full integration 1192/1192 on PostgreSQL and 1192/1192 on SQL
+Server at `70ee0bc`; precision tests red then green on both databases; 921 unit tests at `4d52a35`. CI run
+43429789910 at `4d52a35`: every job green, including integration on both databases and e2e.
+
+Reviews (ledger: `logs/ticket-141/review-ledger.md`):
+
+- **Security:** security-reviewer (Opus 5.5 high) r1-r5 on the Opus code; L1, L2b, P1-T and P1-D fixed, L3
+  and I1 accepted, L2's Verify check for `Sequence <= 0` rows left to the owner. A fresh Opus 5.5 high
+  review of the GPT delta `bb7e543..4d52a35` (r6) passed security and readability with no findings.
+- **Standards and Spec:** GPT Sol 6.1 xhigh. Spec G1 and Standards S1, S2 fixed and closed by fresh re-checks.
+
+For the owner: L2 (Verify ignores rows with sequence 0 or below), and #140's unverified note that the
+interceptor has no `SaveChangesCanceledAsync`.
+
+To restart: in this worktree, check `area-6b-audit-log` and a clean tree, run `scripts/check.sh`, then the
+audit integration classes with and without `ECLIPSVAULT_TEST_DATABASE_PROVIDER=Postgres`. #142 ran on its
+own branch `area-6b-142` from `bb7e543`; the coordinator merges it here after this commit.
+
+## Delivery: 6b ticket 3 (#142)
+
+Branch `area-6b-142`, worktree `/Users/sabasabashvili/.t3/worktrees/EclipseVault/area-6b-142`,
+base `bb7e543`, following the owner's separate-worktree launch override. Nothing pushed, no PR.
+
+Code commits:
+
+- `6ad493e` streams the audit bundle after recording it, behind fresh proof. Original author
+  Claude Opus 5.5 high.
+- `f824e99` proves concurrent export refusal over real HTTP, derives the filename from the
+  normalized export timestamp, moves the checkpoint port into Abstractions, and simplifies the
+  streaming unit tests with literal v2 JSON. Review fixes by GPT Sol 6.1 xhigh after the owner
+  resumed the thread on that provider.
+- `e85dbaa` initializes the one-time licensing reminder before holding the audit chain in the
+  HTTP race test, removing its dependency on another test having used audit attestation first.
+
+Export takes a cluster-wide session lock of its own, signs the committed head, writes
+`AuditBundleExported` through `IAuditSink`, then streams rows through that head. Its lock lives
+until the export is disposed. A recording failure sends no attachment or bundle bytes and leaves
+no export row. Legacy `POST /Audit/Export` requires fresh sign-in or step-up and is no-store.
+Schema v2, indentation and the filename format stay compatible. No database model or Angular
+source change.
+
+A2 and A5 failed first at the base on both databases, as did the original concurrency test.
+The HTTP race later failed alone on a fresh PostgreSQL fixture with a 503 instead of the busy
+refusal; the setup fix passes that isolated test on both providers. Original red and green runs
+are retained in `logs/ticket-142/`.
+
+Checks on .NET 10.0.404, with NuGetAudit enabled:
+
+- Locked restore, Release build with zero warnings and 921 unit tests through `scripts/check.sh`.
+- Focused PostgreSQL audit integration tests 14/14 at `f824e99`; isolated HTTP export race 1/1
+  on PostgreSQL and 1/1 on SQL Server at `e85dbaa`.
+- Full PostgreSQL-mode run at `f824e99`: 1,126 passed, 73 failed, zero skipped, 1,199 total,
+  15m32s, no hang. All failures were SQL Server fixture-setup timeouts in 16 untouched classes.
+  Those exact classes pass 73/73 in a filtered run with collection parallelism disabled, 45s.
+  See `logs/ticket-142/full-suite-failures.md`; the failed full run is retained.
+- Full SQL Server-mode run at `e85dbaa`: 1,199/1,199 passed, 20.62 minutes. It ran every test
+  with `xUnit.ParallelizeTestCollections=false` on the 4 GB Docker host. Internal race-test callers
+  remain concurrent; no timeout, retry or tracked runner setting changed.
+- Format verification, both providers' pending-model checks, six hook tests, 20 unchanged
+  `AuditBundleVerifierTests`, and the real offline verifier with the public key pinned, VALID.
+
+Standards r2 and Spec r3, fresh GPT Sol 6.1 xhigh delegates, close all five findings. The
+small review fixes and re-checks share a model; the original implementation and its first GPT
+reviews used different models. Reports and the finding-by-finding ledger are in
+`logs/ticket-142/review-*.md`.
+
+**Security:** the original `security-reviewer` and a retry both hit the five-hour usage limit before a
+verdict. After the reset, a fresh Claude Opus 5.5 high `security-reviewer` reviewed the whole
+`bb7e543..4590de2` diff: security PASS, and readability of the GPT-authored commits PASS, with no
+findings (`logs/ticket-142/review-security-opus-final.md`). No model was substituted.
+
+A later full PostgreSQL-mode run at `4590de2` with collection parallelism disabled passed 1,199/1,199 in
+13.4 minutes (`logs/ticket-142/coordinator-postgres-result.md`). The earlier failed default-mode run is
+kept and is not rewritten by this pass.
+
+For the owner and #143: the existing step-up title says "Confirm it's you before granting access."
+Legacy has no step-up dialog and shows the raw stale-session JSON. Legacy busy refusal uses the
+existing 400 error-page redirect; the UI API's `409 audit_busy` mapping belongs to #143.
+
+To restart, confirm this worktree and branch with a clean tracked state; stop and report if the
+coordinator moved HEAD. Read `logs/ticket-142/final-report.md`, `restart.md`, `review-ledger.md`
+and `review-security-blocked.md`. Source `logs/ticket-142/env.sh` before every .NET command.
+Run only one integration suite at a time and preserve failed evidence. The coordinator merges this
+branch into `area-6b-audit-log` after this commit; #143 starts from that merge.
+
+## Delivery: 6b ticket 4 (#143)
+
+Implemented 2026-11-13 by Claude Opus 5.5 high in the worktree
+`~/.t3/worktrees/EclipseVault/area-6b-audit-log`, branch `area-6b-audit-log`, from `d1d6a40`.
+GPT Sol 6.1 xhigh resumed the final checks and delivery after Claude reached its usage limit.
+Nothing pushed, no PR.
+
+Code commits:
+
+- `ac376b8` serves the Audit log in Angular and adds its four session-only UI API endpoints.
+- `22525c6` removes the attachment header when an export fails before its first byte, tests the
+  empty-trail checkpoint refusal, and requires a creation row in the decoy test.
+- `3f13097` fixes the browser page object's whitespace-sensitive summary locator.
+- `efeab12` checks notices by their words, names the proof controls, removes test branching and
+  redundant comments, and labels the retained appearance checks `visual parity:`.
+- `8b9ba1d` shows the standard audit-unavailable message when opening the Audit log cannot be recorded.
+- This checkpoint section is committed last.
+
+`/Audit` and `/Audit/Index` now serve the Angular page under AdminOnly. Its API records opening
+before reading, updates Verify and Checkpoint in place, and streams the same schema-v2 export
+behind fresh proof. The proof gate runs before any export lock or read; no attachment header or
+byte is sent until recording succeeds. Busy verification and export answer `409 audit_busy`;
+recording failures answer `503 audit_unavailable`. The empty-trail refusal is `409 nothing_to_checkpoint`.
+The export-specific proof title comes from `AdministratorStepUp`; the shared dialog template is
+unchanged. Audit log and Your data share their attachment helper.
+
+Legacy's Audit controller, view and view model are retired. `AuditDisplay` remains for the other
+pages and supplies API labels. Equal timestamps are ordered by sequence. There is no model change,
+so no migration is needed; both pending-model checks pass.
+
+Checks on the owner's .NET 10.0.404 and Node 24.22.0, with NuGetAudit enabled:
+
+- Final `scripts/check.sh`: locked restore, Release build with zero warnings, 927/927 unit tests.
+- Full SQL Server integration: 1,228 passed, 1 failed, zero skipped, 1,229 total, 16.69 minutes.
+  The sole failure is in untouched authentication setup at `ProfileApi.VerifyAsync:124`, before
+  audit rejection is exercised. Its entire class passes alone 8/8. The original failed full run
+  remains; `integration-failures.md` records both outcomes. No unrelated helper change was made.
+- Full PostgreSQL integration: 1,229/1,229, zero failed or skipped, 12.66 minutes. All eight
+  authentication audit-failure tests pass in this full run too.
+- Focused HTTP checks before reviews: 74/74 on each provider.
+- Angular lint, format, API type generation check and build pass; Vitest 539/539, build checks
+  15/15 and lint guard tests 6/6. The high-severity npm audit gate passes with 10 moderate findings
+  still visible and no high or critical findings.
+- `e2e/audit.spec.ts` with its configured dependencies: 215/215, including all 15 Audit log tests,
+  on `8b9ba1d`. Tests took 35.3 minutes, plus the image build. Browser-health, real step-up export,
+  schema/file name, navigation, keyboard and both themes pass. Dark and light screenshots inspected.
+  The runner removed its own containers, network and image.
+- .NET formatting, both pending-model checks and six hook tests pass.
+
+The original red runs remain under `logs/ticket-143/`, including 37/45 failing acceptance cases
+on the starting implementation, the pre-first-byte attachment regression and the initial-load
+503 regression. Earlier browser runs remain too: a summary-locator failure, an interrupted run,
+and an untouched sign-in timeout. The final browser run ran alone and passed every dependency.
+
+Reviews and the finding-by-finding ledger are in `logs/ticket-143/review-*.md`:
+
+- Security and readability, security-reviewer on Opus 5.5 high: S1-S3, all Low, fixed in `22525c6`
+  and closed by a fresh re-check.
+- Standards, GPT Sol 6.1 xhigh through Codex delegates: STD-1 to STD-4 fixed or answered in
+  `efeab12`, all closed by a fresh re-check. Destination-page navigation follows existing page
+  objects; the reviewer accepted it and the retained `visual parity:` appearance checks.
+- Spec, GPT Sol 6.1 xhigh through Codex delegates: SPEC-1, Medium, fixed in `8b9ba1d` and closed
+  by a fresh re-check. Its remaining browser condition is now satisfied by the 215/215 pass.
+
+No new application code was written during final verification. Earlier owner notes remain:
+Verify ignores sequence 0 and below; cancellation after the interceptor takes the chain lock is
+unverified. No push or CI run was performed for this ticket.
+
+To restart, confirm this worktree and branch, a clean tracked tree, and that HEAD has not moved
+under the agent. Source `logs/ticket-143/env.sh` before every .NET command. Read
+`logs/ticket-143/final-report.md` and `review-ledger.md`. Run only one database suite at a time,
+with `-- xUnit.ParallelizeTestCollections=false` on this 4 GB Docker host. The coordinator owns
+merging this ticket and choosing the next starting commit; do not begin the next ticket here.
+
+## Delivery: 6b ticket 5 (#144)
+
+Verified 2026-11-14 in `~/.t3/worktrees/EclipseVault/area-6b-audit-log`, on
+`area-6b-audit-log` from `6eb3518`, the coordinator's merge of #143 with `main` at `0a44040`.
+Claude Opus 5.5 high did the original verification; GPT Sol 6.1 xhigh handled the final two
+Standards corrections and the owner's requested re-check. The worker did not push or open a PR.
+
+Commits after `6eb3518`:
+
+- `b81331c` Pin that no letter case or method reaches a retired Audit action
+- `97ee048` Say where Verify's proof ends and what each audit access records
+- `cf62d98` Put the audit reader port with the infrastructure abstractions
+- this delivery section, committed last
+
+`RetiredAuditRoutesTests` sends 14 literal combinations of methods and spellings of `/Audit/Verify`,
+`/Audit/CreateCheckpoint` and `/Audit/Export` as separate administrators with valid antiforgery
+tokens. Every request must answer 404 and leave no audit row. All 14 failed against temporarily
+restored handlers with 200 or 405. Both shells, both palettes and the Dashboard links were already
+covered by #143's HTTP and browser tests.
+
+README, CONTEXT and ADR-0017, ADR-0028 and ADR-0030 now state what Verify proves, how each access
+is recorded, the separate per-kind locks and 409/503 answers, the export proof title, the sequence-0
+limit and the owner-approved migration order. The PostgreSQL precision consequence is explicit:
+old rows whose sub-microsecond digit was lost remain altered; neither verifier repairs or tolerates them.
+
+`cf62d98` moves only the Infrastructure-implemented reader port to `Application/Abstractions`,
+keeps its identical DTO in its own Auditing file, and updates or verifies every consumer's imports.
+The controller summary says viewing records before reading, Verify before answering, Export before
+its first byte, and checkpoint recording is atomic with its save. The contract and executable behavior
+did not change. There is no model change and no migration. No Angular or browser source changed in this correction.
+
+Checks at `97ee048`: `scripts/check.sh`, 927 unit tests and zero warnings; full integration with
+collection parallelism off, SQL Server 1239/1239 and PostgreSQL 1239/1239; formatting, both pending-model
+checks and six hook tests. The 14-case retired-route red run is retained. CI 43505099456 at `6eb3518`
+passed every job, including the full browser suite and `e2e:verify-guards`.
+
+Checks at `cf62d98`: `scripts/check.sh`, 927/927 unit tests and zero warnings; the PostgreSQL
+AuditApiTests and RetiredAuditRoutesTests HTTP filter, 38/38 passed.
+The owner requested this one-database HTTP check for the pure move and comment correction.
+
+Reviews are recorded finding by finding in `logs/ticket-144/review-ledger.md`:
+
+- The whole-part security review and two re-checks, Opus 5.5 high, closed all required fixes. R1 is
+  left for the owner: after a rehashed rewrite or forged checkpoint, the specified "First broken
+  entry" text names the checkpoint's entry rather than the changed entry. The verdict remains Tampered.
+- The coordinator's whole-part GPT Sol 6.1 xhigh Spec review passed with no findings and closed
+  #140's G1 from the retained SQL Server logs.
+- The coordinator's whole-part GPT Sol 6.1 xhigh Standards review raised STD-144-1 Medium and
+  STD-144-2 Nit. The owner limited corrections to these two findings. `cf62d98` addresses both.
+- Exactly one fresh GPT Sol 6.1 xhigh Standards re-check at `cf62d98` passed both findings with
+  no regressions. Its full report is `logs/ticket-144/review-gpt-standards-r2.md`.
+
+The coordinator owns CI after the final commit. #144's final-source check criterion, including
+both integration databases, the full browser suite and `e2e:verify-guards`, remains pending that run.
+The PR body stays in `logs/ticket-144/pr-body.md`; no PR was opened by the worker. Area 7a is stacked
+on this branch.
+
+For the owner: R1 above; Verify ignores sequence 0 and below; interceptor cancellation after the
+chain lock is unverified. No new behavior was added for these items.
+
+To restart, confirm this worktree, `area-6b-audit-log`, a clean tracked tree, and the expected HEAD.
+Source `logs/ticket-144/env.sh`; read `final-report.md` and `review-ledger.md`. Do not push or merge.
+The coordinator chooses the next action. This ticket's Docker run finished and released its lock.

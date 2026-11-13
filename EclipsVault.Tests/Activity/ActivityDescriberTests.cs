@@ -39,6 +39,16 @@ public class ActivityDescriberTests
         Assert.Equal(severity, description.Severity);
     }
 
+    [Theory]
+    [InlineData(AuditAction.AuditLogViewed, "Viewed the audit log")]
+    [InlineData(AuditAction.AuditChainVerified, "Verified the audit chain")]
+    public void Access_to_the_audit_trail_is_routine_administration(AuditAction action, string title)
+    {
+        Assert.Equal(
+            new ActivityDescription(ActivityCategory.Administration, title, ActivitySeverity.Routine),
+            ActivityDescriber.Describe(action));
+    }
+
     [Fact]
     public void Every_critical_entry_is_a_security_or_admin_concern()
     {

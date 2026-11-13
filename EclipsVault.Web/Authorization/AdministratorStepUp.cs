@@ -22,7 +22,9 @@ public sealed class AdministratorStepUp(IStepUpService stepUp, IUserRepository u
             return UiApiProblem.StaleSession();
         }
 
-        return AdministratorProblems.Problem(StatusCodes.Status403Forbidden, "step_up_required",
-            "Confirm it's you before granting access.", account.TotpEnabled ? "code" : "sign_in");
+        var title = action == AdministratorAction.ExportAuditTrail
+            ? "Confirm it's you before exporting the audit trail."
+            : "Confirm it's you before granting access.";
+        return AdministratorProblems.Problem(StatusCodes.Status403Forbidden, "step_up_required", title, account.TotpEnabled ? "code" : "sign_in");
     }
 }

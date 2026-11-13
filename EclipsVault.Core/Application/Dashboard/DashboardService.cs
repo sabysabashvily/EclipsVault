@@ -1,4 +1,4 @@
-using EclipsVault.Core.Application.Auditing;
+using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Secrets;
 using EclipsVault.Core.Application.Users;
 using EclipsVault.Core.Domain.Enums;
