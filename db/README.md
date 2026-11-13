@@ -33,8 +33,10 @@ PostgreSQL, with `psql`. `ON_ERROR_STOP` stops on the first error:
 From the repository root, after a migration in either set. Commit both files. The `migrations` job
 runs these same commands and fails when a committed file differs.
 
-The tool is `dotnet tool install --global dotnet-ef`, which is what that job installs. SQL Server
-is the default, so its command leaves `ECLIPSVAULT_DESIGN_PROVIDER` unset.
+The tool is the local `dotnet-ef` 10.0.9 in `dotnet-tools.json` (`rollForward` false), the same
+version as `Microsoft.EntityFrameworkCore.Design`. `dotnet tool restore` installs it, and `dotnet ef`
+from this directory uses that one. The `migrations` job does the same. SQL Server is the default,
+so its command leaves `ECLIPSVAULT_DESIGN_PROVIDER` unset.
 
 SQL Server compiles a batch before it runs, and the tool keeps a whole migration in one batch.
 A migration that adds a column and then writes it fails on an empty database. `split_batches.py`
@@ -42,8 +44,8 @@ puts each operation in its own batch. The transaction stays open across `GO`.
 
 SQL Server:
 
-    dotnet ef migrations script --idempotent -p EclipsVault.Infrastructure -s EclipsVault.Web -c EclipsVaultDbContext -o db/sqlserver/migrations.sql && python3 -I db/sqlserver/split_batches.py db/sqlserver/migrations.sql
+    dotnet tool restore && dotnet ef migrations script --idempotent -p EclipsVault.Infrastructure -s EclipsVault.Web -c EclipsVaultDbContext -o db/sqlserver/migrations.sql && python3 -I db/sqlserver/split_batches.py db/sqlserver/migrations.sql
 
 PostgreSQL:
 
-    ECLIPSVAULT_DESIGN_PROVIDER=Postgres dotnet ef migrations script --idempotent -p EclipsVault.Migrations.Postgres -s EclipsVault.Web -c EclipsVaultDbContext -o db/postgres/migrations.sql
+    dotnet tool restore && ECLIPSVAULT_DESIGN_PROVIDER=Postgres dotnet ef migrations script --idempotent -p EclipsVault.Migrations.Postgres -s EclipsVault.Web -c EclipsVaultDbContext -o db/postgres/migrations.sql
