@@ -188,3 +188,71 @@ capacity are sized. Area 6b must still start from merged `main` after the owner 
 
 The owner clarified that Thermos is the owner-started Cursor Cloud review. It remains separate
 from local Claude's required security review. Presentation timing awaits the owner's PDF.
+
+## Delivery: 6b ticket 1 (#140)
+
+Implemented 2026-11-13 by Claude Opus 5.5 (high) in the worktree
+`~/.t3/worktrees/EclipseVault/area-6b-audit-log`, on `area-6b-audit-log` from `6c108e4` (a merge of
+#147's head `1ad7b60` and #150's head `7b48efc`, by owner override: 6b started before #147 merged).
+Not pushed; no PR.
+
+Commits after `6c108e4`:
+
+- `bd2a25b` Record checkpoints, views and verifications of the audit trail
+- `9441300` Test the verify label and say which rows outlive a tampering test
+- this checkpoint section, committed last
+
+What changed (ADR-0030):
+
+- **Checkpoint (A3).** A new interceptor rule, `DescribeCheckpointChange`, adds the
+  `AuditCheckpointCreated` row in the same save as the checkpoint, so both commit or neither does.
+  `AuditCheckpointService` maps any failed save to `AuditWriteFailedException`. The row's text is unchanged.
+- **Viewing and verifying (A4).** The Legacy `AuditController` writes `AuditLogViewed` through
+  `IAuditSink` before reading any entry, and Verify writes `AuditChainVerified` with its outcome,
+  critical when tampering is found, before showing the result. A failed write shows the 503 page. Verify
+  writes no separate view row. A Legacy checkpoint still redirects to `/Audit`, which writes one.
+- **New actions** `AuditLogViewed = 113` and `AuditChainVerified = 114`, with labels "Audit log viewed" and
+  "Audit chain verified" (muted) and activity descriptions (Administration, Routine). The action is
+  stored as an int, so no migration was needed; both pending-model checks pass.
+- **Tests.** `AuditLogRecordingTests` runs on the shared vault and asserts only on its own new
+  administrators' rows. `AuditLogAuditFailureTests` runs on `AuditFailureFixture`.
+  `AuditTamperingFixture` is a new Production host in a collection that runs alone. Its test rewrites
+  one entry and restores it in `finally`. #141 can reuse it, but its verify rows stay critical, so tests
+  there must assert only on rows after their own head. `SelfServiceScopingTests` now reads `/Audit` last,
+  because a view row would otherwise change the administrator's own activity between its before and
+  after reads. The brief's claim that `ActivityDescriberTests` would fail was wrong: unmapped actions fall
+  back to a generated title. Explicit cases were added.
+
+Shown failing first against `6c108e4` with stub enum values (`logs/ticket-140/red-*.log`): 6 of 7 new
+integration tests failed on both databases. A checkpoint existed with auditing down (0→1 checkpoints),
+view and verify showed the page with auditing down, and they wrote no row.
+
+Checks at `9441300`: `scripts/check.sh` (locked restore, Release build 0 warnings, unit tests);
+`dotnet format --verify-no-changes`; both pending-model checks; 6 hook tests; new tests plus
+`SelfServiceScopingTests` 16/16 on each database; full integration 1187/1187 on PostgreSQL and
+1187/1187 on SQL Server.
+
+SQL Server runs 1–3 failed one to 16 untouched tests each, all of which passed alone. They failed with
+timeouts and dropped connections while load averaged about 10. The starting commit passed 1180/1180
+under similar load (`logs/ticket-140/sqlserver-flakes.md`).
+
+Reviews (ledger: `logs/ticket-140/review-ledger.md`):
+
+- **Security:** security-reviewer (Opus 5.5 high), with a re-check. Fail-closed recording, no
+  hand-built `AuditLog` and lock order are clean. L2 fixed. L1 (tampering is Routine in the personal
+  activity feed) was accepted by the coordinator.
+- **Standards and Spec:** by owner decision on 13 November, both ran on fresh Claude Opus 5.5 (high)
+  sessions, not GPT Sol 6.1, because Codex hit its usage limit. The Spec re-check also ran on Opus after a
+  second GPT limit. Both passed, and their re-checks closed every finding. GPT Sol 6.1 and Thermos still
+  review the whole 6b PR before merge.
+
+For the owner:
+
+- The interceptor has no `SaveChangesCanceledAsync`, so a request cancelled after the chain lock holds it
+  until its context is disposed. This affects every rule and is unverified.
+- The 6b PR should say that a Legacy checkpoint's redirect writes a view row.
+
+To restart: in the worktree, check `area-6b-audit-log` and a clean tree. Run `scripts/check.sh`, then
+`dotnet test EclipsVault.IntegrationTests -c Release --no-build --filter "FullyQualifiedName~AuditLogRecordingTests|FullyQualifiedName~AuditLogAuditFailureTests|FullyQualifiedName~AuditTamperingTests|FullyQualifiedName~SelfServiceScopingTests"`,
+with and without `ECLIPSVAULT_TEST_DATABASE_PROVIDER=Postgres`. Ticket 2 (#141) starts from the HEAD after
+this commit.
