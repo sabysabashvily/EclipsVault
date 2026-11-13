@@ -256,3 +256,45 @@ To restart: in the worktree, check `area-6b-audit-log` and a clean tree. Run `sc
 `dotnet test EclipsVault.IntegrationTests -c Release --no-build --filter "FullyQualifiedName~AuditLogRecordingTests|FullyQualifiedName~AuditLogAuditFailureTests|FullyQualifiedName~AuditTamperingTests|FullyQualifiedName~SelfServiceScopingTests"`,
 with and without `ECLIPSVAULT_TEST_DATABASE_PROVIDER=Postgres`. Ticket 2 (#141) starts from the HEAD after
 this commit.
+
+## Delivery: 6b ticket 2 (#141)
+
+Implemented 2026-11-13 by Claude Opus 5.5 (high) in the worktree
+`~/.t3/worktrees/EclipseVault/area-6b-audit-log`, on `area-6b-audit-log` from `1e63e46` (#140's head plus
+the coordinator's merges of Area 6a and `main`). Pushed for CI only; no PR.
+
+Commits after `1e63e46`:
+
+- `fa6881d` Verify the audit trail against its signed checkpoints, one at a time
+- `70ee0bc` Check every checkpoint the current key signed, whatever its label says
+- `daa2633` Say that Verify never checks an audit row below sequence one
+- `a10990e` Stamp audit and checkpoint times to the microsecond PostgreSQL keeps (owner decision P1)
+- `bb7e543` Round the test's PostgreSQL time exactly, and name Windows as affected
+- `156d506` Report the first missing audit entry before a forged checkpoint (GPT Sol 6.1 xhigh, Spec G1)
+- `4d52a35` Make audit precision tests check stored hashes and literal times (GPT Sol 6.1 xhigh, Standards S1, S2)
+- this checkpoint section, committed last
+
+What changed (ADR-0030): Verify streams the chain and checks it against every checkpoint the current key
+signed, one verification at a time across replicas. `AuditClock.GetAuditUtcNow` truncates every audit and
+checkpoint time to whole microseconds at the sink, the interceptor and `SignHead`, so honest rows and
+checkpoints verify on PostgreSQL hosts whose clock reads finer than a microsecond (Linux, Windows). Rows
+already written there with a sub-microsecond digit are not repaired and Verify is not made tolerant (ADR-0030,
+README).
+
+Checks: A1 failed first on both databases. Full integration 1192/1192 on PostgreSQL and 1192/1192 on SQL
+Server at `70ee0bc`; precision tests red then green on both databases; 921 unit tests at `4d52a35`. CI run
+43429789910 at `4d52a35`: every job green, including integration on both databases and e2e.
+
+Reviews (ledger: `logs/ticket-141/review-ledger.md`):
+
+- **Security:** security-reviewer (Opus 5.5 high) r1-r5 on the Opus code; L1, L2b, P1-T and P1-D fixed, L3
+  and I1 accepted, L2's Verify check for `Sequence <= 0` rows left to the owner. A fresh Opus 5.5 high
+  review of the GPT delta `bb7e543..4d52a35` (r6) passed security and readability with no findings.
+- **Standards and Spec:** GPT Sol 6.1 xhigh. Spec G1 and Standards S1, S2 fixed and closed by fresh re-checks.
+
+For the owner: L2 (Verify ignores rows with sequence 0 or below), and #140's unverified note that the
+interceptor has no `SaveChangesCanceledAsync`.
+
+To restart: in this worktree, check `area-6b-audit-log` and a clean tree, run `scripts/check.sh`, then the
+audit integration classes with and without `ECLIPSVAULT_TEST_DATABASE_PROVIDER=Postgres`. #142 ran on its
+own branch `area-6b-142` from `bb7e543`; the coordinator merges it here after this commit.
