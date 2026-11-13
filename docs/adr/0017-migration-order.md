@@ -20,3 +20,9 @@ Area 2 joined that list when its grill found it revokes sessions and shares and 
 Area 4 joined that list when its grill found that approving an access request issues a share, and that requests and shares were decided and audited outside the sharing rule (ADR-0027).
 
 Area 5 runs in two parts, each with its own spec, branch and PR, after its grill found that it changes how administrator actions are committed, audited and authorized (ADR-0028). Part 5a, Accounts, moves Users and Service accounts. Part 5b, Vault settings, moves Networks, Notifications and License after 5a merges. The risk sits in 5a, and two smaller diffs keep each security review focused.
+
+Area 6 runs in two parts, each with its own spec, branch and PR, after its grill found that master
+key rotation could destroy secrets and that Verify could report a tampered audit trail as intact
+(ADR-0029). Part 6a, Encryption keys, goes first because its defect loses data today. Part 6b, Audit
+log, branches from `main` after 6a merges. The two security reviews cover unrelated code: key
+material, then the audit chain.

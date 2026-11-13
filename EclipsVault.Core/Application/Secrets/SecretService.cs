@@ -90,8 +90,24 @@ public sealed class SecretService : ISecretService
         // If it cannot be written, no plaintext ever exists for this request.
         await AuditSecretAsync(envelope.Id, envelope.Name, AuditAction.SecretRevealed, ct);
 
-        return await DecryptToDtoAsync(
-            envelope, SecretBinding.ForCurrentValue(envelope.Id), envelope.Id, envelope.Name, ct);
+        try
+        {
+            return await DecryptToDtoAsync(
+                envelope, SecretBinding.ForCurrentValue(envelope.Id), envelope.Id, envelope.Name, ct);
+        }
+        catch (CryptoConfigurationException)
+        {
+            // A cached envelope can outlive its row's move to the current master key and still name
+            // a key the operator has since unloaded (ADR-0029). The row itself has moved, so read it
+            // again from the database: the cache may still hold, or be refilled with, the stale entry.
+            var row = await LoadEnvelopeAsync(id, ct);
+            if (row.KekId == envelope.KekId)
+            {
+                throw;
+            }
+
+            return await DecryptToDtoAsync(row, SecretBinding.ForCurrentValue(row.Id), row.Id, row.Name, ct);
+        }
     }
 
     public async Task<Guid> CreateAsync(CreateSecretRequest request, CancellationToken ct)
@@ -399,6 +415,13 @@ public sealed class SecretService : ISecretService
             return cached;
         }
 
+        var envelope = await LoadEnvelopeAsync(id, ct);
+        await _cache.SetAsync(envelope, ct);
+        return envelope;
+    }
+
+    private async Task<EncryptedSecretEnvelope> LoadEnvelopeAsync(Guid id, CancellationToken ct)
+    {
         var entity = await _repository.FindAsync(id, ct);
         if (entity is null || entity.IsShredded ||
             (entity.ExpiresAtUtc is { } expiry && expiry <= _clock.GetUtcNow()))
@@ -406,14 +429,11 @@ public sealed class SecretService : ISecretService
             throw new SecretNotFoundException(id);
         }
 
-        var envelope = new EncryptedSecretEnvelope(
+        return new EncryptedSecretEnvelope(
             entity.Id, entity.Name, entity.ProjectKey, entity.Environment, entity.Sensitivity,
             entity.Ciphertext, entity.WrappedDek, entity.KekId, entity.Algorithm,
             entity.IsHoneyToken, entity.CreatedAtUtc, entity.UpdatedAtUtc, entity.ExpiresAtUtc,
             entity.IsManaged, entity.RotationPrincipal);
-
-        await _cache.SetAsync(envelope, ct);
-        return envelope;
     }
 
     private async Task TripHoneyTokenIfNeededAsync(EncryptedSecretEnvelope envelope, CancellationToken ct)

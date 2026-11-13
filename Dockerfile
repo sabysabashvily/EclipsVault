@@ -44,11 +44,9 @@ RUN rm /app/runtimes/win-arm64/native/Microsoft.Data.SqlClient.SNI.dll \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.15@sha256:bfd912c83295ce66d4b706ebb8541b9f14259b0e76fbb88b2751f58ce2399d2e AS runtime
 WORKDIR /app
 
-# Run as a non-root user. Use the `app` account the base image already ships (its UID is published
-# as $APP_UID, currently 1654) rather than creating one: this image carries a shell but no `adduser`
-# binary, so the previous `adduser ... --uid 10001 vault` failed with exit 127 and no image could be
-# built at all. The image's own User field is unset, so declaring USER here is what actually drops
-# root — without it the vault runs as root.
+# Use the non-root `app` account the base image already provides, so no user-management binary is
+# needed. Its UID is published as $APP_UID. The image's User field is unset, so USER below is
+# required to drop root.
 #
 # Ownership is set during the copy instead of by a later `chown -R`, which would duplicate the whole
 # publish output into a second layer for nothing.

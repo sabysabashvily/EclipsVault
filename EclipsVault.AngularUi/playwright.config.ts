@@ -43,6 +43,7 @@ export default defineConfig({
             '**/networks.spec.ts',
             '**/notifications.spec.ts',
             '**/license.spec.ts',
+            '**/encryption.spec.ts',
           ],
           use: { ...devices['Desktop Chrome'] },
         },
@@ -65,11 +66,19 @@ export default defineConfig({
           use: { ...devices['Desktop Chrome'] },
         },
         {
+          // Reads the page and writes nothing, so it needs only the administrator session that
+          // sign-in saves.
+          name: 'encryption',
+          testMatch: '**/encryption.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
           // Users ends with the administrator's own Force logout, which ends the saved session that
-          // Networks, Notifications and License reuse, so they run first.
+          // Networks, Notifications, License and Encryption keys reuse, so they run first.
           name: 'users',
           testMatch: '**/users.spec.ts',
-          dependencies: ['license'],
+          dependencies: ['license', 'encryption'],
           use: { ...devices['Desktop Chrome'] },
         },
         {

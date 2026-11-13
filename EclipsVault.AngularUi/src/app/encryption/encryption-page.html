@@ -1,0 +1,100 @@
+<div class="page-header">
+  <div>
+    <h1>Encryption keys</h1>
+    <p class="page-sub">
+      Each secret's data key is wrapped by a master KEK. Rotation re-wraps secrets and their
+      versions under the current KEK; the payload itself is never re-encrypted. The Data Protection
+      key ring still needs its existing keys.
+    </p>
+  </div>
+</div>
+<app-status-line [message]="writes.status().message" [error]="writes.status().error" />
+@if (encryption.isLoading() && !encryption.hasValue()) {
+  <p role="status">Loading encryption keys…</p>
+} @else if (encryption.error() && !encryption.hasValue()) {
+  <p role="alert">Could not load encryption keys. Try again.</p>
+  <button type="button" class="button" (click)="encryption.reload()">Try again</button>
+} @else if (encryption.hasValue()) {
+  @if (someKeyIsNotLoaded()) {
+    <div class="notice notice-critical">
+      <strong>⚠ Some secrets reference a KEK that is not loaded.</strong>
+      <span
+        >Provide the missing key as a retired KEK (<code>ECLIPSVAULT_KEK_RETIRED</code>) so it can
+        be decrypted and rotated, or those secrets cannot be read.</span
+      >
+    </div>
+  } @else if (awaitingRotation() > 0) {
+    <div class="notice notice-warn">
+      <strong>{{ awaitingRotation() }} item(s) are still on a retired KEK.</strong>
+      <span
+        >Run a rotation to re-wrap them under the current key. Keep retired keys loaded while the
+        Data Protection key ring needs them.</span
+      >
+    </div>
+  } @else {
+    <div class="notice notice-ok">
+      <strong>✓ All secrets are wrapped under the current KEK.</strong>
+      <span>Nothing to rotate.</span>
+    </div>
+  }
+
+  <div class="two-col">
+    <section class="panel">
+      <div class="panel-header"><h2>Keys in use</h2></div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>KEK id</th>
+              <th>Status</th>
+              <th>Secrets</th>
+              <th>Versions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (key of encryption.value().keys; track key.kekId) {
+              <tr>
+                <td class="mono cell-strong">{{ key.kekId }}</td>
+                <td>
+                  <span [class]="'badge tone-' + badges[key.status].tone">{{
+                    badges[key.status].label
+                  }}</span>
+                </td>
+                <td>{{ key.secrets }}</td>
+                <td>{{ key.versions }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header"><h2>Rotate</h2></div>
+      <dl class="detail-grid">
+        <dt>Current KEK</dt>
+        <dd class="mono">{{ encryption.value().currentKekId }}</dd>
+        <dt>Keys loaded</dt>
+        <dd class="mono">{{ encryption.value().loadedKekIds.join(', ') }}</dd>
+        <dt>Awaiting rotation</dt>
+        <dd>{{ awaitingRotation() }} item(s)</dd>
+      </dl>
+      <p class="hint muted">
+        To rotate: generate a new key, set it as <code>ECLIPSVAULT_KEK</code>, move the previous key
+        to <code>ECLIPSVAULT_KEK_RETIRED</code>, restart, then run the rotation below. Rotation
+        re-wraps secrets and their archived versions. It does not re-wrap the Data Protection key
+        ring. Keep retired master keys loaded while the ring needs them; a zero pending count does
+        not mean a retired key can be removed.
+      </p>
+      <button
+        type="button"
+        class="button primary"
+        [disabled]="awaitingRotation() === 0 || writes.busy() || writes.blocked()"
+        (click)="askToRotate()"
+      >
+        Re-wrap under current KEK
+      </button>
+    </section>
+  </div>
+}
+<app-confirmation-dialog (decision)="confirmed($event)" />

@@ -76,6 +76,38 @@ _Avoid_: Ban, IP ban
 The record of every email the vault composed, with its delivery outcome. A delivery record, not a mailbox.
 _Avoid_: Mailbox, inbox, email log
 
+### Encryption
+
+**Master key**:
+The key that wraps every secret's data key. The vault loads one current master key and any retired ones, and never stores or shows them.
+_Avoid_: KEK (in prose), root key, encryption key
+
+**Data key**:
+The key that encrypts one secret value. It is stored only wrapped by a master key, and a new value gets a new data key.
+_Avoid_: DEK (in prose), secret key
+
+**Master key rotation**:
+Re-wrapping the data keys of secret values and their archived versions under the current master key. It never decrypts or re-encrypts those values and does not rotate the Data Protection key ring. Retired master keys remain necessary while stored data, that ring or backups need them.
+_Avoid_: Re-encryption, secret rotation (that changes a secret's value)
+
+### Audit
+
+**Audit trail**:
+The append-only record of every audited action, each entry chained to the one before by its hash.
+_Avoid_: Audit log (the page's name), history
+
+**Checkpoint**:
+The vault's signature over the audit trail's newest entry at one moment. It proves the entries up to it unchanged to anyone holding the vault's public key.
+_Avoid_: Snapshot, attestation (the panel's name)
+
+**Audit bundle**:
+A file holding the whole audit trail, a fresh checkpoint over its newest entry and the public key, verifiable offline without the vault.
+_Avoid_: Export file, backup
+
+**Signing key**:
+The private key the vault signs checkpoints with. Only its public key and fingerprint are ever shown.
+_Avoid_: Audit key, master key (that wraps data keys)
+
 ### Sharing
 
 **Share**:

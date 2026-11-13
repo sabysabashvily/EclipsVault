@@ -7,6 +7,7 @@ import { ActivityPage } from './activity/activity-page';
 import { NewUserPage } from './users/new-user-page';
 import { EditUserPage } from './users/edit-user-page';
 import { UsersPage } from './users/users-page';
+import { EncryptionPage } from './encryption/encryption-page';
 import { NetworksPage } from './networks/networks-page';
 import { ServiceAccountsPage } from './service-accounts/service-accounts-page';
 import { NewServiceAccountPage } from './service-accounts/new-service-account-page';
@@ -79,6 +80,14 @@ describe('routes', () => {
     const route = routeFor(url);
     expect(route?.title).toBe('Networks — EclipsVault');
     expect(await route?.loadComponent?.()).toBe(NetworksPage);
+  });
+  it.each(['/Encryption', '/eNcRyPtIoN/iNdEx'])('opens Encryption keys at %s', async (url) => {
+    const route = routeFor(url);
+    expect(route?.title).toBe('Encryption keys — EclipsVault');
+    expect(await route?.loadComponent?.()).toBe(EncryptionPage);
+  });
+  it('leaves the retired /Encryption/Rotate unmatched', () => {
+    expect(routeFor('/Encryption/Rotate')).toBeUndefined();
   });
   it.each(['/Admin/Networks/extra', '/Admin/Network'])(
     'leaves an invalid Networks path %s unmatched',

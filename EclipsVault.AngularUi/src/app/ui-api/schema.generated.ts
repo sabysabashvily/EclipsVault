@@ -355,6 +355,94 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ui/encryption": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EncryptionResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/encryption/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RotationResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["RotationStoppedProblemResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ui/license": {
         parameters: {
             query?: never;
@@ -3776,6 +3864,15 @@ export interface components {
             unavailableReason: null | string;
             explanation: null | string;
         };
+        EncryptionResponse: {
+            currentKekId: string;
+            loadedKekIds: string[];
+            keys: components["schemas"]["KekResponse"][];
+            /** Format: int32 */
+            awaitingRotation: number | string;
+            /** Format: int32 */
+            onMissingKeys: number | string;
+        };
         FiledRequestResponse: {
             /** Format: uuid */
             requestId: string;
@@ -3818,6 +3915,15 @@ export interface components {
             allowedRanges?: null | string;
         };
         JsonElement: unknown;
+        KekResponse: {
+            kekId: string;
+            /** @enum {string} */
+            status: "current" | "retired" | "not_loaded";
+            /** Format: int32 */
+            secrets: number | string;
+            /** Format: int32 */
+            versions: number | string;
+        };
         LicenseDetailsResponse: {
             issuedTo: string;
             tier: string;
@@ -4024,6 +4130,28 @@ export interface components {
             deniedBecause: null | string;
             /** Format: date-time */
             requestedAtUtc: string;
+        };
+        RotationResponse: {
+            currentKekId: string;
+            /** Format: int32 */
+            secretsRewrapped: number | string;
+            /** Format: int32 */
+            versionsRewrapped: number | string;
+            /** Format: int32 */
+            onMissingKeys: number | string;
+        };
+        RotationStoppedProblemResponse: {
+            type?: null | string;
+            title?: null | string;
+            /** Format: int32 */
+            status?: null | number | string;
+            detail?: null | string;
+            instance?: null | string;
+            code: string;
+            /** Format: int32 */
+            secretsRewrapped: number | string;
+            /** Format: int32 */
+            versionsRewrapped: number | string;
         };
         SecurityCheckResponse: {
             /** @enum {string} */

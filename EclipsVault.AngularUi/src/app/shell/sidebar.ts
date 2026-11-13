@@ -86,7 +86,7 @@ const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)
       link('service-accounts', 'Service accounts', '/ServiceAccounts', 'service-accounts', true),
       link('audit', 'Audit log', '/Audit'),
       link('notifications', 'Notifications', '/Notifications', 'notifications', true),
-      link('encryption', 'Encryption keys', '/Encryption'),
+      link('encryption', 'Encryption keys', '/Encryption', 'encryption', true),
       link('license', 'License', '/License', 'license', true),
     ],
   },
