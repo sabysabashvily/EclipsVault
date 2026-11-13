@@ -8,7 +8,6 @@ export function attachmentName(disposition: string | null): string {
   return /filename="?([^";]+)"?/i.exec(disposition ?? '')?.[1] ?? '';
 }
 
-/** Hands a downloaded file to the browser to save under `name`. */
 export function saveAttachment(document: Document, file: Blob, name: string): void {
   const url = URL.createObjectURL(file);
   const link = document.createElement('a');

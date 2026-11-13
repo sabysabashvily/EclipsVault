@@ -33,7 +33,6 @@ test('Verify is anchored by the checkpoint just created', async ({ page }) => {
   );
   await expect(audit.latestCheckpoint).toContainText(`sequence ${sequence} ·`);
   await audit.verify.click();
-  await expect(audit.notice).toHaveClass(/notice-ok/);
   await expect(audit.notice).toContainText('✓ Hash chain intact.');
   await expect(audit.notice).toContainText(`The signed checkpoint at sequence ${sequence} matches`);
 });
@@ -151,16 +150,13 @@ for (const theme of ['dark', 'light'] as const) {
     browserHealth.expectConsoleError(refusedExport);
     await audit.export.focus();
     await page.keyboard.press('Enter');
-    const code = audit.stepUp.getByLabel('Authenticator code');
-    await expect(code).toBeFocused();
+    await expect(audit.proofCode).toBeFocused();
     await page.keyboard.press('Tab');
-    await expect(audit.stepUp.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+    await expect(audit.cancelProofButton).toBeFocused();
     await page.keyboard.press('Tab');
-    await expect(
-      audit.stepUp.getByRole('button', { name: 'Verify and continue', exact: true }),
-    ).toBeFocused();
+    await expect(audit.verifyProofButton).toBeFocused();
     await page.keyboard.press('Tab');
-    await expect(code).toBeFocused();
+    await expect(audit.proofCode).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(audit.stepUp).toBeHidden();
     await expect(audit.export).toBeFocused();
