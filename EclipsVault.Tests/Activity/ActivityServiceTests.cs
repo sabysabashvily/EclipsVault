@@ -42,8 +42,6 @@ public class ActivityServiceTests
             => throw new NotSupportedException();
         public Task<int> CountCriticalSinceAsync(DateTimeOffset sinceUtc, CancellationToken ct)
             => throw new NotSupportedException();
-        public Task<AuditIntegrityReport> VerifyIntegrityAsync(CancellationToken ct)
-            => throw new NotSupportedException();
     }
 
     private static AuditEntryDto Row(AuditAction action, string? resource = null, string ip = "203.0.113.5")

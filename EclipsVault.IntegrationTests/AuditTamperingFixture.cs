@@ -3,9 +3,10 @@ using Xunit;
 namespace EclipsVault.IntegrationTests;
 
 /// <summary>
-/// A vault whose audit trail tests rewrite. Verify reports the first broken entry of the whole trail,
-/// so a tampered trail must never be seen by another test. Each test restores what it rewrote, but the
-/// critical rows its verifications wrote stay, so tests here assert only on rows after their own head.
+/// A vault whose audit trail tests rewrite, truncate or hold. Verify reports the first broken entry of
+/// the whole trail, so a tampered trail must never be seen by another test. Each test restores what it
+/// tampered with, but the critical rows some verifications wrote stay, so tests here assert only on rows
+/// after their own head.
 /// </summary>
 public sealed class AuditTamperingFixture : IAsyncLifetime
 {

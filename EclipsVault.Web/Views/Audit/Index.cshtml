@@ -16,18 +16,27 @@
 
 @if (Model.Integrity is { } report)
 {
-    <div class="notice @(report.Intact ? "notice-ok" : "notice-critical")">
-        @if (report.Intact)
-        {
+    @if (report.Outcome == AuditChainOutcome.Anchored)
+    {
+        <div class="notice notice-ok">
             <strong>✓ Hash chain intact.</strong>
-            <span>@report.Message Any edit, deletion, or reordering of a row would break the chain and be caught here.</span>
-        }
-        else
-        {
+            <span>@report.Message</span>
+        </div>
+    }
+    else if (report.Outcome == AuditChainOutcome.Unanchored)
+    {
+        <div class="notice notice-warn">
+            <strong>✓ Hash chain intact, but no signed checkpoint covers it yet.</strong>
+            <span>@report.Message</span>
+        </div>
+    }
+    else
+    {
+        <div class="notice notice-critical">
             <strong>✗ Tampering detected.</strong>
-            <span>@report.Message (First broken entry: #@report.FirstBrokenSequence.)</span>
-        }
-    </div>
+            <span>@report.Message</span>
+        </div>
+    }
 }
 
 <section class="panel">

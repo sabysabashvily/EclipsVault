@@ -44,12 +44,12 @@ public sealed class AuditLogRecordingTests(VaultFixture vault)
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var page = await response.Content.ReadAsStringAsync();
-        Assert.Contains("Hash chain intact.", page);
+        Assert.Contains("✓ Hash chain intact", page);
         Assert.Contains("Audit chain verified", page);
         var row = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before), row => row.Username == verifier);
         Assert.Equal(AuditAction.AuditChainVerified, row.Action);
         Assert.False(row.IsCritical);
-        Assert.StartsWith("Chain intact — ", row.Details);
+        Assert.Contains(" entries verified. ", row.Details);
     }
 
     [Fact]

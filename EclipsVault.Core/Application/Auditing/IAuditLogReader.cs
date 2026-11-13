@@ -13,9 +13,6 @@ public sealed record AuditEntryDto(
     string? Details,
     bool IsCritical);
 
-/// <summary>Outcome of verifying the audit hash chain.</summary>
-public sealed record AuditIntegrityReport(bool Intact, long ChainedRows, long? FirstBrokenSequence, string Message);
-
 /// <summary>Read-only access to the audit trail for dashboards and the audit viewer.</summary>
 public interface IAuditLogReader
 {
@@ -38,7 +35,4 @@ public interface IAuditLogReader
         Guid actorUserId, IReadOnlyCollection<AuditAction> actions, int take, CancellationToken ct);
 
     Task<int> CountCriticalSinceAsync(DateTimeOffset sinceUtc, CancellationToken ct);
-
-    /// <summary>Re-walks the hash chain and reports whether it is intact, pinpointing the first broken row.</summary>
-    Task<AuditIntegrityReport> VerifyIntegrityAsync(CancellationToken ct);
 }

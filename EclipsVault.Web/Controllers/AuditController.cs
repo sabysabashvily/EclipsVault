@@ -43,23 +43,10 @@ public sealed class AuditController : Controller
         return View(await BuildAsync(integrity: null, ct));
     }
 
-    /// <summary>Re-walks the hash chain and shows whether the trail has been tampered with.</summary>
+    /// <summary>Verifies the trail against its signed checkpoints and shows what was found, once it is recorded.</summary>
     [HttpPost]
     public async Task<IActionResult> Verify(CancellationToken ct)
-    {
-        var report = await _reader.VerifyIntegrityAsync(ct);
-        await _audit.WriteAsync(new AuditEntry
-        {
-            Action = AuditAction.AuditChainVerified,
-            ResourceType = AuditTrail,
-            Details = report.Intact
-                ? report.Message
-                : $"Tampering detected. {report.Message} (First broken entry: #{report.FirstBrokenSequence}.)",
-            IsCritical = !report.Intact
-        }, ct);
-
-        return View(nameof(Index), await BuildAsync(report, ct));
-    }
+        => View(nameof(Index), await BuildAsync(await _checkpoints.VerifyAsync(ct), ct));
 
     /// <summary>Signs the current chain head so its integrity can later be proven to an outside party.</summary>
     [HttpPost]

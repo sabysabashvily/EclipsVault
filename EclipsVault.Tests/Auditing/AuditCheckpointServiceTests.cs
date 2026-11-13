@@ -2,6 +2,7 @@ using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Licensing;
 using EclipsVault.Infrastructure.Auditing;
 using EclipsVault.Infrastructure.Persistence;
+using EclipsVault.Infrastructure.Persistence.Locking;
 using EclipsVault.Tests.TestDoubles;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +25,11 @@ public class AuditCheckpointServiceTests
         public Task WriteAsync(AuditEntry entry, CancellationToken ct) => Task.CompletedTask;
     }
 
+    private sealed class UnusedLocks : ISessionLocker
+    {
+        public Task<IAsyncDisposable?> TryAcquireAsync(DbContext db, string resource, CancellationToken ct) => throw new NotSupportedException();
+    }
+
     [Fact]
     public async Task Creating_a_checkpoint_records_premium_usage()
     {
@@ -40,7 +46,7 @@ public class AuditCheckpointServiceTests
         await db.Database.EnsureCreatedAsync();
 
         var usage = new RecordingPremiumFeatureUsage();
-        var service = new AuditCheckpointService(db, new FakeSigner(), new NoOpAuditSink(), TimeProvider.System, usage);
+        var service = new AuditCheckpointService(db, new FakeSigner(), new NoOpAuditSink(), TimeProvider.System, usage, new UnusedLocks());
 
         var result = await service.CreateCheckpointAsync(CancellationToken.None);
 
@@ -64,7 +70,7 @@ public class AuditCheckpointServiceTests
         await db.Database.EnsureCreatedAsync();
 
         var usage = new RecordingPremiumFeatureUsage();
-        var service = new AuditCheckpointService(db, new FakeSigner(), new NoOpAuditSink(), TimeProvider.System, usage);
+        var service = new AuditCheckpointService(db, new FakeSigner(), new NoOpAuditSink(), TimeProvider.System, usage, new UnusedLocks());
 
         var bundle = await service.ExportAsync(CancellationToken.None);
 

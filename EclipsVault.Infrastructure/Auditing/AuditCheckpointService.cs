@@ -3,6 +3,7 @@ using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Infrastructure.Persistence;
+using EclipsVault.Infrastructure.Persistence.Locking;
 using Microsoft.EntityFrameworkCore;
 
 namespace EclipsVault.Infrastructure.Auditing;
@@ -13,19 +14,26 @@ namespace EclipsVault.Infrastructure.Auditing;
 /// </summary>
 public sealed class AuditCheckpointService : IAuditCheckpointService
 {
+    private const string VerifyLockResource = "EclipsVault:AuditVerify";
+
+    private const string AuditTrail = "AuditTrail";
+
     private readonly EclipsVaultDbContext _db;
     private readonly IAuditCheckpointSigner _signer;
     private readonly IAuditSink _audit;
     private readonly TimeProvider _clock;
     private readonly IPremiumFeatureUsage _premiumUsage;
+    private readonly ISessionLocker _locks;
 
-    public AuditCheckpointService(EclipsVaultDbContext db, IAuditCheckpointSigner signer, IAuditSink audit, TimeProvider clock, IPremiumFeatureUsage premiumUsage)
+    public AuditCheckpointService(
+        EclipsVaultDbContext db, IAuditCheckpointSigner signer, IAuditSink audit, TimeProvider clock, IPremiumFeatureUsage premiumUsage, ISessionLocker locks)
     {
         _db = db;
         _signer = signer;
         _audit = audit;
         _clock = clock;
         _premiumUsage = premiumUsage;
+        _locks = locks;
     }
 
     public string SigningKeyId => _signer.KeyId;
@@ -55,6 +63,32 @@ public sealed class AuditCheckpointService : IAuditCheckpointService
         }
 
         return ToDto(checkpoint);
+    }
+
+    public async Task<AuditIntegrityReport> VerifyAsync(CancellationToken ct)
+    {
+        // Owned by the database session, so it holds until the verification is recorded, on every
+        // replica, and the database releases it if this process dies mid-walk.
+        await using var turn = await _locks.TryAcquireAsync(_db, VerifyLockResource, ct)
+            ?? throw new AuditBusyException();
+
+        var checkpoints = await _db.AuditCheckpoints.AsNoTracking().ToListAsync(ct);
+        var trail = _db.AuditLogs.AsNoTracking()
+            .Where(a => a.Sequence > 0)
+            .OrderBy(a => a.Sequence)
+            .AsAsyncEnumerable();
+        var report = await AuditChainVerifier.VerifyAsync(trail, checkpoints, _signer.PublicKeySpki, ct);
+
+        var tampered = report.Outcome == AuditChainOutcome.Tampered;
+        await _audit.WriteAsync(new AuditEntry
+        {
+            Action = AuditAction.AuditChainVerified,
+            ResourceType = AuditTrail,
+            Details = tampered ? $"Tampering detected. {report.Message}" : report.Message,
+            IsCritical = tampered
+        }, ct);
+
+        return report;
     }
 
     public async Task<AuditCheckpointDto?> GetLatestAsync(CancellationToken ct)
