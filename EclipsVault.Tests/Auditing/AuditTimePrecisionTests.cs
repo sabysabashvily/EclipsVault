@@ -85,7 +85,7 @@ public class AuditTimePrecisionTests
 
     /// <summary>PostgreSQL rounds a time to the nearest microsecond: 12:00:00.1234567 is stored as 12:00:00.123457.</summary>
     private static DateTimeOffset AsPostgresStores(DateTimeOffset time)
-        => new((long)Math.Round(time.UtcTicks / (double)TimeSpan.TicksPerMicrosecond) * TimeSpan.TicksPerMicrosecond, TimeSpan.Zero);
+        => new((time.UtcTicks + TimeSpan.TicksPerMicrosecond / 2) / TimeSpan.TicksPerMicrosecond * TimeSpan.TicksPerMicrosecond, TimeSpan.Zero);
 
     private sealed class Vault : IAsyncDisposable
     {
