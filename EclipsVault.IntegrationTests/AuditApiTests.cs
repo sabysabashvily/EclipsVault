@@ -184,7 +184,7 @@ public sealed class AuditApiTests(VaultFixture vault)
         await intruder.Client.GetAsync(details);
         var after = await EntriesNamingAsync(observer, decoy);
 
-        Assert.All(before, entry => Assert.Equal(("SecretCreated", "Created", "ok", false), Summary(entry)));
+        Assert.Equal(("SecretCreated", "Created", "ok", false), Summary(Assert.Single(before)));
         var tripped = Assert.Single(after, entry => entry.GetProperty("action").GetString() == "HoneyTokenTripped");
         Assert.Equal(("HoneyTokenTripped", "Honey token", "critical", true), Summary(tripped));
         Assert.Equal("it-audit-decoy-intruder", tripped.GetProperty("actor").GetString());
