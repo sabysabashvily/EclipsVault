@@ -1,9 +1,12 @@
 import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { AccountCreation } from './account-creation';
+import { AccountSignIn } from './account-sign-in';
 import { savedAdministratorCookies } from './administrator-cookies';
 import { refreshAdministratorProof } from './administrator-proof';
+import { AuthenticatorEnrollment } from './authenticator-enrollment';
 import { test, expect } from './fixtures';
+import { NewSecretForm } from './new-secret';
 import { Overview } from './overview';
 import { freshTotp } from './totp';
 
@@ -101,26 +104,18 @@ test('a non-administrator sees their own activity, the critical count and their 
     project,
   });
   await expect(page).toHaveURL(/\/Admin\/Users$/);
-  await page.goto('/Secrets/Create');
-  await page.getByLabel('Name', { exact: true }).fill(expiring);
-  await page.getByLabel('Secret value').fill(`e2e-${expiring}`);
-  await page.getByLabel('Project key').fill(project);
-  await page.getByLabel('Environment').selectOption({ label: 'Development' });
-  await page.getByLabel('Sensitivity').selectOption({ label: 'Internal' });
-  await page.getByLabel('TTL in days (0 = never expires)').fill('1');
-  await page.getByRole('button', { name: 'Encrypt and store' }).click();
+  const newSecret = new NewSecretForm(page);
+  await newSecret.open();
+  await newSecret.create({ name: expiring, project, sensitivity: 'Internal', ttlDays: '1' });
   await expect(page.getByRole('heading', { name: expiring, exact: true })).toBeVisible();
 
   const member = await (await browserHealth.newContext()).newPage();
-  await member.goto('/Account/Login');
-  await member.getByLabel('Username').fill(memberUsername);
-  await member.getByLabel('Password', { exact: true }).fill(password);
-  await member.getByRole('button', { name: 'Continue', exact: true }).click();
+  const signIn = new AccountSignIn(member);
+  await signIn.open();
+  await signIn.submitPassword(memberUsername, password);
   await expect(member).toHaveURL(/\/Account\/EnrollTotp$/);
-  // eslint-disable-next-line playwright/no-raw-locators -- Enrollment displays the throwaway authenticator seed as unlabelled text.
-  const seed = await member.locator('.secret-code').innerText();
-  await member.getByLabel('Confirmation code').fill(await freshTotp(seed));
-  await member.getByRole('button', { name: 'Confirm enrollment', exact: true }).click();
+  const enrollment = new AuthenticatorEnrollment(member);
+  await enrollment.confirm(await freshTotp(await enrollment.secret.innerText()));
   await expect(member).toHaveURL(/\/Secrets$/);
   memberCookies = await member.context().cookies();
 

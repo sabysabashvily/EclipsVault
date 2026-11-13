@@ -11,11 +11,10 @@ namespace EclipsVault.Core.Application.Dashboard;
 /// vault-wide critical count, and for an administrator alone the vault-wide activity and the staff
 /// account count.
 ///
-/// <para><b>Why it holds no secret repository.</b> It used to fetch every active secret itself, so
-/// the "Expiring soon" table and the active-secret counts described the whole vault to whoever was
-/// looking — including secrets in projects the caller cannot open, cannot list, and cannot know
-/// exist. Taking the visible set as an argument means the ABAC filter cannot be forgotten: there is
-/// no unfiltered source in reach. The caller is responsible for handing in rows that have already
+/// <para><b>Why it holds no secret repository.</b> A secret's name or expiry discloses that it exists,
+/// so the "Expiring soon" table and the counts may describe only secrets the caller could open.
+/// Taking the visible set as an argument means the ABAC filter cannot be forgotten: there is no
+/// unfiltered source in reach. The caller is responsible for handing in rows that have already
 /// been through the same authorization handler that gates opening one.</para>
 /// </summary>
 public sealed class DashboardService : IDashboardService

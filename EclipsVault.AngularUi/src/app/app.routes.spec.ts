@@ -1,4 +1,9 @@
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { TestBed } from '@angular/core/testing';
+import { Title } from '@angular/platform-browser';
 import { Route, UrlSegment, UrlSegmentGroup } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
+import { appConfig } from './app.config';
 import { ProfilePage } from './profile/profile-page';
 import { ChangePasswordPage } from './profile/change-password-page';
 import { AccessPage } from './access/access-page';
@@ -34,10 +39,14 @@ function routeFor(url: string): Route | undefined {
 
 describe('routes', () => {
   it('opens the Overview at the root', async () => {
-    const route = routes.find((candidate) => candidate.path === '');
-    expect(route?.pathMatch).toBe('full');
-    expect(route?.title).toBe('Overview — EclipsVault');
-    expect(await route?.loadComponent?.()).toBe(OverviewPage);
+    TestBed.configureTestingModule({
+      providers: [...appConfig.providers, provideHttpClientTesting()],
+    });
+    const harness = await RouterTestingHarness.create();
+
+    expect(await harness.navigateByUrl('/', OverviewPage)).toBeInstanceOf(OverviewPage);
+    expect(TestBed.inject(Title).getTitle()).toBe('Overview — EclipsVault');
+    TestBed.resetTestingModule();
   });
   it.each(['/Home', '/hOmE/InDeX'])('opens the Overview at %s', async (url) => {
     expect(await routeFor(url)?.loadComponent?.()).toBe(OverviewPage);
@@ -223,7 +232,6 @@ describe('routes', () => {
   );
 
   it.each([
-    '/',
     '/Index',
     '/Accessories',
     '/Access/Index/extra',

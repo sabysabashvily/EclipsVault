@@ -27,7 +27,11 @@ public class DashboardServiceTests
             Now.AddDays(-10), expires);
 
     private static DashboardService Build() =>
-        new(new FakeUsers(), new FakeAudit(), new FixedClock(Now));
+        new(new FakeUsers(), new FakeAudit(Alice, own: [], vault: []), new FixedClock(Now));
+
+    private static AuditEntryDto Reveal(string username, string secret) =>
+        new(Guid.NewGuid(), Now.AddMinutes(-5), username, "10.0.0.5", AuditAction.SecretRevealed, "Secret",
+            secret, Details: null, IsCritical: false);
 
     private static AuditEntryDto Denial(string username) =>
         new(Guid.NewGuid(), Now.AddMinutes(-5), username, "10.0.0.5", AuditAction.SecretAccessDenied, "Secret",
@@ -38,7 +42,7 @@ public class DashboardServiceTests
     {
         var users = new FakeUsers();
 
-        var dto = await new DashboardService(users, new FakeAudit(), new FixedClock(Now))
+        var dto = await new DashboardService(users, new FakeAudit(Alice, own: [], vault: []), new FixedClock(Now))
             .GetAsync([], Alice, isAdministrator: false, CancellationToken.None);
 
         Assert.Equal(0, users.Listed);
@@ -50,28 +54,38 @@ public class DashboardServiceTests
     {
         var users = new FakeUsers(new User(), new User(), new User());
 
-        var dto = await new DashboardService(users, new FakeAudit(), new FixedClock(Now))
+        var dto = await new DashboardService(users, new FakeAudit(Alice, own: [], vault: []), new FixedClock(Now))
             .GetAsync([], Administrator, isAdministrator: true, CancellationToken.None);
 
         Assert.Equal(3, dto.StaffAccounts);
     }
 
     [Fact]
-    public async Task A_non_administrator_gets_their_own_activity_by_account_id_and_an_administrator_the_vaults()
+    public async Task A_non_administrator_gets_the_activity_of_their_own_account()
     {
-        var audit = new FakeAudit();
-        var service = new DashboardService(new FakeUsers(), audit, new FixedClock(Now));
+        var audit = new FakeAudit(Alice, own: [Reveal("alice", "ALICE_API_KEY")], vault: [Reveal("bob", "BOB_DB_PASSWORD")]);
 
-        await service.GetAsync([], Alice, isAdministrator: false, CancellationToken.None);
-        await service.GetAsync([], Administrator, isAdministrator: true, CancellationToken.None);
+        var dto = await new DashboardService(new FakeUsers(), audit, new FixedClock(Now))
+            .GetAsync([], Alice, isAdministrator: false, CancellationToken.None);
 
-        Assert.Equal(["account " + Alice, "the vault"], audit.Requests);
+        Assert.Equal(["ALICE_API_KEY"], dto.RecentEvents.Select(entry => entry.ResourceName));
+    }
+
+    [Fact]
+    public async Task An_administrator_gets_the_vaults_activity()
+    {
+        var audit = new FakeAudit(Alice, own: [Reveal("alice", "ALICE_API_KEY")], vault: [Reveal("bob", "BOB_DB_PASSWORD")]);
+
+        var dto = await new DashboardService(new FakeUsers(), audit, new FixedClock(Now))
+            .GetAsync([], Administrator, isAdministrator: true, CancellationToken.None);
+
+        Assert.Equal(["BOB_DB_PASSWORD"], dto.RecentEvents.Select(entry => entry.ResourceName));
     }
 
     [Fact]
     public async Task A_denial_in_a_non_administrators_own_activity_does_not_name_the_secret()
     {
-        var audit = new FakeAudit(Denial("alice"));
+        var audit = new FakeAudit(Alice, own: [Denial("alice")], vault: []);
 
         var dto = await new DashboardService(new FakeUsers(), audit, new FixedClock(Now))
             .GetAsync([], Alice, isAdministrator: false, CancellationToken.None);
@@ -84,7 +98,7 @@ public class DashboardServiceTests
     [Fact]
     public async Task A_denial_in_the_vaults_activity_names_the_secret_for_an_administrator()
     {
-        var audit = new FakeAudit(Denial("alice"));
+        var audit = new FakeAudit(Alice, own: [], vault: [Denial("alice")]);
 
         var dto = await new DashboardService(new FakeUsers(), audit, new FixedClock(Now))
             .GetAsync([], Administrator, isAdministrator: true, CancellationToken.None);
@@ -95,7 +109,18 @@ public class DashboardServiceTests
     [Fact]
     public async Task The_expiring_count_covers_every_expiring_secret_while_the_list_stops_at_eight()
     {
-        var visible = Enumerable.Range(1, 9).Select(day => Secret($"EXPIRING_{day}", "WEB", Now.AddHours(day))).ToArray();
+        SecretSummaryDto[] visible =
+        [
+            Secret("EXPIRING_1", "WEB", Now.AddHours(1)),
+            Secret("EXPIRING_2", "WEB", Now.AddHours(2)),
+            Secret("EXPIRING_3", "WEB", Now.AddHours(3)),
+            Secret("EXPIRING_4", "WEB", Now.AddHours(4)),
+            Secret("EXPIRING_5", "WEB", Now.AddHours(5)),
+            Secret("EXPIRING_6", "WEB", Now.AddHours(6)),
+            Secret("EXPIRING_7", "WEB", Now.AddHours(7)),
+            Secret("EXPIRING_8", "WEB", Now.AddHours(8)),
+            Secret("EXPIRING_9", "WEB", Now.AddHours(9)),
+        ];
 
         var dto = await Build().GetAsync(visible, Alice, isAdministrator: false, CancellationToken.None);
 
@@ -175,21 +200,14 @@ public class DashboardServiceTests
         public Task ClearFailedAttemptsAsync(User user, CancellationToken ct) => throw new NotSupportedException();
     }
 
-    private sealed class FakeAudit(params AuditEntryDto[] recent) : IAuditLogReader
+    /// <summary>The vault's newest rows, and the rows of one account, which only its id finds.</summary>
+    private sealed class FakeAudit(Guid account, AuditEntryDto[] own, AuditEntryDto[] vault) : IAuditLogReader
     {
-        public List<string> Requests { get; } = [];
-
         public Task<IReadOnlyList<AuditEntryDto>> ListRecentAsync(int count, string? username, CancellationToken ct)
-        {
-            Requests.Add(username is null ? "the vault" : "user " + username);
-            return Task.FromResult<IReadOnlyList<AuditEntryDto>>(recent);
-        }
+            => Task.FromResult<IReadOnlyList<AuditEntryDto>>(username is null ? vault : []);
 
         public Task<IReadOnlyList<AuditEntryDto>> ListForActorAsync(Guid actorUserId, int skip, int take, CancellationToken ct)
-        {
-            Requests.Add("account " + actorUserId);
-            return Task.FromResult<IReadOnlyList<AuditEntryDto>>(recent);
-        }
+            => Task.FromResult<IReadOnlyList<AuditEntryDto>>(actorUserId == account ? own : []);
 
         public Task<int> CountCriticalSinceAsync(DateTimeOffset sinceUtc, CancellationToken ct)
             => Task.FromResult(0);

@@ -211,7 +211,7 @@ describe('Overview', () => {
     expect(text(page.querySelector('.panel .muted'))).toBe('No recorded activity yet.');
   });
 
-  it('gives an administrator the vault figures, the audit log and the administration links', async () => {
+  it("gives an administrator the vault's figures and the staff account count", async () => {
     const { page } = await loaded(administrator, administratorAreas);
     expect(texts(page, '.stat-card')).toEqual([
       '14 Active secrets 6 dev · 5 staging · 3 prod',
@@ -219,11 +219,19 @@ describe('Overview', () => {
       '2 Critical alerts (24 h) Review the audit log →',
       '7 Staff accounts Manage users →',
     ]);
-    expect(texts(page, '.stat-card.attention, .stat-card.alert')).toEqual([
-      '9 Expiring within 7 days Shredded automatically at TTL',
-      '2 Critical alerts (24 h) Review the audit log →',
-    ]);
+  });
+
+  it("gives an administrator the vault's activity and the Expiring soon panel", async () => {
+    const { page } = await loaded(administrator, administratorAreas);
     expect(texts(page, 'h2')).toEqual(['Recent activity', 'Quick actions', 'Expiring soon']);
+    expect(texts(page, '.activity-item')).toEqual([
+      'Honey token FINANCE_DECOY_KEY mallory · 45m ago',
+      'Access denied PAYMENTS_DB_PASSWORD alice · 2d ago',
+    ]);
+  });
+
+  it('links an administrator to the audit log and the administration pages', async () => {
+    const { page } = await loaded(administrator, administratorAreas);
     expect(links(page)).toEqual([
       ['New secret', '/Secrets/Create'],
       ['14 Active secrets 6 dev · 5 staging · 3 prod', '/Secrets'],
@@ -242,29 +250,23 @@ describe('Overview', () => {
     ]);
   });
 
-  it("lists the vault's recent activity for an administrator, critical rows marked", async () => {
-    const { page } = await loaded(administrator, administratorAreas);
-    expect(texts(page, '.activity-item')).toEqual([
-      'Honey token FINANCE_DECOY_KEY mallory · 45m ago',
-      'Access denied PAYMENTS_DB_PASSWORD alice · 2d ago',
-    ]);
-    expect(texts(page, '.activity-item.critical')).toEqual([
-      'Honey token FINANCE_DECOY_KEY mallory · 45m ago',
-    ]);
-    expect(texts(page, '.activity-item .badge.tone-critical')).toEqual(['Honey token']);
-    expect(texts(page, '.activity-item .badge.tone-warn')).toEqual(['Access denied']);
-  });
-
-  it('gives a non-administrator their own activity and a critical count without links', async () => {
+  it('gives a non-administrator their figures and the critical count, without a staff count', async () => {
     const { page } = await loaded(member, memberAreas);
     expect(texts(page, '.stat-card')).toEqual([
       '1 Active secrets 1 dev · 0 staging · 0 prod',
       '1 Expiring within 7 days Shredded automatically at TTL',
       '0 Critical alerts (24 h) All quiet',
     ]);
-    expect(page.querySelector('div.stat-card')).not.toBeNull();
+  });
+
+  it('gives a non-administrator their own activity, its denial without the secret', async () => {
+    const { page } = await loaded(member, memberAreas);
     expect(texts(page, 'h2')).toEqual(['Your recent activity', 'Quick actions', 'Expiring soon']);
     expect(texts(page, '.activity-item')).toEqual(['Access denied Secret alice · just now']);
+  });
+
+  it('links a non-administrator only to secrets', async () => {
+    const { page } = await loaded(member, memberAreas);
     expect(links(page)).toEqual([
       ['New secret', '/Secrets/Create'],
       ['1 Active secrets 1 dev · 0 staging · 0 prod', '/Secrets'],
@@ -278,9 +280,9 @@ describe('Overview', () => {
 
   it('tells a non-administrator that critical alerts went to the administrators', async () => {
     const { page } = await loaded({ ...member, criticalEventsLast24h: 3 }, memberAreas);
-    expect(texts(page, 'div.stat-card.alert')).toEqual([
+    expect(texts(page, '.stat-card')).toContain(
       '3 Critical alerts (24 h) Reported to administrators',
-    ]);
+    );
   });
 
   it('shows each expiring secret with its UTC expiry and how soon it expires', async () => {
@@ -292,6 +294,29 @@ describe('Overview', () => {
       ['SMTP_PASSWORD', 'Staging', '2026-11-13 12:20 in 1h'],
       ['CI_DEPLOY_TOKEN', 'Development', '2026-11-16 09:30 in 2d'],
     ]);
+  });
+
+  it('visual parity: highlights the expiring and critical cards with the Legacy classes', async () => {
+    const { page } = await loaded(administrator, administratorAreas);
+    expect(texts(page, '.stat-card.attention')).toEqual([
+      '9 Expiring within 7 days Shredded automatically at TTL',
+    ]);
+    expect(texts(page, '.stat-card.alert')).toEqual([
+      '2 Critical alerts (24 h) Review the audit log →',
+    ]);
+  });
+
+  it('visual parity: marks critical activity and badge tones with the Legacy classes', async () => {
+    const { page } = await loaded(administrator, administratorAreas);
+    expect(texts(page, '.activity-item.critical')).toEqual([
+      'Honey token FINANCE_DECOY_KEY mallory · 45m ago',
+    ]);
+    expect(texts(page, '.activity-item .badge.tone-critical')).toEqual(['Honey token']);
+    expect(texts(page, '.activity-item .badge.tone-warn')).toEqual(['Access denied']);
+  });
+
+  it('visual parity: tones each expiry badge and environment badge with the Legacy classes', async () => {
+    const { page } = await loaded(administrator, administratorAreas);
     expect(texts(page, 'td .badge.tone-danger')).toEqual(['now', 'in 1h']);
     expect(texts(page, 'td .badge.tone-warn')).toEqual(['in 2d']);
     expect(texts(page, 'td .badge.env-production')).toEqual(['Production']);

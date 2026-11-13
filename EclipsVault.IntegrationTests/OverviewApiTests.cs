@@ -119,10 +119,15 @@ public sealed class OverviewApiTests(VaultFixture vault)
     public async Task The_expiring_count_covers_every_expiring_secret_while_the_list_stops_at_eight()
     {
         const string project = "IT-OVERVIEW-NINE";
-        for (var hours = 1; hours <= 9; hours++)
-        {
-            await OverviewSecrets.CreateAsync(vault, $"it-overview-nine-{hours}", project, expiresInDays: hours / 24.0);
-        }
+        await OverviewSecrets.CreateAsync(vault, "it-overview-nine-1", project, expiresInDays: 0.5);
+        await OverviewSecrets.CreateAsync(vault, "it-overview-nine-2", project, expiresInDays: 1.0);
+        await OverviewSecrets.CreateAsync(vault, "it-overview-nine-3", project, expiresInDays: 1.5);
+        await OverviewSecrets.CreateAsync(vault, "it-overview-nine-4", project, expiresInDays: 2.0);
+        await OverviewSecrets.CreateAsync(vault, "it-overview-nine-5", project, expiresInDays: 2.5);
+        await OverviewSecrets.CreateAsync(vault, "it-overview-nine-6", project, expiresInDays: 3.0);
+        await OverviewSecrets.CreateAsync(vault, "it-overview-nine-7", project, expiresInDays: 3.5);
+        await OverviewSecrets.CreateAsync(vault, "it-overview-nine-8", project, expiresInDays: 4.0);
+        await OverviewSecrets.CreateAsync(vault, "it-overview-nine-9", project, expiresInDays: 4.5);
         var member = await vault.SignInNewAccountAsync("it-overview-nine", IPAddress.Parse("10.163.0.3"), project: project);
 
         var overview = await member.Client.GetFromJsonAsync<OverviewResponse>("/api/ui/overview");
@@ -216,7 +221,10 @@ public sealed class OverviewApiTests(VaultFixture vault)
         Assert.Equal(JsonValueKind.Null, exportRow.GetProperty("Resource").ValueKind);
     }
 
-    /// <summary>A refused by-id action's row, through the vault's own fail-closed sink, as 7b and 7c write it.</summary>
+    /// <summary>
+    /// A refused by-id action's row, written through the vault's own fail-closed sink, the only writer
+    /// of standalone audit rows. These tests are about how the row reads, not the refusal behind it.
+    /// </summary>
     private async Task WriteDenialAsync(Guid accountId, string username, string secretName)
     {
         using var scope = vault.Services.CreateScope();
