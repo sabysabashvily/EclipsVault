@@ -18,5 +18,6 @@ public enum AdministratorAction
     DeleteServiceAccount,
     TrustNetwork,
     LiftBlock,
-    RemoveTrustedNetwork
+    RemoveTrustedNetwork,
+    ExportAuditTrail
 }

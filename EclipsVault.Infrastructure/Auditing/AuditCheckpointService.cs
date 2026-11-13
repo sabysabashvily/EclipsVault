@@ -16,6 +16,8 @@ public sealed class AuditCheckpointService : IAuditCheckpointService
 {
     private const string VerifyLockResource = "EclipsVault:AuditVerify";
 
+    private const string ExportLockResource = "EclipsVault:AuditExport";
+
     private const string AuditTrail = "AuditTrail";
 
     private readonly EclipsVaultDbContext _db;
@@ -99,39 +101,47 @@ public sealed class AuditCheckpointService : IAuditCheckpointService
         return latest is null ? null : ToDto(latest);
     }
 
-    public async Task<AuditBundle> ExportAsync(CancellationToken ct)
+    public async Task<AuditBundleExport> ExportAsync(CancellationToken ct)
     {
         // Soft licensing signal — never blocks the export.
         await _premiumUsage.RecordUseAsync(LicenseFeatures.AuditAttestation, ct);
 
-        // Snapshot the chained rows, then sign exactly the head we exported so the bundle is
-        // internally consistent (the "export" audit row written below lands after this head).
-        var rows = await _db.AuditLogs.AsNoTracking()
-            .Where(a => a.Sequence > 0)
-            .OrderBy(a => a.Sequence)
-            .Select(a => new AuditBundleRow(
-                a.Sequence, a.Id, a.TimestampUtc, a.UserId, a.Username, a.SourceIp, (int)a.Action,
-                a.ResourceType, a.ResourceId, a.ResourceName, a.Details, a.IsCritical,
-                a.PreviousHash!, a.EntryHash!, a.HashVersion))
-            .ToListAsync(ct);
-
-        var headSequence = rows.Count == 0 ? 0 : rows[^1].Sequence;
-        var headHash = rows.Count == 0 ? AuditRowHasher.GenesisHash : rows[^1].EntryHash;
-        var checkpoint = SignHead(headSequence, headHash);
-
-        await _audit.WriteAsync(new AuditEntry
+        // Owned by the database session, so it holds while the rows stream out, on every replica.
+        var turn = await _locks.TryAcquireAsync(_db, ExportLockResource, ct) ?? throw new AuditBusyException();
+        try
         {
-            Action = AuditAction.AuditBundleExported,
-            ResourceType = nameof(AuditCheckpoint),
-            Details = $"Exported a signed audit bundle of {rows.Count} row(s) at sequence {headSequence}"
-        }, ct);
+            // The export's own row lands after the signed head, so the bundle stays internally consistent.
+            var (headSequence, headHash) = await HeadAsync(ct) ?? (0, AuditRowHasher.GenesisHash);
+            var checkpoint = SignHead(headSequence, headHash);
+            var chained = _db.AuditLogs.AsNoTracking().Where(a => a.Sequence > 0 && a.Sequence <= headSequence);
 
-        return new AuditBundle(
-            AuditBundleSchema.Current,
-            _clock.GetUtcNow(),
-            _signer.PublicKeySpki,
-            new AuditBundleCheckpoint(checkpoint.Sequence, checkpoint.ChainHeadHash, checkpoint.CreatedAtUtc, checkpoint.SigningKeyId, checkpoint.Signature),
-            rows);
+            await _audit.WriteAsync(new AuditEntry
+            {
+                Action = AuditAction.AuditBundleExported,
+                ResourceType = nameof(AuditCheckpoint),
+                Details = $"Exported a signed audit bundle of {await chained.CountAsync(ct)} row(s) at sequence {headSequence}"
+            }, ct);
+
+            var rows = chained
+                .OrderBy(a => a.Sequence)
+                .Select(a => new AuditBundleRow(
+                    a.Sequence, a.Id, a.TimestampUtc, a.UserId, a.Username, a.SourceIp, (int)a.Action,
+                    a.ResourceType, a.ResourceId, a.ResourceName, a.Details, a.IsCritical,
+                    a.PreviousHash!, a.EntryHash!, a.HashVersion))
+                .AsAsyncEnumerable();
+
+            return new AuditBundleExport(
+                _clock.GetAuditUtcNow(),
+                _signer.PublicKeySpki,
+                new AuditBundleCheckpoint(checkpoint.Sequence, checkpoint.ChainHeadHash, checkpoint.CreatedAtUtc, checkpoint.SigningKeyId, checkpoint.Signature),
+                rows,
+                turn);
+        }
+        catch
+        {
+            await turn.DisposeAsync();
+            throw;
+        }
     }
 
     private async Task<(long Sequence, string Hash)?> HeadAsync(CancellationToken ct)

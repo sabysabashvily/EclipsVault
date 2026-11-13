@@ -1,9 +1,7 @@
+using EclipsVault.Core.Application.Auditing;
 using EclipsVault.Core.Domain.Exceptions;
 
-namespace EclipsVault.Core.Application.Auditing;
-
-/// <summary>A persisted checkpoint, for display.</summary>
-public sealed record AuditCheckpointDto(long Sequence, string ChainHeadHash, DateTimeOffset CreatedAtUtc, string SigningKeyId);
+namespace EclipsVault.Core.Application.Abstractions;
 
 /// <summary>
 /// Creates signed checkpoints over the audit hash chain, verifies the trail against them, and
@@ -31,8 +29,11 @@ public interface IAuditCheckpointService
     string SigningKeyId { get; }
 
     /// <summary>
-    /// Builds a self-contained bundle — all chained rows, a fresh signed checkpoint over the
-    /// current head, and the public key — ready to serialize and hand to an external auditor.
+    /// Signs the committed head and records the export, then returns a bundle of every chained row up
+    /// to that head, with the signed checkpoint and the public key, for an external auditor. Nothing
+    /// is returned unless the export is recorded. The export holds its turn until disposed.
     /// </summary>
-    Task<AuditBundle> ExportAsync(CancellationToken ct);
+    /// <exception cref="AuditBusyException">Another export is running, on any replica.</exception>
+    /// <exception cref="AuditWriteFailedException">The export could not be recorded.</exception>
+    Task<AuditBundleExport> ExportAsync(CancellationToken ct);
 }

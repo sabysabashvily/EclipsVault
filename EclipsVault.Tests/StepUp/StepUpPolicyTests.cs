@@ -62,6 +62,7 @@ public class StepUpPolicyTests
     [InlineData(AdministratorAction.TrustNetwork, true)]
     [InlineData(AdministratorAction.LiftBlock, true)]
     [InlineData(AdministratorAction.RemoveTrustedNetwork, false)]
+    [InlineData(AdministratorAction.ExportAuditTrail, true)]
     public void Stale_administrator_grants_require_proof_independently_of_the_reveal_threshold(AdministratorAction action, bool required)
         => Assert.Equal(required, Service(minimum: SensitivityLevel.TopSecret).IsRequired(action, Now.AddMinutes(-11), Now));
 

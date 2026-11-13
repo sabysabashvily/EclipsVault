@@ -298,3 +298,70 @@ interceptor has no `SaveChangesCanceledAsync`.
 To restart: in this worktree, check `area-6b-audit-log` and a clean tree, run `scripts/check.sh`, then the
 audit integration classes with and without `ECLIPSVAULT_TEST_DATABASE_PROVIDER=Postgres`. #142 ran on its
 own branch `area-6b-142` from `bb7e543`; the coordinator merges it here after this commit.
+
+## Delivery: 6b ticket 3 (#142)
+
+Branch `area-6b-142`, worktree `/Users/sabasabashvili/.t3/worktrees/EclipseVault/area-6b-142`,
+base `bb7e543`, following the owner's separate-worktree launch override. Nothing pushed, no PR.
+
+Code commits:
+
+- `6ad493e` streams the audit bundle after recording it, behind fresh proof. Original author
+  Claude Opus 5.5 high.
+- `f824e99` proves concurrent export refusal over real HTTP, derives the filename from the
+  normalized export timestamp, moves the checkpoint port into Abstractions, and simplifies the
+  streaming unit tests with literal v2 JSON. Review fixes by GPT Sol 6.1 xhigh after the owner
+  resumed the thread on that provider.
+- `e85dbaa` initializes the one-time licensing reminder before holding the audit chain in the
+  HTTP race test, removing its dependency on another test having used audit attestation first.
+
+Export takes a cluster-wide session lock of its own, signs the committed head, writes
+`AuditBundleExported` through `IAuditSink`, then streams rows through that head. Its lock lives
+until the export is disposed. A recording failure sends no attachment or bundle bytes and leaves
+no export row. Legacy `POST /Audit/Export` requires fresh sign-in or step-up and is no-store.
+Schema v2, indentation and the filename format stay compatible. No database model or Angular
+source change.
+
+A2 and A5 failed first at the base on both databases, as did the original concurrency test.
+The HTTP race later failed alone on a fresh PostgreSQL fixture with a 503 instead of the busy
+refusal; the setup fix passes that isolated test on both providers. Original red and green runs
+are retained in `logs/ticket-142/`.
+
+Checks on .NET 10.0.404, with NuGetAudit enabled:
+
+- Locked restore, Release build with zero warnings and 921 unit tests through `scripts/check.sh`.
+- Focused PostgreSQL audit integration tests 14/14 at `f824e99`; isolated HTTP export race 1/1
+  on PostgreSQL and 1/1 on SQL Server at `e85dbaa`.
+- Full PostgreSQL-mode run at `f824e99`: 1,126 passed, 73 failed, zero skipped, 1,199 total,
+  15m32s, no hang. All failures were SQL Server fixture-setup timeouts in 16 untouched classes.
+  Those exact classes pass 73/73 in a filtered run with collection parallelism disabled, 45s.
+  See `logs/ticket-142/full-suite-failures.md`; the failed full run is retained.
+- Full SQL Server-mode run at `e85dbaa`: 1,199/1,199 passed, 20.62 minutes. It ran every test
+  with `xUnit.ParallelizeTestCollections=false` on the 4 GB Docker host. Internal race-test callers
+  remain concurrent; no timeout, retry or tracked runner setting changed.
+- Format verification, both providers' pending-model checks, six hook tests, 20 unchanged
+  `AuditBundleVerifierTests`, and the real offline verifier with the public key pinned, VALID.
+
+Standards r2 and Spec r3, fresh GPT Sol 6.1 xhigh delegates, close all five findings. The
+small review fixes and re-checks share a model; the original implementation and its first GPT
+reviews used different models. Reports and the finding-by-finding ledger are in
+`logs/ticket-142/review-*.md`.
+
+**Security:** the original `security-reviewer` and a retry both hit the five-hour usage limit before a
+verdict. After the reset, a fresh Claude Opus 5.5 high `security-reviewer` reviewed the whole
+`bb7e543..4590de2` diff: security PASS, and readability of the GPT-authored commits PASS, with no
+findings (`logs/ticket-142/review-security-opus-final.md`). No model was substituted.
+
+A later full PostgreSQL-mode run at `4590de2` with collection parallelism disabled passed 1,199/1,199 in
+13.4 minutes (`logs/ticket-142/coordinator-postgres-result.md`). The earlier failed default-mode run is
+kept and is not rewritten by this pass.
+
+For the owner and #143: the existing step-up title says "Confirm it's you before granting access."
+Legacy has no step-up dialog and shows the raw stale-session JSON. Legacy busy refusal uses the
+existing 400 error-page redirect; the UI API's `409 audit_busy` mapping belongs to #143.
+
+To restart, confirm this worktree and branch with a clean tracked state; stop and report if the
+coordinator moved HEAD. Read `logs/ticket-142/final-report.md`, `restart.md`, `review-ledger.md`
+and `review-security-blocked.md`. Source `logs/ticket-142/env.sh` before every .NET command.
+Run only one integration suite at a time and preserve failed evidence. The coordinator merges this
+branch into `area-6b-audit-log` after this commit; #143 starts from that merge.

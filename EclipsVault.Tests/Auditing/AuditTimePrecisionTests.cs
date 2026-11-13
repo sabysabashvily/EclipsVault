@@ -48,9 +48,14 @@ public class AuditTimePrecisionTests
         public Task WriteAsync(AuditEntry entry, CancellationToken ct) => Task.CompletedTask;
     }
 
-    private sealed class UnusedLocks : ISessionLocker
+    private sealed class GrantedLocks : ISessionLocker
     {
-        public Task<IAsyncDisposable?> TryAcquireAsync(DbContext db, string resource, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IAsyncDisposable?> TryAcquireAsync(DbContext db, string resource, CancellationToken ct) => Task.FromResult<IAsyncDisposable?>(new Held());
+
+        private sealed class Held : IAsyncDisposable
+        {
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
     }
 
     // This fixture has one writer on one SQLite connection; provider lock behavior is covered by integration tests.
@@ -81,14 +86,28 @@ public class AuditTimePrecisionTests
         await using var vault = await Vault.OpenAsync();
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var service = new AuditCheckpointService(
-            vault.Db, new Signer(key), new NoOpAuditSink(), new FixedClock(ClockReading), new RecordingPremiumFeatureUsage(), new UnusedLocks());
+            vault.Db, new Signer(key), new NoOpAuditSink(), new FixedClock(ClockReading), new RecordingPremiumFeatureUsage(), new GrantedLocks());
 
-        var checkpoint = (await service.ExportAsync(CancellationToken.None)).Checkpoint;
+        await using var export = await service.ExportAsync(CancellationToken.None);
+        var checkpoint = export.Checkpoint;
 
         var expectedTime = new DateTimeOffset(2026, 11, 13, 12, 0, 0, 123, 456, TimeSpan.Zero);
         Assert.Equal(expectedTime, checkpoint.CreatedAtUtc);
         var canonical = AuditCheckpointCanonical.Bytes(checkpoint.Sequence, checkpoint.ChainHeadHash, expectedTime);
         Assert.True(key.VerifyData(canonical, checkpoint.Signature, HashAlgorithmName.SHA256));
+    }
+
+    [Fact]
+    public async Task The_bundle_file_name_uses_the_exports_clock_reading()
+    {
+        await using var vault = await Vault.OpenAsync();
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var service = new AuditCheckpointService(
+            vault.Db, new Signer(key), new NoOpAuditSink(), new FixedClock(ClockReading), new RecordingPremiumFeatureUsage(), new GrantedLocks());
+
+        await using var export = await service.ExportAsync(CancellationToken.None);
+
+        Assert.Equal("eclipsvault-audit-bundle-20261113-120000.json", export.FileName);
     }
 
     private sealed class Vault : IAsyncDisposable
