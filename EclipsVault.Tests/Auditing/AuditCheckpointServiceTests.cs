@@ -30,6 +30,16 @@ public class AuditCheckpointServiceTests
         public Task<IAsyncDisposable?> TryAcquireAsync(DbContext db, string resource, CancellationToken ct) => throw new NotSupportedException();
     }
 
+    private sealed class GrantedLocks : ISessionLocker
+    {
+        public Task<IAsyncDisposable?> TryAcquireAsync(DbContext db, string resource, CancellationToken ct) => Task.FromResult<IAsyncDisposable?>(new Held());
+
+        private sealed class Held : IAsyncDisposable
+        {
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
+    }
+
     [Fact]
     public async Task Creating_a_checkpoint_records_premium_usage()
     {
@@ -70,11 +80,11 @@ public class AuditCheckpointServiceTests
         await db.Database.EnsureCreatedAsync();
 
         var usage = new RecordingPremiumFeatureUsage();
-        var service = new AuditCheckpointService(db, new FakeSigner(), new NoOpAuditSink(), TimeProvider.System, usage, new UnusedLocks());
+        var service = new AuditCheckpointService(db, new FakeSigner(), new NoOpAuditSink(), TimeProvider.System, usage, new GrantedLocks());
 
-        var bundle = await service.ExportAsync(CancellationToken.None);
+        await using var export = await service.ExportAsync(CancellationToken.None);
 
-        Assert.Empty(bundle.Rows); // empty chain → no rows
+        Assert.Equal(0, export.Checkpoint.Sequence); // empty chain → signed at genesis
         Assert.Equal(LicenseFeatures.AuditAttestation, Assert.Single(usage.Recorded));
     }
 }

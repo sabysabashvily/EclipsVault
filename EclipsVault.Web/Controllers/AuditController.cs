@@ -1,10 +1,10 @@
-using System.Text.Json;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Extensions;
 using EclipsVault.Web.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Net.Http.Headers;
 
 namespace EclipsVault.Web.Controllers;
 
@@ -16,17 +16,17 @@ public sealed class AuditController : Controller
 
     private const string AuditTrail = "AuditTrail";
 
-    private static readonly JsonSerializerOptions BundleJson = new() { WriteIndented = true };
-
     private readonly IAuditLogReader _reader;
     private readonly IAuditCheckpointService _checkpoints;
     private readonly IAuditSink _audit;
+    private readonly AdministratorStepUp _stepUp;
 
-    public AuditController(IAuditLogReader reader, IAuditCheckpointService checkpoints, IAuditSink audit)
+    public AuditController(IAuditLogReader reader, IAuditCheckpointService checkpoints, IAuditSink audit, AdministratorStepUp stepUp)
     {
         _reader = reader;
         _checkpoints = checkpoints;
         _audit = audit;
+        _stepUp = stepUp;
     }
 
     [HttpGet]
@@ -66,17 +66,27 @@ public sealed class AuditController : Controller
     }
 
     /// <summary>
-    /// Downloads a self-contained, signed bundle of the whole audit trail. It can be verified
-    /// offline with the <c>EclipsVault.AuditVerifier</c> tool — no access to this app or its
-    /// database required.
+    /// Downloads a self-contained, signed bundle of the whole audit trail, streamed once the export is
+    /// recorded. It can be verified offline with the <c>EclipsVault.AuditVerifier</c> tool — no access
+    /// to this app or its database required.
     /// </summary>
     [HttpPost]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> Export(CancellationToken ct)
     {
-        var bundle = await _checkpoints.ExportAsync(ct);
-        var json = JsonSerializer.SerializeToUtf8Bytes(bundle, BundleJson);
-        var fileName = $"eclipsvault-audit-bundle-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.json";
-        return File(json, "application/json", fileName);
+        if (await _stepUp.RequireAsync(User, AdministratorAction.ExportAuditTrail, ct) is { } required)
+        {
+            return required;
+        }
+
+        // Headers are set only once the export is recorded, so a failure still gets the error page.
+        await using var export = await _checkpoints.ExportAsync(ct);
+        var disposition = new ContentDispositionHeaderValue("attachment");
+        disposition.SetHttpFileName($"eclipsvault-audit-bundle-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.json");
+        Response.ContentType = "application/json";
+        Response.Headers.ContentDisposition = disposition.ToString();
+        await export.WriteToAsync(Response.Body, ct);
+        return new EmptyResult();
     }
 
     private async Task<AuditIndexViewModel> BuildAsync(AuditIntegrityReport? integrity, CancellationToken ct)

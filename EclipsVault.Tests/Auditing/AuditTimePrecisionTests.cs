@@ -47,9 +47,14 @@ public class AuditTimePrecisionTests
         public Task WriteAsync(AuditEntry entry, CancellationToken ct) => Task.CompletedTask;
     }
 
-    private sealed class UnusedLocks : ISessionLocker
+    private sealed class GrantedLocks : ISessionLocker
     {
-        public Task<IAsyncDisposable?> TryAcquireAsync(DbContext db, string resource, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IAsyncDisposable?> TryAcquireAsync(DbContext db, string resource, CancellationToken ct) => Task.FromResult<IAsyncDisposable?>(new Held());
+
+        private sealed class Held : IAsyncDisposable
+        {
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
     }
 
     [Fact]
@@ -75,9 +80,10 @@ public class AuditTimePrecisionTests
         await using var vault = await Vault.OpenAsync();
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var service = new AuditCheckpointService(
-            vault.Db, new Signer(key), new NoOpAuditSink(), new FixedClock(ClockReading), new RecordingPremiumFeatureUsage(), new UnusedLocks());
+            vault.Db, new Signer(key), new NoOpAuditSink(), new FixedClock(ClockReading), new RecordingPremiumFeatureUsage(), new GrantedLocks());
 
-        var checkpoint = (await service.ExportAsync(CancellationToken.None)).Checkpoint;
+        await using var export = await service.ExportAsync(CancellationToken.None);
+        var checkpoint = export.Checkpoint;
 
         var stored = AuditCheckpointCanonical.Bytes(checkpoint.Sequence, checkpoint.ChainHeadHash, AsPostgresStores(checkpoint.CreatedAtUtc));
         Assert.True(key.VerifyData(stored, checkpoint.Signature, HashAlgorithmName.SHA256));

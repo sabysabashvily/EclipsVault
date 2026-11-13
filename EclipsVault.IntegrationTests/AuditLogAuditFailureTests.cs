@@ -7,7 +7,7 @@ using Xunit;
 namespace EclipsVault.IntegrationTests;
 
 /// <summary>
-/// Opening, verifying and checkpointing the audit trail happen only with their audit row. Each test
+/// Opening, verifying, checkpointing and exporting the audit trail happen only with their audit row. Each test
 /// signs in with auditing working, then rejects audit writes, so the audited action is the step that fails.
 /// </summary>
 [Collection(AuditFailureCollection.Name)]
@@ -77,6 +77,31 @@ public sealed class AuditLogAuditFailureTests(AuditFailureFixture failure)
             Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
             Assert.Equal(AuditUnavailablePage, response.Headers.Location?.OriginalString);
             Assert.Equal(checkpoints, await CheckpointCountAsync(vault));
+            Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
+        }
+        finally
+        {
+            await failure.RestoreAuditWritesAsync();
+        }
+    }
+
+    [Fact]
+    public async Task An_export_that_cannot_be_recorded_sends_no_bundle()
+    {
+        var vault = failure.Vault;
+        var admin = await vault.AdminClientAsync();
+        var token = await LegacyAccessRequests.TokenAsync(admin);
+        var before = await AuditTrail.HeadAsync(vault);
+
+        await failure.RejectAuditWritesAsync();
+        try
+        {
+            var response = await LegacyAuditPage.PostAsync(admin, "/Audit/Export", token);
+
+            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+            Assert.Equal(AuditUnavailablePage, response.Headers.Location?.OriginalString);
+            Assert.Null(response.Content.Headers.ContentDisposition);
+            Assert.Empty(await response.Content.ReadAsByteArrayAsync());
             Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         }
         finally
