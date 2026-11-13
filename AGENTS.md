@@ -43,7 +43,10 @@ file, tests and commit messages included, and the code-review Standards axis che
   opens; the ordinary vault follows the real clock, so only this host can prove the window rule.
 - A model change needs a migration in both sets: SQL Server (`EclipsVault.Infrastructure`) and PostgreSQL
   (`EclipsVault.Migrations.Postgres`). CI checks both; the exact `dotnet ef` commands are in
-  `.github/workflows/ci.yml`. For Postgres the startup project is `EclipsVault.Web`.
+  `.github/workflows/ci.yml`. For Postgres the startup project is `EclipsVault.Web`. Regenerate
+  `db/sqlserver/migrations.sql` and `db/postgres/migrations.sql` with the commands in `db/README.md`
+  and commit them in the same change. The `migrations` job fails, and names those commands, when
+  either file differs from a fresh generation.
 - Agent guardrail tests: `python3 -I -m unittest discover -s .claude/hooks -p 'test_*.py'`.
 - SBOM: `bash .github/sbom/sbom.sh` writes `sbom/sbom.json`, which the release signs and attests to the
   image. Both generators are locked: the CycloneDX dotnet tool in `dotnet-tools.json`, the CycloneDX
