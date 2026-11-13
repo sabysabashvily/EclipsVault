@@ -22,8 +22,9 @@ public sealed record AuditIntegrityReport(
 /// It walks the trail once, in sequence order, holding one entry at a time. Every entry must continue
 /// the chain from #1; every checkpoint needs a valid signature and the hash of the entry at its
 /// sequence; and the trail must reach the latest checkpoint. Checkpoints signed by another key are
-/// counted, not checked, because the vault holds only its current public key. The first problem in
-/// sequence order is the one reported.
+/// counted, not checked, because the vault holds only its current public key. A checkpoint counts as
+/// the current key's if it is labelled so or its signature verifies under that key. The first problem
+/// in sequence order is the one reported.
 /// </summary>
 public static class AuditChainVerifier
 {
@@ -33,11 +34,15 @@ public static class AuditChainVerifier
         byte[] signingKeySpki,
         CancellationToken ct)
     {
-        var keyId = AuditSigningKeyId.For(signingKeySpki);
-        var signed = checkpoints.Where(c => c.SigningKeyId == keyId).OrderBy(c => c.Sequence).ToList();
-        var notChecked = checkpoints.Count - signed.Count;
         using var key = ECDsa.Create();
         key.ImportSubjectPublicKeyInfo(signingKeySpki, out _);
+        var keyId = AuditSigningKeyId.For(signingKeySpki);
+        // The stored key id is not signed, so a checkpoint the current key did sign is checked whatever it is labelled.
+        var signed = checkpoints
+            .Where(c => c.SigningKeyId == keyId || IsValidlySigned(c, key))
+            .OrderBy(c => c.Sequence)
+            .ToList();
+        var notChecked = checkpoints.Count - signed.Count;
 
         long verified = 0;
         var matched = 0;

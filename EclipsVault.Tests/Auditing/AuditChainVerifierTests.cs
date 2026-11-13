@@ -33,6 +33,8 @@ public class AuditChainVerifierTests
         ["#2 rewritten and every later hash recomputed"] = (Chain(5, rewritten: 2), [Checkpoint(Trail[2], signedBy: VaultKey)]),
         ["checkpoint naming the vault's key, signed by another"] = (Trail, [Checkpoint(Trail[2], signedBy: OtherKey, namedAs: VaultKey)]),
         ["checkpoint signed by another key"] = (Trail, [Checkpoint(Trail[2], signedBy: OtherKey)]),
+        ["#2 rewritten, its checkpoint relabelled as another key's"] =
+            (Chain(5, rewritten: 2), [Checkpoint(Trail[2], signedBy: VaultKey, namedAs: OtherKey)]),
         ["empty, never signed"] = ([], []),
     };
 
@@ -56,6 +58,10 @@ public class AuditChainVerifierTests
         {
             "checkpoint signed by another key", AuditChainOutcome.Unanchored, 5, null, null, 0, 1,
             $"5 entries verified. {Unanchored} 1 checkpoint(s) signed by another key were not checked."
+        },
+        {
+            "#2 rewritten, its checkpoint relabelled as another key's", AuditChainOutcome.Tampered, 2, null, 3, 0, 0,
+            "Entry #3 does not match the signed checkpoint: the trail was rewritten. (First broken entry: #3.)"
         },
         { "empty, never signed", AuditChainOutcome.Unanchored, 0, null, null, 0, 0, $"0 entries verified. {Unanchored}" },
     };
