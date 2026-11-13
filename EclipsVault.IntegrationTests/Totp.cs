@@ -11,9 +11,27 @@ internal static class Totp
 {
     private const int StepSeconds = 30;
 
-    public static long CurrentStep() => DateTimeOffset.UtcNow.ToUnixTimeSeconds() / StepSeconds;
+    public static long CurrentStep() => StepAt(DateTimeOffset.UtcNow);
+
+    public static long StepAt(DateTimeOffset serverNow) => serverNow.ToUnixTimeSeconds() / StepSeconds;
 
     public static int SecondsLeftInStep() => StepSeconds - (int)(DateTimeOffset.UtcNow.ToUnixTimeSeconds() % StepSeconds);
+
+    /// <summary>
+    /// A step the server still accepts when it checks the code as late as one step after
+    /// <paramref name="serverNow"/>. Newer than <paramref name="spent"/> when a code was already used,
+    /// so enrollment cannot be replayed as the next sign-in.
+    /// </summary>
+    public static long StepStillAccepted(DateTimeOffset serverNow, long? spent = null)
+    {
+        var step = StepAt(serverNow);
+        if (spent is { } used && step <= used)
+        {
+            step = used + 1;
+        }
+
+        return step;
+    }
 
     /// <summary>A code for the next step, so it is newer than any code the sign-in already spent.</summary>
     public static string NextCode(string base32Secret) => Code(base32Secret, CurrentStep() + 1);
