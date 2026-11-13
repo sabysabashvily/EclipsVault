@@ -41,6 +41,10 @@ separate role.
 - **Bulk disclosure needs the same fresh proof as a grant.** Exporting the whole audit trail asks for
   a sign-in or step-up within `StepUp:MaxAuthAgeMinutes` (Area 6). Viewing, verifying and
   checkpointing the trail, and master key rotation, never ask: none discloses in bulk or grants access.
+- **Sharing and minting count as granting** (Area 7, ADR-0031). Sharing a secret at or above
+  `StepUp:MinimumSensitivity`, from its page or by approving an access request, and issuing a dynamic
+  credential for such a role need the same fresh proof as revealing it. Revoking a share or a lease
+  never asks.
 
 ## Consequences
 
