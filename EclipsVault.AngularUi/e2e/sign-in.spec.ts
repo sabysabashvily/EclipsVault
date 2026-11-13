@@ -2060,7 +2060,19 @@ test('a stale-session problem ends the real session through protected sign-out b
       new URL(response.url()).pathname === '/Account/Logout',
   );
   await page.getByRole('link', { name: 'My access', exact: true }).click();
-  expect((await logout).headers()['requestverificationtoken']).toBe(xsrf?.value);
+  const sent = await logout;
+  // headers() omits Cookie. /api/ui/me issues a new request token after the grid is visible,
+  // including on the navigation that ends the session, and Angular copies the cookie it sees
+  // when it builds this sign-out. The header has to match the cookie on this same request.
+  const xsrfAtSignOut = decodeURIComponent(
+    (await sent.allHeaders())['cookie']
+      ?.split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith('XSRF-TOKEN='))
+      ?.slice('XSRF-TOKEN='.length) ?? '',
+  );
+  expect(xsrfAtSignOut).not.toBe('');
+  expect(sent.headers()['requestverificationtoken']).toBe(xsrfAtSignOut);
   expect((await logoutResponse).status()).toBe(302);
   await expect(page).toHaveURL(/\/Account\/Login$/);
   expect((await context.cookies()).some((cookie) => cookie.name === 'EclipsVault.Session')).toBe(
