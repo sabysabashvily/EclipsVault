@@ -2050,6 +2050,18 @@ test('a stale-session problem ends the real session through protected sign-out b
     },
     { times: 1 },
   );
+  // /api/ui/me issues a new request token after the grid is already visible. The credential
+  // posts leave time for that Set-Cookie, and Angular copies whichever cookie it sees when it
+  // builds this sign-out, so the header is compared with the jar at that request.
+  let tokenAtSignOut: string | undefined;
+  await page.route('**/Account/Logout', async (route) => {
+    if (route.request().method() === 'POST') {
+      tokenAtSignOut = (await context.cookies()).find(
+        (cookie) => cookie.name === 'XSRF-TOKEN',
+      )?.value;
+    }
+    await route.continue();
+  });
   const logout = page.waitForRequest(
     (request) =>
       request.method() === 'POST' && new URL(request.url()).pathname === '/Account/Logout',
@@ -2060,7 +2072,9 @@ test('a stale-session problem ends the real session through protected sign-out b
       new URL(response.url()).pathname === '/Account/Logout',
   );
   await page.getByRole('link', { name: 'My access', exact: true }).click();
-  expect((await logout).headers()['requestverificationtoken']).toBe(xsrf?.value);
+  const sent = await logout;
+  expect(tokenAtSignOut).toBeDefined();
+  expect(sent.headers()['requestverificationtoken']).toBe(tokenAtSignOut);
   expect((await logoutResponse).status()).toBe(302);
   await expect(page).toHaveURL(/\/Account\/Login$/);
   expect((await context.cookies()).some((cookie) => cookie.name === 'EclipsVault.Session')).toBe(
