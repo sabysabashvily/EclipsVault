@@ -1,4 +1,4 @@
-using EclipsVault.Core.Application.Auditing;
+using EclipsVault.Core.Application.Abstractions;
 
 namespace EclipsVault.Core.Application.SignInHistory;
 

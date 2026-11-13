@@ -1,3 +1,4 @@
+using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Web.Authorization;
@@ -12,8 +13,9 @@ namespace EclipsVault.Web.Controllers.Ui;
 
 /// <summary>
 /// The audit trail: its newest entries, verification against signed checkpoints, new checkpoints and
-/// the signed bundle for an outside auditor. Each access is recorded first; if it cannot be, nothing
-/// is read or sent and the caller gets 503 <c>audit_unavailable</c>.
+/// the signed bundle for an outside auditor. Viewing is recorded before reading the page; Verify
+/// records its outcome before answering; Export records before its first byte. A checkpoint commits
+/// atomically with its audit row. Recording failure answers 503 <c>audit_unavailable</c>.
 /// </summary>
 [ApiController]
 [Route("api/ui/audit")]

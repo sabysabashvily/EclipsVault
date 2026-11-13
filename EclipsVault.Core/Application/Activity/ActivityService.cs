@@ -1,3 +1,4 @@
+using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Domain.Enums;
 
 namespace EclipsVault.Core.Application.Activity;
