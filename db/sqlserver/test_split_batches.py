@@ -24,8 +24,10 @@ class SplitBatchesTests(unittest.TestCase):
 
     def test_running_twice_changes_nothing(self):
         sql = "END;\n\nCOMMIT;\nGO\n"
+        expected = "END;\nGO\n\nCOMMIT;\nGO\n"
         once = split_batches(sql)
-        self.assertEqual(split_batches(once), once)
+        self.assertEqual(once, expected)
+        self.assertEqual(split_batches(once), expected)
 
 
 if __name__ == "__main__":
