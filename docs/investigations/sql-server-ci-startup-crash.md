@@ -1,9 +1,11 @@
 # SQL Server containers crash at startup in CI
 
-Finding only. The crashes are an engine bug in the pinned SQL Server 2025 image.
-Microsoft's fix is SQL Server 2025 CU12, and that image is not on MCR yet, so this
-change does not move the pin, share a container, or retry a start. ADR-0035 forbids
-a retry and a longer timeout.
+The crashes are an engine bug in the pinned SQL Server 2025 CU3 image.
+Microsoft's fix ships in SQL Server 2025 CU12
+([microsoft/mssql-docker#974](https://github.com/microsoft/mssql-docker/issues/974)).
+The pin moves to CU12 or later once that image is on MCR. Until then, a job that
+dies this way is rerun, and that rerun is an infrastructure restart. ADR-0035 still
+forbids retries in code and a longer timeout. This change does not move the pin.
 
 ## Cause
 
@@ -94,4 +96,10 @@ Counts of crashing jobs per class: `SqlServerEmailIdentityPersistenceTests` 2, `
 
 Three other SqlServer jobs failed before any container started, on `NU1902` for `System.Formats.Cbor`: runs 43109226998, 43115812905, and 43302359759.
 
-The runner image does not pick the victims. The same `ubuntu-26.04` image and the same kernel ran the 50 jobs that did not crash, including the next commit on `main`. The digest does: every crash prints the CU3 build stamp, and the published defect is that image's SQLPAL startup race, which concurrent starts make more likely. Putting the six parallel fixtures on one server would drop the peak from four to two and leave the race in place. CU12 is the change that removes it, and it is not published.
+The runner image does not pick the victims. The same `ubuntu-26.04` image and the same kernel ran the 50 jobs that did not crash, including the next commit on `main`. The digest does: every crash prints the CU3 build stamp, and the published defect is that image's SQLPAL startup race, which concurrent starts make more likely. Putting the six parallel fixtures on one server would drop the peak from four to two and leave the race in place.
+
+## What to do
+
+When `integration (SqlServer)` fails with `ContainerNotRunningException` and the container log shows `handle-crash.sh`, `Failed to load LSA`, or the CU3 build stamp `869cbfe2a28bbc5800059f48feda967144643fd64d79a439b5c6333420172b72`, rerun only that failed job. That is an infrastructure restart, not a test retry. ADR-0035 still forbids retries in code. Any other SQL Server failure is investigated.
+
+The pin in `VaultFixture.SqlServerImage`, and the same digest in the end-to-end compose file, moves to SQL Server 2025 CU12 or later once that image is on MCR. The defect and the fix are [microsoft/mssql-docker#974](https://github.com/microsoft/mssql-docker/issues/974).
