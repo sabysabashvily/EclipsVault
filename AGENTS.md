@@ -140,8 +140,8 @@ failure with short retention.
   release, and only warns when it is behind a non-security patch. The app loads framework
   libraries such as `System.Formats.Cbor` from the runtime image, which `dotnet list package
   --vulnerable` does not see. Move the pin. Never suppress the finding. Security releases also
-  come out of band, and a pin moved before the index lists its version fails with "is not in the
-  .NET release index" until the index catches up.
+  come out of band, and a pin moved before the index lists its version fails with "is not in the .NET
+  10.0 release index" (for that channel) until the index catches up.
 - `dotnet test --no-build` runs whatever binaries are already in `bin/`, possibly from another
   branch. Build first, or the result proves nothing.
 - Never report CI as green unless you have seen the check results yourself (`gh pr checks <n>`).

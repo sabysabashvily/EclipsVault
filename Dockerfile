@@ -9,7 +9,7 @@
 #   docker buildx imagetools inspect mcr.microsoft.com/dotnet/sdk:<sdk-version>     # copy the Digest: line
 #   docker buildx imagetools inspect mcr.microsoft.com/dotnet/aspnet:<runtime-version>
 # The security-scan job runs .github/dotnet-image-pin.py: it fails while a tag is behind a .NET security
-# release and warns while it is behind any newer patch.
+# release and only warns while it is behind non-security patches.
 # .NET pinned 2026-11-13 to runtime 10.0.15, the first patch with the System.Formats.Cbor fix:
 # ASP.NET apps load Cbor from the shared framework in this image, not from the NuGet package.
 

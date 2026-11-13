@@ -25,6 +25,11 @@ INDEX = {
     ],
 }
 
+def unreadable(problems: list) -> None:
+    problems.append(("", "::error::Could not read the .NET 10.0 release index"))
+    return None
+
+
 NODE = "FROM node:24.22.0-bookworm-slim@sha256:aaaa AS ui\n"
 
 
@@ -35,14 +40,14 @@ def dockerfile(sdk: str, aspnet: str | None) -> str:
     return text
 
 
-def run(text: str) -> tuple[int, str]:
-    """Run main() on a Dockerfile, with the fixture index in place of the network."""
+def run(text: str, index: dict | None = INDEX) -> tuple[int, str]:
+    """Run main() on a Dockerfile, with a fixture index in place of the network."""
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder) / "Dockerfile"
         path.write_text(text, encoding="utf-8")
         original_argv, original_fetch = sys.argv, pin.fetch_index
         sys.argv = ["dotnet-image-pin.py", str(path)]
-        pin.fetch_index = lambda channel, problems: INDEX
+        pin.fetch_index = lambda channel, problems: index if index is not None else unreadable(problems)
         output = io.StringIO()
         try:
             with redirect_stdout(output):
@@ -86,21 +91,24 @@ class DotnetImagePinTests(unittest.TestCase):
         self.assertIn("Dockerfile does not pin mcr.microsoft.com/dotnet/aspnet", output)
 
     def test_an_unreadable_index_fails(self):
-        def unreadable(channel, problems):
-            problems.append(("", "::error::Could not read the .NET 10.0 release index"))
-            return None
-
-        with tempfile.TemporaryDirectory() as folder:
-            path = Path(folder) / "Dockerfile"
-            path.write_text(dockerfile("10.0.405", "10.0.16"), encoding="utf-8")
-            original_argv, original_fetch = sys.argv, pin.fetch_index
-            sys.argv, pin.fetch_index = ["dotnet-image-pin.py", str(path)], unreadable
-            try:
-                with redirect_stdout(io.StringIO()):
-                    code = pin.main()
-            finally:
-                sys.argv, pin.fetch_index = original_argv, original_fetch
+        code, _output = run(dockerfile("10.0.405", "10.0.16"), index=None)
         self.assertEqual(1, code)
+
+    def test_an_sdk_pin_behind_a_security_release_fails(self):
+        code, output = run(dockerfile("10.0.403", "10.0.16"))
+        self.assertEqual(1, code)
+        self.assertIn("::error::mcr.microsoft.com/dotnet/sdk:10.0.403", output)
+
+    def test_an_sdk_listed_only_under_sdks_is_known(self):
+        code, output = run(dockerfile("10.0.115", "10.0.16"))
+        self.assertNotIn("is not in the .NET 10.0 release index", output)
+        self.assertEqual(1, code, output)
+
+    def test_a_pin_behind_a_latest_patch_that_is_itself_a_security_release_fails(self):
+        latest_is_security = {**INDEX, "releases": INDEX["releases"][1:]}
+        code, output = run(dockerfile("10.0.404", "10.0.14"), index=latest_is_security)
+        self.assertEqual(1, code)
+        self.assertIn("aspnet:10.0.14 is behind the latest patch 10.0.15, a security release", output)
 
     def test_previews_never_count_as_the_latest_patch(self):
         self.assertNotIn("10.0.0-rc.2.25502.107", pin.component_versions(INDEX, "aspnet"))
