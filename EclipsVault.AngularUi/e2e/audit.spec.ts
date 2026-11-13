@@ -1,13 +1,29 @@
 import { readFile } from 'node:fs/promises';
-import { test, expect } from './fixtures';
+import { test as browserTest, expect } from './fixtures';
 import { savedAdministratorCookies } from './administrator-cookies';
+import {
+  savedProofSetupTimeout,
+  waitForSavedAdministratorProofToExpire,
+} from './saved-administrator-proof';
 import { AuditLog } from './audit';
 import { freshTotp, currentTotpStep } from './totp';
+
+const test = browserTest.extend<{ auditWithExpiredProof: AuditLog }>({
+  auditWithExpiredProof: [
+    async ({ page }, use) => {
+      await page.context().addCookies(await savedAdministratorCookies());
+      await waitForSavedAdministratorProofToExpire(page.request);
+      const audit = new AuditLog(page);
+      await audit.open();
+      await use(audit);
+    },
+    { timeout: savedProofSetupTimeout },
+  ],
+});
 
 test.describe.configure({ mode: 'serial' });
 const refusedExport = { text: /403/, url: /\/api\/ui\/audit\/export$/ };
 
-// The saved administrator session signed in long before this project runs, so Export needs proof.
 test('the Audit log lists the newest entries, starting with this opening of it', async ({
   page,
 }) => {
@@ -51,12 +67,10 @@ test('the filter keeps only matching rows', async ({ page }) => {
 test('cancelling the proof for Export restores focus and downloads nothing', async ({
   page,
   browserHealth,
+  auditWithExpiredProof: audit,
 }) => {
-  await page.context().addCookies(await savedAdministratorCookies());
-  const audit = new AuditLog(page);
   let downloads = 0;
   page.on('download', () => downloads++);
-  await audit.open();
   browserHealth.expectConsoleError(refusedExport);
   await audit.export.click();
   await expect(audit.stepUp).toBeVisible();
@@ -68,12 +82,10 @@ test('cancelling the proof for Export restores focus and downloads nothing', asy
 test('Export behind a real authenticator code downloads the v2 bundle under its dated name', async ({
   page,
   browserHealth,
+  auditWithExpiredProof: audit,
 }) => {
   const directory = process.env['E2E_TEST_RESULTS'] || 'test-results';
   const secret = await readFile(`${directory}/users-administrator-authenticator.txt`, 'utf8');
-  await page.context().addCookies(await savedAdministratorCookies());
-  const audit = new AuditLog(page);
-  await audit.open();
   browserHealth.expectConsoleError(refusedExport);
   await audit.export.click();
   const downloaded = page.waitForEvent('download');
@@ -142,10 +154,8 @@ for (const theme of ['dark', 'light'] as const) {
   test(`the Export proof opens, cycles and closes by keyboard in ${theme} appearance`, async ({
     page,
     browserHealth,
+    auditWithExpiredProof: audit,
   }) => {
-    await page.context().addCookies(await savedAdministratorCookies());
-    const audit = new AuditLog(page);
-    await audit.open();
     await audit.useTheme(theme);
     browserHealth.expectConsoleError(refusedExport);
     await audit.export.focus();

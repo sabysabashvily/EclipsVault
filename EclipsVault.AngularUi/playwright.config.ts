@@ -75,11 +75,9 @@ export default defineConfig({
           use: { ...devices['Desktop Chrome'] },
         },
         {
-          // Export needs the saved administrator session to have outlived its proof, so the Audit
-          // log runs after the long chain that ends with License.
           name: 'audit',
           testMatch: '**/audit.spec.ts',
-          dependencies: ['license'],
+          dependencies: ['chromium'],
           use: { ...devices['Desktop Chrome'] },
         },
         {
