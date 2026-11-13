@@ -1,4 +1,5 @@
 using System.Text.Json;
+using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Auditing;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;

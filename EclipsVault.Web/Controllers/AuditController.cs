@@ -82,7 +82,7 @@ public sealed class AuditController : Controller
         // Headers are set only once the export is recorded, so a failure still gets the error page.
         await using var export = await _checkpoints.ExportAsync(ct);
         var disposition = new ContentDispositionHeaderValue("attachment");
-        disposition.SetHttpFileName($"eclipsvault-audit-bundle-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.json");
+        disposition.SetHttpFileName(export.FileName);
         Response.ContentType = "application/json";
         Response.Headers.ContentDisposition = disposition.ToString();
         await export.WriteToAsync(Response.Body, ct);

@@ -19,6 +19,8 @@ public sealed class AuditBundleExport(
 
     public AuditBundleCheckpoint Checkpoint => checkpoint;
 
+    public string FileName => $"eclipsvault-audit-bundle-{exportedAtUtc:yyyyMMdd-HHmmss}.json";
+
     public Task WriteToAsync(Stream destination, CancellationToken ct)
         => JsonSerializer.SerializeAsync(
             destination, new Document(AuditBundleSchema.Current, exportedAtUtc, publicKeySpki, checkpoint, rows), Indented, ct);

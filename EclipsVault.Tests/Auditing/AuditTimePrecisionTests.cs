@@ -89,6 +89,19 @@ public class AuditTimePrecisionTests
         Assert.True(key.VerifyData(stored, checkpoint.Signature, HashAlgorithmName.SHA256));
     }
 
+    [Fact]
+    public async Task The_bundle_file_name_uses_the_exports_clock_reading()
+    {
+        await using var vault = await Vault.OpenAsync();
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var service = new AuditCheckpointService(
+            vault.Db, new Signer(key), new NoOpAuditSink(), new FixedClock(ClockReading), new RecordingPremiumFeatureUsage(), new GrantedLocks());
+
+        await using var export = await service.ExportAsync(CancellationToken.None);
+
+        Assert.Equal("eclipsvault-audit-bundle-20261113-120000.json", export.FileName);
+    }
+
     /// <summary>PostgreSQL rounds a time to the nearest microsecond: 12:00:00.1234567 is stored as 12:00:00.123457.</summary>
     private static DateTimeOffset AsPostgresStores(DateTimeOffset time)
         => new((time.UtcTicks + TimeSpan.TicksPerMicrosecond / 2) / TimeSpan.TicksPerMicrosecond * TimeSpan.TicksPerMicrosecond, TimeSpan.Zero);

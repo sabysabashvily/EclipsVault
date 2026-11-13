@@ -1,9 +1,7 @@
+using EclipsVault.Core.Application.Auditing;
 using EclipsVault.Core.Domain.Exceptions;
 
-namespace EclipsVault.Core.Application.Auditing;
-
-/// <summary>A persisted checkpoint, for display.</summary>
-public sealed record AuditCheckpointDto(long Sequence, string ChainHeadHash, DateTimeOffset CreatedAtUtc, string SigningKeyId);
+namespace EclipsVault.Core.Application.Abstractions;
 
 /// <summary>
 /// Creates signed checkpoints over the audit hash chain, verifies the trail against them, and
