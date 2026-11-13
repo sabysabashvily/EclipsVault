@@ -30,6 +30,11 @@ and viewing or verifying the trail left no record.
 - Someone with database access can still delete checkpoints, or change entries written after the
   latest one, without Verify noticing. Only bundles an auditor already holds expose that, so the
   advice to export on a schedule stands.
+- Entry and checkpoint times are stamped to whole microseconds, the finest PostgreSQL stores, so the
+  time read back is the one that was hashed or signed. SQL Server keeps the finer time, so its existing
+  entries are unchanged. Entries and checkpoints an earlier version wrote on Linux with PostgreSQL were
+  stamped to 100 ns and stored rounded: Verify, and the offline verifier on an exported bundle, report
+  them as tampered. They are not repaired, and Verify is not made to tolerate them.
 - The trail grows by one entry per page view and per verification. This is the record PCI DSS v4.0
   requirement 10.2.1.3 asks for.
 

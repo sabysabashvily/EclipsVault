@@ -169,7 +169,7 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
         }
 
         _operationEvents = null;
-        var now = _clock.GetUtcNow();
+        var now = _clock.GetAuditUtcNow();
         foreach (var entry in events)
         {
             AddRow(context,
@@ -195,7 +195,7 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
             return;
         }
 
-        var now = _clock.GetUtcNow();
+        var now = _clock.GetAuditUtcNow();
         foreach (var entry in entries)
         {
             if (describe(entry) is not { } row)

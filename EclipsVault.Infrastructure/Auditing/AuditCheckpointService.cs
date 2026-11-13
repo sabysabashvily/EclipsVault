@@ -146,7 +146,7 @@ public sealed class AuditCheckpointService : IAuditCheckpointService
 
     private AuditCheckpoint SignHead(long sequence, string headHash)
     {
-        var now = _clock.GetUtcNow();
+        var now = _clock.GetAuditUtcNow();
         var canonical = AuditCheckpointCanonical.Bytes(sequence, headHash, now);
         return new AuditCheckpoint
         {
