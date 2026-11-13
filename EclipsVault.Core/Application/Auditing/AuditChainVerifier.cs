@@ -72,15 +72,16 @@ public static class AuditChainVerifier
             verified++;
         }
 
-        // Checkpoints past the end prove entries existed that are gone, unless they are forged.
-        if (signed.Skip(matched).FirstOrDefault(c => !IsValidlySigned(c, key)) is { } forged)
+        // A genuine checkpoint proves the first missing entry even if another checkpoint is forged.
+        if (signed.Skip(matched).LastOrDefault(c => IsValidlySigned(c, key)) is { } beyondEnd)
         {
-            return Tampered($"The checkpoint at sequence {forged.Sequence} has an invalid signature.", forged.Sequence);
+            return Tampered($"The chain ends at #{verified}, before the signed checkpoint at #{beyondEnd.Sequence}: entries were deleted.", verified + 1);
         }
 
         if (matched < signed.Count)
         {
-            return Tampered($"The chain ends at #{verified}, before the signed checkpoint at #{signed[^1].Sequence}: entries were deleted.", verified + 1);
+            var forged = signed[matched];
+            return Tampered($"The checkpoint at sequence {forged.Sequence} has an invalid signature.", forged.Sequence);
         }
 
         if (signed.Count == 0)

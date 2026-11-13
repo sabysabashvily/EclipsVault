@@ -30,6 +30,14 @@ public class AuditChainVerifierTests
         ["intact, never signed"] = (Trail, []),
         ["#5 deleted, after the checkpoint"] = (Trail[..4], [Checkpoint(Trail[2], signedBy: VaultKey)]),
         ["#2 onwards deleted, back past the checkpoint"] = (Trail[..1], [Checkpoint(Trail[2], signedBy: VaultKey)]),
+        ["#2 onwards deleted, valid #3 and invalid #5 checkpoints"] =
+            (Trail[..1], [Checkpoint(Trail[2], signedBy: VaultKey), Checkpoint(Trail[4], signedBy: OtherKey, namedAs: VaultKey)]),
+        ["#2 onwards deleted, invalid #3 and valid #5 checkpoints"] =
+            (Trail[..1], [Checkpoint(Trail[2], signedBy: OtherKey, namedAs: VaultKey), Checkpoint(Trail[4], signedBy: VaultKey)]),
+        ["#2 onwards deleted, both checkpoints invalid"] =
+            (Trail[..1], [Checkpoint(Trail[2], signedBy: OtherKey, namedAs: VaultKey), Checkpoint(Trail[4], signedBy: OtherKey, namedAs: VaultKey)]),
+        ["#2 onwards deleted, both checkpoints valid"] =
+            (Trail[..1], [Checkpoint(Trail[2], signedBy: VaultKey), Checkpoint(Trail[4], signedBy: VaultKey)]),
         ["#2 rewritten and every later hash recomputed"] = (Chain(5, rewritten: 2), [Checkpoint(Trail[2], signedBy: VaultKey)]),
         ["checkpoint naming the vault's key, signed by another"] = (Trail, [Checkpoint(Trail[2], signedBy: OtherKey, namedAs: VaultKey)]),
         ["checkpoint signed by another key"] = (Trail, [Checkpoint(Trail[2], signedBy: OtherKey)]),
@@ -46,6 +54,22 @@ public class AuditChainVerifierTests
         {
             "#2 onwards deleted, back past the checkpoint", AuditChainOutcome.Tampered, 1, null, 2, 0, 0,
             "The chain ends at #1, before the signed checkpoint at #3: entries were deleted. (First broken entry: #2.)"
+        },
+        {
+            "#2 onwards deleted, valid #3 and invalid #5 checkpoints", AuditChainOutcome.Tampered, 1, null, 2, 0, 0,
+            "The chain ends at #1, before the signed checkpoint at #3: entries were deleted. (First broken entry: #2.)"
+        },
+        {
+            "#2 onwards deleted, invalid #3 and valid #5 checkpoints", AuditChainOutcome.Tampered, 1, null, 2, 0, 0,
+            "The chain ends at #1, before the signed checkpoint at #5: entries were deleted. (First broken entry: #2.)"
+        },
+        {
+            "#2 onwards deleted, both checkpoints invalid", AuditChainOutcome.Tampered, 1, null, 3, 0, 0,
+            "The checkpoint at sequence 3 has an invalid signature. (First broken entry: #3.)"
+        },
+        {
+            "#2 onwards deleted, both checkpoints valid", AuditChainOutcome.Tampered, 1, null, 2, 0, 0,
+            "The chain ends at #1, before the signed checkpoint at #5: entries were deleted. (First broken entry: #2.)"
         },
         {
             "#2 rewritten and every later hash recomputed", AuditChainOutcome.Tampered, 2, null, 3, 0, 0,
