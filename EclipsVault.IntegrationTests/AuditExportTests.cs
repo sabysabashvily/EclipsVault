@@ -10,19 +10,20 @@ using Xunit;
 namespace EclipsVault.IntegrationTests;
 
 /// <summary>
-/// Exporting the audit trail through the Legacy page. Each test exports as an administrator of its own,
+/// Exporting the audit trail through the UI API. Each test exports as an administrator of its own,
 /// so it asserts only on the rows that administrator wrote.
 /// </summary>
 [Collection(VaultCollection.Name)]
 public sealed class AuditExportTests(VaultFixture vault)
 {
+    private const string ExportPath = "/api/ui/audit/export";
+
     [Fact]
     public async Task The_exported_bundle_verifies_against_the_vaults_own_public_key()
     {
         var session = await vault.SignInNewAccountAsync("it-audit-exporter", IPAddress.Parse("203.0.113.163"), ClearanceLevel.TopSecret);
-        var token = await LegacyAccessRequests.TokenAsync(session.Client);
 
-        var response = await LegacyAuditPage.PostAsync(session.Client, "/Audit/Export", token);
+        var response = await UiApiRequest.WriteWithAntiforgeryAsync(session, HttpMethod.Post, ExportPath);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         // The offline verifier reads the file exactly this way.
@@ -36,9 +37,8 @@ public sealed class AuditExportTests(VaultFixture vault)
     public async Task The_bundle_downloads_uncached_with_its_file_name_indentation_and_format()
     {
         var session = await vault.SignInNewAccountAsync("it-audit-export-file", IPAddress.Parse("203.0.113.164"), ClearanceLevel.TopSecret);
-        var token = await LegacyAccessRequests.TokenAsync(session.Client);
 
-        var response = await LegacyAuditPage.PostAsync(session.Client, "/Audit/Export", token);
+        var response = await UiApiRequest.WriteWithAntiforgeryAsync(session, HttpMethod.Post, ExportPath);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.True(response.Headers.CacheControl?.NoStore);
@@ -53,10 +53,9 @@ public sealed class AuditExportTests(VaultFixture vault)
     {
         const string exporter = "it-audit-export-head";
         var session = await vault.SignInNewAccountAsync(exporter, IPAddress.Parse("203.0.113.165"), ClearanceLevel.TopSecret);
-        var token = await LegacyAccessRequests.TokenAsync(session.Client);
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await LegacyAuditPage.PostAsync(session.Client, "/Audit/Export", token);
+        var response = await UiApiRequest.WriteWithAntiforgeryAsync(session, HttpMethod.Post, ExportPath);
 
         var bundle = Assert.IsType<AuditBundle>(JsonSerializer.Deserialize<AuditBundle>(await response.Content.ReadAsStringAsync()));
         var last = bundle.Rows[^1];
@@ -73,17 +72,19 @@ public sealed class AuditExportTests(VaultFixture vault)
         const string exporter = "it-audit-stale-exporter";
         var administrator = await vault.SignInNewAccountAsync(exporter, IPAddress.Parse("203.0.113.166"), ClearanceLevel.TopSecret);
         var stale = vault.CreateSession(SessionApi.WithStrongAuthenticationAt(vault, administrator, DateTimeOffset.UtcNow.AddMinutes(-11)), IPAddress.Parse("203.0.113.166"));
-        var token = await LegacyAccessRequests.TokenAsync(stale.Client);
         var before = await AuditTrail.HeadAsync(vault);
 
-        await AdministratorFreshnessTests.AssertStepUpAsync(await LegacyAuditPage.PostAsync(stale.Client, "/Audit/Export", token), "code");
+        var refused = await UiApiRequest.WriteWithAntiforgeryAsync(stale, HttpMethod.Post, ExportPath);
+
+        await AdministratorFreshnessTests.AssertStepUpAsync(refused, "code", "Confirm it's you before exporting the audit trail.");
+        Assert.Null(refused.Content.Headers.ContentDisposition);
         Assert.DoesNotContain(await AuditTrail.RowsAfterAsync(vault, before), row => row.Username == exporter && row.Action == AuditAction.AuditBundleExported);
 
         var owner = await ProfileHttp.AccountAsync(vault, exporter);
         var proof = await UiApiRequest.WriteWithAntiforgeryAsync(stale, HttpMethod.Post, "/api/ui/step-up", JsonContent.Create(new { code = Totp.Code(owner.TotpSecret!, Totp.CurrentStep() + 1) }));
 
         Assert.Equal(HttpStatusCode.NoContent, proof.StatusCode);
-        var fresh = await LegacyAuditPage.PostAsync(stale.Client, "/Audit/Export", token);
+        var fresh = await UiApiRequest.WriteWithAntiforgeryAsync(stale, HttpMethod.Post, ExportPath);
         Assert.Equal(HttpStatusCode.OK, fresh.StatusCode);
         Assert.Equal("attachment", fresh.Content.Headers.ContentDisposition?.DispositionType);
     }

@@ -1,0 +1,124 @@
+@let closed = writes.busy() || writes.awaitingProof() || writes.blocked();
+<div class="page-header">
+  <div>
+    <h1>Audit log</h1>
+    @if (audit.hasValue()) {
+      <p class="page-sub">
+        Immutable, fail-closed trail — showing the latest {{ entries().length }} entries.
+      </p>
+    }
+  </div>
+  <button type="button" class="button" [disabled]="closed" (click)="verify()">
+    Verify integrity
+  </button>
+</div>
+<app-status-line [message]="writes.status().message" [error]="writes.status().error" />
+@if (verification(); as report) {
+  @switch (report.outcome) {
+    @case ('anchored') {
+      <div class="notice notice-ok">
+        <strong>✓ Hash chain intact.</strong>
+        <span>{{ report.message }}</span>
+      </div>
+    }
+    @case ('unanchored') {
+      <div class="notice notice-warn">
+        <strong>✓ Hash chain intact, but no signed checkpoint covers it yet.</strong>
+        <span>{{ report.message }}</span>
+      </div>
+    }
+    @default {
+      <div class="notice notice-critical">
+        <strong>✗ Tampering detected.</strong>
+        <span>{{ report.message }}</span>
+      </div>
+    }
+  }
+}
+@if (audit.isLoading() && !audit.hasValue()) {
+  <p role="status">Loading the audit log…</p>
+} @else if (audit.error() && !audit.hasValue()) {
+  <p role="alert">Could not load the audit log. Try again.</p>
+  <button type="button" class="button" (click)="audit.reload()">Try again</button>
+} @else if (audit.hasValue()) {
+  <section class="panel">
+    <div class="panel-header">
+      <h2>Attestation</h2>
+      <span class="badge tone-muted mono">key {{ audit.value().signingKeyId }}</span>
+    </div>
+    <p class="hint muted">
+      The hash chain is tamper-evident to anyone with the database. A
+      <strong>signed checkpoint</strong> goes further: it binds the chain head with an ECDSA
+      signature, so an outside auditor can prove the trail hasn't been rewritten using only the
+      public key — even against someone who deleted rows and recomputed every hash. Export a bundle
+      and verify it offline with the <code>EclipsVault.AuditVerifier</code> tool.
+    </p>
+
+    <dl class="detail-grid">
+      <dt>Latest checkpoint</dt>
+      <dd>
+        @if (latestCheckpoint(); as checkpoint) {
+          sequence <strong>{{ checkpoint.sequence }}</strong> ·
+          {{ minute(checkpoint.createdAtUtc) }} ·
+          <span class="mono">{{ checkpoint.signingKeyId }}</span>
+        } @else {
+          <span class="muted">none yet — create one to attest the current trail</span>
+        }
+      </dd>
+    </dl>
+
+    <div class="button-row">
+      <button type="button" class="button" [disabled]="closed" (click)="createCheckpoint()">
+        Create signed checkpoint
+      </button>
+      <button
+        #exporter
+        type="button"
+        class="button primary"
+        [disabled]="closed"
+        (click)="export(exporter)"
+      >
+        Export signed bundle
+      </button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="table-toolbar">
+      <app-table-filter
+        label="Filter audit entries"
+        placeholder="Filter by user, action, resource, IP…"
+        [(query)]="query"
+      />
+    </div>
+    <div class="table-scroll">
+      <table class="data-table" id="audit-table">
+        <thead>
+          <tr>
+            <th>When (UTC)</th>
+            <th>Action</th>
+            <th>Resource</th>
+            <th>Actor</th>
+            <th>Source IP</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (entry of filtered(); track entry.entryId) {
+            <tr [class.row-critical]="entry.isCritical">
+              <td class="muted" [title]="entry.exact">{{ entry.ago }}</td>
+              <td>
+                <span [class]="'badge tone-' + entry.tone">{{ entry.actionLabel }}</span>
+              </td>
+              <td class="mono">{{ entry.resource }}</td>
+              <td>{{ entry.actor }}</td>
+              <td class="mono muted">{{ entry.sourceIp }}</td>
+              <td class="muted cell-wrap">{{ entry.details }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+}
+<app-step-up-dialog (decision)="verified($event)" />

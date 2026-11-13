@@ -48,6 +48,7 @@ const notifications = () =>
   import('./notifications/notifications-page').then((m) => m.NotificationsPage);
 const license = () => import('./license/license-page').then((m) => m.LicensePage);
 const encryption = () => import('./encryption/encryption-page').then((m) => m.EncryptionPage);
+const audit = () => import('./audit/audit-page').then((m) => m.AuditPage);
 
 export const routes: Routes = [
   {
@@ -62,6 +63,8 @@ export const routes: Routes = [
   },
   { matcher: legacyPath('License'), loadComponent: license, title: 'License — EclipsVault' },
   { matcher: legacyPath('License/Index'), loadComponent: license, title: 'License — EclipsVault' },
+  { matcher: legacyPath('Audit'), loadComponent: audit, title: 'Audit log — EclipsVault' },
+  { matcher: legacyPath('Audit/Index'), loadComponent: audit, title: 'Audit log — EclipsVault' },
   {
     matcher: legacyPath('Encryption'),
     loadComponent: encryption,

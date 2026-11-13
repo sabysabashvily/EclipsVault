@@ -20,10 +20,11 @@ public class UiApiResponseTypeTests
 
     /// <summary>
     /// Actions that answer with a file, declared as a <see cref="Stream"/>, instead of a response type.
-    /// The personal data export keeps its own versioned format instead. Its fields are pinned by
+    /// Each keeps its own versioned format instead. The personal data export's fields are pinned by
     /// <c>PersonalDataExportServiceTests</c>, every nested item included, and the served file by <c>DataApiTests</c>.
+    /// The audit bundle's v2 document is pinned by <c>AuditBundleExportTests</c>, and the served file by <c>AuditExportTests</c>.
     /// </summary>
-    private static readonly HashSet<string> FileDownloads = ["DataController.Export"];
+    private static readonly HashSet<string> FileDownloads = ["DataController.Export", "AuditController.Export"];
 
     [Fact]
     public void EveryUiApiAction_DeclaresAResponseTypeTheWebLayerDefines()

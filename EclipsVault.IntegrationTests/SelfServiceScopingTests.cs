@@ -72,7 +72,7 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         Assert.DoesNotContain("198.51.100.114", historyBody);
         Assert.Contains("Your account was unlocked", activityBody);
         // The global audit retains the actual source; self-service projections hide it.
-        Assert.Contains("198.51.100.114", await admin.GetStringAsync("/Audit"));
+        Assert.Contains("198.51.100.114", await admin.GetStringAsync("/api/ui/audit"));
         using var history = JsonDocument.Parse(historyBody);
         AssertSummary(history.RootElement, 1, 1, 1, 2, needsAttention: true, lastFailureKind: JsonValueKind.String);
         var unlocked = Assert.Single(history.RootElement.GetProperty("events").EnumerateArray(),
@@ -271,7 +271,7 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         });
         // The global Audit log proves the fail-closed write occurred, without inspecting a DB row.
         // It is read last because opening it is itself the administrator's recorded activity.
-        var audit = await admin.GetStringAsync("/Audit");
+        var audit = await admin.GetStringAsync("/api/ui/audit");
         Assert.Contains(unknown, audit);
         Assert.Contains(source, audit);
     }
@@ -310,7 +310,7 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         Assert.All(afterAdmin, body => Assert.DoesNotContain(source, body));
         Assert.Equal(beforeAdmin, afterAdmin);
         // Read last: opening the audit log is itself the administrator's recorded activity.
-        var audit = await admin.GetStringAsync("/Audit");
+        var audit = await admin.GetStringAsync("/api/ui/audit");
         Assert.Contains(unknown, audit);
         Assert.Contains(source, audit);
     }
@@ -380,7 +380,7 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         });
         Assert.Equal(beforeAdmin, afterAdmin);
         // Read last: opening the audit log is itself the administrator's recorded activity.
-        var audit = await admin.GetStringAsync("/Audit");
+        var audit = await admin.GetStringAsync("/api/ui/audit");
         Assert.Contains(unknown, audit);
         Assert.Contains(source, audit);
     }

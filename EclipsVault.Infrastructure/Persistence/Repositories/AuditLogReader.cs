@@ -17,8 +17,10 @@ public sealed class AuditLogReader : IAuditLogReader
             query = query.Where(a => a.Username == username);
         }
 
+        // Rows written in one save share a time; their sequence keeps the order they were chained in.
         return await query
             .OrderByDescending(a => a.TimestampUtc)
+            .ThenByDescending(a => a.Sequence)
             .Take(count)
             .Select(a => new AuditEntryDto(
                 a.Id, a.TimestampUtc, a.Username, a.SourceIp, a.Action,

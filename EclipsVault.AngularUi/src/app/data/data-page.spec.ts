@@ -2,7 +2,8 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { appConfig } from '../app.config';
 import type { components } from '../ui-api/schema.generated';
-import { attachmentName, DataPage } from './data-page';
+import { attachmentName } from '../shared/attachment';
+import { DataPage } from './data-page';
 
 const yours: components['schemas']['DataResponse'] = {
   account: {

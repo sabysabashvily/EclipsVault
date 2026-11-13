@@ -227,7 +227,7 @@ public class AuthorizationSurfaceTests
             ["users"] = typeof(EclipsVault.Web.Controllers.Ui.UsersController),
             ["networks"] = typeof(EclipsVault.Web.Controllers.Ui.NetworksController),
             ["service-accounts"] = typeof(EclipsVault.Web.Controllers.Ui.ServiceAccountsController),
-            ["audit"] = typeof(AuditController),
+            ["audit"] = typeof(EclipsVault.Web.Controllers.Ui.AuditController),
             ["notifications"] = typeof(EclipsVault.Web.Controllers.Ui.NotificationsController),
             ["encryption"] = typeof(EclipsVault.Web.Controllers.Ui.EncryptionController),
             ["license"] = typeof(EclipsVault.Web.Controllers.Ui.LicenseController),

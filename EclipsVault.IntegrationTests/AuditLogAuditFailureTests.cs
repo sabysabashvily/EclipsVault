@@ -1,4 +1,7 @@
 using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,101 +16,38 @@ namespace EclipsVault.IntegrationTests;
 [Collection(AuditFailureCollection.Name)]
 public sealed class AuditLogAuditFailureTests(AuditFailureFixture failure)
 {
-    private const string AuditUnavailablePage = "/Home/Error?code=503";
-
-    [Fact]
-    public async Task Opening_the_audit_log_when_it_cannot_be_recorded_shows_no_entries()
+    [Theory]
+    [InlineData("GET", "/api/ui/audit", "198.18.143.71")]
+    [InlineData("POST", "/api/ui/audit/verify", "198.18.143.72")]
+    [InlineData("POST", "/api/ui/audit/checkpoints", "198.18.143.73")]
+    [InlineData("POST", "/api/ui/audit/export", "198.18.143.74")]
+    public async Task An_access_that_cannot_be_recorded_answers_audit_unavailable_and_changes_nothing(string method, string path, string source)
     {
         var vault = failure.Vault;
-        var admin = await vault.AdminClientAsync();
-        var before = await AuditTrail.HeadAsync(vault);
-
-        await failure.RejectAuditWritesAsync();
-        try
-        {
-            var response = await admin.GetAsync("/Audit");
-
-            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-            Assert.Equal(AuditUnavailablePage, response.Headers.Location?.OriginalString);
-            Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
-        }
-        finally
-        {
-            await failure.RestoreAuditWritesAsync();
-        }
-    }
-
-    [Fact]
-    public async Task A_verification_that_cannot_be_recorded_shows_no_result()
-    {
-        var vault = failure.Vault;
-        var admin = await vault.AdminClientAsync();
-        var token = await LegacyAccessRequests.TokenAsync(admin);
-        var before = await AuditTrail.HeadAsync(vault);
-
-        await failure.RejectAuditWritesAsync();
-        try
-        {
-            var response = await LegacyAuditPage.PostAsync(admin, "/Audit/Verify", token);
-
-            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-            Assert.Equal(AuditUnavailablePage, response.Headers.Location?.OriginalString);
-            Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
-        }
-        finally
-        {
-            await failure.RestoreAuditWritesAsync();
-        }
-    }
-
-    [Fact]
-    public async Task A_checkpoint_that_cannot_be_recorded_is_not_created()
-    {
-        var vault = failure.Vault;
-        var admin = await vault.AdminClientAsync();
-        var token = await LegacyAccessRequests.TokenAsync(admin);
+        // Signed in just now, so Export's fresh-proof rule passes and recording is what fails.
+        var admin = (await vault.SignInNewAccountAsync("it-audit-down-" + source.Split('.').Last(), IPAddress.Parse(source),
+            ClearanceLevel.TopSecret)).Client;
+        var token = await UiApiRequest.AntiforgeryTokenAsync(admin);
         var checkpoints = await CheckpointCountAsync(vault);
         var before = await AuditTrail.HeadAsync(vault);
 
+        HttpResponseMessage response;
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await LegacyAuditPage.PostAsync(admin, "/Audit/CreateCheckpoint", token);
-
-            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-            Assert.Equal(AuditUnavailablePage, response.Headers.Location?.OriginalString);
-            Assert.Equal(checkpoints, await CheckpointCountAsync(vault));
-            Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
+            response = await UiApiRequest.SendWithTokenAsync(admin, token, new HttpMethod(method), path);
         }
         finally
         {
             await failure.RestoreAuditWritesAsync();
         }
-    }
 
-    [Fact]
-    public async Task An_export_that_cannot_be_recorded_sends_no_bundle()
-    {
-        var vault = failure.Vault;
-        var admin = await vault.AdminClientAsync();
-        var token = await LegacyAccessRequests.TokenAsync(admin);
-        var before = await AuditTrail.HeadAsync(vault);
-
-        await failure.RejectAuditWritesAsync();
-        try
-        {
-            var response = await LegacyAuditPage.PostAsync(admin, "/Audit/Export", token);
-
-            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-            Assert.Equal(AuditUnavailablePage, response.Headers.Location?.OriginalString);
-            Assert.Null(response.Content.Headers.ContentDisposition);
-            Assert.Empty(await response.Content.ReadAsByteArrayAsync());
-            Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
-        }
-        finally
-        {
-            await failure.RestoreAuditWritesAsync();
-        }
+        await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
+        Assert.Equal("The audit trail is unavailable, so the vault refused the request.",
+            (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("title").GetString());
+        Assert.Null(response.Content.Headers.ContentDisposition);
+        Assert.Equal(checkpoints, await CheckpointCountAsync(vault));
+        Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
     private static async Task<int> CheckpointCountAsync(VaultFixture vault)

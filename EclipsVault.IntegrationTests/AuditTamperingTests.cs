@@ -1,4 +1,6 @@
 using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
@@ -17,7 +19,7 @@ public sealed class AuditTamperingTests(AuditTamperingFixture fixture)
     public async Task Verifying_a_rewritten_entry_records_a_critical_row_naming_it()
     {
         var admin = await _vault.AdminClientAsync();
-        var token = await LegacyAccessRequests.TokenAsync(admin);
+        var token = await UiApiRequest.AntiforgeryTokenAsync(admin);
         var rewritten = await AuditTrail.HeadAsync(_vault);
         var original = await DetailsOfAsync(rewritten);
 
@@ -25,7 +27,7 @@ public sealed class AuditTamperingTests(AuditTamperingFixture fixture)
         await SetDetailsAsync(rewritten, "rewritten by someone with database access");
         try
         {
-            response = await LegacyAuditPage.PostAsync(admin, "/Audit/Verify", token);
+            response = await UiApiRequest.SendWithTokenAsync(admin, token, HttpMethod.Post, "/api/ui/audit/verify");
         }
         finally
         {
@@ -33,8 +35,8 @@ public sealed class AuditTamperingTests(AuditTamperingFixture fixture)
         }
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("✗ Tampering detected.", await response.Content.ReadAsStringAsync());
         var row = Assert.Single(await AuditTrail.RowsAfterAsync(_vault, rewritten), row => row.Action == AuditAction.AuditChainVerified);
+        await AssertTamperedAsync(response, row);
         Assert.True(row.IsCritical);
         Assert.Equal(
             $"Tampering detected. Entry #{rewritten} has been altered — its hash no longer matches its content. (First broken entry: #{rewritten}.)",
@@ -45,19 +47,19 @@ public sealed class AuditTamperingTests(AuditTamperingFixture fixture)
     public async Task Deleting_the_newest_entries_back_past_a_checkpoint_is_reported_as_tampering()
     {
         var admin = await _vault.AdminClientAsync();
-        var token = await LegacyAccessRequests.TokenAsync(admin);
+        var token = await UiApiRequest.AntiforgeryTokenAsync(admin);
         var checkpoint = await CreateCheckpointAsync(admin, token);
 
         HttpResponseMessage response;
         AuditLog row;
         await using (await TamperedTrail.DeleteFromAsync(_vault, checkpoint))
         {
-            response = await LegacyAuditPage.PostAsync(admin, "/Audit/Verify", token);
+            response = await UiApiRequest.SendWithTokenAsync(admin, token, HttpMethod.Post, "/api/ui/audit/verify");
             row = Assert.Single(await AuditTrail.RowsAfterAsync(_vault, checkpoint - 1), row => row.Action == AuditAction.AuditChainVerified);
         }
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("✗ Tampering detected.", await response.Content.ReadAsStringAsync());
+        await AssertTamperedAsync(response, row);
         Assert.True(row.IsCritical);
         Assert.Equal(
             $"Tampering detected. The chain ends at #{checkpoint - 1}, before the signed checkpoint at #{checkpoint}: entries were deleted. (First broken entry: #{checkpoint}.)",
@@ -68,7 +70,7 @@ public sealed class AuditTamperingTests(AuditTamperingFixture fixture)
     public async Task Rewriting_a_signed_entry_and_recomputing_every_later_hash_is_reported_at_that_entry()
     {
         var admin = await _vault.AdminClientAsync();
-        var token = await LegacyAccessRequests.TokenAsync(admin);
+        var token = await UiApiRequest.AntiforgeryTokenAsync(admin);
         var checkpoint = await CreateCheckpointAsync(admin, token);
         var head = await AuditTrail.HeadAsync(_vault);
 
@@ -76,24 +78,32 @@ public sealed class AuditTamperingTests(AuditTamperingFixture fixture)
         AuditLog row;
         await using (await TamperedTrail.RewriteFromAsync(_vault, checkpoint, "rewritten by someone with database access"))
         {
-            response = await LegacyAuditPage.PostAsync(admin, "/Audit/Verify", token);
+            response = await UiApiRequest.SendWithTokenAsync(admin, token, HttpMethod.Post, "/api/ui/audit/verify");
             row = Assert.Single(await AuditTrail.RowsAfterAsync(_vault, head), row => row.Action == AuditAction.AuditChainVerified);
         }
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("✗ Tampering detected.", await response.Content.ReadAsStringAsync());
+        await AssertTamperedAsync(response, row);
         Assert.True(row.IsCritical);
         Assert.Equal(
             $"Tampering detected. Entry #{checkpoint} does not match the signed checkpoint: the trail was rewritten. (First broken entry: #{checkpoint}.)",
             row.Details);
     }
 
-    /// <summary>Signs the trail through the Legacy page and returns the sequence the checkpoint covers.</summary>
-    private async Task<long> CreateCheckpointAsync(HttpClient admin, string token)
+    /// <summary>Signs the trail through the UI API and returns the sequence the checkpoint covers.</summary>
+    private static async Task<long> CreateCheckpointAsync(HttpClient admin, string token)
     {
-        Assert.Equal(HttpStatusCode.Redirect, (await LegacyAuditPage.PostAsync(admin, "/Audit/CreateCheckpoint", token)).StatusCode);
-        using var scope = _vault.Services.CreateScope();
-        return await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().AuditCheckpoints.MaxAsync(checkpoint => checkpoint.Sequence);
+        var response = await UiApiRequest.SendWithTokenAsync(admin, token, HttpMethod.Post, "/api/ui/audit/checkpoints");
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("sequence").GetInt64();
+    }
+
+    /// <summary>The answer names the outcome and repeats the recorded reason, without the row's "Tampering detected." prefix.</summary>
+    private static async Task AssertTamperedAsync(HttpResponseMessage response, AuditLog row)
+    {
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("tampered", body.GetProperty("outcome").GetString());
+        Assert.Equal($"Tampering detected. {body.GetProperty("message").GetString()}", row.Details);
     }
 
     private async Task<string?> DetailsOfAsync(long sequence)
