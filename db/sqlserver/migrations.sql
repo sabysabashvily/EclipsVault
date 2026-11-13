@@ -1355,3 +1355,5 @@ GO
 COMMIT;
 GO
 
+
+-- stale: not produced by the regenerate command
