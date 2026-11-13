@@ -88,8 +88,9 @@ test('Export behind a real authenticator code downloads the v2 bundle under its 
   const secret = await readFile(`${directory}/users-administrator-authenticator.txt`, 'utf8');
   browserHealth.expectConsoleError(refusedExport);
   await audit.export.click();
+  const code = await freshTotp(secret, currentTotpStep());
   const downloaded = page.waitForEvent('download');
-  await audit.prove(await freshTotp(secret, currentTotpStep()));
+  await audit.prove(code);
 
   const file = await downloaded;
   expect(file.suggestedFilename()).toMatch(/^eclipsvault-audit-bundle-\d{8}-\d{6}\.json$/);
