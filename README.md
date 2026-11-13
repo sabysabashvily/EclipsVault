@@ -87,6 +87,12 @@ dotnet ef database update -p EclipsVault.Infrastructure -s EclipsVault.Web -c Ec
 
 Checking is not applying, so the app still verifies: a schema behind the code **fails startup** rather than serving against it. For a single-node install with no deploy pipeline, `Database:MigrateOnStartup=true` restores the old behaviour — and the trade is explicit, since the app's login then needs DDL rights.
 
+### Database scripts
+
+[`db/README.md`](db/README.md) holds one idempotent script per engine, generated from these migrations.
+The vault applies the migrations itself at startup in Development, and when `Database:MigrateOnStartup`
+is true. The scripts are for review, for a DBA, and for a manual install.
+
 ## Prerequisites
 
 - .NET 10 SDK

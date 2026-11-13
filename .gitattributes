@@ -2,3 +2,6 @@
 # line endings. Keep git from converting them, so notices.py check compares the bytes that were copied.
 /THIRD-PARTY-NOTICES.txt -text
 /.github/notices/upstream/** -text
+
+# EF writes these on Linux with LF. Pin that, so a checkout cannot grow CR bytes the drift check would see.
+db/**/*.sql text eol=lf
