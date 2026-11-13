@@ -71,7 +71,8 @@ public sealed partial class VaultFixture : IAsyncLifetime
 
     public bool ProductionWindowNeverOpens { get; init; }
 
-    public bool MalformedLicense { get; init; }
+    /// <summary>The token the vault reads from ECLIPSVAULT_LICENSE at startup; none means unlicensed.</summary>
+    public string? License { get; init; }
 
     /// <summary>A master key the vault loads only to unwrap data keys still sealed under it.</summary>
     public string? RetiredMasterKey { get; init; }
@@ -106,6 +107,10 @@ public sealed partial class VaultFixture : IAsyncLifetime
         }
         // The single-node install with no deploy pipeline, which lets the vault apply its own migrations.
         SetEnvironment("Database__MigrateOnStartup", "true");
+        // The secret and lease sweeps write audit rows on their own timers. In a shared vault they land
+        // inside other tests' audit windows, so they wait a day; no HTTP test relies on them.
+        SetEnvironment("Lifecycle__SweepIntervalSeconds", "86400");
+        SetEnvironment("DynamicSecrets__ReapIntervalSeconds", "86400");
         // Register the production OIDC correlation cookie for HTTP callback scoping tests.
         // Those start after the IdP assertion, so this authority is never contacted.
         SetEnvironment("Sso__Enabled", "true");
@@ -113,7 +118,7 @@ public sealed partial class VaultFixture : IAsyncLifetime
         SetEnvironment("Sso__Authority", "https://idp.example.test/realms/integration");
         SetEnvironment("Sso__ClientId", "integration-vault");
         SetEnvironment("Sso__ClientSecret", Convert.ToHexString(RandomNumberGenerator.GetBytes(32)));
-        if (MalformedLicense) SetEnvironment("ECLIPSVAULT_LICENSE", "not-a-license-token");
+        if (License is not null) SetEnvironment("ECLIPSVAULT_LICENSE", License);
         if (ProductionWindowNeverOpens)
         {
             // The window runs from the start hour up to the end hour, so equal hours never open it.

@@ -8,12 +8,15 @@ import { AuthenticatorEnrollment } from './authenticator-enrollment';
 import { Users } from './users';
 import { lockAccount } from './users-state';
 import { freshTotp } from './totp';
-import { rejectAuditWrites } from './profile-state';
+import { clearSignInBudget, rejectAuditWrites } from './profile-state';
 import { UserRole } from './user-role';
 import { AccountAdministrationActivity } from './account-administration-activity';
 import { savedAdministratorCookies } from './administrator-cookies';
 
 test.describe.configure({ mode: 'serial' });
+// Every browser shares the proxy's address, so earlier specs' sign-ins count against this one's
+// budget. Each test starts with this run's full budget; sign-in.spec.ts still proves the limit.
+test.beforeEach(() => clearSignInBudget());
 let administratorCookies: Awaited<ReturnType<BrowserContext['cookies']>> = [];
 let ownerCookies: typeof administratorCookies = [];
 let staleAdministratorCookies: typeof administratorCookies = [];
