@@ -22,8 +22,8 @@ A test never waits on the host's wall clock:
   state through `E2E_COMPOSE_PROJECT`.
 - A fixed sleep is not a timing method.
 
-The Profile spec's move from sleeping 61 seconds to reading the server's send time (#130) took its
-cases from about 2,360 to about 770 seconds and removed its failures under load.
+PR #130 based Profile's mailbox waits on the server's recorded time and removed sign-in-budget
+sleeps. Three normal-host runs passed. Validation of the final spec under load remained incomplete.
 
 A test is never retried until it passes:
 - Playwright runs with zero retries, and no test raises its timeout to hide slowness.
