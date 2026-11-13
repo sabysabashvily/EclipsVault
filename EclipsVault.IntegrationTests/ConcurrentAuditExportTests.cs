@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Auditing;
+using EclipsVault.Core.Application.Licensing;
 using EclipsVault.Core.Domain.Enums;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -20,6 +21,9 @@ public sealed class ConcurrentAuditExportTests(AuditTamperingFixture fixture)
         var secondSession = await _vault.SignInNewAccountAsync("it-export-second", IPAddress.Parse("203.0.113.168"), ClearanceLevel.TopSecret);
         var firstToken = await LegacyAccessRequests.TokenAsync(firstSession.Client);
         var secondToken = await LegacyAccessRequests.TokenAsync(secondSession.Client);
+
+        // The first use writes a licensing reminder before it takes the export lock.
+        await _vault.Services.GetRequiredService<IPremiumFeatureUsage>().RecordUseAsync(LicenseFeatures.AuditAttestation, default);
 
         Task<HttpResponseMessage> first;
         await using (var held = await HeldAuditChain.TakeAsync(_vault))
