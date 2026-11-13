@@ -208,6 +208,24 @@ describe('Audit log', () => {
     expect(rows(page)).toHaveLength(3);
   });
 
+  it('says the trail is unavailable when opening it cannot be recorded, and Try again loads it', async () => {
+    const { page, fixture } = render();
+    backend
+      .expectOne(path)
+      .flush(
+        { status: 503, code: 'audit_unavailable', title: unavailable },
+        { status: 503, statusText: 'Unavailable' },
+      );
+    await fixture.whenStable();
+    expect(text(page.querySelector('[role="alert"]:not(app-status-line *)'))).toBe(unavailable);
+    expect(rows(page)).toEqual([]);
+    button(page, 'Try again').click();
+    fixture.detectChanges();
+    backend.expectOne(path).flush(listed);
+    await fixture.whenStable();
+    expect(rows(page)).toHaveLength(3);
+  });
+
   it('shows an empty trail with no rows and no checkpoint yet', async () => {
     const { page } = await loaded(empty);
     expect(text(page.querySelector('.page-sub'))).toBe(

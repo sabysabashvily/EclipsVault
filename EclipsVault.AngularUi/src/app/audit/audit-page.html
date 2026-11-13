@@ -38,7 +38,7 @@
 @if (audit.isLoading() && !audit.hasValue()) {
   <p role="status">Loading the audit log…</p>
 } @else if (audit.error() && !audit.hasValue()) {
-  <p role="alert">Could not load the audit log. Try again.</p>
+  <p role="alert">{{ loadFailure() }}</p>
   <button type="button" class="button" (click)="audit.reload()">Try again</button>
 } @else if (audit.hasValue()) {
   <section class="panel">
