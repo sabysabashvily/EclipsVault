@@ -256,3 +256,67 @@ To restart: in the worktree, check `area-6b-audit-log` and a clean tree. Run `sc
 `dotnet test EclipsVault.IntegrationTests -c Release --no-build --filter "FullyQualifiedName~AuditLogRecordingTests|FullyQualifiedName~AuditLogAuditFailureTests|FullyQualifiedName~AuditTamperingTests|FullyQualifiedName~SelfServiceScopingTests"`,
 with and without `ECLIPSVAULT_TEST_DATABASE_PROVIDER=Postgres`. Ticket 2 (#141) starts from the HEAD after
 this commit.
+
+## Delivery: 6b ticket 3 (#142), security review pending
+
+Branch `area-6b-142`, worktree `/Users/sabasabashvili/.t3/worktrees/EclipseVault/area-6b-142`,
+base `bb7e543`, following the owner's separate-worktree launch override. Nothing pushed, no PR.
+
+Code commits:
+
+- `6ad493e` streams the audit bundle after recording it, behind fresh proof. Original author
+  Claude Opus 5.5 high.
+- `f824e99` proves concurrent export refusal over real HTTP, derives the filename from the
+  normalized export timestamp, moves the checkpoint port into Abstractions, and simplifies the
+  streaming unit tests with literal v2 JSON. Review fixes by GPT Sol 6.1 xhigh after the owner
+  resumed the thread on that provider.
+- `e85dbaa` initializes the one-time licensing reminder before holding the audit chain in the
+  HTTP race test, removing its dependency on another test having used audit attestation first.
+
+Export takes a cluster-wide session lock of its own, signs the committed head, writes
+`AuditBundleExported` through `IAuditSink`, then streams rows through that head. Its lock lives
+until the export is disposed. A recording failure sends no attachment or bundle bytes and leaves
+no export row. Legacy `POST /Audit/Export` requires fresh sign-in or step-up and is no-store.
+Schema v2, indentation and the filename format stay compatible. No database model or Angular
+source change.
+
+A2 and A5 failed first at the base on both databases, as did the original concurrency test.
+The HTTP race later failed alone on a fresh PostgreSQL fixture with a 503 instead of the busy
+refusal; the setup fix passes that isolated test on both providers. Original red and green runs
+are retained in `logs/ticket-142/`.
+
+Checks on .NET 10.0.404, with NuGetAudit enabled:
+
+- Locked restore, Release build with zero warnings and 921 unit tests through `scripts/check.sh`.
+- Focused PostgreSQL audit integration tests 14/14 at `f824e99`; isolated HTTP export race 1/1
+  on PostgreSQL and 1/1 on SQL Server at `e85dbaa`.
+- Full PostgreSQL-mode run at `f824e99`: 1,126 passed, 73 failed, zero skipped, 1,199 total,
+  15m32s, no hang. All failures were SQL Server fixture-setup timeouts in 16 untouched classes.
+  Those exact classes pass 73/73 in a filtered run with collection parallelism disabled, 45s.
+  See `logs/ticket-142/full-suite-failures.md`; the failed full run is retained.
+- Full SQL Server-mode run at `e85dbaa`: 1,199/1,199 passed, 20.62 minutes. It ran every test
+  with `xUnit.ParallelizeTestCollections=false` on the 4 GB Docker host. Internal race-test callers
+  remain concurrent; no timeout, retry or tracked runner setting changed.
+- Format verification, both providers' pending-model checks, six hook tests, 20 unchanged
+  `AuditBundleVerifierTests`, and the real offline verifier with the public key pinned, VALID.
+
+Standards r2 and Spec r3, fresh GPT Sol 6.1 xhigh delegates, close all five findings. The
+small review fixes and re-checks share a model; the original implementation and its first GPT
+reviews used different models. Reports and the finding-by-finding ledger are in
+`logs/ticket-142/review-*.md`.
+
+**Security review is blocked, not passed.** The original `security-reviewer` and a fresh Opus 5.5
+high retry both reached the five-hour usage limit before returning a verdict. The reset is
+18:00 Asia/Tbilisi on 13 November. No provider or model was substituted. Before acceptance,
+obtain a fresh Opus 5.5 high security review of the whole `bb7e543..HEAD` diff, then fix and
+re-check any findings. The ticket remains unaccepted until this is done.
+
+For the owner and #143: the existing step-up title says "Confirm it's you before granting access."
+Legacy has no step-up dialog and shows the raw stale-session JSON. Legacy busy refusal uses the
+existing 400 error-page redirect; the UI API's `409 audit_busy` mapping belongs to #143.
+
+To restart, confirm this worktree and branch with a clean tracked state; stop and report if the
+coordinator moved HEAD. Read `logs/ticket-142/final-report.md`, `restart.md`, `review-ledger.md`
+and `review-security-blocked.md`. Source `logs/ticket-142/env.sh` before every .NET command.
+Run only one integration suite at a time, preserve failed evidence, and never treat the original
+incomplete `full-postgres.log` or either interrupted security review as a pass.
