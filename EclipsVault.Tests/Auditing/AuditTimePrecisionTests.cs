@@ -4,6 +4,7 @@ using EclipsVault.Core.Application.Auditing;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Auditing;
 using EclipsVault.Infrastructure.Persistence;
+using EclipsVault.Infrastructure.Persistence.Interceptors;
 using EclipsVault.Infrastructure.Persistence.Locking;
 using EclipsVault.Tests.TestDoubles;
 using Microsoft.Data.Sqlite;
@@ -16,7 +17,7 @@ namespace EclipsVault.Tests.Auditing;
 
 /// <summary>
 /// A Linux clock reads to 100 ns, and PostgreSQL stores a time to the microsecond. An audit row's hash
-/// and a checkpoint's signature must still verify against the time PostgreSQL gives back.
+/// and a checkpoint's signature must cover the exact microsecond time that can be stored unchanged.
 /// </summary>
 public class AuditTimePrecisionTests
 {
@@ -52,8 +53,14 @@ public class AuditTimePrecisionTests
         public Task<IAsyncDisposable?> TryAcquireAsync(DbContext db, string resource, CancellationToken ct) => throw new NotSupportedException();
     }
 
+    // This fixture has one writer on one SQLite connection; provider lock behavior is covered by integration tests.
+    private sealed class UncontendedChainLocks : IAuditChainLocker
+    {
+        public Task AcquireAsync(DbContext db, string resource, TimeSpan timeout, CancellationToken ct) => Task.CompletedTask;
+    }
+
     [Fact]
-    public async Task An_audit_row_hashes_the_same_once_PostgreSQL_has_stored_its_time()
+    public async Task An_audit_row_keeps_its_microsecond_timestamp_verifiable()
     {
         await using var vault = await Vault.OpenAsync();
         using var committer = new AuditGroupCommitter(vault.Scopes, NullLogger<AuditGroupCommitter>.Instance);
@@ -64,13 +71,12 @@ public class AuditTimePrecisionTests
         await committer.StopAsync(CancellationToken.None);
 
         var row = await vault.Db.AuditLogs.SingleAsync();
-        var hashed = AuditRowHasher.Compute(row, AuditRowHasher.GenesisHash);
-        row.TimestampUtc = AsPostgresStores(row.TimestampUtc);
-        Assert.Equal(hashed, AuditRowHasher.Compute(row, AuditRowHasher.GenesisHash));
+        Assert.Equal(new DateTimeOffset(2026, 11, 13, 12, 0, 0, 123, 456, TimeSpan.Zero), row.TimestampUtc);
+        Assert.Equal(row.EntryHash, AuditRowHasher.Compute(row, AuditRowHasher.GenesisHash));
     }
 
     [Fact]
-    public async Task A_checkpoint_signature_verifies_once_PostgreSQL_has_stored_its_time()
+    public async Task A_checkpoint_signs_its_whole_microsecond_timestamp()
     {
         await using var vault = await Vault.OpenAsync();
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
@@ -79,13 +85,11 @@ public class AuditTimePrecisionTests
 
         var checkpoint = (await service.ExportAsync(CancellationToken.None)).Checkpoint;
 
-        var stored = AuditCheckpointCanonical.Bytes(checkpoint.Sequence, checkpoint.ChainHeadHash, AsPostgresStores(checkpoint.CreatedAtUtc));
-        Assert.True(key.VerifyData(stored, checkpoint.Signature, HashAlgorithmName.SHA256));
+        var expectedTime = new DateTimeOffset(2026, 11, 13, 12, 0, 0, 123, 456, TimeSpan.Zero);
+        Assert.Equal(expectedTime, checkpoint.CreatedAtUtc);
+        var canonical = AuditCheckpointCanonical.Bytes(checkpoint.Sequence, checkpoint.ChainHeadHash, expectedTime);
+        Assert.True(key.VerifyData(canonical, checkpoint.Signature, HashAlgorithmName.SHA256));
     }
-
-    /// <summary>PostgreSQL rounds a time to the nearest microsecond: 12:00:00.1234567 is stored as 12:00:00.123457.</summary>
-    private static DateTimeOffset AsPostgresStores(DateTimeOffset time)
-        => new((time.UtcTicks + TimeSpan.TicksPerMicrosecond / 2) / TimeSpan.TicksPerMicrosecond * TimeSpan.TicksPerMicrosecond, TimeSpan.Zero);
 
     private sealed class Vault : IAsyncDisposable
     {
@@ -109,7 +113,12 @@ public class AuditTimePrecisionTests
             var connection = new SqliteConnection("DataSource=:memory:");
             await connection.OpenAsync();
             var services = new ServiceCollection();
-            services.AddDbContext<EclipsVaultDbContext>(o => o.UseSqlite(connection));
+            services.AddScoped(_ => new AuditSaveChangesInterceptor(
+                new Actor(), new AuditChain(new UncontendedChainLocks()), new FixedClock(ClockReading),
+                NullLogger<AuditSaveChangesInterceptor>.Instance));
+            services.AddDbContext<EclipsVaultDbContext>((provider, options) => options
+                .UseSqlite(connection)
+                .AddInterceptors(provider.GetRequiredService<AuditSaveChangesInterceptor>()));
             var vault = new Vault(connection, services.BuildServiceProvider());
             await vault.Db.Database.EnsureCreatedAsync();
             return vault;
