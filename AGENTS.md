@@ -183,8 +183,10 @@ failure with short retention.
   scripts, packaging, and browser-suite runs. Any change to encryption, authorization, the audit
   chain, MFA, licensing, or dynamic secrets is not a Cursor ticket; it runs in a local Claude Opus
   5.5 session. A cloud agent handed one stops before writing code and says so, as does one whose
-  brief names a model it is not. GPT Sol 6.1 and Thermos review every pull request before the
-  owner merges it.
+  brief names a model it is not. GPT Sol 6.1 reviews every pull request before the owner merges
+  it; when GPT Sol is unavailable, or wrote the change, a fresh Claude Opus 5.5 session reviews it
+  instead and says so. A cloud agent's pull request may also get a Thermos review in Cursor when
+  one is available; it is not required.
 - A cloud agent works on its own `cursor/…` branch, pushes only that branch, and hands back a pull
   request. `main` is protected, so every change reaches it through a pull request with green CI.
 - Prove a change before handing it back: `scripts/check.sh` for build and tests, and the
