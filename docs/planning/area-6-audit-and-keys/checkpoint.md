@@ -257,7 +257,7 @@ To restart: in the worktree, check `area-6b-audit-log` and a clean tree. Run `sc
 with and without `ECLIPSVAULT_TEST_DATABASE_PROVIDER=Postgres`. Ticket 2 (#141) starts from the HEAD after
 this commit.
 
-## Delivery: 6b ticket 3 (#142), security review pending
+## Delivery: 6b ticket 3 (#142)
 
 Branch `area-6b-142`, worktree `/Users/sabasabashvili/.t3/worktrees/EclipseVault/area-6b-142`,
 base `bb7e543`, following the owner's separate-worktree launch override. Nothing pushed, no PR.
@@ -305,11 +305,14 @@ small review fixes and re-checks share a model; the original implementation and 
 reviews used different models. Reports and the finding-by-finding ledger are in
 `logs/ticket-142/review-*.md`.
 
-**Security review is blocked, not passed.** The original `security-reviewer` and a fresh Opus 5.5
-high retry both reached the five-hour usage limit before returning a verdict. The reset is
-18:00 Asia/Tbilisi on 13 November. No provider or model was substituted. Before acceptance,
-obtain a fresh Opus 5.5 high security review of the whole `bb7e543..HEAD` diff, then fix and
-re-check any findings. The ticket remains unaccepted until this is done.
+**Security:** the original `security-reviewer` and a retry both hit the five-hour usage limit before a
+verdict. After the reset, a fresh Claude Opus 5.5 high `security-reviewer` reviewed the whole
+`bb7e543..4590de2` diff: security PASS, and readability of the GPT-authored commits PASS, with no
+findings (`logs/ticket-142/review-security-opus-final.md`). No model was substituted.
+
+A later full PostgreSQL-mode run at `4590de2` with collection parallelism disabled passed 1,199/1,199 in
+13.4 minutes (`logs/ticket-142/coordinator-postgres-result.md`). The earlier failed default-mode run is
+kept and is not rewritten by this pass.
 
 For the owner and #143: the existing step-up title says "Confirm it's you before granting access."
 Legacy has no step-up dialog and shows the raw stale-session JSON. Legacy busy refusal uses the
@@ -318,5 +321,5 @@ existing 400 error-page redirect; the UI API's `409 audit_busy` mapping belongs 
 To restart, confirm this worktree and branch with a clean tracked state; stop and report if the
 coordinator moved HEAD. Read `logs/ticket-142/final-report.md`, `restart.md`, `review-ledger.md`
 and `review-security-blocked.md`. Source `logs/ticket-142/env.sh` before every .NET command.
-Run only one integration suite at a time, preserve failed evidence, and never treat the original
-incomplete `full-postgres.log` or either interrupted security review as a pass.
+Run only one integration suite at a time and preserve failed evidence. The coordinator merges this
+branch into `area-6b-audit-log` after this commit; #143 starts from that merge.
