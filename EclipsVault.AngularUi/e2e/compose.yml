@@ -46,6 +46,7 @@ services:
       AllowedHosts: localhost
       ForwardedHeaders__KnownProxies__0: ${E2E_PROXY_IP:?Set by run.mjs}
       ConnectionStrings__DefaultConnection: Server=sql;Database=EclipsVault;User Id=sa;Password=${E2E_SQL_PASSWORD};Encrypt=True;TrustServerCertificate=True
+      Database__Provider: SqlServer
       Database__MigrateOnStartup: 'true'
       Seed__AdminPassword: ${Seed__AdminPassword:?Supply a unique test password}
       ECLIPSVAULT_KEK: ${ECLIPSVAULT_KEK:?Supply a base64 32-byte test KEK}
