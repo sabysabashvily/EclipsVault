@@ -365,3 +365,77 @@ coordinator moved HEAD. Read `logs/ticket-142/final-report.md`, `restart.md`, `r
 and `review-security-blocked.md`. Source `logs/ticket-142/env.sh` before every .NET command.
 Run only one integration suite at a time and preserve failed evidence. The coordinator merges this
 branch into `area-6b-audit-log` after this commit; #143 starts from that merge.
+
+## Delivery: 6b ticket 4 (#143)
+
+Implemented 2026-11-13 by Claude Opus 5.5 high in the worktree
+`~/.t3/worktrees/EclipseVault/area-6b-audit-log`, branch `area-6b-audit-log`, from `d1d6a40`.
+GPT Sol 6.1 xhigh resumed the final checks and delivery after Claude reached its usage limit.
+Nothing pushed, no PR.
+
+Code commits:
+
+- `ac376b8` serves the Audit log in Angular and adds its four session-only UI API endpoints.
+- `22525c6` removes the attachment header when an export fails before its first byte, tests the
+  empty-trail checkpoint refusal, and requires a creation row in the decoy test.
+- `3f13097` fixes the browser page object's whitespace-sensitive summary locator.
+- `efeab12` checks notices by their words, names the proof controls, removes test branching and
+  redundant comments, and labels the retained appearance checks `visual parity:`.
+- `8b9ba1d` shows the standard audit-unavailable message when opening the Audit log cannot be recorded.
+- This checkpoint section is committed last.
+
+`/Audit` and `/Audit/Index` now serve the Angular page under AdminOnly. Its API records opening
+before reading, updates Verify and Checkpoint in place, and streams the same schema-v2 export
+behind fresh proof. The proof gate runs before any export lock or read; no attachment header or
+byte is sent until recording succeeds. Busy verification and export answer `409 audit_busy`;
+recording failures answer `503 audit_unavailable`. The empty-trail refusal is `409 nothing_to_checkpoint`.
+The export-specific proof title comes from `AdministratorStepUp`; the shared dialog template is
+unchanged. Audit log and Your data share their attachment helper.
+
+Legacy's Audit controller, view and view model are retired. `AuditDisplay` remains for the other
+pages and supplies API labels. Equal timestamps are ordered by sequence. There is no model change,
+so no migration is needed; both pending-model checks pass.
+
+Checks on the owner's .NET 10.0.404 and Node 24.22.0, with NuGetAudit enabled:
+
+- Final `scripts/check.sh`: locked restore, Release build with zero warnings, 927/927 unit tests.
+- Full SQL Server integration: 1,228 passed, 1 failed, zero skipped, 1,229 total, 16.69 minutes.
+  The sole failure is in untouched authentication setup at `ProfileApi.VerifyAsync:124`, before
+  audit rejection is exercised. Its entire class passes alone 8/8. The original failed full run
+  remains; `integration-failures.md` records both outcomes. No unrelated helper change was made.
+- Full PostgreSQL integration: 1,229/1,229, zero failed or skipped, 12.66 minutes. All eight
+  authentication audit-failure tests pass in this full run too.
+- Focused HTTP checks before reviews: 74/74 on each provider.
+- Angular lint, format, API type generation check and build pass; Vitest 539/539, build checks
+  15/15 and lint guard tests 6/6. The high-severity npm audit gate passes with 10 moderate findings
+  still visible and no high or critical findings.
+- `e2e/audit.spec.ts` with its configured dependencies: 215/215, including all 15 Audit log tests,
+  on `8b9ba1d`. Tests took 35.3 minutes, plus the image build. Browser-health, real step-up export,
+  schema/file name, navigation, keyboard and both themes pass. Dark and light screenshots inspected.
+  The runner removed its own containers, network and image.
+- .NET formatting, both pending-model checks and six hook tests pass.
+
+The original red runs remain under `logs/ticket-143/`, including 37/45 failing acceptance cases
+on the starting implementation, the pre-first-byte attachment regression and the initial-load
+503 regression. Earlier browser runs remain too: a summary-locator failure, an interrupted run,
+and an untouched sign-in timeout. The final browser run ran alone and passed every dependency.
+
+Reviews and the finding-by-finding ledger are in `logs/ticket-143/review-*.md`:
+
+- Security and readability, security-reviewer on Opus 5.5 high: S1-S3, all Low, fixed in `22525c6`
+  and closed by a fresh re-check.
+- Standards, GPT Sol 6.1 xhigh through Codex delegates: STD-1 to STD-4 fixed or answered in
+  `efeab12`, all closed by a fresh re-check. Destination-page navigation follows existing page
+  objects; the reviewer accepted it and the retained `visual parity:` appearance checks.
+- Spec, GPT Sol 6.1 xhigh through Codex delegates: SPEC-1, Medium, fixed in `8b9ba1d` and closed
+  by a fresh re-check. Its remaining browser condition is now satisfied by the 215/215 pass.
+
+No new application code was written during final verification. Earlier owner notes remain:
+Verify ignores sequence 0 and below; cancellation after the interceptor takes the chain lock is
+unverified. No push or CI run was performed for this ticket.
+
+To restart, confirm this worktree and branch, a clean tracked tree, and that HEAD has not moved
+under the agent. Source `logs/ticket-143/env.sh` before every .NET command. Read
+`logs/ticket-143/final-report.md` and `review-ledger.md`. Run only one database suite at a time,
+with `-- xUnit.ParallelizeTestCollections=false` on this 4 GB Docker host. The coordinator owns
+merging this ticket and choosing the next starting commit; do not begin the next ticket here.
