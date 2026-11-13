@@ -439,3 +439,67 @@ under the agent. Source `logs/ticket-143/env.sh` before every .NET command. Read
 `logs/ticket-143/final-report.md` and `review-ledger.md`. Run only one database suite at a time,
 with `-- xUnit.ParallelizeTestCollections=false` on this 4 GB Docker host. The coordinator owns
 merging this ticket and choosing the next starting commit; do not begin the next ticket here.
+
+## Delivery: 6b ticket 5 (#144)
+
+Verified 2026-11-14 in `~/.t3/worktrees/EclipseVault/area-6b-audit-log`, on
+`area-6b-audit-log` from `6eb3518`, the coordinator's merge of #143 with `main` at `0a44040`.
+Claude Opus 5.5 high did the original verification; GPT Sol 6.1 xhigh handled the final two
+Standards corrections and the owner's requested re-check. The worker did not push or open a PR.
+
+Commits after `6eb3518`:
+
+- `b81331c` Pin that no letter case or method reaches a retired Audit action
+- `97ee048` Say where Verify's proof ends and what each audit access records
+- `cf62d98` Put the audit reader port with the infrastructure abstractions
+- this delivery section, committed last
+
+`RetiredAuditRoutesTests` sends 14 literal combinations of methods and spellings of `/Audit/Verify`,
+`/Audit/CreateCheckpoint` and `/Audit/Export` as separate administrators with valid antiforgery
+tokens. Every request must answer 404 and leave no audit row. All 14 failed against temporarily
+restored handlers with 200 or 405. Both shells, both palettes and the Dashboard links were already
+covered by #143's HTTP and browser tests.
+
+README, CONTEXT and ADR-0017, ADR-0028 and ADR-0030 now state what Verify proves, how each access
+is recorded, the separate per-kind locks and 409/503 answers, the export proof title, the sequence-0
+limit and the owner-approved migration order. The PostgreSQL precision consequence is explicit:
+old rows whose sub-microsecond digit was lost remain altered; neither verifier repairs or tolerates them.
+
+`cf62d98` moves only the Infrastructure-implemented reader port to `Application/Abstractions`,
+keeps its identical DTO in its own Auditing file, and updates or verifies every consumer's imports.
+The controller summary says viewing records before reading, Verify before answering, Export before
+its first byte, and checkpoint recording is atomic with its save. The contract and executable behavior
+did not change. There is no model change and no migration. No Angular or browser source changed in this correction.
+
+Checks at `97ee048`: `scripts/check.sh`, 927 unit tests and zero warnings; full integration with
+collection parallelism off, SQL Server 1239/1239 and PostgreSQL 1239/1239; formatting, both pending-model
+checks and six hook tests. The 14-case retired-route red run is retained. CI 43505099456 at `6eb3518`
+passed every job, including the full browser suite and `e2e:verify-guards`.
+
+Checks at `cf62d98`: `scripts/check.sh`, 927/927 unit tests and zero warnings; the PostgreSQL
+AuditApiTests and RetiredAuditRoutesTests HTTP filter, 38/38 passed.
+The owner requested this one-database HTTP check for the pure move and comment correction.
+
+Reviews are recorded finding by finding in `logs/ticket-144/review-ledger.md`:
+
+- The whole-part security review and two re-checks, Opus 5.5 high, closed all required fixes. R1 is
+  left for the owner: after a rehashed rewrite or forged checkpoint, the specified "First broken
+  entry" text names the checkpoint's entry rather than the changed entry. The verdict remains Tampered.
+- The coordinator's whole-part GPT Sol 6.1 xhigh Spec review passed with no findings and closed
+  #140's G1 from the retained SQL Server logs.
+- The coordinator's whole-part GPT Sol 6.1 xhigh Standards review raised STD-144-1 Medium and
+  STD-144-2 Nit. The owner limited corrections to these two findings. `cf62d98` addresses both.
+- Exactly one fresh GPT Sol 6.1 xhigh Standards re-check at `cf62d98` passed both findings with
+  no regressions. Its full report is `logs/ticket-144/review-gpt-standards-r2.md`.
+
+The coordinator owns CI after the final commit. #144's final-source check criterion, including
+both integration databases, the full browser suite and `e2e:verify-guards`, remains pending that run.
+The PR body stays in `logs/ticket-144/pr-body.md`; no PR was opened by the worker. Area 7a is stacked
+on this branch.
+
+For the owner: R1 above; Verify ignores sequence 0 and below; interceptor cancellation after the
+chain lock is unverified. No new behavior was added for these items.
+
+To restart, confirm this worktree, `area-6b-audit-log`, a clean tracked tree, and the expected HEAD.
+Source `logs/ticket-144/env.sh`; read `final-report.md` and `review-ledger.md`. Do not push or merge.
+The coordinator chooses the next action. This ticket's Docker run finished and released its lock.
