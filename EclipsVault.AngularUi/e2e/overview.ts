@@ -51,6 +51,12 @@ export class Overview {
   expiringRow(name: string) {
     return this.page.getByRole('row').filter({ hasText: name });
   }
+  activityRow(resource: string) {
+    return this.activity.filter({ hasText: resource });
+  }
+  badge(label: string) {
+    return this.page.getByRole('main').getByText(label, { exact: true });
+  }
   async useTheme(theme: 'dark' | 'light'): Promise<void> {
     await this.page
       .context()

@@ -190,3 +190,96 @@ for (const theme of ['dark', 'light'] as const) {
     await info.attach(`${theme}-overview`, { path, contentType: 'image/png' });
   });
 }
+
+const hour = 3_600_000;
+// The run's vault has no critical event, so the highlights are drawn from a fixed overview.
+const highlighted = {
+  displayName: 'Vault Administrator',
+  totalActiveSecrets: 2,
+  developmentCount: 0,
+  stagingCount: 0,
+  productionCount: 2,
+  expiringWithin7Days: 2,
+  criticalEventsLast24h: 1,
+  staffAccounts: 2,
+  activityScope: 'vault',
+  recentEvents: [
+    {
+      timestampUtc: new Date().toISOString(),
+      action: 'HoneyTokenTripped',
+      actionLabel: 'Honey token',
+      tone: 'critical',
+      resource: 'E2E_DECOY_KEY',
+      actor: 'mallory',
+      isCritical: true,
+    },
+    {
+      timestampUtc: new Date().toISOString(),
+      action: 'SecretAccessDenied',
+      actionLabel: 'Access denied',
+      tone: 'warn',
+      resource: 'E2E_DENIED_SECRET',
+      actor: 'alice',
+      isCritical: false,
+    },
+  ],
+  expiringSoon: [
+    {
+      secretId: '00000000-0000-4000-8000-0000000000e1',
+      name: 'E2E_EXPIRING_TODAY',
+      environment: 'Production',
+      expiresAtUtc: new Date(Date.now() + 2.5 * hour).toISOString(),
+    },
+    {
+      secretId: '00000000-0000-4000-8000-0000000000e2',
+      name: 'E2E_EXPIRING_LATER',
+      environment: 'Production',
+      expiresAtUtc: new Date(Date.now() + 84 * hour).toISOString(),
+    },
+  ],
+};
+const palettes = {
+  dark: {
+    danger: 'rgb(255, 69, 58)',
+    dangerSoft: 'rgba(255, 69, 58, 0.14)',
+    warn: 'rgb(255, 214, 10)',
+    warnSoft: 'rgba(255, 214, 10, 0.12)',
+  },
+  light: {
+    danger: 'rgb(215, 0, 21)',
+    dangerSoft: 'rgba(215, 0, 21, 0.1)',
+    warn: 'rgb(138, 106, 0)',
+    warnSoft: 'rgba(180, 140, 0, 0.15)',
+  },
+} as const;
+
+for (const theme of ['dark', 'light'] as const) {
+  test(`visual parity: the Overview highlights expiring and critical items as Legacy did in ${theme}`, async ({
+    page,
+  }) => {
+    const colours = palettes[theme];
+    await page.route('**/api/ui/overview', (route) => route.fulfill({ json: highlighted }));
+    await page.context().addCookies(await savedAdministratorCookies());
+    const overview = new Overview(page);
+    await overview.open();
+    await overview.useTheme(theme);
+    await expect(overview.expiringCard).toHaveCSS('border-top-color', 'rgba(255, 214, 10, 0.35)');
+    await expect(overview.criticalAlertsLink).toHaveCSS(
+      'border-top-color',
+      'rgba(255, 69, 58, 0.4)',
+    );
+    await expect(overview.activityRow('E2E_DECOY_KEY')).toHaveCSS(
+      'background-color',
+      colours.dangerSoft,
+    );
+    await expect(overview.badge('Honey token')).toHaveCSS('color', 'rgb(255, 255, 255)');
+    await expect(overview.badge('Honey token')).toHaveCSS('background-color', colours.danger);
+    await expect(overview.badge('Access denied')).toHaveCSS('color', colours.warn);
+    await expect(overview.badge('Access denied')).toHaveCSS('background-color', colours.warnSoft);
+    await expect(overview.badge('in 2h')).toHaveCSS('color', colours.danger);
+    await expect(overview.badge('in 2h')).toHaveCSS('background-color', colours.dangerSoft);
+    await expect(overview.badge('in 3d')).toHaveCSS('color', colours.warn);
+    await expect(overview.badge('in 3d')).toHaveCSS('background-color', colours.warnSoft);
+    await expect(overview.badge('Production').first()).toHaveCSS('color', colours.danger);
+  });
+}
