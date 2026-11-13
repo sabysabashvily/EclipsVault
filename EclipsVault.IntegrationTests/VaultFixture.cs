@@ -71,7 +71,8 @@ public sealed partial class VaultFixture : IAsyncLifetime
 
     public bool ProductionWindowNeverOpens { get; init; }
 
-    public bool MalformedLicense { get; init; }
+    /// <summary>The token the vault reads from ECLIPSVAULT_LICENSE at startup; none means unlicensed.</summary>
+    public string? License { get; init; }
 
     /// <summary>A master key the vault loads only to unwrap data keys still sealed under it.</summary>
     public string? RetiredMasterKey { get; init; }
@@ -117,7 +118,7 @@ public sealed partial class VaultFixture : IAsyncLifetime
         SetEnvironment("Sso__Authority", "https://idp.example.test/realms/integration");
         SetEnvironment("Sso__ClientId", "integration-vault");
         SetEnvironment("Sso__ClientSecret", Convert.ToHexString(RandomNumberGenerator.GetBytes(32)));
-        if (MalformedLicense) SetEnvironment("ECLIPSVAULT_LICENSE", "not-a-license-token");
+        if (License is not null) SetEnvironment("ECLIPSVAULT_LICENSE", License);
         if (ProductionWindowNeverOpens)
         {
             // The window runs from the start hour up to the end hour, so equal hours never open it.

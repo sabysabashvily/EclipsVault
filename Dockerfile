@@ -4,11 +4,12 @@
 # Supply-chain note: both base images are pinned to a digest (the human-readable tag is kept
 # alongside for clarity). A floating tag means the image that builds tomorrow is not the one you
 # tested, and a supply-chain compromise would arrive with nothing in the diff — the same reasoning
-# docker-compose.yml applies to its own images. To move to a newer .NET patch, re-resolve and
-# replace both digests:
-#   docker buildx imagetools inspect mcr.microsoft.com/dotnet/sdk:10.0     # copy the Digest: line
-#   docker buildx imagetools inspect mcr.microsoft.com/dotnet/aspnet:10.0
-# .NET digests below pinned 2026-11-13. The runtime includes the Cbor security patch.
+# docker-compose.yml applies to its own images. To move to a newer .NET patch, inspect the exact
+# patch tags you are moving to, then replace each FROM line's tag and digest together:
+#   docker buildx imagetools inspect mcr.microsoft.com/dotnet/sdk:<sdk-version>     # copy the Digest: line
+#   docker buildx imagetools inspect mcr.microsoft.com/dotnet/aspnet:<runtime-version>
+# .NET pinned 2026-11-13 to runtime 10.0.15, the first patch with the System.Formats.Cbor fix:
+# ASP.NET apps load Cbor from the shared framework in this image, not from the NuGet package.
 
 # The Angular UI (ADR-0008). Pinned the same way; the version matches EclipsVault.AngularUi/.nvmrc:
 #   docker buildx imagetools inspect node:24.22.0-bookworm-slim
@@ -43,11 +44,9 @@ RUN rm /app/runtimes/win-arm64/native/Microsoft.Data.SqlClient.SNI.dll \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.15@sha256:bfd912c83295ce66d4b706ebb8541b9f14259b0e76fbb88b2751f58ce2399d2e AS runtime
 WORKDIR /app
 
-# Run as a non-root user. Use the `app` account the base image already ships (its UID is published
-# as $APP_UID, currently 1654) rather than creating one: this image carries a shell but no `adduser`
-# binary, so the previous `adduser ... --uid 10001 vault` failed with exit 127 and no image could be
-# built at all. The image's own User field is unset, so declaring USER here is what actually drops
-# root — without it the vault runs as root.
+# Use the non-root `app` account the base image already provides, so no user-management binary is
+# needed. Its UID is published as $APP_UID. The image's User field is unset, so USER below is
+# required to drop root.
 #
 # Ownership is set during the copy instead of by a later `chown -R`, which would duplicate the whole
 # publish output into a second layer for nothing.
