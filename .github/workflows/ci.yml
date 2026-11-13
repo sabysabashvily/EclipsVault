@@ -293,11 +293,6 @@ jobs:
           fi
           echo "OK — appsettings.Development.json is not tracked"
 
-      # Framework libraries ship in the runtime image, not as NuGet packages, so the audit
-      # below cannot see a .NET security patch. The fix is to move the Dockerfile pin.
-      - name: Pinned .NET images are the latest patch
-        run: python3 -I .github/dotnet-image-pin.py
-
       - name: Setup .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
@@ -330,6 +325,15 @@ jobs:
       - name: Audit the SBOM tool's npm dependencies
         working-directory: .github/sbom
         run: npm audit --audit-level=high
+
+      # Framework libraries ship in the runtime image, not as NuGet packages, so the audits above
+      # cannot see a .NET security patch. The fix is to move the Dockerfile pin. This runs last so a
+      # release day that moves the images still reports every package finding in the same run.
+      - name: .NET image pin check tests
+        run: python3 -I -m unittest discover -s .github -p 'test_dotnet_image_pin.py' -v
+
+      - name: Pinned .NET images are not behind a security release
+        run: python3 -I .github/dotnet-image-pin.py
 
   # The hook that stops coding agents running destructive git commands is itself security code,
   # and its first version had a bypass that only a test exposed. Run its test table on every change

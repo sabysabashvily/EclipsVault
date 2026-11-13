@@ -1,4 +1,7 @@
-"""Fail when a pinned .NET SDK or ASP.NET image is behind the latest patch.
+"""Fail when a pinned .NET SDK or ASP.NET image is behind a .NET security release.
+
+A pin behind only non-security patches gets a warning, so it stays visible without
+blocking every merge until the pin moves.
 
 The production image loads framework libraries from the ASP.NET runtime, so a
 security fix reaches the vault only when that pin moves. NuGet audit does not
@@ -62,6 +65,8 @@ def main() -> int:
         problem = behind_latest(product, version, component_versions(index, product))
         if problem is None:
             print(f"ok {image_ref(product, version)} is the latest .NET {channel} patch")
+        elif problem.startswith("::warning::"):
+            print(problem)
         else:
             problems.append((product, problem))
 
@@ -161,7 +166,8 @@ def stable(version: object) -> bool:
 
 
 def behind_latest(product: str, pinned: str, versions: dict[str, bool]) -> str | None:
-    """An error line when the pin is missing or older than the latest patch, else None.
+    """An error line when the pin is missing or behind a security release, a warning line when it
+    is behind only non-security patches, else None.
 
     A version the index does not list is not treated as newer than latest.
     That comparison would accept a typo.
@@ -177,13 +183,13 @@ def behind_latest(product: str, pinned: str, versions: dict[str, bool]) -> str |
         return None
     latest = max(versions, key=version_key)
     security_releases = [version for version in newer if versions[version]]
+    if not security_releases:
+        return f"::warning::{image} is behind the latest patch {latest}, which is not a security release. Move the pin in the Dockerfile."
     if versions[latest]:
         reason = f"behind the latest patch {latest}, a security release"
-    elif security_releases:
+    else:
         missed = max(security_releases, key=version_key)
         reason = f"behind the latest patch {latest}. The newer release {missed} is a security release"
-    else:
-        reason = f"behind the latest patch {latest}"
     return f"::error::{image} is {reason}. Move the pin in the Dockerfile."
 
 
