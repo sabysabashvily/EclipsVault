@@ -45,6 +45,7 @@ export default defineConfig({
             '**/license.spec.ts',
             '**/encryption.spec.ts',
             '**/audit.spec.ts',
+            '**/overview.spec.ts',
           ],
           use: { ...devices['Desktop Chrome'] },
         },
@@ -71,6 +72,13 @@ export default defineConfig({
           // sign-in saves.
           name: 'encryption',
           testMatch: '**/encryption.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          // Needs the administrator session that sign-in saves, and makes its own Standard account.
+          name: 'overview',
+          testMatch: '**/overview.spec.ts',
           dependencies: ['chromium'],
           use: { ...devices['Desktop Chrome'] },
         },

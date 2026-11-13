@@ -11,13 +11,16 @@ using Xunit;
 namespace EclipsVault.Tests.Web;
 
 /// <summary>
-/// Dashboard figures must describe only the caller's visible secrets: even a name or expiry can
+/// Overview figures must describe only the caller's visible secrets: even a name or expiry can
 /// disclose a secret in another project. The service receives the filtered list rather than a
-/// repository so it cannot enumerate secrets the caller cannot open.
+/// repository so it cannot enumerate secrets the caller cannot open. Accounts and the vault's
+/// activity are an administrator's alone.
 /// </summary>
 public class DashboardServiceTests
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 11, 12, 0, 0, TimeSpan.Zero);
+    private static readonly Guid Alice = Guid.NewGuid();
+    private static readonly Guid Administrator = Guid.NewGuid();
 
     private static SecretSummaryDto Secret(string name, string project, DateTimeOffset? expires) =>
         new(Guid.NewGuid(), name, project, SecretEnvironment.Production, SensitivityLevel.Confidential,
@@ -26,13 +29,86 @@ public class DashboardServiceTests
     private static DashboardService Build() =>
         new(new FakeUsers(), new FakeAudit(), new FixedClock(Now));
 
+    private static AuditEntryDto Denial(string username) =>
+        new(Guid.NewGuid(), Now.AddMinutes(-5), username, "10.0.0.5", AuditAction.SecretAccessDenied, "Secret",
+            "PAYMENTS_DB_PASSWORD", "Clearance 'Standard' is below required sensitivity 'Secret'.", IsCritical: false);
+
+    [Fact]
+    public async Task A_non_administrators_overview_loads_no_accounts()
+    {
+        var users = new FakeUsers();
+
+        var dto = await new DashboardService(users, new FakeAudit(), new FixedClock(Now))
+            .GetAsync([], Alice, isAdministrator: false, CancellationToken.None);
+
+        Assert.Equal(0, users.Listed);
+        Assert.Null(dto.StaffAccounts);
+    }
+
+    [Fact]
+    public async Task An_administrators_overview_counts_the_staff_accounts()
+    {
+        var users = new FakeUsers(new User(), new User(), new User());
+
+        var dto = await new DashboardService(users, new FakeAudit(), new FixedClock(Now))
+            .GetAsync([], Administrator, isAdministrator: true, CancellationToken.None);
+
+        Assert.Equal(3, dto.StaffAccounts);
+    }
+
+    [Fact]
+    public async Task A_non_administrator_gets_their_own_activity_by_account_id_and_an_administrator_the_vaults()
+    {
+        var audit = new FakeAudit();
+        var service = new DashboardService(new FakeUsers(), audit, new FixedClock(Now));
+
+        await service.GetAsync([], Alice, isAdministrator: false, CancellationToken.None);
+        await service.GetAsync([], Administrator, isAdministrator: true, CancellationToken.None);
+
+        Assert.Equal(["account " + Alice, "the vault"], audit.Requests);
+    }
+
+    [Fact]
+    public async Task A_denial_in_a_non_administrators_own_activity_does_not_name_the_secret()
+    {
+        var audit = new FakeAudit(Denial("alice"));
+
+        var dto = await new DashboardService(new FakeUsers(), audit, new FixedClock(Now))
+            .GetAsync([], Alice, isAdministrator: false, CancellationToken.None);
+
+        var denial = Assert.Single(dto.RecentEvents);
+        Assert.Null(denial.ResourceName);
+        Assert.Equal("Secret", denial.ResourceType);
+    }
+
+    [Fact]
+    public async Task A_denial_in_the_vaults_activity_names_the_secret_for_an_administrator()
+    {
+        var audit = new FakeAudit(Denial("alice"));
+
+        var dto = await new DashboardService(new FakeUsers(), audit, new FixedClock(Now))
+            .GetAsync([], Administrator, isAdministrator: true, CancellationToken.None);
+
+        Assert.Equal("PAYMENTS_DB_PASSWORD", Assert.Single(dto.RecentEvents).ResourceName);
+    }
+
+    [Fact]
+    public async Task The_expiring_count_covers_every_expiring_secret_while_the_list_stops_at_eight()
+    {
+        var visible = Enumerable.Range(1, 9).Select(day => Secret($"EXPIRING_{day}", "WEB", Now.AddHours(day))).ToArray();
+
+        var dto = await Build().GetAsync(visible, Alice, isAdministrator: false, CancellationToken.None);
+
+        Assert.Equal(9, dto.ExpiringWithin7Days);
+        Assert.Equal(8, dto.ExpiringSoon.Count);
+    }
 
     [Fact]
     public async Task Expiring_soon_lists_only_the_secrets_the_caller_can_see()
     {
         var visible = new[] { Secret("WEB_TLS_CERT", "WEB", Now.AddDays(2)) };
 
-        var dto = await Build().GetAsync(visible, restrictActivityToUsername: "alice", CancellationToken.None);
+        var dto = await Build().GetAsync(visible, Alice, isAdministrator: false, CancellationToken.None);
 
         Assert.Single(dto.ExpiringSoon);
         Assert.Equal("WEB_TLS_CERT", dto.ExpiringSoon[0].Name);
@@ -47,7 +123,7 @@ public class DashboardServiceTests
             Secret("WEB_SMTP_PASSWORD", "WEB", null)
         };
 
-        var dto = await Build().GetAsync(visible, restrictActivityToUsername: "alice", CancellationToken.None);
+        var dto = await Build().GetAsync(visible, Alice, isAdministrator: false, CancellationToken.None);
 
         Assert.Equal(2, dto.TotalActiveSecrets);
         Assert.Equal(2, dto.ProductionCount);
@@ -57,7 +133,7 @@ public class DashboardServiceTests
     [Fact]
     public async Task A_caller_who_can_see_nothing_gets_an_empty_dashboard_not_the_vault_total()
     {
-        var dto = await Build().GetAsync([], restrictActivityToUsername: "alice", CancellationToken.None);
+        var dto = await Build().GetAsync([], Alice, isAdministrator: false, CancellationToken.None);
 
         Assert.Equal(0, dto.TotalActiveSecrets);
         Assert.Empty(dto.ExpiringSoon);
@@ -68,10 +144,15 @@ public class DashboardServiceTests
         public override DateTimeOffset GetUtcNow() => now;
     }
 
-    private sealed class FakeUsers : IUserRepository
+    private sealed class FakeUsers(params User[] accounts) : IUserRepository
     {
+        public int Listed { get; private set; }
+
         public Task<IReadOnlyList<User>> ListAsync(CancellationToken ct)
-            => Task.FromResult<IReadOnlyList<User>>([]);
+        {
+            Listed++;
+            return Task.FromResult<IReadOnlyList<User>>(accounts);
+        }
 
         public Task<bool> AnyOtherEnabledAdministratorAsync(Guid accountId, CancellationToken ct) => throw new NotSupportedException();
         public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
@@ -94,15 +175,25 @@ public class DashboardServiceTests
         public Task ClearFailedAttemptsAsync(User user, CancellationToken ct) => throw new NotSupportedException();
     }
 
-    private sealed class FakeAudit : IAuditLogReader
+    private sealed class FakeAudit(params AuditEntryDto[] recent) : IAuditLogReader
     {
+        public List<string> Requests { get; } = [];
+
         public Task<IReadOnlyList<AuditEntryDto>> ListRecentAsync(int count, string? username, CancellationToken ct)
-            => Task.FromResult<IReadOnlyList<AuditEntryDto>>([]);
+        {
+            Requests.Add(username is null ? "the vault" : "user " + username);
+            return Task.FromResult<IReadOnlyList<AuditEntryDto>>(recent);
+        }
+
+        public Task<IReadOnlyList<AuditEntryDto>> ListForActorAsync(Guid actorUserId, int skip, int take, CancellationToken ct)
+        {
+            Requests.Add("account " + actorUserId);
+            return Task.FromResult<IReadOnlyList<AuditEntryDto>>(recent);
+        }
 
         public Task<int> CountCriticalSinceAsync(DateTimeOffset sinceUtc, CancellationToken ct)
             => Task.FromResult(0);
 
-        public Task<IReadOnlyList<AuditEntryDto>> ListForActorAsync(Guid actorUserId, int skip, int take, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<AuditEntryDto>> ListForActorByActionsAsync(Guid actorUserId, IReadOnlyCollection<AuditAction> actions, int take, CancellationToken ct) => throw new NotSupportedException();
     }
 }

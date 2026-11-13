@@ -1046,6 +1046,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ui/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OverviewResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ui/passwords/check-breached": {
         parameters: {
             query?: never;
@@ -4127,6 +4162,15 @@ export interface components {
             /** Format: int32 */
             onMissingKeys: number | string;
         };
+        ExpiringSecretResponse: {
+            /** Format: uuid */
+            secretId: string;
+            name: string;
+            /** @enum {string} */
+            environment: "Development" | "Staging" | "Production";
+            /** Format: date-time */
+            expiresAtUtc: string;
+        };
         FiledRequestResponse: {
             /** Format: uuid */
             requestId: string;
@@ -4253,6 +4297,38 @@ export interface components {
             delivery: "off" | "smtp" | "log";
             smtpTarget: null | string;
             outbox: components["schemas"]["NotificationResponse"][];
+        };
+        OverviewEventResponse: {
+            /** Format: date-time */
+            timestampUtc: string;
+            action: string;
+            actionLabel: string;
+            /** @enum {string} */
+            tone: "ok" | "muted" | "warn" | "danger" | "critical";
+            resource: string;
+            actor: string;
+            isCritical: boolean;
+        };
+        OverviewResponse: {
+            displayName: string;
+            /** Format: int32 */
+            totalActiveSecrets: number | string;
+            /** Format: int32 */
+            developmentCount: number | string;
+            /** Format: int32 */
+            stagingCount: number | string;
+            /** Format: int32 */
+            productionCount: number | string;
+            /** Format: int32 */
+            expiringWithin7Days: number | string;
+            /** Format: int32 */
+            criticalEventsLast24h: number | string;
+            /** Format: int32 */
+            staffAccounts: null | number | string;
+            /** @enum {string} */
+            activityScope: "vault" | "own";
+            recentEvents: components["schemas"]["OverviewEventResponse"][];
+            expiringSoon: components["schemas"]["ExpiringSecretResponse"][];
         };
         PasskeyOptionsResponse: {
             publicKey: components["schemas"]["JsonElement"];

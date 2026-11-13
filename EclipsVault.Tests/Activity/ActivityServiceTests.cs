@@ -150,4 +150,15 @@ public class ActivityServiceTests
         Assert.Equal("prod/db-password", item.ResourceName);
         Assert.Equal("198.51.100.9", item.SourceIp);
     }
+
+    [Fact]
+    public async Task A_denial_is_shown_without_the_refused_secrets_name()
+    {
+        var reader = new FakeReader([Row(AuditAction.SecretAccessDenied, resource: "prod/db-password")]);
+        var feed = await new ActivityService(reader).GetForUserAsync(User, 1, 25, CancellationToken.None);
+
+        var item = Assert.Single(feed.Items);
+        Assert.Equal("Was refused access to a secret", item.Title);
+        Assert.Null(item.ResourceName);
+    }
 }

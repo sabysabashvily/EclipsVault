@@ -31,6 +31,12 @@ public enum AuditAction
     /// when it is issued.
     /// </summary>
     SignInFactorVerified = 17,
+
+    /// <summary>
+    /// A by-id action on a secret was refused by the access policy; the details hold the reasons.
+    /// Self-service views show it without the secret's name, which the person refused may not know.
+    /// </summary>
+    SecretAccessDenied = 18,
     HoneyTokenTripped = 20,
     SessionRevoked = 21,
     UserCreated = 30,

@@ -1468,6 +1468,73 @@ app-command-palette {
   margin-top: 0.9rem;
 }
 
+/* ---- Activity list (Overview) ---------------------------------------- */
+.activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.activity-item {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 0.2rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.88rem;
+}
+.activity-item:last-child {
+  border-bottom: none;
+}
+.activity-item.critical {
+  background: var(--danger-soft);
+  border-radius: var(--radius-sm);
+  padding-left: 0.55rem;
+  padding-right: 0.55rem;
+}
+.activity-target {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+}
+.activity-meta {
+  color: var(--text-faint);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+/* ---- Quick actions (Overview) ------------------------------------------ */
+.quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.quick-action {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  background: var(--bg-inset);
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+}
+.quick-action:hover {
+  border-color: var(--accent-line);
+  background: var(--bg-hover);
+  color: var(--text);
+  text-decoration: none;
+  transform: translateX(2px);
+}
+.quick-action span {
+  font-size: 0.8rem;
+}
+
 /* ---- Personal activity feed (My activity page) ------------------------- */
 .activity-feed {
   list-style: none;

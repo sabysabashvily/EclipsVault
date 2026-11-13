@@ -1,3 +1,4 @@
+using EclipsVault.Core.Application.Activity;
 using EclipsVault.Core.Application.Auditing;
 using EclipsVault.Core.Application.Secrets;
 using EclipsVault.Core.Application.Users;
@@ -7,7 +8,8 @@ namespace EclipsVault.Core.Application.Dashboard;
 
 /// <summary>
 /// Composes the overview snapshot. Pure aggregation over the secrets it is <em>given</em>, plus the
-/// two vault-wide figures the page only shows an administrator.
+/// vault-wide critical count, and for an administrator alone the vault-wide activity and the staff
+/// account count.
 ///
 /// <para><b>Why it holds no secret repository.</b> It used to fetch every active secret itself, so
 /// the "Expiring soon" table and the active-secret counts described the whole vault to whoever was
@@ -33,12 +35,17 @@ public sealed class DashboardService : IDashboardService
     }
 
     public async Task<DashboardDto> GetAsync(
-        IReadOnlyList<SecretSummaryDto> visibleSecrets, string? restrictActivityToUsername, CancellationToken ct)
+        IReadOnlyList<SecretSummaryDto> visibleSecrets, Guid userId, bool isAdministrator, CancellationToken ct)
     {
         var now = _clock.GetUtcNow();
 
-        var users = await _users.ListAsync(ct);
-        var recent = await _audit.ListRecentAsync(RecentEventCount, restrictActivityToUsername, ct);
+        int? staffAccounts = isAdministrator ? (await _users.ListAsync(ct)).Count : null;
+        var recent = isAdministrator
+            ? await _audit.ListRecentAsync(RecentEventCount, username: null, ct)
+            // By account id, as My activity reads it: a username can be reused after its account is deleted.
+            : (await _audit.ListForActorAsync(userId, 0, RecentEventCount, ct))
+                .Select(entry => entry with { ResourceName = ActivityDescriber.ResourceNameShownToActor(entry.Action, entry.ResourceName) })
+                .ToList();
         var criticalLast24h = await _audit.CountCriticalSinceAsync(now.AddHours(-24), ct);
 
         // Same horizon the lifecycle worker emails on — see SecretExpiry.
@@ -56,7 +63,7 @@ public sealed class DashboardService : IDashboardService
             StagingCount: visibleSecrets.Count(s => s.Environment == SecretEnvironment.Staging),
             ProductionCount: visibleSecrets.Count(s => s.Environment == SecretEnvironment.Production),
             ExpiringWithin7Days: visibleSecrets.Count(s => s.ExpiresAtUtc is { } e && e <= expiryCutoff),
-            UserCount: users.Count,
+            StaffAccounts: staffAccounts,
             CriticalEventsLast24h: criticalLast24h,
             RecentEvents: recent,
             ExpiringSoon: expiringSoon);

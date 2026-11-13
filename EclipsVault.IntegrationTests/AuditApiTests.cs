@@ -220,15 +220,13 @@ public sealed class AuditApiTests(VaultFixture vault)
         Assert.DoesNotContain(await AuditTrail.RowsAfterAsync(vault, before), row => row.Username == administrator);
     }
 
-    [Theory]
-    [InlineData("Critical alerts (24 h)")]
-    [InlineData("Full audit log")]
-    [InlineData("Audit log")]
-    public async Task The_Legacy_sidebar_and_Dashboard_links_keep_their_destination(string text)
+    [Fact]
+    public async Task The_Legacy_sidebar_link_keeps_its_destination()
     {
-        var html = await (await vault.AdminClientAsync()).GetStringAsync("/");
+        // The Overview is an Angular page; the Secrets list renders the Legacy sidebar.
+        var html = await (await vault.AdminClientAsync()).GetStringAsync("/Secrets");
         var link = Assert.Single(Regex.Matches(html, "<a\\b[^>]*>[\\s\\S]*?</a>").Select(match => match.Value),
-            anchor => Regex.Replace(anchor, "<[^>]*>", "").Contains(text, StringComparison.Ordinal));
+            anchor => Regex.Replace(anchor, "<[^>]*>", "").Contains("Audit log", StringComparison.Ordinal));
 
         Assert.Contains("href=\"/Audit\"", link);
     }
