@@ -1,17 +1,7 @@
+using EclipsVault.Core.Application.Auditing;
 using EclipsVault.Core.Domain.Enums;
 
-namespace EclipsVault.Core.Application.Auditing;
-
-public sealed record AuditEntryDto(
-    Guid Id,
-    DateTimeOffset TimestampUtc,
-    string Username,
-    string SourceIp,
-    AuditAction Action,
-    string ResourceType,
-    string? ResourceName,
-    string? Details,
-    bool IsCritical);
+namespace EclipsVault.Core.Application.Abstractions;
 
 /// <summary>Read-only access to the audit trail for dashboards and the audit viewer.</summary>
 public interface IAuditLogReader

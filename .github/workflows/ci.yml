@@ -326,6 +326,17 @@ jobs:
         working-directory: .github/sbom
         run: npm audit --audit-level=high
 
+      # Framework libraries ship in the runtime image, not as NuGet packages, so the audits above
+      # cannot see a .NET security patch. The fix is to move the Dockerfile pin. These run last, and
+      # even when an audit above failed, so one run reports every package and image finding.
+      - name: .NET image pin check tests
+        if: ${{ !cancelled() }}
+        run: python3 -I -m unittest discover -s .github -p 'test_dotnet_image_pin.py' -v
+
+      - name: Pinned .NET images are not behind a security release
+        if: ${{ !cancelled() }}
+        run: python3 -I .github/dotnet-image-pin.py
+
   # The hook that stops coding agents running destructive git commands is itself security code,
   # and its first version had a bypass that only a test exposed. Run its test table on every change
   # so a broken pattern fails here instead of failing open on someone's machine.

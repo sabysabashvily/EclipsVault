@@ -12,6 +12,9 @@ export class AuditLog {
   readonly export;
   readonly filter;
   readonly stepUp;
+  readonly proofCode;
+  readonly cancelProofButton;
+  readonly verifyProofButton;
   constructor(private readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Audit log', exact: true });
     this.summary = page.getByText(
@@ -27,6 +30,12 @@ export class AuditLog {
     this.export = page.getByRole('button', { name: 'Export signed bundle', exact: true });
     this.filter = page.getByRole('searchbox', { name: 'Filter audit entries', exact: true });
     this.stepUp = page.getByRole('dialog', { name: "Confirm it's you" });
+    this.proofCode = this.stepUp.getByLabel('Authenticator code');
+    this.cancelProofButton = this.stepUp.getByRole('button', { name: 'Cancel', exact: true });
+    this.verifyProofButton = this.stepUp.getByRole('button', {
+      name: 'Verify and continue',
+      exact: true,
+    });
   }
   async open(): Promise<void> {
     await this.page.goto('/Audit/Index');
@@ -35,11 +44,11 @@ export class AuditLog {
     return this.page.getByRole('row').filter({ has: this.page.getByRole('cell') });
   }
   async prove(code: string): Promise<void> {
-    await this.stepUp.getByLabel('Authenticator code').fill(code);
-    await this.stepUp.getByRole('button', { name: 'Verify and continue', exact: true }).click();
+    await this.proofCode.fill(code);
+    await this.verifyProofButton.click();
   }
   async cancelProof(): Promise<void> {
-    await this.stepUp.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await this.cancelProofButton.click();
   }
   async fromDashboard(link: RegExp): Promise<void> {
     await this.page.goto('/');

@@ -7,6 +7,7 @@ import { StatusLine } from '../shared/status-line';
 import { StepUpDialog } from '../shared/step-up-dialog';
 import { TableFilter } from '../shared/table-filter';
 import type { components } from '../ui-api/schema.generated';
+import { UiApiError } from '../ui-api/ui-api-errors';
 
 type Checkpoint = components['schemas']['AuditCheckpointResponse'];
 type Verification = components['schemas']['AuditVerificationResponse'];
@@ -28,6 +29,13 @@ export class AuditPage {
   private readonly created = signal<Checkpoint | null>(null);
   protected readonly writes = inject(AdministratorWrites);
   protected readonly audit = httpResource<components['schemas']['AuditResponse']>(() => path);
+  // Opening the page is recorded first, so an unrecordable view says the trail is unavailable.
+  protected readonly loadFailure = computed(() => {
+    const error = this.audit.error();
+    return error instanceof UiApiError && error.code === 'audit_unavailable'
+      ? error.title
+      : 'Could not load the audit log. Try again.';
+  });
   protected readonly query = signal('');
   protected readonly verification = signal<Verification | null>(null);
   protected readonly latestCheckpoint = computed(

@@ -9,7 +9,8 @@ using Microsoft.EntityFrameworkCore;
 namespace EclipsVault.Infrastructure.Auditing;
 
 /// <summary>
-/// Signs the audit hash-chain head and builds portable, externally verifiable export bundles.
+/// Signs the audit hash-chain head, verifies the trail against its checkpoints and builds portable,
+/// externally verifiable export bundles, one verification and one export at a time across replicas.
 /// The signer holds the private key; this service just assembles what to sign and what to ship.
 /// </summary>
 public sealed class AuditCheckpointService : IAuditCheckpointService
