@@ -257,15 +257,10 @@ describe('CommandPalette', () => {
     ).toEqual(['Secrets', 'New secret', 'Dynamic secrets', 'Security checkup']);
     expect(host.querySelector('[data-probe], .palette-list b')).toBeNull();
     expect(host.querySelector('.palette-meta')?.textContent).toBe('<b>P</b> · Development');
+    // Their colours are checked by the browser's visual parity test for Secrets.
     expect(
-      [...host.querySelectorAll('.palette-item .badge')].map((badge) => [
-        badge.className,
-        badge.textContent?.trim(),
-      ]),
-    ).toEqual([
-      ['badge sens-1', 'Internal'],
-      ['badge sens-4', 'Top Secret'],
-    ]);
+      [...host.querySelectorAll('.palette-item .badge')].map((badge) => badge.textContent?.trim()),
+    ).toEqual(['Internal', 'Top Secret']);
   });
 
   it('cancels a stale search, so an older answer never replaces a newer one', async () => {

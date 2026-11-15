@@ -182,7 +182,7 @@ const palettes = {
 } as const;
 
 for (const theme of ['dark', 'light'] as const) {
-  test(`visual parity: the list marks production and expiry, and New secret shows a refusal, in ${theme}`, async ({
+  test(`visual parity: the list and the palette mark sensitivity, production and expiry, and New secret shows a refusal, in ${theme}`, async ({
     page,
     browserHealth,
   }) => {
@@ -210,9 +210,35 @@ for (const theme of ['dark', 'light'] as const) {
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     const row = list.secret('E2E_PRODUCTION_SOON');
     await expect(list.environmentBadgeOf(row, 'Production')).toHaveCSS('color', colours.danger);
+    await expect(list.sensitivityBadgeOf(row, 'Secret')).toHaveCSS('color', colours.warn);
+    await expect(list.sensitivityBadgeOf(row, 'Secret')).toHaveCSS(
+      'background-color',
+      colours.warnSoft,
+    );
     const soon = list.expiresOf(row).getByText('soon', { exact: true });
     await expect(soon).toHaveCSS('color', colours.warn);
     await expect(soon).toHaveCSS('background-color', colours.warnSoft);
+
+    await page.route('**/api/ui/secrets/search?*', (route) =>
+      route.fulfill({
+        json: [
+          {
+            id: highlighted.secrets[0].secretId,
+            name: 'E2E_PRODUCTION_SOON',
+            project: 'GLOBAL',
+            environment: 'Production',
+            sensitivity: 3,
+            sensitivityName: 'Secret',
+            url: `/Secrets/Details/${highlighted.secrets[0].secretId}`,
+          },
+        ],
+      }),
+    );
+    await openPalette(page);
+    await searchSecrets(page, 'E2E_PRODUCTION');
+    const found = page.getByRole('option', { name: /E2E_PRODUCTION_SOON/ });
+    await expect(found.getByText('Secret', { exact: true })).toHaveCSS('color', colours.warn);
+    await page.keyboard.press('Escape');
 
     await list.newSecret.click();
     const form = new NewSecretForm(page);
