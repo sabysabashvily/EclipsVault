@@ -11,7 +11,6 @@ using EclipsVault.Web.Models.Ui;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 
 namespace EclipsVault.Web.Controllers.Ui;
@@ -51,7 +50,7 @@ public sealed class SecretsController(
     [ProducesResponseType<SecretProblemResponse>(StatusCodes.Status403Forbidden, "application/problem+json")]
     [ProducesResponseType<SecretProblemResponse>(StatusCodes.Status409Conflict, "application/problem+json")]
     [ProducesResponseType<SecretProblemResponse>(StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
-    public async Task<IActionResult> Create([FromBody, ValidateNever] CreateSecretUiRequest request, CancellationToken ct)
+    public async Task<IActionResult> Create([FromBody] CreateSecretUiRequest request, CancellationToken ct)
     {
         var errors = FieldErrors(request);
         if (errors.Count > 0)

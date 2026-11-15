@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 using EclipsVault.Core.Domain.Enums;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 
 namespace EclipsVault.Web.Models.Ui;
 
@@ -38,6 +39,7 @@ public sealed record SecretSearchResultResponse(
 /// New secret, with the Legacy form's rules and display names, so a refused field reads word for word as
 /// Legacy's form did. The action validates it, not MVC, whose answer would name the field only.
 /// </summary>
+[ValidateNever]
 public sealed class CreateSecretUiRequest
 {
     [Required]

@@ -218,6 +218,22 @@ public sealed class SecretsApiTests(VaultFixture vault)
         Assert.Null(await StoredAsync(name));
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("null")]
+    [InlineData("{")]
+    public async Task A_missing_or_unreadable_create_body_is_refused_as_validation_failed(string body)
+    {
+        var admin = await vault.AdminClientAsync();
+        var token = await UiApiRequest.AntiforgeryTokenAsync(admin);
+
+        var response = await UiApiRequest.SendWithTokenAsync(admin, token, HttpMethod.Post, SecretsApi.Path,
+            new StringContent(body, System.Text.Encoding.UTF8, "application/json"));
+
+        var problem = await SecretsApi.AssertProblemAsync(response, 400, "validation_failed");
+        Assert.Equal("The request could not be read.", problem.GetProperty("title").GetString());
+    }
+
     [Fact]
     public async Task An_unreadable_body_names_its_field_without_quoting_what_was_sent()
     {
