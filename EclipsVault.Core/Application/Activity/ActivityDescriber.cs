@@ -89,6 +89,8 @@ public static class ActivityDescriber
         AuditAction.KekRotated => new(ActivityCategory.Administration, "Rotated the key-encryption key", ActivitySeverity.Critical),
         AuditAction.AuditCheckpointCreated => new(ActivityCategory.Administration, "Signed an audit checkpoint", ActivitySeverity.Notable),
         AuditAction.AuditBundleExported => new(ActivityCategory.Administration, "Exported the audit trail", ActivitySeverity.Notable),
+        AuditAction.AuditLogViewed => new(ActivityCategory.Administration, "Viewed the audit log", ActivitySeverity.Routine),
+        AuditAction.AuditChainVerified => new(ActivityCategory.Administration, "Verified the audit chain", ActivitySeverity.Routine),
 
         // --- Licensing (soft — an operational notice, never a security event) --------
         AuditAction.LicenseInvalidProductionUse => new(ActivityCategory.Administration, "Started unlicensed in production", ActivitySeverity.Notable),

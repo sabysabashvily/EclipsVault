@@ -2084,6 +2084,12 @@ fieldset {
 .data-table tr.row-muted td {
   opacity: 0.55;
 }
+.data-table .row-critical td {
+  background: var(--danger-soft);
+}
+.cell-wrap {
+  max-width: 340px;
+}
 
 /* ---- Row overflow menu (details/summary) ---------------------------------------- */
 .row-menu {

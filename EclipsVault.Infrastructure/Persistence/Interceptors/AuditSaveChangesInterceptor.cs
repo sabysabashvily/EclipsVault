@@ -157,6 +157,7 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
         Inject<AccessRequest>(context, DescribeAccessRequestChange);
         Inject<TrustedNetwork>(context, DescribeTrustedNetworkChange);
         Inject<DynamicSecretLease>(context, DescribeLeaseChange);
+        Inject<AuditCheckpoint>(context, DescribeCheckpointChange);
         InjectOperationEvents(context);
     }
 
@@ -168,7 +169,7 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
         }
 
         _operationEvents = null;
-        var now = _clock.GetUtcNow();
+        var now = _clock.GetAuditUtcNow();
         foreach (var entry in events)
         {
             AddRow(context,
@@ -194,7 +195,7 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
             return;
         }
 
-        var now = _clock.GetUtcNow();
+        var now = _clock.GetAuditUtcNow();
         foreach (var entry in entries)
         {
             if (describe(entry) is not { } row)
@@ -385,6 +386,17 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
             _ => null
         };
     }
+
+    /// <summary>
+    /// A checkpoint is the vault's signature over the trail, so it must never exist without the row
+    /// saying who asked for it. Checkpoints are only ever added.
+    /// </summary>
+    private static AuditRow? DescribeCheckpointChange(EntityEntry<AuditCheckpoint> entry)
+        => entry.State == EntityState.Added
+            ? new AuditRow(
+                AuditAction.AuditCheckpointCreated, nameof(AuditCheckpoint), entry.Entity.Id, null,
+                $"Signed the audit chain at sequence {entry.Entity.Sequence} with key {entry.Entity.SigningKeyId}")
+            : null;
 
     private static bool IsShredTransition(EntityEntry<Secret> entry)
         => entry.Property(s => s.IsShredded) is { OriginalValue: false, CurrentValue: true };

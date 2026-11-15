@@ -7,6 +7,7 @@ import { ActivityPage } from './activity/activity-page';
 import { NewUserPage } from './users/new-user-page';
 import { EditUserPage } from './users/edit-user-page';
 import { UsersPage } from './users/users-page';
+import { AuditPage } from './audit/audit-page';
 import { EncryptionPage } from './encryption/encryption-page';
 import { NetworksPage } from './networks/networks-page';
 import { ServiceAccountsPage } from './service-accounts/service-accounts-page';
@@ -86,6 +87,17 @@ describe('routes', () => {
     expect(route?.title).toBe('Encryption keys — EclipsVault');
     expect(await route?.loadComponent?.()).toBe(EncryptionPage);
   });
+  it.each(['/Audit', '/aUdIt/iNdEx'])('opens the Audit log at %s', async (url) => {
+    const route = routeFor(url);
+    expect(route?.title).toBe('Audit log — EclipsVault');
+    expect(await route?.loadComponent?.()).toBe(AuditPage);
+  });
+  it.each(['/Audit/Verify', '/Audit/CreateCheckpoint', '/Audit/Export'])(
+    'leaves the retired %s unmatched',
+    (url) => {
+      expect(routeFor(url)).toBeUndefined();
+    },
+  );
   it('leaves the retired /Encryption/Rotate unmatched', () => {
     expect(routeFor('/Encryption/Rotate')).toBeUndefined();
   });

@@ -106,7 +106,7 @@ describe('sidebar mapping', () => {
             url: '/ServiceAccounts',
             angular: true,
           },
-          { label: 'Audit log', icon: 'audit', url: '/Audit', angular: false },
+          { label: 'Audit log', icon: 'audit', url: '/Audit', angular: true },
           { label: 'Notifications', icon: 'notifications', url: '/Notifications', angular: true },
           { label: 'Encryption keys', icon: 'encryption', url: '/Encryption', angular: true },
           { label: 'License', icon: 'license', url: '/License', angular: true },

@@ -93,11 +93,11 @@ _Avoid_: Re-encryption, secret rotation (that changes a secret's value)
 ### Audit
 
 **Audit trail**:
-The append-only record of every audited action, each entry chained to the one before by its hash.
+The append-only record of every audited action, each entry chained to the one before by its hash. Viewing, verifying, checkpointing and exporting it are audited actions too.
 _Avoid_: Audit log (the page's name), history
 
 **Checkpoint**:
-The vault's signature over the audit trail's newest entry at one moment. It proves the entries up to it unchanged to anyone holding the vault's public key.
+The vault's signature over the audit trail's newest entry at one moment. It proves the entries up to it unchanged to anyone holding the vault's public key. Verify checks only the checkpoints the current signing key signed.
 _Avoid_: Snapshot, attestation (the panel's name)
 
 **Audit bundle**:

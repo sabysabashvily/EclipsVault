@@ -72,7 +72,7 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         Assert.DoesNotContain("198.51.100.114", historyBody);
         Assert.Contains("Your account was unlocked", activityBody);
         // The global audit retains the actual source; self-service projections hide it.
-        Assert.Contains("198.51.100.114", await admin.GetStringAsync("/Audit"));
+        Assert.Contains("198.51.100.114", await admin.GetStringAsync("/api/ui/audit"));
         using var history = JsonDocument.Parse(historyBody);
         AssertSummary(history.RootElement, 1, 1, 1, 2, needsAttention: true, lastFailureKind: JsonValueKind.String);
         var unlocked = Assert.Single(history.RootElement.GetProperty("events").EnumerateArray(),
@@ -247,10 +247,6 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         const string unknown = "it-scope-does-not-exist";
         const string source = "198.51.100.90";
         await FailSignInAsync(unknown, source);
-        // The global Audit log proves the fail-closed write occurred, without inspecting a DB row.
-        var audit = await admin.GetStringAsync("/Audit");
-        Assert.Contains(unknown, audit);
-        Assert.Contains(source, audit);
 
         var afterA = await ReadEndpointsAsync(a.Client);
         Assert.Equal(beforeA, afterA);
@@ -273,6 +269,11 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
             Assert.DoesNotContain(unknown, body);
             Assert.DoesNotContain(source, body);
         });
+        // The global Audit log proves the fail-closed write occurred, without inspecting a DB row.
+        // It is read last because opening it is itself the administrator's recorded activity.
+        var audit = await admin.GetStringAsync("/api/ui/audit");
+        Assert.Contains(unknown, audit);
+        Assert.Contains(source, audit);
     }
 
     [Fact]
@@ -298,9 +299,6 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("Invalid username or password.", await response.Content.ReadAsStringAsync());
         Assert.NotNull(signedIn.SessionCookie);
-        var audit = await admin.GetStringAsync("/Audit");
-        Assert.Contains(unknown, audit);
-        Assert.Contains(source, audit);
 
         var afterA = await ReadEndpointsAsync(a.Client);
         Assert.All(afterA, body => Assert.DoesNotContain(source, body));
@@ -311,6 +309,10 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         var afterAdmin = await ReadEndpointsAsync(admin);
         Assert.All(afterAdmin, body => Assert.DoesNotContain(source, body));
         Assert.Equal(beforeAdmin, afterAdmin);
+        // Read last: opening the audit log is itself the administrator's recorded activity.
+        var audit = await admin.GetStringAsync("/api/ui/audit");
+        Assert.Contains(unknown, audit);
+        Assert.Contains(source, audit);
     }
 
     [Fact]
@@ -356,9 +358,6 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         Assert.Equal("/Account/Login", response.Headers.Location?.OriginalString);
         Assert.Null(callback.Cookies.GetCookies(callback.Client.BaseAddress!)[cookieName]);
         Assert.NotNull(callback.SessionCookie);
-        var audit = await admin.GetStringAsync("/Audit");
-        Assert.Contains(unknown, audit);
-        Assert.Contains(source, audit);
         var afterA = await ReadEndpointsAsync(a.Client);
         Assert.All(afterA, body =>
         {
@@ -380,6 +379,10 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
             Assert.DoesNotContain(source, body);
         });
         Assert.Equal(beforeAdmin, afterAdmin);
+        // Read last: opening the audit log is itself the administrator's recorded activity.
+        var audit = await admin.GetStringAsync("/api/ui/audit");
+        Assert.Contains(unknown, audit);
+        Assert.Contains(source, audit);
     }
 
     [Fact]

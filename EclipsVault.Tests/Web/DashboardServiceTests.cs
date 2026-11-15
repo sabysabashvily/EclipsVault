@@ -104,6 +104,5 @@ public class DashboardServiceTests
 
         public Task<IReadOnlyList<AuditEntryDto>> ListForActorAsync(Guid actorUserId, int skip, int take, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<AuditEntryDto>> ListForActorByActionsAsync(Guid actorUserId, IReadOnlyCollection<AuditAction> actions, int take, CancellationToken ct) => throw new NotSupportedException();
-        public Task<AuditIntegrityReport> VerifyIntegrityAsync(CancellationToken ct) => throw new NotSupportedException();
     }
 }
