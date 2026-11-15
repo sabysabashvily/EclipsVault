@@ -1,6 +1,8 @@
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
 import { appConfig } from '../app.config';
 import type { Me } from '../account/me';
 import { PAGE_LOCATION } from '../shell/command-palette';
@@ -58,7 +60,7 @@ const assign = vi.fn();
 function text(element: Element | null | undefined): string {
   return (element?.textContent ?? '').replace(/\s+/g, ' ').trim();
 }
-function render<T>(page: Type<T>) {
+function configure() {
   TestBed.configureTestingModule({
     providers: [
       ...appConfig.providers,
@@ -67,6 +69,9 @@ function render<T>(page: Type<T>) {
     ],
   });
   backend = TestBed.inject(HttpTestingController);
+}
+function render<T>(page: Type<T>) {
+  configure();
   const fixture = TestBed.createComponent(page);
   fixture.detectChanges();
   return { fixture, page: fixture.nativeElement as HTMLElement };
@@ -100,22 +105,22 @@ describe('Secrets', () => {
 
   it('shows loading until the list arrives', async () => {
     const { page, fixture } = render(SecretsPage);
-    expect(text(page.querySelector('[role="status"]'))).toBe('Loading secrets…');
+    expect(text(page.querySelector('p[role="status"]'))).toBe('Loading secrets…');
     backend.expectOne('/api/ui/secrets').flush({ secrets: [] });
     await fixture.whenStable();
-    expect(page.querySelector('[role="status"]')).toBeNull();
+    expect(page.querySelector('p[role="status"]')).toBeNull();
   });
 
   it('shows a failed load with Try again, which loads the list', async () => {
     const { page, fixture } = render(SecretsPage);
     backend.expectOne('/api/ui/secrets').flush({}, { status: 503, statusText: 'Unavailable' });
     await fixture.whenStable();
-    expect(text(page.querySelector('[role="alert"]'))).toBe('Could not load secrets. Try again.');
+    expect(text(page.querySelector('p[role="alert"]'))).toBe('Could not load secrets. Try again.');
     [...page.querySelectorAll('button')].find((button) => text(button) === 'Try again')!.click();
     fixture.detectChanges();
     backend.expectOne('/api/ui/secrets').flush({ secrets: [neverExpiring] });
     await fixture.whenStable();
-    expect(page.querySelector('[role="alert"]')).toBeNull();
+    expect(page.querySelector('p[role="alert"]')).toBeNull();
     expect(rows(page)).toHaveLength(1);
   });
 
@@ -144,6 +149,34 @@ describe('Secrets', () => {
       '/Secrets/Details/00000000-0000-4000-8000-000000000003',
     ]);
     expect(page.querySelector('.page-actions a')?.getAttribute('href')).toBe('/Secrets/Create');
+  });
+
+  it('opens a secret when its row is clicked anywhere but a control, as Legacy rows did', async () => {
+    const { page } = await loaded([expiringSoon, neverExpiring]);
+    const [first, second] = [...page.querySelectorAll<HTMLElement>('tbody tr')];
+
+    first.querySelector('td')!.click();
+    expect(assign).toHaveBeenCalledExactlyOnceWith(
+      '/Secrets/Details/00000000-0000-4000-8000-000000000001',
+    );
+
+    assign.mockReset();
+    const open = second.querySelector('a')!;
+    open.addEventListener('click', (event) => event.preventDefault());
+    open.click();
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it('shows a deletion once and drops it from the address', async () => {
+    configure();
+    const harness = await RouterTestingHarness.create('/Secrets?deleted=1');
+    backend.expectOne('/api/ui/secrets').flush({ secrets: [] });
+    await harness.fixture.whenStable();
+
+    expect(text(harness.routeNativeElement?.querySelector('div[role="status"]'))).toBe(
+      'Secret deleted. The action was recorded in the audit trail.',
+    );
+    expect(TestBed.inject(Router).url).toBe('/Secrets');
   });
 
   it('counts a single secret in the singular', async () => {
@@ -330,22 +363,45 @@ describe('New secret', () => {
     expect(values(form)[0]).toBe('Phoenix_Prod_Db_Password');
   });
 
-  it('puts a refused field’s message under that field', async () => {
-    const form = await filled();
+  it('leaves every check to the server and shows its Legacy messages under their fields', async () => {
+    const form = await opened();
+    await form.fill('Name', 'ab');
+    await form.fill('TTL in days (0 = never expires)', '');
     await form.submit();
-    backend.expectOne('/api/ui/secrets').flush(
+
+    const request = backend.expectOne('/api/ui/secrets');
+    expect(request.request.body).toEqual({
+      name: 'ab',
+      value: '',
+      project: 'PHOENIX',
+      environment: 'Development',
+      sensitivity: 1,
+      ttlDays: null,
+    });
+    request.flush(
       {
         status: 400,
         code: 'validation_failed',
-        title: 'The request could not be read.',
-        errors: { project: ['This field is missing or invalid.'] },
+        title: 'Check the highlighted fields.',
+        errors: {
+          name: [
+            'The field Name must be a string with a minimum length of 3 and a maximum length of 128.',
+          ],
+          value: ['The Secret value field is required.'],
+          ttlDays: ["The value '' is invalid."],
+        },
       },
       { status: 400, statusText: 'Bad Request' },
     );
     await form.fixture.whenStable();
 
-    expect(form.errorOf('Project key')).toBe('This field is missing or invalid.');
-    expect(form.errorOf('Name')).toBe('');
+    expect(form.page.querySelector('form')!.noValidate).toBe(true);
+    expect(form.errorOf('Name')).toBe(
+      'The field Name must be a string with a minimum length of 3 and a maximum length of 128.',
+    );
+    expect(form.errorOf('Secret value')).toBe('The Secret value field is required.');
+    expect(form.errorOf('TTL in days (0 = never expires)')).toBe("The value '' is invalid.");
+    expect(form.errorOf('Project key')).toBe('');
     expect(form.page.querySelector('.validation-summary')).toBeNull();
   });
 

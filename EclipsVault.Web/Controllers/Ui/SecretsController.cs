@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 using EclipsVault.Core.Application.Abac;
 using EclipsVault.Core.Application.Secrets;
 using EclipsVault.Core.Domain.Enums;
@@ -9,6 +11,7 @@ using EclipsVault.Web.Models.Ui;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 
 namespace EclipsVault.Web.Controllers.Ui;
@@ -48,19 +51,16 @@ public sealed class SecretsController(
     [ProducesResponseType<SecretProblemResponse>(StatusCodes.Status403Forbidden, "application/problem+json")]
     [ProducesResponseType<SecretProblemResponse>(StatusCodes.Status409Conflict, "application/problem+json")]
     [ProducesResponseType<SecretProblemResponse>(StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
-    public async Task<IActionResult> Create([FromBody] CreateSecretUiRequest request, CancellationToken ct)
+    public async Task<IActionResult> Create([FromBody, ValidateNever] CreateSecretUiRequest request, CancellationToken ct)
     {
-        if (!Enum.TryParse<SecretEnvironment>(request.Environment, out var environment)
-            || !Enum.GetNames<SecretEnvironment>().Contains(request.Environment))
+        var errors = FieldErrors(request);
+        if (errors.Count > 0)
         {
-            return UiApiProblem.ValidationFailed(["environment"]);
+            return Refusal(StatusCodes.Status400BadRequest, "validation_failed", "Check the highlighted fields.", errors: errors);
         }
 
+        var environment = Enum.Parse<SecretEnvironment>(request.Environment!);
         var sensitivity = (SensitivityLevel)request.Sensitivity!.Value;
-        if (!Enum.IsDefined(sensitivity))
-        {
-            return UiApiProblem.ValidationFailed(["sensitivity"]);
-        }
 
         // A session missing the vault attribute claims is stale: refuse it rather than judge it by a
         // clearance or project the server never issued.
@@ -84,7 +84,7 @@ public sealed class SecretsController(
         try
         {
             id = await secrets.CreateAsync(
-                new CreateSecretRequest(request.Name!, request.Value!, project, environment, sensitivity, request.TtlDays), ct);
+                new CreateSecretRequest(request.Name!, request.Value!, project, environment, sensitivity, request.TtlDays!.Value), ct);
         }
         catch (SecretNameTakenException taken)
         {
@@ -101,8 +101,38 @@ public sealed class SecretsController(
     private async Task<List<SecretSummaryDto>> ListableAsync(CancellationToken ct)
         => await authorization.VisibleToAsync(User, await secrets.ListAsync(ct));
 
-    private static JsonResult Refusal(int status, string code, string title, IReadOnlyList<string>? reasons = null)
-        => new(new SecretProblemResponse { Status = status, Code = code, Title = title, Reasons = reasons })
+    /// <summary>
+    /// The Legacy form's messages for its own fields. The environment and sensitivity come from lists the
+    /// form offers, so a value outside them gets no Legacy message of its own.
+    /// </summary>
+    private static Dictionary<string, string[]> FieldErrors(CreateSecretUiRequest request)
+    {
+        var results = new List<ValidationResult>();
+        Validator.TryValidateObject(request, new ValidationContext(request), results, validateAllProperties: true);
+        var errors = results
+            .GroupBy(result => JsonNamingPolicy.CamelCase.ConvertName(result.MemberNames.Single()))
+            .ToDictionary(field => field.Key, field => field.Select(result => result.ErrorMessage!).ToArray());
+        if (request.TtlDays is null)
+        {
+            errors["ttlDays"] = ["The value '' is invalid."];
+        }
+
+        if (!Enum.GetNames<SecretEnvironment>().Contains(request.Environment))
+        {
+            errors["environment"] = ["This field is missing or invalid."];
+        }
+
+        if (request.Sensitivity is not { } sensitivity || !Enum.IsDefined((SensitivityLevel)sensitivity))
+        {
+            errors["sensitivity"] = ["This field is missing or invalid."];
+        }
+
+        return errors;
+    }
+
+    private static JsonResult Refusal(int status, string code, string title, IReadOnlyList<string>? reasons = null,
+        IReadOnlyDictionary<string, string[]>? errors = null)
+        => new(new SecretProblemResponse { Status = status, Code = code, Title = title, Reasons = reasons, Errors = errors })
         {
             StatusCode = status,
             ContentType = "application/problem+json"

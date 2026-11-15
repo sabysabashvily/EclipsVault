@@ -54,7 +54,8 @@ export class NewSecretPage {
       project: this.project(),
       environment: this.environment(),
       sensitivity: this.sensitivity(),
-      ttlDays: Number(this.ttlDays()),
+      // An empty field is no number of days: the server refuses it, as Legacy's form did.
+      ttlDays: this.ttlDays().trim() === '' ? null : Number(this.ttlDays()),
     };
     this.http
       .post<components['schemas']['CreatedSecretResponse']>('/api/ui/secrets', request)

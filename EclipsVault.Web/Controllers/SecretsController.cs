@@ -284,8 +284,8 @@ public sealed class SecretsController : VaultController
         }
 
         await _secrets.DeleteAsync(id, ct);
-        this.FlashSuccess("Secret deleted. The action was recorded in the audit trail.");
-        return LocalRedirect("/Secrets");
+        // The list is the Angular UI's, which reads the outcome from the address, not from TempData.
+        return LocalRedirect("/Secrets?deleted=1");
     }
 
     /// <summary>Null when access is allowed; otherwise a redirect to the Denied page

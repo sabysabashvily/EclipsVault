@@ -48,7 +48,12 @@ test('New secret stores a secret and opens its details with the Legacy success m
   await expect(details.storedMessage).toBeVisible();
 });
 
-test('a taken name is refused on the form, which keeps what was typed', async ({ page }) => {
+test('a taken name is refused on the form, which keeps what was typed', async ({
+  page,
+  browserHealth,
+}) => {
+  // The browser logs the refusal's 409 as a failed request.
+  browserHealth.expectConsoleError({ text: /status of 409/, url: /\/api\/ui\/secrets$/ });
   await page.context().addCookies(await savedAdministratorCookies());
   const form = new NewSecretForm(page);
   await form.open();
@@ -179,7 +184,9 @@ const palettes = {
 for (const theme of ['dark', 'light'] as const) {
   test(`visual parity: the list marks production and expiry, and New secret shows a refusal, in ${theme}`, async ({
     page,
+    browserHealth,
   }) => {
+    browserHealth.expectConsoleError({ text: /status of 409/, url: /\/api\/ui\/secrets$/ });
     const colours = palettes[theme];
     await page.route('**/api/ui/secrets', (route) =>
       route.request().method() === 'GET'

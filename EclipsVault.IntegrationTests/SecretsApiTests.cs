@@ -187,14 +187,24 @@ public sealed class SecretsApiTests(VaultFixture vault)
     }
 
     [Theory]
-    [InlineData("name", """{ "name": "ab", "value": "v", "project": "GLOBAL", "environment": "Development", "sensitivity": 1 }""")]
-    [InlineData("name", """{ "name": "has space", "value": "v", "project": "GLOBAL", "environment": "Development", "sensitivity": 1 }""")]
-    [InlineData("value", """{ "name": "it-secrets-no-value", "value": "", "project": "GLOBAL", "environment": "Development", "sensitivity": 1 }""")]
-    [InlineData("project", """{ "name": "it-secrets-long-project", "value": "v", "project": "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP", "environment": "Development", "sensitivity": 1 }""")]
-    [InlineData("environment", """{ "name": "it-secrets-bad-environment", "value": "v", "project": "GLOBAL", "environment": "1", "sensitivity": 1 }""")]
-    [InlineData("sensitivity", """{ "name": "it-secrets-bad-sensitivity", "value": "v", "project": "GLOBAL", "environment": "Development", "sensitivity": 9 }""")]
-    [InlineData("ttlDays", """{ "name": "it-secrets-bad-ttl", "value": "v", "project": "GLOBAL", "environment": "Development", "sensitivity": 1, "ttlDays": 3651 }""")]
-    public async Task An_invalid_field_is_named_and_nothing_is_stored(string field, string body)
+    [InlineData("ab", "name", "The field Name must be a string with a minimum length of 3 and a maximum length of 128.",
+        """{ "name": "ab", "value": "v", "project": "GLOBAL", "environment": "Development", "sensitivity": 1, "ttlDays": 0 }""")]
+    [InlineData("has space", "name", "Use letters, digits, underscores, hyphens or dots.",
+        """{ "name": "has space", "value": "v", "project": "GLOBAL", "environment": "Development", "sensitivity": 1, "ttlDays": 0 }""")]
+    [InlineData("it-secrets-no-value", "value", "The Secret value field is required.",
+        """{ "name": "it-secrets-no-value", "value": "", "project": "GLOBAL", "environment": "Development", "sensitivity": 1, "ttlDays": 0 }""")]
+    [InlineData("it-secrets-long-project", "project", "The field Project key must be a string with a maximum length of 64.",
+        """{ "name": "it-secrets-long-project", "value": "v", "project": "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP", "environment": "Development", "sensitivity": 1, "ttlDays": 0 }""")]
+    [InlineData("it-secrets-bad-environment", "environment", "This field is missing or invalid.",
+        """{ "name": "it-secrets-bad-environment", "value": "v", "project": "GLOBAL", "environment": "1", "sensitivity": 1, "ttlDays": 0 }""")]
+    [InlineData("it-secrets-bad-sensitivity", "sensitivity", "This field is missing or invalid.",
+        """{ "name": "it-secrets-bad-sensitivity", "value": "v", "project": "GLOBAL", "environment": "Development", "sensitivity": 9, "ttlDays": 0 }""")]
+    [InlineData("it-secrets-bad-ttl", "ttlDays", "The field TTL in days (0 = never expires) must be between 0 and 3650.",
+        """{ "name": "it-secrets-bad-ttl", "value": "v", "project": "GLOBAL", "environment": "Development", "sensitivity": 1, "ttlDays": 3651 }""")]
+    [InlineData("it-secrets-empty-ttl", "ttlDays", "The value '' is invalid.",
+        """{ "name": "it-secrets-empty-ttl", "value": "v", "project": "GLOBAL", "environment": "Development", "sensitivity": 1, "ttlDays": null }""")]
+    public async Task An_invalid_field_is_refused_in_the_Legacy_forms_words_and_nothing_is_stored(
+        string name, string field, string message, string body)
     {
         var admin = await vault.AdminClientAsync();
         var token = await UiApiRequest.AntiforgeryTokenAsync(admin);
@@ -203,9 +213,41 @@ public sealed class SecretsApiTests(VaultFixture vault)
             new StringContent(body, System.Text.Encoding.UTF8, "application/json"));
 
         var problem = await SecretsApi.AssertProblemAsync(response, 400, "validation_failed");
-        Assert.Equal([field], problem.GetProperty("errors").EnumerateObject().Select(entry => entry.Name));
-        var name = JsonDocument.Parse(body).RootElement.GetProperty("name").GetString()!;
+        var error = Assert.Single(problem.GetProperty("errors").EnumerateObject());
+        Assert.Equal((field, message), (error.Name, Assert.Single(error.Value.EnumerateArray()).GetString()));
         Assert.Null(await StoredAsync(name));
+    }
+
+    [Fact]
+    public async Task An_unreadable_body_names_its_field_without_quoting_what_was_sent()
+    {
+        var admin = await vault.AdminClientAsync();
+        var token = await UiApiRequest.AntiforgeryTokenAsync(admin);
+
+        var response = await UiApiRequest.SendWithTokenAsync(admin, token, HttpMethod.Post, SecretsApi.Path,
+            new StringContent("""{ "name": "it-secrets-unreadable", "value": "not-a-number-secret", "project": "GLOBAL", "environment": "Development", "sensitivity": 1, "ttlDays": "not-a-number-secret" }""",
+                System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.DoesNotContain("not-a-number-secret", await response.Content.ReadAsStringAsync());
+        Assert.Null(await StoredAsync("it-secrets-unreadable"));
+    }
+
+    [Fact]
+    public async Task Deleting_on_the_Legacy_details_page_returns_to_the_list_with_its_outcome()
+    {
+        var admin = await vault.AdminClientAsync();
+        var details = await LegacySharing.CreateSecretAsync(admin, "it-secrets-deleted");
+
+        var response = await admin.PostAsync("/Secrets/Delete", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(await admin.GetStringAsync(details), details),
+            ["id"] = LegacySharing.SecretIdOf(details).ToString(),
+        }));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/Secrets?deleted=1", response.Headers.Location?.OriginalString);
+        Assert.Null(await StoredAsync("it-secrets-deleted"));
     }
 
     [Fact]

@@ -4253,11 +4253,11 @@ export interface components {
             value: null | string;
             project: null | string;
             /** @enum {null|string} */
-            environment: "Development" | "Staging" | "Production" | null;
+            environment?: "Development" | "Staging" | "Production" | null;
             /** Format: int32 */
-            sensitivity: null | number | string;
+            sensitivity?: null | number | string;
             /** Format: int32 */
-            ttlDays?: number | string;
+            ttlDays?: null | number | string;
         };
         CreateServiceAccountUiRequest: {
             name?: null | string;
@@ -4656,6 +4656,9 @@ export interface components {
             detail?: null | string;
             instance?: null | string;
             code: string;
+            errors?: null | {
+                [key: string]: string[];
+            };
             reasons?: null | string[];
         };
         SecretSearchResultResponse: {

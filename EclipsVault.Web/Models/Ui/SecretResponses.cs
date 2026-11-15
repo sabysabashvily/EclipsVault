@@ -34,39 +34,51 @@ public sealed record SecretSearchResultResponse(
     string SensitivityName,
     string Url);
 
-/// <summary>New secret, with the Legacy form's limits.</summary>
+/// <summary>
+/// New secret, with the Legacy form's rules and display names, so a refused field reads word for word as
+/// Legacy's form did. The action validates it, not MVC, whose answer would name the field only.
+/// </summary>
 public sealed class CreateSecretUiRequest
 {
     [Required]
     [StringLength(128, MinimumLength = 3)]
-    [RegularExpression(@"^[A-Za-z0-9_\-\.]+$")]
+    [RegularExpression(@"^[A-Za-z0-9_\-\.]+$", ErrorMessage = "Use letters, digits, underscores, hyphens or dots.")]
+    [Display(Name = "Name")]
     public string? Name { get; init; }
 
     [Required]
     [StringLength(8192)]
+    [Display(Name = "Secret value")]
     public string? Value { get; init; }
 
     [Required]
     [StringLength(64)]
+    [Display(Name = "Project key")]
     public string? Project { get; init; }
 
-    [Required]
     [UiEnum(typeof(SecretEnvironment))]
     public string? Environment { get; init; }
 
-    [Required]
     public int? Sensitivity { get; init; }
 
+    /// <summary>Null when the field was left empty, which Legacy refused.</summary>
     [Range(0, 3650)]
-    public int TtlDays { get; init; }
+    [Display(Name = "TTL in days (0 = never expires)")]
+    public int? TtlDays { get; init; }
 }
 
 public sealed record CreatedSecretResponse(Guid SecretId);
 
-/// <summary>A refused secret write. <see cref="Reasons"/> carries the policy's reasons for <c>creation_denied</c>.</summary>
+/// <summary>
+/// A refused secret write. <see cref="Errors"/> names each refused field with its Legacy message for
+/// <c>validation_failed</c>; <see cref="Reasons"/> carries the policy's reasons for <c>creation_denied</c>.
+/// </summary>
 public sealed class SecretProblemResponse : ProblemDetails
 {
     public required string Code { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, string[]>? Errors { get; init; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? Reasons { get; init; }
