@@ -90,10 +90,11 @@ export default defineConfig({
         },
         {
           // Users ends with the administrator's own Force logout, which ends the saved session that
-          // Networks, Notifications, License, Encryption keys and the Audit log reuse, so they run first.
+          // Networks, Notifications, License, Encryption keys, the Audit log and the Overview reuse, so
+          // they run first.
           name: 'users',
           testMatch: '**/users.spec.ts',
-          dependencies: ['license', 'encryption', 'audit'],
+          dependencies: ['license', 'encryption', 'audit', 'overview'],
           use: { ...devices['Desktop Chrome'] },
         },
         {
