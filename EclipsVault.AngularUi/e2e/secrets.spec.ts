@@ -268,7 +268,7 @@ for (const theme of ['dark', 'light'] as const) {
       }),
     );
     await openPalette(page);
-    await searchSecrets(page, 'E2E_PRODUCTION');
+    await page.getByRole('combobox').fill('E2E_PRODUCTION');
     const found = page.getByRole('option', { name: /E2E_PRODUCTION_SOON/ });
     await expect(found.getByText('Secret', { exact: true })).toHaveCSS('color', colours.warn);
     await page.keyboard.press('Escape');
