@@ -159,3 +159,44 @@ On the owner's word, Area 7 was published on 13 November 2026, before Area 6b me
 7b #159, 7c #160; tickets 7a #163–#165, 7b #166–#170, 7c #171–#173 (#161 and #162 are Area 8's specs).
 `issues/manifest.json` records each number. 7a started the same day on `area-7a-overview-and-secrets`,
 stacked on the Area 6b branch at `3f13097`; the coordinator merges 6b's later changes into it.
+
+## Delivery: 7a ticket 1 (#163)
+
+Branch `area-7a-overview-and-secrets`, from `3f13097` (the Area 6b branch, owner override). Claude Opus 5.5
+high implemented the ticket. GPT Sol 6.1 xhigh completed the delivery on 15 November after the usage reset.
+
+Commits:
+
+- `06c86a0` Record Area 7's grill decisions, ADR-0031 and its published issues. The ADR-0017, ADR-0028
+  and `CONTEXT.md` edits applied as a three-way patch with no conflicts.
+- `bfb5ca8` Serve the Overview from Angular with administrator-only figures.
+- `0b819c3` Prove the Overview through observed results and real routing.
+- `0527bfe` Check the Overview's highlights by their rendered colours.
+
+What changed: `GET /api/ui/overview`; signed-in `/`, `/Home` and `/Home/Index` serve the Angular
+document (`HomeController.Index`, through `AngularUiRoutes.PrepareIndex`), signed out the landing page;
+the Legacy Dashboard view and model are deleted. Accounts are loaded and the vault's activity is read
+only for administrators; anyone else's feed is read by account id (security review S1: a reused
+username no longer inherits a deleted account's rows). The notice counts every expiring secret (F10).
+`AuditAction.SecretAccessDenied = 18`, label "Access denied" (warn), activity title "Was refused access
+to a secret"; `ActivityDescriber.ResourceNameShownToActor` withholds its secret's name in My activity,
+the Overview's own feed and the Your data export.
+
+For #164: this ticket moved #143's `AuditApiTests.The_Legacy_sidebar_link_keeps_its_destination` from
+the Legacy Dashboard at `/` to the Legacy sidebar on `/Secrets`. #164 retires the Legacy Secrets list,
+so that link check must move again, to an Angular route or the UI API.
+
+Verification: `scripts/check.sh` passed, with 938 unit tests after the first review fixes. Full
+integration suites at `bfb5ca8` passed 1241 tests on SQL Server and 1241 on PostgreSQL, one suite at a
+time. The affected browser specs passed 267 tests. After the review fixes, the Overview integration
+filter passed 14 tests on PostgreSQL and its browser spec passed 40 tests. Angular lint, formatting,
+tests, API type check, build checks, production build and high-severity audit passed. Both pending-model
+checks found no changes. The full integration suites were not repeated after the test and comment fixes.
+
+Security review by Claude Opus 5.5 high closed S1. Spec review and its re-check by GPT Sol 6.1 xhigh
+returned READY. Standards review closed STD-1, STD-2, STD-3, STD-6 and STD-7 on its second pass;
+the fresh re-check pinned to `0527bfe` closed STD-4 and STD-5 with no new findings and returned READY.
+
+For the final Standards re-check and detailed commands, counts and limitations, see
+`logs/ticket-163/final-report.md` and `review-ledger.md` (ignored). To restart, read this section on
+`area-7a-overview-and-secrets`. The coordinator merges Area 6b's later changes before #164 starts.
