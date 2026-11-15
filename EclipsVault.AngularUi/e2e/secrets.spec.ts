@@ -271,7 +271,9 @@ for (const theme of ['dark', 'light'] as const) {
     await openPalette(page);
     await page.getByRole('combobox').fill('E2E_PRODUCTION');
     const found = page.getByRole('option', { name: /E2E_PRODUCTION_SOON/ });
-    await expect(found.getByText('Secret', { exact: true })).toHaveCSS('color', colours.warn);
+    // Both labels read "Secret"; the sensitivity is the option's final label.
+    const sensitivity = found.getByText('Secret', { exact: true }).last();
+    await expect(sensitivity).toHaveCSS('color', colours.warn);
     await page.keyboard.press('Escape');
 
     await list.newSecret.click();
