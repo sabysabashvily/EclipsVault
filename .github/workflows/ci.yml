@@ -252,8 +252,9 @@ jobs:
 
   # The vault targets two database engines, so every model change needs a migration in BOTH sets.
   # One that reaches only one engine leaves the schemas silently different, and nothing notices
-  # until a deployment on the other engine hits a column that was never created. Neither check
-  # needs a database — they compare the model to the committed snapshot.
+  # until a deployment on the other engine hits a column that was never created. None of these
+  # checks needs a database: the first two compare the model to the committed snapshot, and the
+  # last compares the committed idempotent scripts to a fresh generation.
   migrations:
     runs-on: ubuntu-latest
     steps:
@@ -267,8 +268,8 @@ jobs:
       - name: Restore (locked)
         run: dotnet restore --locked-mode
 
-      - name: Install EF tools
-        run: dotnet tool install --global dotnet-ef
+      - name: Restore local tools
+        run: dotnet tool restore
 
       - name: SQL Server migrations match the model
         run: dotnet ef migrations has-pending-model-changes -p EclipsVault.Infrastructure -s EclipsVault.Web -c EclipsVaultDbContext
@@ -277,6 +278,39 @@ jobs:
         env:
           ECLIPSVAULT_DESIGN_PROVIDER: Postgres
         run: dotnet ef migrations has-pending-model-changes -p EclipsVault.Migrations.Postgres -s EclipsVault.Web -c EclipsVaultDbContext
+
+      - name: SQL Server batch splitter keeps an operation in its own batch
+        run: python3 -I -m unittest discover -s db/sqlserver -p 'test_*.py' -v
+
+      # A model change that adds a migration and forgets to regenerate db/ leaves reviewers and
+      # DBAs reading SQL for a schema the vault no longer has. The message names the command that
+      # rewrites the file, which is the same command db/README.md gives.
+      - name: Committed scripts match a fresh idempotent generation
+        run: |
+          set -eu
+          tmp="$(mktemp -d)"
+          dotnet ef migrations script --idempotent \
+            -p EclipsVault.Infrastructure -s EclipsVault.Web -c EclipsVaultDbContext \
+            -o "$tmp/sqlserver.sql"
+          # SQL Server compiles one batch before running it. The splitter puts each operation
+          # in its own batch so a column added and then updated in one migration can apply.
+          python3 -I db/sqlserver/split_batches.py "$tmp/sqlserver.sql"
+          ECLIPSVAULT_DESIGN_PROVIDER=Postgres \
+            dotnet ef migrations script --idempotent \
+            -p EclipsVault.Migrations.Postgres -s EclipsVault.Web -c EclipsVaultDbContext \
+            -o "$tmp/postgres.sql"
+          failed=0
+          if ! cmp -s "$tmp/sqlserver.sql" db/sqlserver/migrations.sql; then
+            echo "::error::db/sqlserver/migrations.sql differs from a fresh generation. Regenerate it with: dotnet tool restore && dotnet ef migrations script --idempotent -p EclipsVault.Infrastructure -s EclipsVault.Web -c EclipsVaultDbContext -o db/sqlserver/migrations.sql && python3 -I db/sqlserver/split_batches.py db/sqlserver/migrations.sql"
+            diff -u db/sqlserver/migrations.sql "$tmp/sqlserver.sql" | head -n 80 || true
+            failed=1
+          fi
+          if ! cmp -s "$tmp/postgres.sql" db/postgres/migrations.sql; then
+            echo "::error::db/postgres/migrations.sql differs from a fresh generation. Regenerate it with: dotnet tool restore && ECLIPSVAULT_DESIGN_PROVIDER=Postgres dotnet ef migrations script --idempotent -p EclipsVault.Migrations.Postgres -s EclipsVault.Web -c EclipsVaultDbContext -o db/postgres/migrations.sql"
+            diff -u db/postgres/migrations.sql "$tmp/postgres.sql" | head -n 80 || true
+            failed=1
+          fi
+          exit "$failed"
 
   security-scan:
     runs-on: ubuntu-latest
