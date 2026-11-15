@@ -1804,6 +1804,31 @@ app-command-palette {
   color: var(--text-secondary);
 }
 
+/* The Legacy two-column row, its field errors and its form-level summary, for New secret. */
+.field-row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .field-row {
+    flex-direction: column;
+    gap: 0;
+  }
+}
+
+.field-error,
+.validation-summary {
+  color: var(--danger);
+  font-size: 0.84rem;
+}
+
+.validation-summary ul {
+  margin: 0.3rem 0 1rem;
+  padding-left: 1.2rem;
+}
+
 input,
 textarea,
 select {

@@ -378,7 +378,7 @@ test('both UIs share the theme, and the Angular UI applies it before it starts',
   page,
 }) => {
   await page.context().addCookies(administratorCookies);
-  await page.goto('/Secrets');
+  await page.goto('/DynamicSecrets');
   await page.context().addCookies([
     {
       name: 'EclipsVault.Theme',
@@ -419,7 +419,7 @@ test('both UIs share the theme, and the Angular UI applies it before it starts',
     expect(
       (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Theme')?.value,
     ).toBe('dark');
-    await page.goto('/Secrets');
+    await page.goto('/DynamicSecrets');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   });
 });
@@ -434,7 +434,7 @@ test("the ⌘K palette offers exactly the sidebar's pages, as the Legacy palette
   await standard.context().addCookies(standardCookies);
 
   await test.step(`administrator: Legacy and Angular palettes list the same pages as the sidebar`, async () => {
-    await page.goto('/Secrets');
+    await page.goto('/DynamicSecrets');
     // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
     const legacyChord = await page.locator('.command-trigger kbd').textContent();
     await openPalette(page);
@@ -454,7 +454,7 @@ test("the ⌘K palette offers exactly the sidebar's pages, as the Legacy palette
     await expect(page.locator('style, [style]')).toHaveCount(0);
   });
   await test.step(`standard: Legacy and Angular palettes list the same pages as the sidebar`, async () => {
-    await standard.goto('/Secrets');
+    await standard.goto('/DynamicSecrets');
     // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
     const legacyChord = await standard.locator('.command-trigger kbd').textContent();
     await openPalette(standard);
@@ -529,7 +529,8 @@ test('palette search lists only secrets the account could already list, never a 
   await test.step('a one-character query asks the server nothing, and the server would answer nothing', async () => {
     const searches: string[] = [];
     standard.on('request', (request) => {
-      if (new URL(request.url()).pathname === '/Secrets/Search') searches.push(request.url());
+      if (new URL(request.url()).pathname === '/api/ui/secrets/search')
+        searches.push(request.url());
     });
     await standard.locator('.palette-input').fill('P');
     // Longer than the debounce, so a search that was going to be sent would have been.
@@ -537,30 +538,42 @@ test('palette search lists only secrets the account could already list, never a 
     expect(searches).toEqual([]);
     expect((await paletteEntries(standard)).filter(([kind]) => kind === 'Secret')).toEqual([]);
     await test.step('an uppercase one-character query returns no secrets', async () => {
-      const direct = await standard.request.get(`/Secrets/Search?q=${encodeURIComponent('P')}`, {
-        headers: { Accept: 'application/json' },
-      });
+      const direct = await standard.request.get(
+        `/api/ui/secrets/search?q=${encodeURIComponent('P')}`,
+        {
+          headers: { Accept: 'application/json' },
+        },
+      );
       expect(direct.status()).toBe(200);
       expect(await direct.json()).toEqual([]);
     });
     await test.step('a lowercase one-character query returns no secrets', async () => {
-      const direct = await standard.request.get(`/Secrets/Search?q=${encodeURIComponent('p')}`, {
-        headers: { Accept: 'application/json' },
-      });
+      const direct = await standard.request.get(
+        `/api/ui/secrets/search?q=${encodeURIComponent('p')}`,
+        {
+          headers: { Accept: 'application/json' },
+        },
+      );
       expect(direct.status()).toBe(200);
       expect(await direct.json()).toEqual([]);
     });
     await test.step('a punctuation-only query returns no secrets', async () => {
-      const direct = await standard.request.get(`/Secrets/Search?q=${encodeURIComponent('_')}`, {
-        headers: { Accept: 'application/json' },
-      });
+      const direct = await standard.request.get(
+        `/api/ui/secrets/search?q=${encodeURIComponent('_')}`,
+        {
+          headers: { Accept: 'application/json' },
+        },
+      );
       expect(direct.status()).toBe(200);
       expect(await direct.json()).toEqual([]);
     });
     await test.step('a padded one-character query returns no secrets', async () => {
-      const direct = await standard.request.get(`/Secrets/Search?q=${encodeURIComponent(' P ')}`, {
-        headers: { Accept: 'application/json' },
-      });
+      const direct = await standard.request.get(
+        `/api/ui/secrets/search?q=${encodeURIComponent(' P ')}`,
+        {
+          headers: { Accept: 'application/json' },
+        },
+      );
       expect(direct.status()).toBe(200);
       expect(await direct.json()).toEqual([]);
     });
@@ -681,28 +694,26 @@ test('the palette is driven from the keyboard, traps focus, and hands it back on
   });
 });
 
-test('an ended session makes palette search report a failure, without a console error', async ({
+test('an ended session sends palette search to sign-in, returning to the page afterwards', async ({
   page,
+  browserHealth,
 }) => {
   await page.context().addCookies(administratorCookies);
   await page.goto('/Access');
   await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
   // Only this browser forgets the session; the administrator's session itself stays valid for later tests.
   await page.context().clearCookies({ name: 'EclipsVault.Session' });
+  browserHealth.expectConsoleError({ text: /status of 401/, url: /\/api\/ui\/secrets\/search\?/ });
 
   await openPalette(page);
-  const redirected = page.waitForResponse(
-    (response) => new URL(response.url()).pathname === '/Secrets/Search',
+  const refused = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === '/api/ui/secrets/search',
   );
   await page.locator('.palette-input').fill('Palette_Probe');
-  // /Secrets/Search is a Legacy UI path: no session is answered by the sign-in redirect, not a 401 problem.
-  const answer = await redirected;
-  expect(answer.status()).toBe(302);
-  expect(answer.headers()['location']).toMatch(/\/Account\/Login\?ReturnUrl=/);
-  await expect(page.getByRole('alert')).toHaveText(/Secret search failed/);
-  await expect(page.locator('.palette-empty')).toHaveText('Nothing matches that.');
-  // eslint-disable-next-line playwright/no-raw-locators -- The command-palette input is the keyboard focus-trap target.
-  await expect(page.locator('.palette-input')).toBeFocused();
+  const answer = await refused;
+  expect(answer.status()).toBe(401);
+  expect(((await answer.json()) as { code: string }).code).toBe('unauthenticated');
+  await expect(page).toHaveURL(/\/Account\/Login\?ReturnUrl=%2FAccess$/);
 });
 
 test('an access failure shows a retry and the next request restores the live grid', async ({

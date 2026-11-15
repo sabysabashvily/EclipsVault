@@ -4,19 +4,6 @@ using EclipsVault.Core.Domain.Enums;
 
 namespace EclipsVault.Web.Models;
 
-/// <summary>
-/// One row of the secrets list, already narrowed to what the caller may know exists. There is no
-/// decoy marker because decoys never reach a list — see <see cref="ISecretService.ListAsync"/>.
-/// </summary>
-public sealed record SecretListItemViewModel(
-    Guid Id,
-    string Name,
-    string ProjectKey,
-    SecretEnvironment Environment,
-    SensitivityLevel Sensitivity,
-    DateTimeOffset CreatedAtUtc,
-    DateTimeOffset? ExpiresAtUtc);
-
 public sealed class SecretDetailsViewModel
 {
     public Guid Id { get; init; }
@@ -112,34 +99,4 @@ public sealed class RotateSecretViewModel
     [Range(1, 3650)]
     [Display(Name = "Renew for (days)")]
     public int? RenewTtlDays { get; set; }
-}
-
-public sealed class CreateSecretViewModel
-{
-    [Required]
-    [StringLength(128, MinimumLength = 3)]
-    [RegularExpression(@"^[A-Za-z0-9_\-\.]+$", ErrorMessage = "Use letters, digits, underscores, hyphens or dots.")]
-    [Display(Name = "Name")]
-    public string Name { get; set; } = string.Empty;
-
-    [Required]
-    [StringLength(8192)]
-    [DataType(DataType.MultilineText)]
-    [Display(Name = "Secret value")]
-    public string Value { get; set; } = string.Empty;
-
-    [Required]
-    [StringLength(64)]
-    [Display(Name = "Project key")]
-    public string ProjectKey { get; set; } = string.Empty;
-
-    [Display(Name = "Environment")]
-    public SecretEnvironment Environment { get; set; } = SecretEnvironment.Development;
-
-    [Display(Name = "Sensitivity")]
-    public SensitivityLevel Sensitivity { get; set; } = SensitivityLevel.Internal;
-
-    [Range(0, 3650)]
-    [Display(Name = "TTL in days (0 = never expires)")]
-    public int TtlDays { get; set; }
 }

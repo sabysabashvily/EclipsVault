@@ -70,7 +70,7 @@ for (const [name, link, url, heading] of angularLinks) {
   });
 }
 
-test('Browse secrets opens the Legacy Secrets page', async ({ page }) => {
+test('Browse secrets opens the Secrets list without a page load', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const overview = new Overview(page);
   await overview.open();
@@ -78,7 +78,7 @@ test('Browse secrets opens the Legacy Secrets page', async ({ page }) => {
   const documents = recordDocuments(page);
   await overview.browseSecrets.click();
   await expect(page.getByRole('heading', { name: 'Secrets', exact: true })).toBeVisible();
-  expect(documents).toEqual(['/Secrets']);
+  expect(documents).toEqual([]);
 });
 
 test('a non-administrator sees their own activity, the critical count and their expiring secret, with no administration links', async ({

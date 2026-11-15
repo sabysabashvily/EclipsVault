@@ -71,7 +71,7 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
     [Theory]
     [InlineData("/Account/Login", HttpStatusCode.Redirect)]
     [InlineData("/Account/Denied", HttpStatusCode.OK)]
-    [InlineData("/Secrets", HttpStatusCode.OK)]
+    [InlineData("/DynamicSecrets", HttpStatusCode.OK)]
     [InlineData("/Access/NotAnAngularRoute", HttpStatusCode.NotFound)]
     [InlineData("/api/ui/me", HttpStatusCode.OK)]
     [InlineData("/css/site.css", HttpStatusCode.OK)]

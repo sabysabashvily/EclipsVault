@@ -280,8 +280,8 @@ public sealed class OverviewProductionWindowTests(ClosedProductionWindowFixture 
 }
 
 /// <summary>
-/// Secrets for Overview tests. The administrator creates each one through the Legacy form, which files
-/// it under GLOBAL with no expiry; its project, expiry and decoy flag are then set in the database,
+/// Secrets for Overview and Secrets tests. The administrator creates each one through New secret, filed
+/// under GLOBAL with no expiry; its project, expiry and decoy flag are then set in the database,
 /// as an operator flags a decoy. The Overview reads metadata only, so no value is ever decrypted.
 /// </summary>
 internal static class OverviewSecrets

@@ -38,7 +38,7 @@ export async function searchSecrets(
 ): Promise<{ status: number; names: string[] }> {
   const answered = page.waitForResponse((response) => {
     const url = new URL(response.url());
-    return url.pathname === '/Secrets/Search' && url.searchParams.get('q') === query;
+    return url.pathname === '/api/ui/secrets/search' && url.searchParams.get('q') === query;
   });
   await page.getByRole('combobox').fill(query);
   const response = await answered;
@@ -51,7 +51,7 @@ export async function searchSecrets(
   return { status: response.status(), names };
 }
 
-/** Creates a secret through the Legacy UI's own form, as the signed-in administrator. */
+/** Creates a secret through New secret, as the signed-in administrator, and waits for its details page. */
 export async function createSecret(page: Page, name: string, sensitivity: string): Promise<void> {
   await page.goto('/Secrets/Create');
   await page.getByLabel('Name', { exact: true }).fill(name);

@@ -24,6 +24,8 @@ import { SignInsPage } from './sign-ins/sign-ins-page';
 import { SecurityPage } from './security/security-page';
 import { SessionsPage } from './sessions/sessions-page';
 import { DataPage } from './data/data-page';
+import { NewSecretPage } from './secrets/new-secret-page';
+import { SecretsPage } from './secrets/secrets-page';
 import { SharedByMePage } from './shared-by-me/shared-by-me-page';
 import { SharedWithMePage } from './shared-with-me/shared-with-me-page';
 
@@ -148,6 +150,22 @@ describe('routes', () => {
       expect(routeFor(url)?.redirectTo).toBe('/Profile?recoveryCodes=display-once');
     },
   );
+  it.each(['/Secrets', '/Secrets/Index', '/secrets', '/SECRETS/index'])(
+    'opens Secrets at %s',
+    async (url) => {
+      const route = routeFor(url);
+      expect(route?.title).toBe('Secrets — EclipsVault');
+      expect(await route?.loadComponent?.()).toBe(SecretsPage);
+    },
+  );
+  it.each(['/Secrets/Create', '/secrets/create', '/sEcReTs/cReAtE'])(
+    'opens New secret at %s',
+    async (url) => {
+      const route = routeFor(url);
+      expect(route?.title).toBe('New secret — EclipsVault');
+      expect(await route?.loadComponent?.()).toBe(NewSecretPage);
+    },
+  );
   it.each(['/Secrets/SharedByMe', '/secrets/sharedbyme', '/sEcReTs/sHaReDbYmE'])(
     'opens Shared by me at %s',
     async (url) => {
@@ -246,8 +264,10 @@ describe('routes', () => {
     '/DataExport',
     '/Data/Index/extra',
     '/Data/Download',
-    '/Secrets',
     '/Secrets/Details',
+    '/Secrets/Index/extra',
+    '/Secrets/Create/extra',
+    '/Secrets/Search',
     '/Secrets/SharedWithMe/extra',
     '/Secrets/SharedByMe/extra',
   ])('leaves %s unmatched', (url) => {

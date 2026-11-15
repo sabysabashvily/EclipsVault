@@ -292,6 +292,29 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
     }
 
     [Fact]
+    public async Task A_password_sign_in_without_a_return_url_lands_on_the_Secrets_list()
+    {
+        var (username, password, secret, enrolled) = await EnrollAccountAsync();
+        enrolled.Dispose();
+        using var client = NewClient();
+        var afterPassword = await PostFormAsync(client, "/Account/Login", await client.GetStringAsync("/Account/Login"), new()
+        {
+            ["Username"] = username,
+            ["Password"] = password
+        });
+        var totp = await client.GetStringAsync(afterPassword.Headers.Location);
+
+        var signedIn = await PostFormAsync(client, "/Account/Totp", totp, new()
+        {
+            ["Code"] = Totp.Code(secret, Totp.CurrentStep())
+        });
+
+        Assert.Equal(HttpStatusCode.Redirect, signedIn.StatusCode);
+        Assert.Equal("/Secrets", signedIn.Headers.Location?.OriginalString);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/ui/me")).StatusCode);
+    }
+
+    [Fact]
     public async Task A_non_ascii_target_falls_back_instead_of_failing_after_the_code_is_spent()
     {
         var (username, password, secret, enrolled) = await EnrollAccountAsync();
@@ -364,7 +387,7 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         Assert.Equal(expected, completionRedirect.Headers.Location?.OriginalString);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/ui/me")).StatusCode);
         // Consuming the challenge prevents a replay from issuing another redirect/session.
-        var replay = await PostJsonAsync(client, "/Account/PasskeyLoginComplete", await client.GetStringAsync("/Secrets"), new { credential = new { } });
+        var replay = await PostJsonAsync(client, "/Account/PasskeyLoginComplete", await client.GetStringAsync("/DynamicSecrets"), new { credential = new { } });
         Assert.False(replay.GetProperty("success").GetBoolean());
         Assert.False(replay.TryGetProperty("redirect", out _));
     }

@@ -23,8 +23,8 @@ describe('sidebar mapping', () => {
         label: 'Vault',
         items: [
           { label: 'Overview', icon: 'overview', url: '/', angular: true },
-          { label: 'Secrets', icon: 'secrets', url: '/Secrets', angular: false },
-          { label: 'New secret', icon: 'new-secret', url: '/Secrets/Create', angular: false },
+          { label: 'Secrets', icon: 'secrets', url: '/Secrets', angular: true },
+          { label: 'New secret', icon: 'new-secret', url: '/Secrets/Create', angular: true },
           {
             label: 'Dynamic secrets',
             icon: 'dynamic-secrets',

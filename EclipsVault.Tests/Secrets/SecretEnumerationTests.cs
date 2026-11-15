@@ -43,6 +43,7 @@ public class SecretEnumerationTests
         public Task<IReadOnlyList<Secret>> ListExpiringAsync(DateTimeOffset asOfUtc, DateTimeOffset horizonUtc, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<Secret>>([]);
         public Task MarkExpiryNoticeSentAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
+        public Task<bool> ExistsByNameAsync(string name, CancellationToken ct) => Task.FromResult(false);
         public Task AddAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
         public Task UpdateAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
         public Task DeleteAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
@@ -122,6 +123,18 @@ public class SecretEnumerationTests
 
         var only = Assert.Single(listed);
         Assert.Equal("Phoenix_Staging_Api_Key", only.Name);
+    }
+
+    [Fact]
+    public async Task Searching_never_finds_a_decoy()
+    {
+        var repository = new ListRepository(
+            Sample("Production_Api_Key"),
+            Sample("Production_AWS_Root_Key", isHoneyToken: true));
+
+        var found = SecretSearch.Find(await Build(repository).ListAsync(CancellationToken.None), "production");
+
+        Assert.Equal("Production_Api_Key", Assert.Single(found).Name);
     }
 
     [Fact]

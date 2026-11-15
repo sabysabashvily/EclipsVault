@@ -424,9 +424,9 @@ function scorePassword(value) {
 // copy of the navigation *and* of its authorization, and the copy would rot: the day someone
 // adds an admin page, the palette would happily show it to everyone.
 //
-// Secrets come from /Secrets/Search, which runs the same ABAC enumeration filter as the Secrets
-// list. See the comment on SecretsController.Search — a name is a disclosure, and the palette
-// is not allowed to be a way around that.
+// Secrets come from the UI API's /api/ui/secrets/search, which runs the same ABAC enumeration filter
+// as the Secrets list. See SecretSearch — a name is a disclosure, and the palette is not allowed to be
+// a way around that.
 function wireCommandPalette() {
     // Every marked container, not just the nav: Profile lives in the account menu at the foot of
     // the sidebar, and harvesting only the nav would leave it out of the palette entirely.

@@ -186,7 +186,7 @@ describe('CommandPalette', () => {
     await pause(200);
     await stable();
     return backend.expectOne(
-      (request) => request.url === '/Secrets/Search' && request.params.get('q') === q,
+      (request) => request.url === '/api/ui/secrets/search' && request.params.get('q') === q,
     );
   }
 
@@ -295,11 +295,10 @@ describe('CommandPalette', () => {
     expect(closed.cancelled).toBe(true);
   });
 
-  it('reports a sign-in redirect, a non-JSON answer, an unexpected shape or a refusal, keeping the pages', async () => {
+  it('reports an HTML page, a non-JSON answer, an unexpected shape or a refusal, keeping the pages', async () => {
     const { host, open, type, items, stable } = await render();
     await open();
     const answers: ((request: TestRequest) => void)[] = [
-      // Fetch follows the Legacy UI's sign-in redirect for an expired session to an HTML page.
       (request) =>
         request.flush('<!doctype html><title>Sign in</title>', {
           headers: { 'Content-Type': 'text/html; charset=utf-8' },

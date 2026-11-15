@@ -11,16 +11,7 @@ internal static class LegacySharing
         HttpClient admin, string name, string value = "it-share-audit-value", string sensitivity = "Internal",
         string environment = "Development")
     {
-        var page = await admin.GetStringAsync("/Secrets/Create");
-        var response = await admin.PostAsync("/Secrets/Create", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(page, "/Secrets/Create"),
-            ["Name"] = name,
-            ["Value"] = value,
-            ["ProjectKey"] = "GLOBAL",
-            ["Environment"] = environment,
-            ["Sensitivity"] = sensitivity,
-        }));
+        var response = await SecretsApi.CreateAsync(admin, name, value, "GLOBAL", environment, sensitivity);
         return response.Headers.Location?.OriginalString is { } details && details.StartsWith("/Secrets/Details/", StringComparison.Ordinal)
             ? details
             : throw new InvalidOperationException($"Creating {name} answered {(int)response.StatusCode}, not secret details.");

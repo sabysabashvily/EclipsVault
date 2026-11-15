@@ -112,6 +112,13 @@ public sealed class SecretService : ISecretService
 
     public async Task<Guid> CreateAsync(CreateSecretRequest request, CancellationToken ct)
     {
+        // Checked first so an ordinary taken name is refused without a failed save; the unique index
+        // still decides a race.
+        if (await _repository.ExistsByNameAsync(request.Name.Trim(), ct))
+        {
+            throw new SecretNameTakenException();
+        }
+
         // The id is settled before the value is sealed, because it is what the payload is bound to.
         var id = Guid.NewGuid();
         var sealedSecret = await SealValueAsync(request.Value, SecretBinding.ForCurrentValue(id), ct);
