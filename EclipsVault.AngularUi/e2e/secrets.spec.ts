@@ -178,6 +178,7 @@ test('the keyboard fills New secret in order, stores it, and opens it from the l
   await list.open();
   await list.filter.focus();
   await page.keyboard.type(typed);
+  await expect(list.rows).toHaveCount(2);
   await page.keyboard.press('Tab');
   await expect(list.openOf(list.secret(typed))).toBeFocused();
   await page.keyboard.press('Enter');
