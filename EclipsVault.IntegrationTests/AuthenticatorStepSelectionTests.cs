@@ -19,10 +19,14 @@ public sealed class AuthenticatorStepSelectionTests
     private const long NextStep = 56_666_668;
     private const long TenStepsBehind = 56_666_657;
 
+    // Codes at 56_666_657 and 56_666_666 differ from each other and from 56_666_667 through
+    // 56_666_669, so a six-digit collision cannot make the verifier accept a refused step.
+    private const string DistinctStepSecret = "AAAAAWQAAAAAAAAAAAAAAAAAAAAAAAAA";
+
     [Fact]
     public void The_previous_step_is_refused_once_the_server_clock_enters_the_next_step()
     {
-        var secret = NewSecret();
+        const string secret = DistinctStepSecret;
         var previous = Totp.StepAt(LastSecondOfStep) - 1;
 
         Assert.Equal(PreviousStep, previous);
@@ -60,7 +64,7 @@ public sealed class AuthenticatorStepSelectionTests
     [Fact]
     public void A_code_ten_steps_behind_the_server_stays_refused_across_the_rollover()
     {
-        var secret = NewSecret();
+        const string secret = DistinctStepSecret;
         var expired = Totp.StepAt(LastSecondOfStep) - 10;
 
         Assert.Equal(TenStepsBehind, expired);
