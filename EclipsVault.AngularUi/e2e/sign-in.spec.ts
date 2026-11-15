@@ -684,7 +684,7 @@ test('the palette is driven from the keyboard, traps focus, and hands it back on
   });
 });
 
-test('an ended session sends palette search to sign-in, returning to the page afterwards', async ({
+test('an ended session sends palette search to sign-in with its return URL', async ({
   page,
   browserHealth,
 }) => {
@@ -695,15 +695,20 @@ test('an ended session sends palette search to sign-in, returning to the page af
   await page.context().clearCookies({ name: 'EclipsVault.Session' });
   browserHealth.expectConsoleError({ text: /status of 401/, url: /\/api\/ui\/secrets\/search\?/ });
 
+  const refusals: { status: number; body: unknown }[] = [];
+  // Navigation discards browser response bodies, so capture the real reply before delivering it.
+  await page.route(/\/api\/ui\/secrets\/search\?/, async (route) => {
+    const response = await route.fetch();
+    refusals.push({ status: response.status(), body: await response.json() });
+    await route.fulfill({ response });
+  });
+
   await openPalette(page);
-  const refused = page.waitForResponse(
-    (response) => new URL(response.url()).pathname === '/api/ui/secrets/search',
-  );
-  await page.locator('.palette-input').fill('Palette_Probe');
-  const answer = await refused;
-  expect(answer.status()).toBe(401);
-  expect(((await answer.json()) as { code: string }).code).toBe('unauthenticated');
+  await page.getByRole('combobox').fill('Palette_Probe');
   await expect(page).toHaveURL(/\/Account\/Login\?ReturnUrl=%2FAccess$/);
+  expect(refusals).toEqual([
+    { status: 401, body: expect.objectContaining({ code: 'unauthenticated' }) },
+  ]);
 });
 
 test('an access failure shows a retry and the next request restores the live grid', async ({
