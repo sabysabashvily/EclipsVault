@@ -128,6 +128,12 @@ failure with short retention.
   The long-standing `AuditGroupCommitterTests` hang was fixed in #37, so a hang now is a regression
   to investigate, not a known flake. Test output is buffered: the last test printed is not the one
   that hung. The aborted run's blame `Sequence_*.xml` names the test still in flight.
+- `integration (SqlServer)` can fail with `ContainerNotRunningException` because the pinned SQL Server
+  2025 CU3 image dies at startup. When the container log shows `handle-crash.sh`, `Failed to load LSA`,
+  or build stamp `869cbfe2a28bbc5800059f48feda967144643fd64d79a439b5c6333420172b72`, rerun only that
+  failed job. That is an infrastructure restart, not a test retry. ADR-0035 still forbids retries in
+  code. Any other SQL Server failure is investigated. Move the pin to CU12 or later once that image is
+  on MCR ([microsoft/mssql-docker#974](https://github.com/microsoft/mssql-docker/issues/974)).
 - A newly published advisory can turn CI red with no code change. Against a direct dependency it
   fails restore and build (`NU1902`/`NU1903` are errors here). Against a transitive one, restore and
   build can still pass and only CI's `security-scan` job fails; reproduce it with
