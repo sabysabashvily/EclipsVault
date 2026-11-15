@@ -35,6 +35,7 @@ import {
 import { currentTotpStep, freshTotp } from './totp';
 import { ProfilePage } from './profile';
 import { SignedInDevices } from './sessions';
+import { SecretsList } from './secrets-list';
 
 // The tests share one vault: the first enrolls the administrator's authenticator, the next signs in with it.
 test.describe.configure({ mode: 'serial' });
@@ -62,6 +63,7 @@ async function signIn(page: Page): Promise<void> {
   lastSignInStep = currentTotpStep();
   await page.getByRole('button', { name: 'Verify and sign in' }).click();
   await expect(page).toHaveURL(/\/Secrets$/);
+  await expect(new SecretsList(page).heading).toBeVisible();
 }
 
 /** Spend empty credential requests until the limiter answers or twelve ordinary replies exhaust its budget. */
@@ -105,6 +107,7 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
   const enrollmentStep = currentTotpStep();
   await page.getByRole('button', { name: 'Confirm enrollment' }).click();
   await expect(page).toHaveURL(/\/Secrets$/);
+  await expect(new SecretsList(page).heading).toBeVisible();
 
   await test.step('sign out through the Angular account menu, which ends the session on the server', async () => {
     const enrolled = (await context.cookies()).find(
@@ -151,6 +154,7 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
   lastSignInStep = currentTotpStep();
   await page.getByRole('button', { name: 'Verify and sign in' }).click();
   await expect(page).toHaveURL(/\/Secrets$/);
+  await expect(new SecretsList(page).heading).toBeVisible();
 
   const signInRequests: string[] = [];
   page.on('request', (request) => {
@@ -163,9 +167,11 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
   expect(session?.httpOnly).toBe(true);
 
   // The access component is a dynamic import, not part of main.js. Observe its actual chunk load.
+  // Cached shared chunks have no response body and cannot prove a new lazy load.
   const lazyAccess = page.waitForResponse(
     async (response) =>
       /\/ui\/chunk-[\w-]+\.js$/.test(response.url()) &&
+      response.status() === 200 &&
       (await response.text()).includes('What you can open right now'),
   );
   const angularDocument = await page.goto('/Access');
@@ -233,12 +239,12 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
   const legacyDocument = page.waitForResponse((response) =>
     response.request().isNavigationRequest(),
   );
-  await page.getByRole('link', { name: 'Secrets', exact: true }).click();
+  await page.getByRole('link', { name: 'Dynamic secrets', exact: true }).click();
   expect((await legacyDocument).headers()['content-security-policy']).not.toContain(
     'trusted-types',
   );
-  await expect(page).toHaveURL(/\/Secrets$/);
-  await expect(page.getByRole('heading', { name: 'Secrets', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/DynamicSecrets$/);
+  await expect(page.getByRole('heading', { name: 'Dynamic secrets', exact: true })).toBeVisible();
   await expect(page.locator('.sidebar')).toContainText('Vault Administrator');
   await page.getByText('Access', { exact: true }).click();
   await page.getByRole('link', { name: 'My access', exact: true }).click();
