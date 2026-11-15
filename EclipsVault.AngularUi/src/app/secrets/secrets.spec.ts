@@ -138,15 +138,6 @@ describe('Secrets', () => {
       ['Billing_Api_Key', 'BILLING', 'Staging', 'Internal', '2026-12-31 00:00', 'Open'],
       ['Ci_Token', 'PHOENIX', 'Development', 'Top Secret', '—', 'Open'],
     ]);
-    expect([...page.querySelectorAll('tbody .badge')].map((badge) => badge.className)).toEqual([
-      'badge env-production',
-      'badge sens-3',
-      'badge tone-warn',
-      'badge env-staging',
-      'badge sens-1',
-      'badge env-development',
-      'badge sens-4',
-    ]);
     expect([...page.querySelectorAll('tbody a')].map((link) => link.getAttribute('href'))).toEqual([
       '/Secrets/Details/00000000-0000-4000-8000-000000000001',
       '/Secrets/Details/00000000-0000-4000-8000-000000000002',

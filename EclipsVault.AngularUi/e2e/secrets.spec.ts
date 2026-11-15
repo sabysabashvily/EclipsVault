@@ -4,6 +4,7 @@ import { AppShell } from './app-shell';
 import { test, expect } from './fixtures';
 import { NewSecretForm } from './new-secret';
 import { openPalette, searchSecrets } from './palette';
+import { SecretDetails } from './secret-details';
 import { SecretsList } from './secrets-list';
 
 test.describe.configure({ mode: 'serial' });
@@ -14,7 +15,7 @@ const created = {
   ttlDays: '3',
 };
 const typed = 'E2e_Secrets_Typed';
-const details = /\/Secrets\/Details\/[0-9a-f-]{36}$/;
+const detailsUrl = /\/Secrets\/Details\/[0-9a-f-]{36}$/;
 
 /** Records each document the browser loads, so a test can tell an in-app link from a page load. */
 function recordDocuments(page: Page): string[] {
@@ -41,11 +42,10 @@ test('New secret stores a secret and opens its details with the Legacy success m
 
   await form.create(created);
 
-  await expect(page).toHaveURL(details);
-  await expect(page.getByRole('heading', { name: created.name, exact: true })).toBeVisible();
-  await expect(
-    page.getByText(`Secret '${created.name}' was envelope-encrypted and stored.`),
-  ).toBeVisible();
+  await expect(page).toHaveURL(detailsUrl);
+  const details = new SecretDetails(page, created.name);
+  await expect(details.heading).toBeVisible();
+  await expect(details.storedMessage).toBeVisible();
 });
 
 test('a taken name is refused on the form, which keeps what was typed', async ({ page }) => {
@@ -88,11 +88,11 @@ test('the sidebar opens the Secrets list in place, marking the new secret as exp
   await expect(list.expiresOf(row)).toContainText('soon');
 
   await list.filter.fill('e2e_secrets_c');
-  await expect(page.getByRole('row')).toHaveCount(2);
+  await expect(list.rows).toHaveCount(2);
   await expect(row).toBeVisible();
 
   await list.openOf(row).click();
-  await expect(page.getByRole('heading', { name: created.name, exact: true })).toBeVisible();
+  await expect(new SecretDetails(page, created.name).heading).toBeVisible();
   expect(documents).toEqual([new URL(page.url()).pathname]);
 });
 
@@ -106,8 +106,8 @@ test('both palettes find the secret by name, and Enter opens its details', async
       names: [created.name],
     });
     await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(details);
-    await expect(page.getByRole('heading', { name: created.name, exact: true })).toBeVisible();
+    await expect(page).toHaveURL(detailsUrl);
+    await expect(new SecretDetails(page, created.name).heading).toBeVisible();
   }
 });
 
@@ -134,7 +134,7 @@ test('the keyboard fills New secret in order, stores it, and opens it from the l
   await page.keyboard.press('Tab');
   await expect(form.submit).toBeFocused();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('heading', { name: typed, exact: true })).toBeVisible();
+  await expect(new SecretDetails(page, typed).heading).toBeVisible();
 
   const list = new SecretsList(page);
   await list.open();
@@ -143,8 +143,8 @@ test('the keyboard fills New secret in order, stores it, and opens it from the l
   await page.keyboard.press('Tab');
   await expect(list.openOf(list.secret(typed))).toBeFocused();
   await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(details);
-  await expect(page.getByRole('heading', { name: typed, exact: true })).toBeVisible();
+  await expect(page).toHaveURL(detailsUrl);
+  await expect(new SecretDetails(page, typed).heading).toBeVisible();
 });
 
 const now = Date.now();

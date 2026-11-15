@@ -2,6 +2,7 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { test, expect } from './fixtures';
+import { clearSignInBudget } from './profile-state';
 import {
   type Activity,
   type ExpectedRow,
@@ -61,16 +62,6 @@ async function signIn(page: Page): Promise<void> {
   lastSignInStep = currentTotpStep();
   await page.getByRole('button', { name: 'Verify and sign in' }).click();
   await expect(page).toHaveURL(/\/Secrets$/);
-}
-
-/**
- * Waits for a new production throttle window. Every credential POST in this suite comes from one
- * address, and the vault allows 11 per clock-aligned 120-second window. A scenario that needs
- * several starts its own window instead of depending on how the earlier tests happened to time.
- */
-async function freshThrottleWindow(page: Page): Promise<void> {
-  const windowMilliseconds = 120_000;
-  await page.waitForTimeout(windowMilliseconds - (Date.now() % windowMilliseconds) + 1_000);
 }
 
 /** Spend empty credential requests until the limiter answers or twelve ordinary replies exhaust its budget. */
@@ -526,16 +517,9 @@ test('palette search lists only secrets the account could already list, never a 
     await expect(standard.locator('.palette-empty')).toHaveText('Nothing matches that.');
   });
 
-  await test.step('a one-character query asks the server nothing, and the server would answer nothing', async () => {
-    const searches: string[] = [];
-    standard.on('request', (request) => {
-      if (new URL(request.url()).pathname === '/api/ui/secrets/search')
-        searches.push(request.url());
-    });
+  // That the palette never sends such a query is pinned by its unit test, on a controlled clock.
+  await test.step('a one-character query lists no secrets, and the server would answer nothing', async () => {
     await standard.locator('.palette-input').fill('P');
-    // Longer than the debounce, so a search that was going to be sent would have been.
-    await standard.waitForTimeout(600);
-    expect(searches).toEqual([]);
     expect((await paletteEntries(standard)).filter(([kind]) => kind === 'Secret')).toEqual([]);
     await test.step('an uppercase one-character query returns no secrets', async () => {
       const direct = await standard.request.get(
@@ -1971,11 +1955,12 @@ test('a session revoked from another browser signs in again and returns to My ac
   page,
   browserHealth,
 }) => {
-  // A fresh throttle window, then three sign-ins, each of which may wait for a new authenticator step.
+  // A fresh sign-in budget, then three sign-ins, each of which may wait for a new authenticator step.
   test.setTimeout(330_000);
   expect(authenticatorSecret).not.toBe('');
-  // Its six credential POSTs, with the earlier tests' seven, would exceed one window's budget.
-  await freshThrottleWindow(page);
+  // Every credential POST in this suite comes from one address, and the vault allows 11 per
+  // 120-second window: its six, with the earlier tests' seven, would exceed it.
+  clearSignInBudget();
 
   // Every session but the first browser's, as Signed-in devices shows them to it.
   let othersOfFirst: string[] = [];
@@ -2102,7 +2087,7 @@ test('a real passkey follows the server redirect for local and external return t
   });
   try {
     await page.goto('/Profile');
-    await freshThrottleWindow(page);
+    clearSignInBudget();
     await page.getByLabel('New passkey name').fill('issue53-browser');
     await page.getByRole('button', { name: 'Add a passkey', exact: true }).click();
     const profile = new ProfilePage(page);

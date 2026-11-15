@@ -14,12 +14,12 @@ namespace EclipsVault.IntegrationTests;
 public sealed class RetiredSecretsRoutesTests(VaultFixture vault)
 {
     [Theory]
-    [InlineData("/Secrets", "198.18.164.1")]
-    [InlineData("/sEcReTs/InDeX", "198.18.164.2")]
-    [InlineData("/SECRETS/CREATE", "198.18.164.3")]
-    public async Task Signed_in_the_secrets_paths_serve_the_Angular_document(string path, string source)
+    [InlineData("/Secrets", "it-secrets-page-1", "198.18.164.1")]
+    [InlineData("/sEcReTs/InDeX", "it-secrets-page-2", "198.18.164.2")]
+    [InlineData("/SECRETS/CREATE", "it-secrets-page-3", "198.18.164.3")]
+    public async Task Signed_in_the_secrets_paths_serve_the_Angular_document(string path, string username, string source)
     {
-        var member = await vault.SignInNewAccountAsync("it-secrets-page-" + source.Split('.').Last(), IPAddress.Parse(source));
+        var member = await vault.SignInNewAccountAsync(username, IPAddress.Parse(source));
 
         var document = await member.Client.GetAsync(path);
 
@@ -39,19 +39,17 @@ public sealed class RetiredSecretsRoutesTests(VaultFixture vault)
     }
 
     [Theory]
-    [InlineData("GET", "/Secrets/Search?q=it", HttpStatusCode.NotFound, "198.18.164.11")]
-    [InlineData("GET", "/sEcReTs/sEaRcH?q=it", HttpStatusCode.NotFound, "198.18.164.12")]
-    [InlineData("POST", "/Secrets/Search", HttpStatusCode.NotFound, "198.18.164.13")]
-    [InlineData("POST", "/Secrets/Create", HttpStatusCode.MethodNotAllowed, "198.18.164.14")]
-    [InlineData("POST", "/sEcReTs/cReAtE/", HttpStatusCode.MethodNotAllowed, "198.18.164.15")]
-    [InlineData("POST", "/Secrets/Create/legacy", HttpStatusCode.NotFound, "198.18.164.16")]
-    [InlineData("GET", "/Secrets/Index/legacy", HttpStatusCode.NotFound, "198.18.164.17")]
+    [InlineData("GET", "/Secrets/Search?q=it", HttpStatusCode.NotFound, "it-retired-secrets-11", "198.18.164.11", "it-retired-secret-11")]
+    [InlineData("GET", "/sEcReTs/sEaRcH?q=it", HttpStatusCode.NotFound, "it-retired-secrets-12", "198.18.164.12", "it-retired-secret-12")]
+    [InlineData("POST", "/Secrets/Search", HttpStatusCode.NotFound, "it-retired-secrets-13", "198.18.164.13", "it-retired-secret-13")]
+    [InlineData("POST", "/Secrets/Create", HttpStatusCode.MethodNotAllowed, "it-retired-secrets-14", "198.18.164.14", "it-retired-secret-14")]
+    [InlineData("POST", "/sEcReTs/cReAtE/", HttpStatusCode.MethodNotAllowed, "it-retired-secrets-15", "198.18.164.15", "it-retired-secret-15")]
+    [InlineData("POST", "/Secrets/Create/legacy", HttpStatusCode.NotFound, "it-retired-secrets-16", "198.18.164.16", "it-retired-secret-16")]
+    [InlineData("GET", "/Secrets/Index/legacy", HttpStatusCode.NotFound, "it-retired-secrets-17", "198.18.164.17", "it-retired-secret-17")]
     public async Task The_retired_Legacy_search_and_create_reach_no_handler_even_with_a_session_and_antiforgery(
-        string method, string path, HttpStatusCode status, string source)
+        string method, string path, HttpStatusCode status, string username, string source, string name)
     {
-        var suffix = source.Split('.').Last();
-        var member = await vault.SignInNewAccountAsync("it-retired-secrets-" + suffix, IPAddress.Parse(source));
-        var name = "it-retired-secret-" + suffix;
+        var member = await vault.SignInNewAccountAsync(username, IPAddress.Parse(source));
 
         var response = await UiApiRequest.WriteWithAntiforgeryAsync(member, new HttpMethod(method), path,
             new FormUrlEncodedContent(new Dictionary<string, string>

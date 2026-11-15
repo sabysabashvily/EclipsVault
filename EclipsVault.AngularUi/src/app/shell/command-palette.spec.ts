@@ -171,15 +171,18 @@ describe('CommandPalette', () => {
     assign.mockReset();
     opener = document.createElement('button');
     document.body.append(opener);
+    // The debounce runs on RxJS's scheduler, which uses intervals; Angular's own scheduler uses
+    // timeouts, so faking only intervals moves the debounce by hand and leaves rendering alone.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     backend.verify();
     opener.remove();
   });
 
-  // Real time: Angular's zoneless scheduler runs on the same timers that fake timers would freeze.
-  const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const pause = (ms: number) => vi.advanceTimersByTimeAsync(ms);
 
   /** Lets the debounce elapse and returns the one search request it sent. */
   async function searched(stable: () => Promise<void>, q: string): Promise<TestRequest> {

@@ -23,13 +23,13 @@ namespace EclipsVault.IntegrationTests;
 public sealed class SecretsApiTests(VaultFixture vault)
 {
     [Theory]
-    [InlineData("/api/ui/secrets")]
-    [InlineData("/api/ui/secrets/search?q=it")]
-    public async Task The_reads_refuse_anonymous_and_working_api_key_callers(string path)
+    [InlineData("/api/ui/secrets", "it-secrets-list-key")]
+    [InlineData("/api/ui/secrets/search?q=it", "it-secrets-search-key")]
+    public async Task The_reads_refuse_anonymous_and_working_api_key_callers(string path, string serviceAccount)
     {
         var client = vault.CreateClient();
         await UiApiFailureContractTests.AssertProblemAsync(await client.GetAsync(path), 401, "unauthenticated");
-        var key = await vault.IssueApiKeyAsync(await vault.AdminClientAsync(), $"it-secrets-key-{path.Length}");
+        var key = await vault.IssueApiKeyAsync(await vault.AdminClientAsync(), serviceAccount);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/v1/secrets")).StatusCode);
 
@@ -102,13 +102,13 @@ public sealed class SecretsApiTests(VaultFixture vault)
     }
 
     [Theory]
-    [InlineData("i")]
-    [InlineData(" i ")]
-    [InlineData("")]
-    public async Task A_search_shorter_than_two_characters_finds_nothing(string query)
+    [InlineData("i", "it-secrets-short-letter")]
+    [InlineData(" i ", "it-secrets-short-padded")]
+    [InlineData("", "it-secrets-short-empty")]
+    public async Task A_search_shorter_than_two_characters_finds_nothing(string query, string listable)
     {
         var admin = await vault.AdminClientAsync();
-        await OverviewSecrets.CreateAsync(vault, $"it-secrets-short-{query.Trim().Length}{query.Length}", "GLOBAL");
+        await OverviewSecrets.CreateAsync(vault, listable, "GLOBAL");
 
         var found = await admin.GetFromJsonAsync<SecretSearchResultResponse[]>($"/api/ui/secrets/search?q={Uri.EscapeDataString(query)}");
 
@@ -131,7 +131,7 @@ public sealed class SecretsApiTests(VaultFixture vault)
         var stored = await StoredAsync("it-secrets-created");
         Assert.Equal((created.SecretId, "IT-SECRETS-CREATE", SecretEnvironment.Staging, SensitivityLevel.Internal),
             (stored!.Id, stored.ProjectKey, stored.Environment, stored.Sensitivity));
-        Assert.Equal(DateTimeOffset.UtcNow.AddDays(30), stored.ExpiresAtUtc!.Value, TimeSpan.FromMinutes(5));
+        Assert.Equal(TimeSpan.FromDays(30), stored.ExpiresAtUtc!.Value - stored.CreatedAtUtc);
         var row = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before), audit => audit.Username == "it-secrets-create");
         Assert.Equal((AuditAction.SecretCreated, created.SecretId), (row.Action, row.ResourceId));
         var details = await member.Client.GetStringAsync(response.Headers.Location!.OriginalString);
@@ -139,14 +139,13 @@ public sealed class SecretsApiTests(VaultFixture vault)
     }
 
     [Theory]
-    [InlineData("another project")]
-    [InlineData("a decoy")]
-    public async Task A_name_another_project_or_a_decoy_holds_is_taken_and_stores_nothing(string holder)
+    [InlineData("it-secrets-taken-elsewhere", false, "it-secrets-taken-elsewhere-member", "10.164.0.5")]
+    [InlineData("it-secrets-taken-by-decoy", true, "it-secrets-taken-by-decoy-member", "10.164.0.4")]
+    public async Task A_name_another_project_or_a_decoy_holds_is_taken_and_stores_nothing(
+        string name, bool decoy, string username, string source)
     {
-        var name = holder == "a decoy" ? "it-secrets-taken-by-decoy" : "it-secrets-taken-elsewhere";
-        await OverviewSecrets.CreateAsync(vault, name, "IT-SECRETS-HOLDER", decoy: holder == "a decoy");
-        var member = await vault.SignInNewAccountAsync($"{name}-member", IPAddress.Parse(holder == "a decoy" ? "10.164.0.4" : "10.164.0.5"),
-            project: "IT-SECRETS-TAKER");
+        await OverviewSecrets.CreateAsync(vault, name, "IT-SECRETS-HOLDER", decoy: decoy);
+        var member = await vault.SignInNewAccountAsync(username, IPAddress.Parse(source), project: "IT-SECRETS-TAKER");
         var before = await AuditTrail.HeadAsync(vault);
 
         var response = await SecretsApi.CreateAsync(member.Client, name, project: "IT-SECRETS-TAKER");
@@ -154,21 +153,18 @@ public sealed class SecretsApiTests(VaultFixture vault)
         var problem = await SecretsApi.AssertProblemAsync(response, 409, "name_taken");
         Assert.Equal("A secret with that name already exists.", problem.GetProperty("title").GetString());
         Assert.Equal("IT-SECRETS-HOLDER", (await StoredAsync(name))!.ProjectKey);
-        Assert.DoesNotContain(await AuditTrail.RowsAfterAsync(vault, before), audit => audit.Username == $"{name}-member");
+        Assert.DoesNotContain(await AuditTrail.RowsAfterAsync(vault, before), audit => audit.Username == username);
     }
 
     [Theory]
-    [InlineData("IT-SECRETS-NOT-MINE", "Internal",
+    [InlineData("it-secrets-denied-project", "10.164.0.6", "it-secrets-denied-project-secret", "IT-SECRETS-NOT-MINE", "Internal",
         "Subject project 'IT-SECRETS-DENIED' does not permit creating a secret in project 'IT-SECRETS-NOT-MINE'.")]
-    [InlineData("IT-SECRETS-DENIED", "Confidential",
+    [InlineData("it-secrets-denied-clearance", "10.164.0.7", "it-secrets-denied-clearance-secret", "IT-SECRETS-DENIED", "Confidential",
         "Clearance 'Standard' is below the requested sensitivity 'Confidential'.")]
     public async Task Creating_in_another_project_or_above_clearance_is_refused_with_the_policys_reasons(
-        string project, string sensitivity, string reason)
+        string username, string source, string name, string project, string sensitivity, string reason)
     {
-        var username = $"it-secrets-denied-{sensitivity.ToLowerInvariant()}";
-        var member = await vault.SignInNewAccountAsync(username, IPAddress.Parse(sensitivity == "Internal" ? "10.164.0.6" : "10.164.0.7"),
-            project: "IT-SECRETS-DENIED");
-        var name = $"{username}-secret";
+        var member = await vault.SignInNewAccountAsync(username, IPAddress.Parse(source), project: "IT-SECRETS-DENIED");
         var before = await AuditTrail.HeadAsync(vault);
 
         var response = await SecretsApi.CreateAsync(member.Client, name, project: project, sensitivity: sensitivity);
