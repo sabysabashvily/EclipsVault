@@ -38,6 +38,11 @@ export class SecretsPage {
     }));
   });
   protected readonly count = computed(() => this.rows().length);
+  // One binding, so the paragraph holds only this text, as Legacy's did.
+  protected readonly introduction = computed(
+    () =>
+      `${this.count()} active secret${this.count() === 1 ? '' : 's'}. Opening one records an audit entry.`,
+  );
   // Legacy's filter matched a row's text, so it matches what the row shows.
   protected readonly filtered = computed(() => {
     const query = this.query().trim().toLowerCase();

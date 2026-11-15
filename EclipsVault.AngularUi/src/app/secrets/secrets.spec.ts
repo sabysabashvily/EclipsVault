@@ -127,7 +127,7 @@ describe('Secrets', () => {
   it('lists each secret as Legacy did, marking one that expires within 7 days', async () => {
     const { page } = await loaded([expiringSoon, expiringLater, neverExpiring]);
 
-    expect(text(page.querySelector('.page-sub'))).toBe(
+    expect(page.querySelector('.page-sub')?.textContent).toBe(
       '3 active secrets. Opening one records an audit entry.',
     );
     expect([...page.querySelectorAll('th')].map((header) => text(header))).toEqual([
@@ -181,7 +181,7 @@ describe('Secrets', () => {
 
   it('counts a single secret in the singular', async () => {
     const { page } = await loaded([neverExpiring]);
-    expect(text(page.querySelector('.page-sub'))).toBe(
+    expect(page.querySelector('.page-sub')?.textContent).toBe(
       '1 active secret. Opening one records an audit entry.',
     );
   });
@@ -201,14 +201,14 @@ describe('Secrets', () => {
     filter.dispatchEvent(new Event('input'));
     await fixture.whenStable();
     expect(rows(page).map(([name]) => name)).toEqual(['Phoenix_Db_Password']);
-    expect(text(page.querySelector('.page-sub'))).toBe(
+    expect(page.querySelector('.page-sub')?.textContent).toBe(
       '3 active secrets. Opening one records an audit entry.',
     );
   });
 
   it('shows the empty vault with a way to store the first secret', async () => {
     const { page } = await loaded([]);
-    expect(text(page.querySelector('.page-sub'))).toBe(
+    expect(page.querySelector('.page-sub')?.textContent).toBe(
       '0 active secrets. Opening one records an audit entry.',
     );
     expect(page.querySelector('table')).toBeNull();
