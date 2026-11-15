@@ -68,6 +68,39 @@ test('a taken name is refused on the form, which keeps what was typed', async ({
   await expect(form.submit).toBeEnabled();
 });
 
+for (const [ttlDays, refusal] of [
+  ['1.5', 'stepMismatch'],
+  ['-1', 'rangeUnderflow'],
+  ['3651', 'rangeOverflow'],
+] as const) {
+  test(`the browser refuses a TTL of ${ttlDays} days before anything is sent, as on Legacy`, async ({
+    page,
+  }) => {
+    await page.context().addCookies(await savedAdministratorCookies());
+    const form = new NewSecretForm(page);
+    const sent: string[] = [];
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/ui/secrets')
+        sent.push(request.url());
+    });
+    await form.open();
+
+    await form.create({
+      name: 'E2e_Secrets_Bad_Ttl',
+      project: 'GLOBAL',
+      sensitivity: 'Internal',
+      ttlDays,
+    });
+
+    expect(
+      await form.ttlDays.evaluate((input: HTMLInputElement, key) => input.validity[key], refusal),
+    ).toBe(true);
+    await expect(form.ttlDays).toBeFocused();
+    await expect(form.refusal).toHaveText('');
+    expect(sent).toEqual([]);
+  });
+}
+
 test('the sidebar opens the Secrets list in place, marking the new secret as expiring soon', async ({
   page,
 }) => {

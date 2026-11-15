@@ -363,7 +363,7 @@ describe('New secret', () => {
     expect(values(form)[0]).toBe('Phoenix_Prod_Db_Password');
   });
 
-  it('leaves every check to the server and shows its Legacy messages under their fields', async () => {
+  it('shows server validation messages under the text fields', async () => {
     const form = await opened();
     await form.fill('Name', 'ab');
     await form.fill('TTL in days (0 = never expires)', '');
@@ -395,7 +395,6 @@ describe('New secret', () => {
     );
     await form.fixture.whenStable();
 
-    expect(form.page.querySelector('form')!.noValidate).toBe(true);
     expect(form.errorOf('Name')).toBe(
       'The field Name must be a string with a minimum length of 3 and a maximum length of 128.',
     );
