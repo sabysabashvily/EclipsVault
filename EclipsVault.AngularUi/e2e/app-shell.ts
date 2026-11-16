@@ -7,11 +7,22 @@ export class AppShell {
   readonly myAccess;
   readonly secrets;
   readonly paletteQuery;
+  readonly navigation;
+  readonly sharing;
+  readonly youGroup;
+  readonly administrationGroup;
 
   constructor(page: Page) {
     this.yourData = page.getByRole('link', { name: 'Your data', exact: true });
     // A folding group's summary has no role of its own, so it is found by its text in the navigation.
     const navigation = page.getByRole('navigation', { name: 'Main navigation' });
+    this.navigation = navigation;
+    this.sharing = navigation.getByRole('group', { name: 'Sharing', exact: true });
+    this.youGroup = navigation.getByRole('group', { name: 'You', exact: true });
+    this.administrationGroup = navigation.getByRole('group', {
+      name: 'Administration',
+      exact: true,
+    });
     this.you = navigation.getByText('You', { exact: true });
     this.administration = navigation.getByText('Administration', { exact: true });
     this.myAccess = page.getByRole('link', { name: 'My access', exact: true });

@@ -147,3 +147,81 @@ test('resizing an open mobile drawer restores desktop navigation', async ({ page
   await page.getByRole('link', { name: 'My access', exact: true }).click();
   await expect(page).toHaveURL(/\/Access$/);
 });
+
+for (const width of [300, 768, 1199]) {
+  test(`drawer links and small actions have 44px targets at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/Admin/Users');
+    const shell = new ResponsiveShell(page);
+    await expect(shell.editUser).toBeVisible();
+    const edit = await shell.editUser.boundingBox();
+    expect(edit?.height).toBeGreaterThanOrEqual(44);
+    expect(edit?.width).toBeGreaterThanOrEqual(44);
+    const primary = await shell.newUser.boundingBox();
+    expect(primary?.height).toBeGreaterThanOrEqual(44);
+    expect(primary?.width).toBeGreaterThanOrEqual(44);
+    await shell.open.click();
+    const link = await shell.usersLink.boundingBox();
+    expect(link?.height).toBeGreaterThanOrEqual(44);
+    expect(link?.width).toBeGreaterThanOrEqual(44);
+    await page.keyboard.press('Escape');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  });
+}
+
+test('the phone primary action opens New user with its full accessible name', async ({ page }) => {
+  await page.setViewportSize({ width: 300, height: 900 });
+  await page.goto('/Admin/Users');
+  const shell = new ResponsiveShell(page);
+  await expect(shell.newUser.getByText('New user', { exact: true })).toBeHidden();
+  await shell.newUser.click();
+  await expect(page.getByRole('heading', { name: 'New user', exact: true })).toBeVisible();
+  await expect(shell.newUser).toHaveCount(0);
+});
+
+test('the tablet primary action keeps its visible label', async ({ page }) => {
+  await page.setViewportSize({ width: 768, height: 900 });
+  await page.goto('/Admin/Users');
+  const shell = new ResponsiveShell(page);
+  await expect(shell.newUser.getByText('New user', { exact: true })).toBeVisible();
+});
+
+test('an overflowing Users table shows a scroll hint above the minimum table width', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 800, height: 900 });
+  await page.goto('/Admin/Users');
+  const shell = new ResponsiveShell(page);
+  await expect(shell.editUser).toBeVisible();
+  expect(await shell.users.evaluate((region) => region.clientWidth)).toBeGreaterThan(640);
+  await expect
+    .poll(() => shell.users.evaluate((region) => region.scrollWidth > region.clientWidth))
+    .toBe(true);
+  await expect(
+    shell.users.getByText('Scroll horizontally to see all columns.', { exact: true }),
+  ).toBeVisible();
+  await expect(shell.users).toHaveAttribute('tabindex', '0');
+
+  await page.setViewportSize({ width: 2000, height: 900 });
+  await page.goto('/Access');
+  await expect(page.getByRole('rowheader', { name: 'Top Secret', exact: true })).toBeVisible();
+  await expect(
+    page.getByText('Scroll horizontally to see all columns.', { exact: true }),
+  ).toBeHidden();
+});
+
+test('reduced-motion navigation can close and reopen without losing keyboard focus', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 768, height: 900 });
+  await page.goto('/Access');
+  const shell = new ResponsiveShell(page);
+  await shell.open.click();
+  await expect(shell.close).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(shell.navigation).toBeHidden();
+  await expect(shell.open).toBeFocused();
+  await shell.open.click();
+  await expect(shell.close).toBeFocused();
+});

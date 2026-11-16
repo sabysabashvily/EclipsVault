@@ -448,9 +448,9 @@ test("the ⌘K palette offers exactly the sidebar's pages, as the Legacy palette
     const sidebar = await sidebarPages(page);
     await openPalette(page);
     const angular = await paletteEntries(page);
-    // New secret left the sidebar for the page's own button, so the palette offers it after the pages.
+    // Creation is a palette shortcut after the navigation destinations.
     expect(angular).toEqual([...sidebar.map((label) => ['Go to', label]), ['Go to', 'New secret']]);
-    expect(angular.toSorted()).toEqual(legacy.toSorted());
+    expect([...angular].sort()).toEqual([...legacy].sort());
     expect(angular).toHaveLength(21);
     await expect(page.locator('style, [style]')).toHaveCount(0);
   });
@@ -471,7 +471,7 @@ test("the ⌘K palette offers exactly the sidebar's pages, as the Legacy palette
     const angular = await paletteEntries(standard);
     // New secret left the sidebar for the page's own button, so the palette offers it after the pages.
     expect(angular).toEqual([...sidebar.map((label) => ['Go to', label]), ['Go to', 'New secret']]);
-    expect(angular.toSorted()).toEqual(legacy.toSorted());
+    expect([...angular].sort()).toEqual([...legacy].sort());
     expect(angular).toHaveLength(14);
     expect(sidebar).not.toContain('Users');
     expect(sidebar).not.toContain('Networks');

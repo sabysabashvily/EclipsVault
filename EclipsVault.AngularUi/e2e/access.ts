@@ -34,11 +34,7 @@ export async function verifyMyAccess(
   // Docker allocates the proxy's forwarded source address; it is not necessarily loopback.
   expect(access.isTrustedNetwork).toBe(true);
   await expect(now.locator('dd').nth(0)).toHaveText(`${access.sourceIp} Trusted`);
-  await expect(now.locator('dd').nth(1)).toHaveText(/^\s*(Open now|Closed)\s+06:00–22:00 UTC\s*$/);
-  // Production follows the real clock, so its column reads the window the page just showed.
-  const production = (await now.locator('dd').nth(1).innerText()).includes('Open now')
-    ? 'Can open'
-    : 'Outside access hours';
+  await expect(now.locator('dd').nth(1)).toHaveText('Open now 00:00–24:00 UTC');
   const rows = page.locator('.access-matrix tbody tr');
   await expect(page.locator('.access-matrix thead th')).toHaveText([
     'Sensitivity',
@@ -50,16 +46,16 @@ export async function verifyMyAccess(
   // One row per sensitivity, Top Secret first; each row lists Development, Staging, Production.
   const grids = {
     administrator: [
-      ['Can open', 'Can open', production],
-      ['Can open', 'Can open', production],
-      ['Can open', 'Can open', production],
-      ['Can open', 'Can open', production],
+      ['Can open', 'Can open', 'Can open'],
+      ['Can open', 'Can open', 'Can open'],
+      ['Can open', 'Can open', 'Can open'],
+      ['Can open', 'Can open', 'Can open'],
     ],
     standard: [
       ['Clearance too low', 'Clearance too low', 'Clearance too low'],
       ['Clearance too low', 'Clearance too low', 'Clearance too low'],
       ['Clearance too low', 'Clearance too low', 'Clearance too low'],
-      ['Can open', 'Can open', production],
+      ['Can open', 'Can open', 'Can open'],
     ],
   };
   await expect(rows.locator('td')).toHaveText(grids[account].flat());

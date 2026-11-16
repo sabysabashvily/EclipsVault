@@ -1,22 +1,23 @@
 import type { Page, TestInfo } from '@playwright/test';
 import { expect } from './fixtures';
 import { verifyMyAccess } from './access';
+import { AppShell } from './app-shell';
 
 /**
- * The navigation as a person reads it on My access, in document order: each link or group with
- * where it goes and whether it is the current page ("current") or holds it ("open").
+ * Inventory every authorized destination, including folded links. Expansion is checked separately.
  */
 async function navigation(page: Page) {
-  return page.locator('.sidenav').evaluate((nav) => ({
+  // Summaries have no distinct role; this inventory includes their hidden children in document order.
+  return new AppShell(page).navigation.evaluate((nav) => ({
     sections: [...nav.querySelectorAll('.nav-section')].map((section) =>
       section.textContent?.trim(),
     ),
     items: [...nav.querySelectorAll('a, summary')].map((item) => [
       item.textContent?.trim(),
       item.getAttribute('href') ?? 'group',
-      item.classList.contains('active')
+      item.getAttribute('aria-current') === 'page'
         ? 'current'
-        : item.classList.contains('has-active')
+        : item.tagName === 'SUMMARY' && item.parentElement?.hasAttribute('open')
           ? 'open'
           : '',
     ]),
@@ -140,6 +141,27 @@ export async function verifySidebar(
     await expect(page.locator('.sidenav a.active')).toHaveAttribute('aria-current', 'page');
     // The Angular sidebar groups its pages differently from the Legacy one, by design.
     expect(await navigation(page)).toEqual(expectedNavigation[account]);
+    const shell = new AppShell(page);
+    await expect(shell.youGroup).toHaveAttribute('open', '');
+    await expect(shell.youGroup.getByRole('link')).toHaveText([
+      'My access',
+      'Security checkup',
+      'Sign-in history',
+      'Signed-in devices',
+      'My activity',
+      'Your data',
+    ]);
+    await shell.you.click();
+    await expect(shell.youGroup).not.toHaveAttribute('open');
+    await expect(shell.youGroup.getByRole('link')).toHaveCount(0);
+    await shell.you.click();
+    await expect(shell.myAccess).toBeVisible();
+    await expect(shell.sharing).not.toHaveAttribute('open');
+    await expect(shell.sharing.getByRole('link')).toHaveCount(0);
+    await shell.sharing.getByText('Sharing', { exact: true }).click();
+    await expect(shell.sharing).toHaveAttribute('open', '');
+    await expect(shell.sharing.getByRole('link')).toHaveText(['Shared with me', 'Shared by me']);
+    await shell.sharing.getByText('Sharing', { exact: true }).click();
     expect(await accountMenu(page)).toEqual(referenceMenu);
     expect(await notices(page)).toEqual(referenceNotices);
     if (account === 'standard') {
@@ -154,6 +176,20 @@ export async function verifySidebar(
         ),
       ).toHaveCount(0);
     } else {
+      await expect(shell.administrationGroup).not.toHaveAttribute('open');
+      await expect(shell.administrationGroup.getByRole('link')).toHaveCount(0);
+      await shell.administration.click();
+      await expect(shell.administrationGroup).toHaveAttribute('open', '');
+      await expect(shell.administrationGroup.getByRole('link')).toHaveText([
+        'Users',
+        'Service accounts',
+        'Networks',
+        'Encryption keys',
+        'Audit log',
+        'Notifications',
+        'License',
+      ]);
+      await shell.administration.click();
       expect(referenceNotices).toEqual([
         expect.stringMatching(/^Running unlicensed\. .+ View license$/),
       ]);

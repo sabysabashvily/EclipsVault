@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test';
 export class SecretsList {
   readonly heading;
 
-  constructor(readonly page: Page) {
+  constructor(page: Page) {
     this.heading = page.getByRole('heading', { name: 'Secrets', exact: true });
   }
 }

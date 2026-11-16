@@ -74,7 +74,7 @@
           No runtime-trusted networks yet. Entries added here apply immediately and are audited.
         </p>
       } @else {
-        <div class="table-scroll" role="region" aria-label="Trusted networks">
+        <div class="table-scroll" appScrollRegion role="region" aria-label="Trusted networks">
           <p class="table-scroll-hint">Scroll horizontally to see all columns.</p>
           <table class="data-table">
             <thead>
@@ -129,7 +129,12 @@
         @if (!networks.value().blocks.length) {
           <p class="muted">No ranges are currently blocked.</p>
         } @else {
-          <div class="table-scroll" role="region" aria-label="Intrusion-defence blocks">
+          <div
+            class="table-scroll"
+            appScrollRegion
+            role="region"
+            aria-label="Intrusion-defence blocks"
+          >
             <p class="table-scroll-hint">Scroll horizontally to see all columns.</p>
             <table class="data-table">
               <thead>

@@ -4,7 +4,19 @@
     <p class="page-sub">Staff accounts. New users set up their authenticator at first sign-in.</p>
   </div>
   <div class="page-actions">
-    <a class="button primary" routerLink="/Admin/CreateUser">New user</a>
+    <a *appPagePrimary class="button primary" routerLink="/Admin/CreateUser" aria-label="New user">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        aria-hidden="true"
+      >
+        <path d="M12 5v14M5 12h14" />
+      </svg>
+      <span class="action-label">New user</span>
+    </a>
   </div>
 </div>
 <app-status-line [message]="status().message" [error]="status().error" />
@@ -22,7 +34,7 @@
         [(query)]="query"
       />
     </div>
-    <div class="table-scroll" role="region" aria-label="Users">
+    <div class="table-scroll" appScrollRegion role="region" aria-label="Users">
       <p class="table-scroll-hint">Scroll horizontally to see all columns.</p>
       <table class="data-table" id="users-table">
         <thead>

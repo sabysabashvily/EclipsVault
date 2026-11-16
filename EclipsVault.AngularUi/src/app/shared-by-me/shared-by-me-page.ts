@@ -1,3 +1,4 @@
+import { ScrollRegion } from '../shared/scroll-region';
 import { DatePipe } from '@angular/common';
 import { HttpClient, httpResource } from '@angular/common/http';
 import { Component, DestroyRef, inject, signal, viewChild } from '@angular/core';
@@ -15,7 +16,7 @@ type Share = SharedByMe['shares'][number];
 
 @Component({
   selector: 'app-shared-by-me-page',
-  imports: [DatePipe, ConfirmationDialog, EmptyState, StatusLine],
+  imports: [ScrollRegion, DatePipe, ConfirmationDialog, EmptyState, StatusLine],
   templateUrl: './shared-by-me-page.html',
 })
 export class SharedByMePage {

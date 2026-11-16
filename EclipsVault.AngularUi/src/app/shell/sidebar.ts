@@ -97,8 +97,7 @@ const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)
 ];
 
 /**
- * Actions the palette offers beside the sidebar's pages. "New secret" left the sidebar because it
- * duplicates the Secrets page's own primary button, but the shortcut stays.
+ * The palette offers creation as a shortcut; sidebar links name destinations.
  */
 const shortcuts: readonly AreaLink[] = [link('secrets', 'New secret', '/Secrets/Create')];
 

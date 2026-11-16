@@ -1,3 +1,4 @@
+import { ScrollRegion } from '../shared/scroll-region';
 import { HttpClient, httpResource } from '@angular/common/http';
 import { Component, computed, inject, viewChild } from '@angular/core';
 import { finalize } from 'rxjs';
@@ -13,7 +14,7 @@ const path = '/api/ui/encryption';
 
 @Component({
   selector: 'app-encryption-page',
-  imports: [StatusLine, ConfirmationDialog],
+  imports: [ScrollRegion, StatusLine, ConfirmationDialog],
   providers: [AdministratorWrites],
   templateUrl: './encryption-page.html',
 })

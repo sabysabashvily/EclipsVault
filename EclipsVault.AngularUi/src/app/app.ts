@@ -13,6 +13,7 @@ import { RouterOutlet } from '@angular/router';
 import { CurrentAccount } from './account/current-account';
 import { AccountMenu } from './shell/account-menu';
 import { CommandPalette, commandChord } from './shell/command-palette';
+import { PageActions } from './shell/page-actions';
 import { shortcutsFor } from './shell/sidebar';
 import { SidebarNav } from './shell/sidebar-nav';
 import { UiApiError } from './ui-api/ui-api-errors';
@@ -112,6 +113,11 @@ import { UiApiError } from './ui-api/ui-api-errors';
               <kbd>{{ chord }}</kbd>
             </button>
           }
+          @if (compact() && pageActions.primary(); as action) {
+            <div class="topbar-action">
+              <ng-container [ngTemplateOutlet]="action" />
+            </div>
+          }
         </header>
         <!-- Shown only when the server sends it: it decides who may see a licence notice (ADR-0012). -->
         @if (me.hasValue() && me.value().licenseNotice; as notice) {
@@ -170,7 +176,8 @@ export class App {
   private readonly document = inject(DOCUMENT);
   private readonly navigator = this.document.defaultView?.navigator;
   private readonly viewport = this.document.defaultView?.matchMedia?.('(max-width: 1199px)');
-  protected readonly compact = signal(this.viewport?.matches ?? false);
+  protected readonly pageActions = inject(PageActions);
+  protected readonly compact = this.pageActions.compact;
   protected readonly navigationOpen = signal(false);
   protected readonly shortcuts = computed(() =>
     this.me.hasValue() ? shortcutsFor(this.me.value().areas) : [],
@@ -183,6 +190,7 @@ export class App {
   );
 
   constructor() {
+    this.compact.set(this.viewport?.matches ?? false);
     const resized = (event: MediaQueryListEvent) => {
       this.closeNavigation();
       this.compact.set(event.matches);

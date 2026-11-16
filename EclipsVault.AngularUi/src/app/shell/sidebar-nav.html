@@ -7,7 +7,7 @@
     }
     @for (item of section.items; track item.label) {
       @if ('children' in item) {
-        <details class="nav-group" [open]="groupActive(item)">
+        <details class="nav-group" [attr.aria-label]="item.label" [open]="groupActive(item)">
           <summary class="nav-item nav-group-summary" [class.has-active]="groupActive(item)">
             <app-nav-icon [icon]="item.icon" />
             <span>{{ item.label }}</span>

@@ -66,8 +66,23 @@
   </div>
 
   <section class="panel">
-    <div class="panel-header"><h2>What you can open right now</h2></div>
-    <div class="table-scroll" role="region" aria-label="What you can open right now">
+    <div class="panel-header matrix-header">
+      <h2>What you can open right now</h2>
+      <p class="matrix-legend" aria-hidden="true">
+        <span class="cell-mark cell-allow"
+          ><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7" /></svg></span
+        >Can open
+        <span class="cell-mark cell-deny"
+          ><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17" /></svg></span
+        >Denied, with the reason
+      </p>
+    </div>
+    <div
+      class="table-scroll"
+      appScrollRegion
+      role="region"
+      aria-label="What you can open right now"
+    >
       <p class="table-scroll-hint">Scroll horizontally to see all columns.</p>
       <table class="access-matrix">
         <thead>
@@ -85,35 +100,21 @@
                 <span class="badge sens-{{ row.sensitivityRank }}">{{ row.sensitivity }}</span>
               </th>
               @for (cell of row.cells; track cell.environment) {
-                <td [class]="cell.allowed ? 'cell-allow' : 'cell-deny'">
+                <td>
                   @if (cell.allowed) {
-                    <svg
-                      aria-hidden="true"
-                      class="cell-icon"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <path d="M5 12.5l4.5 4.5L19 7" />
-                    </svg>
-                    <span>Can open</span>
+                    <span class="cell-mark cell-allow">
+                      <svg aria-hidden="true" viewBox="0 0 24 24">
+                        <path d="M5 12.5l4.5 4.5L19 7" />
+                      </svg>
+                    </span>
+                    <span class="visually-hidden">Can open</span>
                   } @else {
-                    <svg
-                      aria-hidden="true"
-                      class="cell-icon"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <path d="M6 6l12 12M18 6L6 18" />
-                    </svg>
-                    <span>{{ cell.reason }}</span>
+                    <span class="cell-mark cell-deny">
+                      <svg aria-hidden="true" viewBox="0 0 24 24">
+                        <path d="M7 7l10 10M17 7L7 17" />
+                      </svg>
+                    </span>
+                    <span class="cell-reason">{{ cell.reason }}</span>
                   }
                 </td>
               }
@@ -131,7 +132,14 @@
   </section>
 
   <section class="panel callout-warn">
-    <div class="panel-header"><h2>One exception: decoys</h2></div>
+    <div class="panel-header">
+      <span class="callout-icon" aria-hidden="true"
+        ><svg viewBox="0 0 24 24">
+          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+          <path d="M12 9v4M12 17h.01" /></svg
+      ></span>
+      <h2>One exception: decoys</h2>
+    </div>
     <p class="muted">
       Some entries are <strong>intrusion-detection decoys</strong> (honey-tokens). These rules do
       <em>not</em> apply to them: opening a decoy always trips the trap — your session is revoked
