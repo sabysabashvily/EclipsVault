@@ -11,7 +11,7 @@ export class ResponsiveShell {
     this.open = page.getByRole('button', { name: 'Open navigation', exact: true });
     this.navigation = page.getByRole('dialog', { name: 'Navigation', exact: true });
     this.close = this.navigation.getByRole('button', { name: 'Close navigation', exact: true });
-    this.search = this.navigation.getByRole('button', {
+    this.search = page.getByRole('button', {
       name: 'Search secrets or jump to a page',
       exact: true,
     });

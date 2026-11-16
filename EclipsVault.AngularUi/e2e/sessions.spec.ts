@@ -292,16 +292,14 @@ test('Signed-in devices reports a load failure with retry and then its Legacy em
   await expect(devices.signOutOthers).toHaveCount(0);
 });
 
-test('the sidebar opens Signed-in devices in-app with its Security group active', async ({
-  page,
-}) => {
+test('the sidebar opens Signed-in devices in-app with its You group open', async ({ page }) => {
   await openOwner(page, '/Access');
   const documents: string[] = [];
   page.on('request', (request) => {
     if (request.isNavigationRequest() && request.resourceType() === 'document')
       documents.push(request.url());
   });
-  await page.getByText('Security', { exact: true }).click();
+  // My access is in the You group, so the group is already open.
   const link = page.getByRole('link', { name: 'Signed-in devices', exact: true });
   await link.click();
   await expect(page).toHaveURL(/\/Sessions$/);

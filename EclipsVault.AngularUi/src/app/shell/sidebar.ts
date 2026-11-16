@@ -36,14 +36,17 @@ const link = (
 
 // Presentation only: the server has already authorized each Area. Clearance is never an input.
 // Profile is offered in the account menu. The command palette reads the rendered sidebar links.
+// The places people visit come first; personal and administrative pages fold into the You and
+// Administration groups, which name themselves, so only the first section carries a label.
 const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)[] }[] = [
   {
     label: 'Vault',
     items: [
       link('overview', 'Overview', '/'),
       link('secrets', 'Secrets', '/Secrets'),
-      link('secrets', 'New secret', '/Secrets/Create', 'new-secret'),
       link('dynamic-secrets', 'Dynamic secrets', '/DynamicSecrets'),
+      // Sharing becomes tabs on the Secrets card once the Secrets list is an Angular page; until
+      // then its two pages keep a group of their own here.
       {
         label: 'Sharing',
         icon: 'shared-with-me',
@@ -52,47 +55,54 @@ const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)
           link('shared-by-me', 'Shared by me', '/Secrets/SharedByMe', 'shared-by-me', true),
         ],
       },
+      link('access-requests', 'Access requests', '/AccessRequests', 'access-requests', true),
     ],
   },
   {
-    label: 'Account',
+    label: '',
     items: [
       {
-        label: 'Access',
-        icon: 'access-group',
+        label: 'You',
+        icon: 'you',
         children: [
           link('access', 'My access', '/Access', 'access', true),
-          link('access-requests', 'Access requests', '/AccessRequests', 'access-requests', true),
-        ],
-      },
-      {
-        label: 'Security',
-        icon: 'security-group',
-        children: [
           link('security', 'Security checkup', '/Security', 'security', true),
           link('sign-ins', 'Sign-in history', '/SignIns', 'sign-ins', true),
           link('sessions', 'Signed-in devices', '/Sessions', 'sessions', true),
           link('activity', 'My activity', '/Activity', 'activity', true),
+          link('data', 'Your data', '/Data', 'data', true),
         ],
       },
-      link('data', 'Your data', '/Data', 'data', true),
-    ],
-  },
-  {
-    label: 'Administration',
-    items: [
-      link('users', 'Users', '/Admin/Users', 'users', true),
-      link('networks', 'Networks', '/Admin/Networks', 'networks', true),
-      link('service-accounts', 'Service accounts', '/ServiceAccounts', 'service-accounts', true),
-      link('audit', 'Audit log', '/Audit', 'audit', true),
-      link('notifications', 'Notifications', '/Notifications', 'notifications', true),
-      link('encryption', 'Encryption keys', '/Encryption', 'encryption', true),
-      link('license', 'License', '/License', 'license', true),
+      {
+        label: 'Administration',
+        icon: 'administration',
+        children: [
+          link('users', 'Users', '/Admin/Users', 'users', true),
+          link(
+            'service-accounts',
+            'Service accounts',
+            '/ServiceAccounts',
+            'service-accounts',
+            true,
+          ),
+          link('networks', 'Networks', '/Admin/Networks', 'networks', true),
+          link('encryption', 'Encryption keys', '/Encryption', 'encryption', true),
+          link('audit', 'Audit log', '/Audit', 'audit', true),
+          link('notifications', 'Notifications', '/Notifications', 'notifications', true),
+          link('license', 'License', '/License', 'license', true),
+        ],
+      },
     ],
   },
 ];
 
-/** Maps only recognized, server-authorized Areas, preserving Legacy order and omitting empty groups. */
+/**
+ * Actions the palette offers beside the sidebar's pages. "New secret" left the sidebar because it
+ * duplicates the Secrets page's own primary button, but the shortcut stays.
+ */
+const shortcuts: readonly AreaLink[] = [link('secrets', 'New secret', '/Secrets/Create')];
+
+/** Maps only recognized, server-authorized Areas, in sidebar order, omitting empty groups and sections. */
 export function sidebarFor(areas: readonly string[]): readonly SidebarSection[] {
   const allowed = new Set(areas);
   const visible = (entry: AreaLink): SidebarLink[] => {
@@ -106,5 +116,14 @@ export function sidebarFor(areas: readonly string[]): readonly SidebarSection[] 
       return children.length ? [{ label: item.label, icon: item.icon, children }] : [];
     });
     return items.length ? [{ label: section.label, items }] : [];
+  });
+}
+
+/** The palette shortcuts the server-authorized Areas allow, in order. */
+export function shortcutsFor(areas: readonly string[]): readonly SidebarLink[] {
+  const allowed = new Set(areas);
+  return shortcuts.flatMap((entry) => {
+    const { area, ...shortcut } = entry;
+    return allowed.has(area) ? [shortcut] : [];
   });
 }

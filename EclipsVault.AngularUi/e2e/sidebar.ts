@@ -2,27 +2,60 @@ import type { Page, TestInfo } from '@playwright/test';
 import { expect } from './fixtures';
 import { verifyMyAccess } from './access';
 
-/** Both shells must keep the same destinations and account permissions during migration. */
+/**
+ * The navigation as a person reads it on My access, in document order: each link or group with
+ * where it goes and whether it is the current page ("current") or holds it ("open").
+ */
 async function navigation(page: Page) {
   return page.locator('.sidenav').evaluate((nav) => ({
     sections: [...nav.querySelectorAll('.nav-section')].map((section) =>
       section.textContent?.trim(),
     ),
-    items: [...nav.querySelectorAll('a, summary')].map((item) => {
-      return {
-        label: item.textContent?.trim(),
-        url: item.getAttribute('href'),
-        active: item.classList.contains('active'),
-        groupActive: item.classList.contains('has-active'),
-        icon: [...item.querySelector('svg')!.children].map((shape) => ({
-          tag: shape.tagName,
-          attributes: [...shape.attributes].map((attribute) => [attribute.name, attribute.value]),
-        })),
-      };
-    }),
-    groups: [...nav.querySelectorAll('details')].map((group) => group.open),
+    items: [...nav.querySelectorAll('a, summary')].map((item) => [
+      item.textContent?.trim(),
+      item.getAttribute('href') ?? 'group',
+      item.classList.contains('active')
+        ? 'current'
+        : item.classList.contains('has-active')
+          ? 'open'
+          : '',
+    ]),
   }));
 }
+
+/** Places people visit, then the You group, which My access opens. Sharing folds until it becomes tabs. */
+const everyone = [
+  ['Overview', '/', ''],
+  ['Secrets', '/Secrets', ''],
+  ['Dynamic secrets', '/DynamicSecrets', ''],
+  ['Sharing', 'group', ''],
+  ['Shared with me', '/Secrets/SharedWithMe', ''],
+  ['Shared by me', '/Secrets/SharedByMe', ''],
+  ['Access requests', '/AccessRequests', ''],
+  ['You', 'group', 'open'],
+  ['My access', '/Access', 'current'],
+  ['Security checkup', '/Security', ''],
+  ['Sign-in history', '/SignIns', ''],
+  ['Signed-in devices', '/Sessions', ''],
+  ['My activity', '/Activity', ''],
+  ['Your data', '/Data', ''],
+];
+
+const administration = [
+  ['Administration', 'group', ''],
+  ['Users', '/Admin/Users', ''],
+  ['Service accounts', '/ServiceAccounts', ''],
+  ['Networks', '/Admin/Networks', ''],
+  ['Encryption keys', '/Encryption', ''],
+  ['Audit log', '/Audit', ''],
+  ['Notifications', '/Notifications', ''],
+  ['License', '/License', ''],
+];
+
+const expectedNavigation = {
+  standard: { sections: ['Vault'], items: everyone },
+  administrator: { sections: ['Vault'], items: [...everyone, ...administration] },
+};
 
 /**
  * The account identity and destinations remain shared by both shells.
@@ -67,7 +100,7 @@ async function screenshot(page: Page, info: TestInfo, name: string) {
   await info.attach(name, { path, contentType: 'image/png' });
 }
 
-/** Compare the two real UIs on the same session, in each theme, and then use their links to cross over. */
+/** Check the Angular sidebar against the Legacy UI on the same session, in each theme, then cross over. */
 export async function verifySidebar(
   page: Page,
   info: TestInfo,
@@ -92,20 +125,7 @@ export async function verifySidebar(
     const legacy = await page.goto('/Secrets');
     expect(legacy?.headers()['content-security-policy']).not.toContain('trusted-types');
     await expect(page.locator('.sidenav a.active')).toHaveText('Secrets');
-    // Compare navigation in the same selected state as My access. The real active states
-    // of both documents are asserted separately; the deleted Razor page is no longer a reference.
-    await page.locator('.sidenav').evaluate((nav) => {
-      nav
-        .querySelectorAll('.active, .has-active')
-        .forEach((item) => item.classList.remove('active', 'has-active'));
-      nav.querySelectorAll('details').forEach((group) => group.removeAttribute('open'));
-      const access = nav.querySelector('a[href="/Access"]')!;
-      access.classList.add('active');
-      access.closest('details')!.setAttribute('open', '');
-      access.closest('details')!.querySelector('summary')!.classList.add('has-active');
-    });
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-    const reference = await navigation(page);
     const referenceMenu = await accountMenu(page);
     const referenceNotices = await notices(page);
     await screenshot(page, info, `${account}-${theme}-legacy`);
@@ -118,7 +138,8 @@ export async function verifySidebar(
     // The boot script applied the theme from the cookie the Legacy UI reads.
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     await expect(page.locator('.sidenav a.active')).toHaveAttribute('aria-current', 'page');
-    expect(await navigation(page)).toEqual(reference);
+    // The Angular sidebar groups its pages differently from the Legacy one, by design.
+    expect(await navigation(page)).toEqual(expectedNavigation[account]);
     expect(await accountMenu(page)).toEqual(referenceMenu);
     expect(await notices(page)).toEqual(referenceNotices);
     if (account === 'standard') {
@@ -126,7 +147,7 @@ export async function verifySidebar(
       expect(referenceNotices).toEqual([]);
       expect(await page.content()).not.toMatch(/unlicensed|notice-warn/i);
       await expect(page.locator('.sidenav')).not.toContainText('Administration');
-      await expect(page.locator('.sidenav a')).toHaveCount(13);
+      await expect(page.locator('.sidenav a')).toHaveCount(12);
       await expect(
         page.locator(
           'a[href^="/Admin"], a[href="/ServiceAccounts"], a[href="/Audit"], a[href="/Notifications"], a[href="/Encryption"], a[href="/License"]',
@@ -136,12 +157,7 @@ export async function verifySidebar(
       expect(referenceNotices).toEqual([
         expect.stringMatching(/^Running unlicensed\. .+ View license$/),
       ]);
-      await expect(page.locator('.sidenav .nav-section')).toHaveText([
-        'Vault',
-        'Account',
-        'Administration',
-      ]);
-      await expect(page.locator('.sidenav a')).toHaveCount(20);
+      await expect(page.locator('.sidenav a')).toHaveCount(19);
     }
     await expect(page.locator('style, [style]')).toHaveCount(0);
     await screenshot(page, info, `${account}-${theme}-angular`);

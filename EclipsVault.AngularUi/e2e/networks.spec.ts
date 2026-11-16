@@ -162,7 +162,10 @@ test('the sidebar on Networks opens Your data in the Angular UI', async ({ page 
   const networks = new Networks(page);
   await networks.open();
   await expect(networks.heading).toBeVisible();
-  await new AppShell(page).yourData.click();
+  // Your data is in the You group, which an administration page leaves folded.
+  const shell = new AppShell(page);
+  await shell.you.click();
+  await shell.yourData.click();
   await expect(new YourData(page).heading).toBeVisible();
   await expect(page).toHaveURL(/\/Data$/);
 });

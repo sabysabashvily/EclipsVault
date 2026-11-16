@@ -296,14 +296,20 @@ button {
   min-height: 100vh;
 }
 
-.mobile-header {
+/* The top of the page column: below 1200px the drawer's button and the logo, at every width the
+   search pill that opens the palette. */
+.topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1rem;
+  gap: 0.75rem;
+  margin-bottom: 1.75rem;
 }
-.mobile-header .brand {
+.topbar .search-pill {
+  margin-left: auto;
+}
+.topbar-brand {
   padding: 0;
+  font-size: 1.05rem;
 }
 /* Icon-only buttons are circles. Qualified with .button so the general button padding, declared
    later, cannot squeeze the icon out of a 44px circle. */
@@ -390,6 +396,15 @@ body:has(.mobile-navigation[open]) {
 .brand:hover {
   color: var(--text);
 }
+.workspace-card {
+  margin-bottom: 1.25rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-card);
+}
+
 /* Eclipse logomark — the favicon's twin: a dark disc haloed by the accent ring. */
 .brand-mark {
   width: 1.05em;
@@ -406,6 +421,11 @@ body:has(.mobile-navigation[open]) {
   gap: 2px;
   flex: 1;
   overflow-y: auto;
+}
+
+/* The groups name themselves, so the space before them replaces a section label. */
+.nav-gap {
+  height: 0.9rem;
 }
 
 /* Sentence case everywhere, section labels included. */
@@ -484,18 +504,48 @@ body:has(.mobile-navigation[open]) {
 }
 /* Children indented under the header, with a guide line so the grouping reads at a glance. */
 .nav-group-items {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin: 2px 0 2px 1.45rem;
-  padding-left: 0.4rem;
-  border-left: 1px solid var(--border);
+  margin: 2px 0 4px;
+  padding-left: 2.1rem;
+}
+.nav-group-items > .nav-item {
+  position: relative;
+  min-height: 2.6rem;
+}
+/* The elbow into each child: down from the line, then right towards the child's icon. */
+.nav-group-items > .nav-item::before {
+  content: '';
+  position: absolute;
+  left: -1.05rem;
+  top: -2px;
+  width: 0.85rem;
+  height: calc(50% + 2px);
+  border-left: 1.5px solid var(--tree-line);
+  border-bottom: 1.5px solid var(--tree-line);
+  border-bottom-left-radius: 0.7rem;
+}
+/* The line continues past every child but the last. */
+.nav-group-items > .nav-item:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: -1.05rem;
+  top: 0;
+  bottom: -4px;
+  border-left: 1.5px solid var(--tree-line);
 }
 
 .sidebar-footer {
-  border-top: 1px solid var(--border);
   padding-top: 0.85rem;
   margin-top: 0.85rem;
+}
+.sidebar-footer .user-card {
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-card);
 }
 
 /* ---- Account menu -------------------------------------------------- */
@@ -652,13 +702,14 @@ body:has(.mobile-navigation[open]) {
 .content {
   flex: 1;
   min-width: 0;
-  padding: 2rem 2.4rem 1rem;
-  max-width: 1280px;
+  width: 100%;
+  max-width: calc(70rem + 5rem);
+  margin: 0 auto;
+  padding: 1.5rem 2.5rem 1rem;
   display: flex;
   flex-direction: column;
   animation: content-in 320ms var(--ease);
 }
-
 @keyframes content-in {
   from {
     opacity: 0;
@@ -1031,52 +1082,52 @@ a.stat-card:active {
   }
 }
 
-/* ---- Command trigger (the ⌘K front door) -------------------------- */
+/* The label yields and the keycap holds its size — if anything has to give in a narrow rail it
+   should be the word "Search", not the shortcut this element exists to advertise. */
+
+/* ---- Search pill (the ⌘K front door) ------------------------------ */
 /* Dressed as a search field because that is the shape people already know how to read: a
-   magnifier, grey prompt text, a shortcut on the right. It sits directly under the brand — the
-   first thing in the rail — because a shortcut is only discoverable if you meet it before you
-   need it. */
-.command-trigger {
-  display: flex;
+   magnifier, grey prompt text and the shortcut on the right. On a phone it shrinks to a circle. */
+.search-pill {
+  display: inline-flex;
   align-items: center;
-  gap: 0.55rem;
-  width: 100%;
-  margin-bottom: 0.9rem;
-  padding: 0.42rem 0.55rem;
+  gap: 0.6rem;
+  width: min(20rem, 100%);
+  min-height: 2.75rem;
+  padding: 0 0.55rem 0 1rem;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-pill);
   background: var(--bg-raised);
   color: var(--text-muted);
   font-family: inherit;
-  font-size: 0.9rem;
+  font-size: 0.94rem;
   text-align: left;
   cursor: pointer;
   transition:
-    border-color var(--dur) var(--ease),
-    background var(--dur) var(--ease),
-    color var(--dur) var(--ease);
+    background var(--dur-press) ease-out,
+    transform var(--dur-press) ease-out;
 }
-.command-trigger:hover {
-  border-color: var(--border-strong);
+.search-pill:hover {
   background: var(--bg-hover);
   color: var(--text);
 }
-.command-trigger svg {
-  width: 15px;
-  height: 15px;
-  flex-shrink: 0;
-  opacity: 0.8;
+.search-pill:active {
+  transform: scale(0.98);
 }
-/* The label yields and the keycap holds its size — if anything has to give in a narrow rail it
-   should be the word "Search", not the shortcut this element exists to advertise. */
-.command-trigger-label {
+.search-pill svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+/* The label yields and the keycap holds its size: if anything gives, it is the prompt. */
+.search-pill-label {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.command-trigger kbd {
+.search-pill kbd {
   flex-shrink: 0;
 }
 
@@ -2202,9 +2253,35 @@ fieldset {
   margin-left: 0.4rem;
 }
 
+/* Wide screens: the sidebar takes a little more room; the column keeps its readable width. */
+@media (min-width: 1920px) {
+  :root {
+    --sidebar-width: 288px;
+  }
+}
+
+/* Below 1200px the sidebar is a drawer, so the page takes the full width. */
+@media (max-width: 1199px) {
+  .content {
+    padding: 1rem 1.5rem;
+  }
+}
+
 @media (max-width: 767px) {
   .shell {
     flex-direction: column;
+  }
+  .topbar {
+    margin-bottom: 1.25rem;
+  }
+  .search-pill {
+    width: 2.75rem;
+    padding: 0;
+    justify-content: center;
+  }
+  .search-pill-label,
+  .search-pill kbd {
+    display: none;
   }
   .content {
     padding: 1rem;
@@ -2233,8 +2310,7 @@ fieldset {
     margin-left: auto;
   }
   .button.small,
-  .menu-item,
-  .command-trigger {
+  .menu-item {
     min-height: 2.75rem;
   }
 }

@@ -1,6 +1,10 @@
 <nav class="sidenav" aria-label="Main navigation">
   @for (section of sections(); track section.label) {
-    <span class="nav-section">{{ section.label }}</span>
+    @if (section.label) {
+      <span class="nav-section">{{ section.label }}</span>
+    } @else {
+      <span class="nav-gap" aria-hidden="true"></span>
+    }
     @for (item of section.items; track item.label) {
       @if ('children' in item) {
         <details class="nav-group" [open]="groupActive(item)">

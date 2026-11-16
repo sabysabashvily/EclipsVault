@@ -443,13 +443,14 @@ test("the ⌘K palette offers exactly the sidebar's pages, as the Legacy palette
     await page.goto('/Access');
     await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
     // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
-    await expect(page.locator('.sidebar > .command-trigger kbd')).toHaveText(legacyChord ?? '');
+    await expect(page.locator('.topbar > .search-pill kbd')).toHaveText(legacyChord ?? '');
     expect(legacyChord).toMatch(/^(⌘K|Ctrl K)$/);
     const sidebar = await sidebarPages(page);
     await openPalette(page);
     const angular = await paletteEntries(page);
-    expect(angular).toEqual(sidebar.map((label) => ['Go to', label]));
-    expect(angular).toEqual(legacy);
+    // New secret left the sidebar for the page's own button, so the palette offers it after the pages.
+    expect(angular).toEqual([...sidebar.map((label) => ['Go to', label]), ['Go to', 'New secret']]);
+    expect(angular.toSorted()).toEqual(legacy.toSorted());
     expect(angular).toHaveLength(21);
     await expect(page.locator('style, [style]')).toHaveCount(0);
   });
@@ -463,13 +464,14 @@ test("the ⌘K palette offers exactly the sidebar's pages, as the Legacy palette
     await standard.goto('/Access');
     await expect(standard.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
     // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
-    await expect(standard.locator('.sidebar > .command-trigger kbd')).toHaveText(legacyChord ?? '');
+    await expect(standard.locator('.topbar > .search-pill kbd')).toHaveText(legacyChord ?? '');
     expect(legacyChord).toMatch(/^(⌘K|Ctrl K)$/);
     const sidebar = await sidebarPages(standard);
     await openPalette(standard);
     const angular = await paletteEntries(standard);
-    expect(angular).toEqual(sidebar.map((label) => ['Go to', label]));
-    expect(angular).toEqual(legacy);
+    // New secret left the sidebar for the page's own button, so the palette offers it after the pages.
+    expect(angular).toEqual([...sidebar.map((label) => ['Go to', label]), ['Go to', 'New secret']]);
+    expect(angular.toSorted()).toEqual(legacy.toSorted());
     expect(angular).toHaveLength(14);
     expect(sidebar).not.toContain('Users');
     expect(sidebar).not.toContain('Networks');
@@ -754,7 +756,6 @@ test("My activity's empty state and pager match Legacy, and paging is in-app wit
       items: [],
     };
     const requested = await fulfilActivity(page, { '': empty });
-    await page.getByText('Security', { exact: true }).click();
     await page.getByRole('link', { name: 'My activity', exact: true }).click();
     // The Legacy partial's own element, not a host element carrying its class.
     await expect(page.locator('div.empty-state')).toHaveCount(1);
@@ -874,9 +875,7 @@ test("My activity's empty state and pager match Legacy, and paging is in-app wit
       );
 
   await test.step('the first page shows each row, its accent, icon and badges, and only the older link', async () => {
-    await page.getByText('Access', { exact: true }).click();
     await page.getByRole('link', { name: 'My access', exact: true }).click();
-    await page.getByText('Security', { exact: true }).click();
     await page.getByRole('link', { name: 'My activity', exact: true }).click();
     await expect(page).toHaveURL(/\/Activity$/);
     await expect(page.locator('.activity-feed > li')).toHaveCount(4);
@@ -1036,20 +1035,18 @@ test('the sidebar and palette open My activity in-app, and its Profile link open
   });
 
   await test.step('the sidebar link keeps the document and marks My activity and its group active', async () => {
-    await page.getByText('Security', { exact: true }).click();
     await page.getByRole('link', { name: 'My activity', exact: true }).click();
     await expect(page).toHaveURL(/\/Activity$/);
     await expect(page).toHaveTitle('My activity — EclipsVault');
     await expect(page.getByRole('heading', { name: 'My activity', exact: true })).toBeVisible();
     await expect(page.locator('.sidenav a.active')).toHaveText('My activity');
     await expect(page.locator('.sidenav a.active')).toHaveAttribute('aria-current', 'page');
-    await expect(page.locator('.sidenav summary.has-active')).toHaveText('Security');
+    await expect(page.locator('.sidenav summary.has-active')).toHaveText('You');
     await expect(page.locator('.sidenav details:has(a.active)')).toHaveAttribute('open', '');
     expect(documents).toEqual([]);
   });
 
   await test.step('the palette opens My activity in place', async () => {
-    await page.getByText('Access', { exact: true }).click();
     await page.getByRole('link', { name: 'My access', exact: true }).click();
     await expect(page).toHaveURL(/\/Access$/);
     await openPalette(page);
@@ -1156,7 +1153,6 @@ test("Sign-in history's empty state and an unfamiliar-location attempt match Leg
       },
       { times: 1 },
     );
-    await page.getByText('Security', { exact: true }).click();
     await page.getByRole('link', { name: 'Sign-in history', exact: true }).click();
     // The Legacy partial's own element, not a host element carrying its class.
     await expect(page.locator('div.empty-state')).toHaveCount(1);
@@ -1464,7 +1460,6 @@ test('the sidebar and palette open Sign-in history in-app, and its callout opens
   });
 
   await test.step('the sidebar link keeps the document and marks Sign-in history and its group active', async () => {
-    await page.getByText('Security', { exact: true }).click();
     await page.getByRole('link', { name: 'Sign-in history', exact: true }).click();
     await expect(page).toHaveURL(/\/SignIns$/);
     await expect(page).toHaveTitle('Sign-in history — EclipsVault');
@@ -1472,13 +1467,12 @@ test('the sidebar and palette open Sign-in history in-app, and its callout opens
     await expect(page.locator('.activity-feed > li').first()).toBeVisible();
     await expect(page.locator('.sidenav a.active')).toHaveText('Sign-in history');
     await expect(page.locator('.sidenav a.active')).toHaveAttribute('aria-current', 'page');
-    await expect(page.locator('.sidenav summary.has-active')).toHaveText('Security');
+    await expect(page.locator('.sidenav summary.has-active')).toHaveText('You');
     await expect(page.locator('.sidenav details:has(a.active)')).toHaveAttribute('open', '');
     expect(documents).toEqual([]);
   });
 
   await test.step('the palette opens Sign-in history in place', async () => {
-    await page.getByText('Access', { exact: true }).click();
     await page.getByRole('link', { name: 'My access', exact: true }).click();
     await expect(page).toHaveURL(/\/Access$/);
     await openPalette(page);
@@ -1764,18 +1758,16 @@ test('the sidebar and palette open Security checkup in-app, and its fixes open P
     if (request.isNavigationRequest() && request.resourceType() === 'document')
       documents.push(new URL(request.url()).pathname);
   });
-  await page.getByText('Security', { exact: true }).click();
   await page.getByRole('link', { name: 'Security checkup', exact: true }).click();
   await expect(page).toHaveURL(/\/Security$/);
   await expect(page).toHaveTitle('Security checkup — EclipsVault');
   await expect(page.locator('.activity-feed > li')).toHaveCount(4);
   await expect(page.locator('.sidenav a.active')).toHaveText('Security checkup');
   await expect(page.locator('.sidenav a.active')).toHaveAttribute('aria-current', 'page');
-  await expect(page.locator('.sidenav summary.has-active')).toHaveText('Security');
+  await expect(page.locator('.sidenav summary.has-active')).toHaveText('You');
   await expect(page.locator('.sidenav details:has(a.active)')).toHaveAttribute('open', '');
   expect(documents).toEqual([]);
 
-  await page.getByText('Access', { exact: true }).click();
   await page.getByRole('link', { name: 'My access', exact: true }).click();
   await expect(page).toHaveURL(/\/Access$/);
   await openPalette(page);

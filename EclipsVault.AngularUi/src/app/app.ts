@@ -1,6 +1,7 @@
 import { NgTemplateOutlet } from '@angular/common';
 import {
   Component,
+  computed,
   DestroyRef,
   DOCUMENT,
   ElementRef,
@@ -12,6 +13,7 @@ import { RouterOutlet } from '@angular/router';
 import { CurrentAccount } from './account/current-account';
 import { AccountMenu } from './shell/account-menu';
 import { CommandPalette, commandChord } from './shell/command-palette';
+import { shortcutsFor } from './shell/sidebar';
 import { SidebarNav } from './shell/sidebar-nav';
 import { UiApiError } from './ui-api/ui-api-errors';
 
@@ -21,32 +23,6 @@ import { UiApiError } from './ui-api/ui-api-errors';
   template: `
     <div class="shell">
       @if (compact()) {
-        <header class="mobile-header">
-          <a class="brand" href="/">
-            <span class="brand-mark" aria-hidden="true"></span>
-            <span>EclipsVault</span>
-          </a>
-          <button
-            type="button"
-            class="button navigation-toggle"
-            aria-label="Open navigation"
-            aria-haspopup="dialog"
-            aria-controls="mobile-navigation"
-            [attr.aria-expanded]="navigationOpen()"
-            (click)="openNavigation()"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              aria-hidden="true"
-            >
-              <path d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-        </header>
         <dialog
           #navigationDialog
           id="mobile-navigation"
@@ -85,6 +61,58 @@ import { UiApiError } from './ui-api/ui-api-errors';
         </aside>
       }
       <main class="content">
+        <!-- Below 1200px the sidebar is a drawer, so the bar carries its button and the logo. The
+             search pill is the palette's visible way in at every width. -->
+        <header class="topbar">
+          @if (compact()) {
+            <button
+              type="button"
+              class="button navigation-toggle"
+              aria-label="Open navigation"
+              aria-haspopup="dialog"
+              aria-controls="mobile-navigation"
+              [attr.aria-expanded]="navigationOpen()"
+              (click)="openNavigation()"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
+                <path d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <a class="brand topbar-brand" href="/">
+              <span class="brand-mark" aria-hidden="true"></span>
+              <span class="brand-name">EclipsVault</span>
+            </a>
+          }
+          @if (me.hasValue()) {
+            <button
+              type="button"
+              class="search-pill"
+              aria-label="Search secrets or jump to a page"
+              (click)="openSearch()"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-3.5-3.5" />
+              </svg>
+              <span class="search-pill-label">Search or jump to…</span>
+              <kbd>{{ chord }}</kbd>
+            </button>
+          }
+        </header>
         <!-- Shown only when the server sends it: it decides who may see a licence notice (ADR-0012). -->
         @if (me.hasValue() && me.value().licenseNotice; as notice) {
           <div class="notice notice-warn">
@@ -114,32 +142,11 @@ import { UiApiError } from './ui-api/ui-api-errors';
       </main>
     </div>
     <ng-template #sidebarContent>
-      <a class="brand" href="/">
+      <a class="brand workspace-card" href="/">
         <span class="brand-mark" aria-hidden="true"></span>
         <span class="brand-name">EclipsVault</span>
       </a>
       @if (me.hasValue()) {
-        <!-- The palette's visible way in, as in the Legacy UI: a shortcut nobody can see is a rumour. -->
-        <button
-          type="button"
-          class="command-trigger"
-          aria-label="Search secrets or jump to a page"
-          (click)="openSearch()"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            aria-hidden="true"
-          >
-            <circle cx="11" cy="11" r="7" />
-            <path d="m20 20-3.5-3.5" />
-          </svg>
-          <span class="command-trigger-label">Search…</span>
-          <kbd>{{ chord }}</kbd>
-        </button>
         <app-sidebar-nav [areas]="me.value().areas" />
         <div class="sidebar-footer">
           <app-account-menu [me]="me.value()" />
@@ -152,7 +159,7 @@ import { UiApiError } from './ui-api/ui-api-errors';
     </ng-template>
     @if (me.hasValue()) {
       @if (sidebar(); as region) {
-        <app-command-palette [sidebar]="region.nativeElement" />
+        <app-command-palette [sidebar]="region.nativeElement" [shortcuts]="shortcuts()" />
       }
     }
   `,
@@ -162,9 +169,12 @@ export class App {
   protected readonly palette = viewChild(CommandPalette);
   private readonly document = inject(DOCUMENT);
   private readonly navigator = this.document.defaultView?.navigator;
-  private readonly viewport = this.document.defaultView?.matchMedia?.('(max-width: 767px)');
+  private readonly viewport = this.document.defaultView?.matchMedia?.('(max-width: 1199px)');
   protected readonly compact = signal(this.viewport?.matches ?? false);
   protected readonly navigationOpen = signal(false);
+  protected readonly shortcuts = computed(() =>
+    this.me.hasValue() ? shortcutsFor(this.me.value().areas) : [],
+  );
   protected readonly sidebar = viewChild<ElementRef<HTMLElement>>('sidebar');
   protected readonly navigationDialog =
     viewChild<ElementRef<HTMLDialogElement>>('navigationDialog');

@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { openPalette } from './palette';
+import { AppShell } from './app-shell';
 
 export class Users {
   readonly heading;
@@ -72,6 +73,8 @@ export class Users {
   }
   async fromSidebar(path: '/Secrets' | '/Access'): Promise<void> {
     await this.page.goto(path);
+    // The Angular sidebar folds its administration pages into a group; the Legacy one lists them.
+    if (path === '/Access') await new AppShell(this.page).administration.click();
     await this.page.getByRole('link', { name: 'Users', exact: true }).click();
   }
   async fromPalette(path: '/Secrets' | '/Access'): Promise<void> {

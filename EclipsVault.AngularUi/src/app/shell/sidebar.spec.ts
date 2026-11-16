@@ -1,7 +1,7 @@
-import { sidebarFor } from './sidebar';
+import { shortcutsFor, sidebarFor } from './sidebar';
 
 describe('sidebar mapping', () => {
-  it('maps the server Areas to the Legacy groups, labels, icons and URLs in Legacy order', () => {
+  it('maps a standard account to the places it visits, then the You group', () => {
     const sections = sidebarFor([
       'data',
       'activity',
@@ -24,7 +24,6 @@ describe('sidebar mapping', () => {
         items: [
           { label: 'Overview', icon: 'overview', url: '/', angular: false },
           { label: 'Secrets', icon: 'secrets', url: '/Secrets', angular: false },
-          { label: 'New secret', icon: 'new-secret', url: '/Secrets/Create', angular: false },
           {
             label: 'Dynamic secrets',
             icon: 'dynamic-secrets',
@@ -49,41 +48,35 @@ describe('sidebar mapping', () => {
               },
             ],
           },
+          {
+            label: 'Access requests',
+            icon: 'access-requests',
+            url: '/AccessRequests',
+            angular: true,
+          },
         ],
       },
       {
-        label: 'Account',
+        label: '',
         items: [
           {
-            label: 'Access',
-            icon: 'access-group',
+            label: 'You',
+            icon: 'you',
             children: [
               { label: 'My access', icon: 'access', url: '/Access', angular: true },
-              {
-                label: 'Access requests',
-                icon: 'access-requests',
-                url: '/AccessRequests',
-                angular: true,
-              },
-            ],
-          },
-          {
-            label: 'Security',
-            icon: 'security-group',
-            children: [
               { label: 'Security checkup', icon: 'security', url: '/Security', angular: true },
               { label: 'Sign-in history', icon: 'sign-ins', url: '/SignIns', angular: true },
               { label: 'Signed-in devices', icon: 'sessions', url: '/Sessions', angular: true },
               { label: 'My activity', icon: 'activity', url: '/Activity', angular: true },
+              { label: 'Your data', icon: 'data', url: '/Data', angular: true },
             ],
           },
-          { label: 'Your data', icon: 'data', url: '/Data', angular: true },
         ],
       },
     ]);
   });
 
-  it('maps every administrator Area in Legacy order', () => {
+  it('folds every administrator Area into the Administration group', () => {
     expect(
       sidebarFor([
         'license',
@@ -96,20 +89,31 @@ describe('sidebar mapping', () => {
       ]),
     ).toEqual([
       {
-        label: 'Administration',
+        label: '',
         items: [
-          { label: 'Users', icon: 'users', url: '/Admin/Users', angular: true },
-          { label: 'Networks', icon: 'networks', url: '/Admin/Networks', angular: true },
           {
-            label: 'Service accounts',
-            icon: 'service-accounts',
-            url: '/ServiceAccounts',
-            angular: true,
+            label: 'Administration',
+            icon: 'administration',
+            children: [
+              { label: 'Users', icon: 'users', url: '/Admin/Users', angular: true },
+              {
+                label: 'Service accounts',
+                icon: 'service-accounts',
+                url: '/ServiceAccounts',
+                angular: true,
+              },
+              { label: 'Networks', icon: 'networks', url: '/Admin/Networks', angular: true },
+              { label: 'Encryption keys', icon: 'encryption', url: '/Encryption', angular: true },
+              { label: 'Audit log', icon: 'audit', url: '/Audit', angular: true },
+              {
+                label: 'Notifications',
+                icon: 'notifications',
+                url: '/Notifications',
+                angular: true,
+              },
+              { label: 'License', icon: 'license', url: '/License', angular: true },
+            ],
           },
-          { label: 'Audit log', icon: 'audit', url: '/Audit', angular: true },
-          { label: 'Notifications', icon: 'notifications', url: '/Notifications', angular: true },
-          { label: 'Encryption keys', icon: 'encryption', url: '/Encryption', angular: true },
-          { label: 'License', icon: 'license', url: '/License', angular: true },
         ],
       },
     ]);
@@ -120,15 +124,24 @@ describe('sidebar mapping', () => {
     expect(sidebarFor(['unrecognized', 'profile'])).toEqual([]);
     expect(sidebarFor(['access', 'access'])).toEqual([
       {
-        label: 'Account',
+        label: '',
         items: [
           {
-            label: 'Access',
-            icon: 'access-group',
+            label: 'You',
+            icon: 'you',
             children: [{ label: 'My access', icon: 'access', url: '/Access', angular: true }],
           },
         ],
       },
     ]);
+  });
+});
+
+describe('palette shortcuts', () => {
+  it('offers New secret only to an account that may open Secrets', () => {
+    expect(shortcutsFor(['secrets'])).toEqual([
+      { label: 'New secret', icon: 'secrets', url: '/Secrets/Create', angular: false },
+    ]);
+    expect(shortcutsFor(['access'])).toEqual([]);
   });
 });

@@ -97,17 +97,17 @@ test('mobile navigation traps focus and Escape returns to its opener', async ({ 
   await expect(shell.open).toHaveAttribute('aria-expanded', 'false');
 });
 
-test('search opened from mobile navigation receives focus above the page', async ({ page }) => {
+test('the search circle on a phone opens the palette and Escape returns to it', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 375, height: 900 });
   await page.goto('/Access');
   const shell = new ResponsiveShell(page);
 
-  await shell.open.click();
   await shell.search.click();
-  await expect(shell.navigation).not.toBeVisible();
   await expect(shell.palette).toBeFocused();
   await page.keyboard.press('Escape');
-  await expect(shell.open).toBeFocused();
+  await expect(shell.search).toBeFocused();
 });
 
 test('the search shortcut leaves mobile navigation before opening the palette', async ({
@@ -128,8 +128,8 @@ test('choosing a mobile navigation link closes the drawer and opens the page', a
   await page.goto('/Access');
   const shell = new ResponsiveShell(page);
 
+  // My access is in the You group, so the group is already open.
   await shell.open.click();
-  await shell.navigation.getByText('Security', { exact: true }).click();
   await shell.navigation.getByRole('link', { name: 'Sign-in history', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Sign-in history', exact: true })).toBeVisible();
   await expect(shell.navigation).not.toBeVisible();
