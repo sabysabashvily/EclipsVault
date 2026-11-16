@@ -103,6 +103,8 @@ describe('SharedByMePage', () => {
         ['Expiring_key', 'another-colleague', '2026-10-19 09:00', 'In 4 days · 26 Oct', 'Revoke'],
         ['Deployment_key', 'colleague', '2026-10-20 10:05', 'No expiry', 'Revoke'],
       ]);
+      // Exact text, untrimmed: the browser tests match the cell's whole text.
+      expect(page.querySelector('tbody td.cell-meta.muted')?.textContent).toBe('2026-10-19 09:00');
       const pill = page.querySelector('tbody .badge')!;
       expect(pill.classList).toContain('tone-warn');
       expect(pill.getAttribute('title')).toBe('2026-10-26 09:00:00 UTC');
