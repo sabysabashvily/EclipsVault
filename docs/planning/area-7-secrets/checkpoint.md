@@ -283,3 +283,34 @@ and ledger. Obtain a root-cause correction for the Profile scenario in its respo
 diagnose the earlier Audit failure, then finish the owner-required Users dependency run.
 Keep the shared Docker lock, .NET 10.0.404
 and Node 24.22.0. The coordinator owns the next action; do not start #165 here.
+
+## Delivery: 7a ticket 3 (#165)
+
+#164's blockers closed outside this ticket. The coordinator's distinct ordering gate passed all 279
+browser cases on `3876205`, merged `main` (`6c6194a`) in `f1aa53f`, and corrected one merged test in
+`01baac2`. The r3 Audit delay stays a local observation: most likely an I/O stall in the emulated
+SQL Server under host load, not proven, and not seen again.
+
+#165 started from `01baac2`. It fixes one finding of the part's security review: a member's
+Overview feed named the administrator who unlocked their account (SEC-165-1). The own feed now names
+the member; its test failed first with "vault-admin". The rest is tests and docs. The Overview shape
+test no longer depends on other tests' secrets. Visual checks in the sign-in spec moved into
+`visual parity:` tests. New tests cover `Home/Error` and the links into Overview, Secrets and New
+secret from both shells' sidebars and palettes, plus Details' Back to list. `CONTEXT.md` and
+ADR-0017 match the code.
+
+Security-reviewer (Opus 5.5 high) reviewed the whole part, then re-checked SEC-165-1 and `01baac2`:
+both closed. GPT Sol 6.1 xhigh Standards and Spec reviewed the whole part, re-checked each fix, and
+approved the part. P-1, the Your data export carrying the unlocking administrator's IP, predates 7a
+and is an owner follow-up after 7a merges. P-2 is Area 8 F2 in #175.
+
+Local checks on the source of the final head, all passing:
+- the part's PostgreSQL integration filter, 279 tests;
+- 949 unit tests;
+- the Secrets and Overview browser specs with their Chromium dependencies, 65 cases;
+- format, both pending-model checks, the hook tests, and the Angular lint, test, build and audit.
+
+The PR body is `logs/ticket-165/pr-body.md`. Details are in `logs/ticket-165/final-report.md` and
+`review-ledger.md`. To restart, confirm the final head and a clean tracked tree. Next: push, CI on
+the final head and the PR. Those are the coordinator's. 7b is stacked on this branch and has to take
+its final head.
