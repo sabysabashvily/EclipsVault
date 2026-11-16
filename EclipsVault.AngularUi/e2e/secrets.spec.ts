@@ -149,6 +149,59 @@ test('both palettes find the secret by name, and Enter opens its details', async
   }
 });
 
+const destinations = {
+  Overview: {
+    url: /\/$/,
+    landmark: (page: Page) => page.getByRole('heading', { name: 'Overview', exact: true }),
+  },
+  Secrets: { url: /\/Secrets$/, landmark: (page: Page) => new SecretsList(page).heading },
+  'New secret': {
+    url: /\/Secrets\/Create$/,
+    landmark: (page: Page) => new NewSecretForm(page).submit,
+  },
+};
+
+for (const shell of ['/DynamicSecrets', '/Access']) {
+  for (const [label, { url, landmark }] of Object.entries(destinations)) {
+    test(`the sidebar on ${shell} opens ${label}`, async ({ page }) => {
+      await page.context().addCookies(await savedAdministratorCookies());
+      await page.goto(shell);
+
+      await page.getByRole('link', { name: label, exact: true }).click();
+
+      await expect(page).toHaveURL(url);
+      await expect(landmark(page)).toBeVisible();
+    });
+
+    test(`the palette's Go to ${label} on ${shell} opens it`, async ({ page }) => {
+      await page.context().addCookies(await savedAdministratorCookies());
+      await page.goto(shell);
+      await openPalette(page);
+
+      await page
+        .getByRole('option')
+        .filter({ has: page.getByText(label, { exact: true }) })
+        .click();
+
+      await expect(page).toHaveURL(url);
+      await expect(landmark(page)).toBeVisible();
+    });
+  }
+}
+
+test("a secret's Back to list opens the Secrets list", async ({ page }) => {
+  await page.context().addCookies(await savedAdministratorCookies());
+  const form = new NewSecretForm(page);
+  await form.open();
+  await form.create({ ...created, name: 'E2e_Secrets_Back_To_List' });
+  await expect(new SecretDetails(page, 'E2e_Secrets_Back_To_List').heading).toBeVisible();
+
+  await page.getByRole('link', { name: 'Back to list', exact: true }).click();
+
+  await expect(page).toHaveURL(/\/Secrets$/);
+  await expect(new SecretsList(page).heading).toBeVisible();
+});
+
 test('the keyboard fills New secret in order, stores it, and opens it from the list', async ({
   page,
 }) => {
