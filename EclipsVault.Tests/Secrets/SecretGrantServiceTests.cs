@@ -78,6 +78,7 @@ public class SecretGrantServiceTests
         public Task<IReadOnlyList<Secret>> ListExpiredAsync(DateTimeOffset asOfUtc, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<Secret>> ListExpiringAsync(DateTimeOffset asOfUtc, DateTimeOffset horizonUtc, CancellationToken ct) => throw new NotSupportedException();
         public Task MarkExpiryNoticeSentAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> ExistsByNameAsync(string name, CancellationToken ct) => throw new NotSupportedException();
         public Task AddAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
         public Task UpdateAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
         public Task DeleteAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();

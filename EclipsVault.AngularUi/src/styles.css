@@ -1804,6 +1804,55 @@ app-command-palette {
   color: var(--text-secondary);
 }
 
+/* The Legacy two-column row, its field errors and its form-level summary, for New secret. */
+.field-row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .field-row {
+    flex-direction: column;
+    gap: 0;
+  }
+}
+
+.field-error,
+.validation-summary {
+  color: var(--danger);
+  font-size: 0.84rem;
+}
+
+.validation-summary ul {
+  margin: 0.3rem 0 1rem;
+  padding-left: 1.2rem;
+}
+
+/* Legacy's form textarea and its clickable list rows, for New secret and Secrets. */
+.field textarea {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  background: var(--bg-raised-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 0.92rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.data-table tr[data-href] {
+  cursor: pointer;
+}
+
 input,
 textarea,
 select {

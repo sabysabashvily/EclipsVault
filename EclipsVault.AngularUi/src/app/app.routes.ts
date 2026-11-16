@@ -51,6 +51,7 @@ const license = () => import('./license/license-page').then((m) => m.LicensePage
 const encryption = () => import('./encryption/encryption-page').then((m) => m.EncryptionPage);
 const audit = () => import('./audit/audit-page').then((m) => m.AuditPage);
 const overview = () => import('./overview/overview-page').then((m) => m.OverviewPage);
+const secrets = () => import('./secrets/secrets-page').then((m) => m.SecretsPage);
 
 export const routes: Routes = [
   { path: '', pathMatch: 'full', loadComponent: overview, title: 'Overview — EclipsVault' },
@@ -130,6 +131,13 @@ export const routes: Routes = [
   {
     matcher: legacyPath('Profile/RecoveryCodes'),
     redirectTo: '/Profile?recoveryCodes=display-once',
+  },
+  { matcher: legacyPath('Secrets'), loadComponent: secrets, title: 'Secrets — EclipsVault' },
+  { matcher: legacyPath('Secrets/Index'), loadComponent: secrets, title: 'Secrets — EclipsVault' },
+  {
+    matcher: legacyPath('Secrets/Create'),
+    loadComponent: () => import('./secrets/new-secret-page').then((m) => m.NewSecretPage),
+    title: 'New secret — EclipsVault',
   },
   {
     matcher: legacyPath('Secrets/SharedByMe'),

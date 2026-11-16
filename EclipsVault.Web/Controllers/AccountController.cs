@@ -74,16 +74,16 @@ public sealed class AccountController : Controller
 
     // Form fields, query strings and passkey ceremony state are all untrusted. Make the final
     // decision here, after authentication, and let LocalRedirect enforce it again at execution.
-    private LocalRedirectResult RedirectAfterSignIn(string? returnUrl, string defaultController = "Secrets")
-        => LocalRedirect(SignInTarget(returnUrl, defaultController));
+    private LocalRedirectResult RedirectAfterSignIn(string? returnUrl, string defaultTarget = "/Secrets")
+        => LocalRedirect(SignInTarget(returnUrl, defaultTarget));
 
-    private string SignInTarget(string? returnUrl, string defaultController = "Secrets")
+    private string SignInTarget(string? returnUrl, string defaultTarget = "/Secrets")
         => Url.IsLocalUrl(returnUrl)
             // Location carries only ASCII: LocalRedirect would throw after the session exists.
             && returnUrl.All(c => c is >= ' ' and <= '~')
             && !MayLeadIntoAccount(returnUrl)
                 ? returnUrl
-                : Url.Action("Index", defaultController)!;
+                : defaultTarget;
 
     // A second-factor page accepts only the MFA-pending cookie, which completing sign-in deletes, so a
     // full session sent there is challenged back to Login with the page as its target, and Login sends
@@ -504,7 +504,7 @@ public sealed class AccountController : Controller
                 return await RestartSignInAsync(returnUrl);
             }
 
-            return RedirectAfterSignIn(returnUrl, "Dashboard");
+            return RedirectAfterSignIn(returnUrl, Url.Action("Index", "Dashboard")!);
         }
 
         // The IdP proved one factor; this vault wants its own. Rejoin the ordinary flow rather than

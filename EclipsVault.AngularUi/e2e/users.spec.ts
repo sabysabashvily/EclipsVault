@@ -213,7 +213,7 @@ test('Dashboard Staff accounts opens Users with a loaded avatar', async ({ page 
 test('both sidebars open Users in Angular', async ({ page }) => {
   await page.context().addCookies(administratorCookies);
   const users = new Users(page);
-  await users.fromSidebar('/Secrets');
+  await users.fromSidebar('/DynamicSecrets');
   await expect(users.heading).toBeVisible();
   await expect(page).toHaveTitle('Users — EclipsVault');
   await users.fromSidebar('/Access');
@@ -223,7 +223,7 @@ test('both sidebars open Users in Angular', async ({ page }) => {
 test('both palettes open Users in Angular', async ({ page }) => {
   await page.context().addCookies(administratorCookies);
   const users = new Users(page);
-  await users.fromPalette('/Secrets');
+  await users.fromPalette('/DynamicSecrets');
   await expect(users.heading).toBeVisible();
   await users.fromPalette('/Access');
   await expect(users.heading).toBeVisible();

@@ -102,13 +102,13 @@ test('both account menus, both palettes and Security checkup open Profile on the
   });
 
   await test.step('the Legacy account menu and palette load Profile into Angular', async () => {
-    await page.goto('/Secrets');
+    await page.goto('/DynamicSecrets');
     documents.length = 0;
     await page.getByText('Mailbox Owner', { exact: true }).click();
     await page.getByRole('menuitem', { name: 'Profile', exact: true }).click();
     await expect(profile.heading).toBeVisible();
     expect(documents).toEqual(['/Profile']);
-    await page.goto('/Secrets');
+    await page.goto('/DynamicSecrets');
     documents.length = 0;
     await openPalette(page);
     await page.getByRole('combobox').fill('Profile');
@@ -1385,7 +1385,12 @@ test('a committed password with failed session renewal has a truthful sign-in-re
   });
   browserHealth.expectConsoleError({ text: /status of 503/, url: /\/api\/ui\/profile\/password$/ });
   await new ChangePasswordPage(page).changeFromProfile(password, replacement);
-  lastStep = await profile.verifyOwner(password, secret, lastStep);
+  lastStep = await profile.fillOwnerVerification(password, secret, lastStep);
+  const committed = page.waitForResponse('**/api/ui/profile/password');
+  await profile.verifyAccount.click();
+  const response = await committed;
+  expect(response.status()).toBe(503);
+  await response.finished();
   await expect(
     profile.alertSaying(
       'The change was saved, but this browser could not stay signed in. Sign in again to continue.',

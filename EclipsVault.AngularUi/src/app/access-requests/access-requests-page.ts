@@ -2,7 +2,7 @@ import { formatDate } from '@angular/common';
 import { HttpClient, httpResource } from '@angular/common/http';
 import { Component, DestroyRef, inject, LOCALE_ID, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { finalize } from 'rxjs';
 import { ConfirmationDialog } from '../shared/confirmation-dialog';
 import { EmptyState } from '../shared/empty-state';
@@ -46,7 +46,7 @@ const badges: Record<FiledRequest['status'], { tone: string; label: string }> = 
 
 @Component({
   selector: 'app-access-requests-page',
-  imports: [ConfirmationDialog, EmptyState, StatusLine],
+  imports: [ConfirmationDialog, EmptyState, RouterLink, StatusLine],
   templateUrl: './access-requests-page.html',
 })
 export class AccessRequestsPage {

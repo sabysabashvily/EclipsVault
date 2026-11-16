@@ -41,8 +41,8 @@ const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)
     label: 'Vault',
     items: [
       link('overview', 'Overview', '/', 'overview', true),
-      link('secrets', 'Secrets', '/Secrets'),
-      link('secrets', 'New secret', '/Secrets/Create', 'new-secret'),
+      link('secrets', 'Secrets', '/Secrets', 'secrets', true),
+      link('secrets', 'New secret', '/Secrets/Create', 'new-secret', true),
       link('dynamic-secrets', 'Dynamic secrets', '/DynamicSecrets'),
       {
         label: 'Sharing',

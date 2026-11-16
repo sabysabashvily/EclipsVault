@@ -30,6 +30,8 @@ public sealed class OverviewController(
         // Listing through the service also leaves out decoys.
         var visible = await authorization.VisibleToAsync(User, await secrets.ListAsync(ct));
         var snapshot = await overview.GetAsync(visible, User.GetUserId(), isAdministrator, ct);
+        // Own rows include ones filed to the caller by someone else, such as an administrator's unlock.
+        var ownActor = isAdministrator ? null : User.GetUsername();
 
         return new OverviewResponse(
             User.GetDisplayName(),
@@ -41,15 +43,15 @@ public sealed class OverviewController(
             snapshot.CriticalEventsLast24h,
             snapshot.StaffAccounts,
             isAdministrator ? "vault" : "own",
-            snapshot.RecentEvents.Select(EventOf).ToList(),
+            snapshot.RecentEvents.Select(entry => EventOf(entry, ownActor)).ToList(),
             snapshot.ExpiringSoon.Select(secret => new ExpiringSecretResponse(
                 secret.Id, secret.Name, secret.Environment.ToString(), secret.ExpiresAtUtc.UtcDateTime)).ToList());
     }
 
-    private static OverviewEventResponse EventOf(AuditEntryDto entry)
+    private static OverviewEventResponse EventOf(AuditEntryDto entry, string? ownActor)
     {
         var (label, tone) = AuditDisplay.For(entry.Action);
         return new OverviewEventResponse(entry.TimestampUtc.UtcDateTime, entry.Action.ToString(), label, tone,
-            entry.ResourceName ?? entry.ResourceType, entry.Username, entry.IsCritical);
+            entry.ResourceName ?? entry.ResourceType, ownActor ?? entry.Username, entry.IsCritical);
     }
 }

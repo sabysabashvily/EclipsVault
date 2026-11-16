@@ -36,22 +36,29 @@ export async function searchSecrets(
   page: Page,
   query: string,
 ): Promise<{ status: number; names: string[] }> {
-  const answered = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return url.pathname === '/Secrets/Search' && url.searchParams.get('q') === query;
+  let answer: { status: number; names: string[] } | undefined;
+  const search = /\/api\/ui\/secrets\/search\?/;
+  // The server's real reply, read as it passes: Chromium can drop a body before a test asks for it.
+  await page.route(search, async (route) => {
+    const response = await route.fetch();
+    if (new URL(route.request().url()).searchParams.get('q') === query) {
+      const found = (await response.json()) as { name: string }[];
+      answer = { status: response.status(), names: found.map((secret) => secret.name) };
+    }
+    await route.fulfill({ response });
   });
   await page.getByRole('combobox').fill(query);
-  const response = await answered;
-  const names = ((await response.json()) as { name: string }[]).map((secret) => secret.name);
+  await expect.poll(() => answer).toBeDefined();
+  await page.unroute(search);
   await expect
     .poll(async () =>
       (await paletteEntries(page)).filter(([kind]) => kind === 'Secret').map(([, label]) => label),
     )
-    .toEqual(names);
-  return { status: response.status(), names };
+    .toEqual(answer!.names);
+  return answer!;
 }
 
-/** Creates a secret through the Legacy UI's own form, as the signed-in administrator. */
+/** Creates a secret through New secret, as the signed-in administrator, and waits for its details page. */
 export async function createSecret(page: Page, name: string, sensitivity: string): Promise<void> {
   await page.goto('/Secrets/Create');
   await page.getByLabel('Name', { exact: true }).fill(name);

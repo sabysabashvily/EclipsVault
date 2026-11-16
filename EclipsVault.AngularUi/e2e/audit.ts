@@ -54,11 +54,11 @@ export class AuditLog {
     await this.page.goto('/');
     await this.page.getByRole('link', { name: link }).click();
   }
-  async fromSidebar(path: '/Secrets' | '/Access'): Promise<void> {
+  async fromSidebar(path: '/DynamicSecrets' | '/Access'): Promise<void> {
     await this.page.goto(path);
     await this.page.getByRole('link', { name: 'Audit log', exact: true }).click();
   }
-  async fromPalette(path: '/Secrets' | '/Access'): Promise<void> {
+  async fromPalette(path: '/DynamicSecrets' | '/Access'): Promise<void> {
     await this.page.goto(path);
     await openPalette(this.page);
     await this.page.getByRole('combobox').fill('Audit log');

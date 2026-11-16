@@ -1,5 +1,6 @@
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Core.Domain.Exceptions;
 
 namespace EclipsVault.Core.Application.Secrets;
 
@@ -36,6 +37,11 @@ public interface ISecretRepository
     /// </summary>
     Task MarkExpiryNoticeSentAsync(Secret secret, CancellationToken ct);
 
+    /// <summary>Whether any secret, decoy or shredded one included, already has this name.</summary>
+    Task<bool> ExistsByNameAsync(string name, CancellationToken ct);
+
+    /// <exception cref="SecretNameTakenException">Another secret took the name first; nothing was saved.</exception>
+    /// <exception cref="AuditWriteFailedException">The secret and its audit row could not be stored; nothing was saved.</exception>
     Task AddAsync(Secret secret, CancellationToken ct);
 
     Task UpdateAsync(Secret secret, CancellationToken ct);

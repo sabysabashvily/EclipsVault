@@ -126,7 +126,7 @@ test('disables without confirmation and requires fresh proof to enable, restorin
   administratorCookies = await page.context().cookies();
 });
 
-const shells = ['/Secrets', '/Access'] as const;
+const shells = ['/DynamicSecrets', '/Access'] as const;
 for (const shell of shells) {
   test(`both Service accounts navigation entries work from ${shell}`, async ({ page }) => {
     await page.context().addCookies(administratorCookies);

@@ -223,8 +223,8 @@ public sealed class AuditApiTests(VaultFixture vault)
     [Fact]
     public async Task The_Legacy_sidebar_link_keeps_its_destination()
     {
-        // The Overview is an Angular page; the Secrets list renders the Legacy sidebar.
-        var html = await (await vault.AdminClientAsync()).GetStringAsync("/Secrets");
+        // The Overview and the Secrets list are Angular pages; Dynamic secrets still renders the Legacy sidebar.
+        var html = await (await vault.AdminClientAsync()).GetStringAsync("/DynamicSecrets");
         var link = Assert.Single(Regex.Matches(html, "<a\\b[^>]*>[\\s\\S]*?</a>").Select(match => match.Value),
             anchor => Regex.Replace(anchor, "<[^>]*>", "").Contains("Audit log", StringComparison.Ordinal));
 

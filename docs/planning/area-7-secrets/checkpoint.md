@@ -201,6 +201,89 @@ For the final Standards re-check and detailed commands, counts and limitations, 
 `logs/ticket-163/final-report.md` and `review-ledger.md` (ignored). To restart, read this section on
 `area-7a-overview-and-secrets`. The coordinator merges Area 6b's later changes before #164 starts.
 
+## Delivery: 7a ticket 2 (#164)
+
+Implemented from `94b9eb6` on `area-7a-overview-and-secrets`, verified 15–16 November 2026.
+Claude Opus 5.5 high implemented the feature and several browser corrections. GPT Sol 6.1 xhigh
+continued verification and made the validation-boundary and final browser-test corrections.
+Status: implementation verified, delivery blocked on the broader Users browser dependency gate
+and the unexplained earlier Audit checkpoint failure.
+Nothing pushed, no PR or issue comment, and no CI result claimed.
+
+Code commits:
+
+- `dc18823`: Users waits for Overview before ending the saved administrator session.
+- `269f323`: Angular Secrets and New secret, UI API list/search/create, both palettes, taken-name
+  conflict, retired Legacy handlers/views/models, literal sign-in target and HTTP/browser coverage.
+- `b0cc7f1`: deterministic sign-in budgets and debounce, literal test expectations, stored-time TTL
+  check and the SecretDetails page object.
+- `4659a71`: Legacy field wording, empty-TTL refusal, row clicks, deletion outcome and textarea style.
+- `1ac8122`: visible palette badge text and rendered colour checks.
+- `03ef186`: native fractional and out-of-range TTL refusal.
+- `8366abd`: request-type validation opt-out, so explicit field messages reach the caller; malformed
+  bodies still use the non-quoting factory.
+- `6bf4929`, `bf85c57`, `a49e265`: cached chunks and real response capture in browser helpers.
+- `d0b0fde`: exact Secrets subtitle text without template whitespace.
+- `2ab0e95`: wait for the filtered row before checking Tab focus.
+- `c524be3`: distinguish the sensitivity badge from the palette's identically named result kind.
+- This checkpoint, committed last.
+
+The list and search retain the existing access filter, drop decoys and write no per-row audit.
+Search retains the Legacy bare-array contract and ordering. Create enforces the existing policy,
+answers `409 name_taken`, and commits its one creation event with the secret. Audit failure stores
+nothing. Successful creation opens Legacy Details with its existing success message. There is no
+EF model change or migration.
+
+Verification:
+
+- Locked restore, Release build with zero warnings and 949/949 .NET unit tests through
+  `scripts/check.sh`; focused PostgreSQL HTTP filter 276/276.
+- Full integration with collection parallelism disabled: SQL Server 1294/1294 in 16m13s and
+  PostgreSQL 1294/1294 in 13m30s. Later changes are Angular presentation and browser tests/helpers.
+- Angular lint, formatting, 578/578 unit tests, 15/15 build checks, API type check, production build
+  and high-severity audit pass. Ten moderate audit findings remain visible. Both pending-model
+  checks, .NET formatting and six hook tests pass.
+- Final Secrets browser run r7: 36/36, including its ten cases and 26 Chromium dependencies.
+  Both themes, both palettes, keyboard, native TTL refusal, conflict and success paths pass.
+  The ticket-owned production image was reused for this test-only correction and then removed.
+- Run r6 separately passes all 14 Overview and 15 Audit cases. Its Secrets selector failure was
+  corrected and passed in r7. All failed and partial runs remain under `logs/ticket-164/`.
+- Disposable UI proof passes real sign-in, list, opening a non-decoy without revealing its value,
+  and returning to the list. Screenshot and accessibility snapshot were inspected. An isolated
+  copy of the verification harness avoids an existing owner's PostgreSQL container and uses a
+  relative IPC socket because this worktree's absolute socket path exceeds the platform limit.
+  Original skill files are unchanged. The verification vault, browser and containers are stopped.
+
+The baseline taken-name proof reached the unique index and redirected to error 500, rather than
+the spec's predicted 503. The valid baseline proof was obtained after implementation, following
+earlier host-start failures; no chronological failing-first claim is made. F1 did not reproduce
+with either Index alone or the whole Legacy Secrets controller removed. The owner explicitly
+accepted documenting that non-reproduction and retaining the literal `/Secrets` target.
+
+Security r1–r3 by Opus approved all protected changes. GPT Sol 6.1 xhigh Standards r5/r6 and Spec r4
+are READY, with no required findings open. Fresh same-model re-checks of the small GPT corrections
+are disclosed in the reports. Details, exact commands, subject lengths and three readability
+excerpts are in `logs/ticket-164/final-report.md` and `review-ledger.md`.
+
+Remaining blocker: browser run r5 passed 193 cases, failed two and left 84 unrun. Its Secrets
+keyboard failure is fixed. The other failure is the existing Profile scenario at
+`e2e/profile.spec.ts:1355`: a committed password with failed session renewal answered 503, but the
+expected sign-in-required alert did not appear and the form stayed disabled. This blocked the
+Users dependency chain, so the owner's complete Overview/Users ordering gate is not green.
+No protected Profile implementation was changed, and no retry or skip was added to hide it.
+
+The coordinator also keeps r3's Audit checkpoint failure open until it has a diagnosis. In that
+run, Create signed checkpoint stayed disabled and no request was sent within 15 seconds. Later
+passes in r5 and r6 establish those runs' results but do not explain r3. Its retained trace and
+screenshot remain evidence for the responsible Area 6b investigation. Audit production code was
+not changed here.
+
+To restart, confirm this branch and checkpoint with a clean tracked tree. Read the final report
+and ledger. Obtain a root-cause correction for the Profile scenario in its responsible scope,
+diagnose the earlier Audit failure, then finish the owner-required Users dependency run.
+Keep the shared Docker lock, .NET 10.0.404
+and Node 24.22.0. The coordinator owns the next action; do not start #165 here.
+
 ## Delivery: 7b ticket 1 (#166)
 
 Branch `area-7b-secret-details`, from `94b9eb6` (7a ticket 1 merged with Area 6b; owner override: 7b stacked
@@ -237,3 +320,34 @@ Spec (GPT Sol 6.1 xhigh) READY after SPEC-1 (evidence) closed. Standards (GPT So
 STD-1..3 closed across two re-checks. Details: `logs/ticket-166/final-report.md` and `review-ledger.md`
 (ignored). To restart, read this section on `area-7b-secret-details`; ticket 2 (#167) starts after the
 coordinator accepts this one.
+
+## Delivery: 7a ticket 3 (#165)
+
+#164's blockers closed outside this ticket. The coordinator's distinct ordering gate passed all 279
+browser cases on `3876205`, merged `main` (`6c6194a`) in `f1aa53f`, and corrected one merged test in
+`01baac2`. The r3 Audit delay stays a local observation: most likely an I/O stall in the emulated
+SQL Server under host load, not proven, and not seen again.
+
+#165 started from `01baac2`. It fixes one finding of the part's security review: a member's
+Overview feed named the administrator who unlocked their account (SEC-165-1). The own feed now names
+the member; its test failed first with "vault-admin". The rest is tests and docs. The Overview shape
+test no longer depends on other tests' secrets. Visual checks in the sign-in spec moved into
+`visual parity:` tests. New tests cover `Home/Error` and the links into Overview, Secrets and New
+secret from both shells' sidebars and palettes, plus Details' Back to list. `CONTEXT.md` and
+ADR-0017 match the code.
+
+Security-reviewer (Opus 5.5 high) reviewed the whole part, then re-checked SEC-165-1 and `01baac2`:
+both closed. GPT Sol 6.1 xhigh Standards and Spec reviewed the whole part, re-checked each fix, and
+approved the part. P-1, the Your data export carrying the unlocking administrator's IP, predates 7a
+and is an owner follow-up after 7a merges. P-2 is Area 8 F2 in #175.
+
+Local checks on the source of the final head, all passing:
+- the part's PostgreSQL integration filter, 279 tests;
+- 949 unit tests;
+- the Secrets and Overview browser specs with their Chromium dependencies, 65 cases;
+- format, both pending-model checks, the hook tests, and the Angular lint, test, build and audit.
+
+The PR body is `logs/ticket-165/pr-body.md`. Details are in `logs/ticket-165/final-report.md` and
+`review-ledger.md`. To restart, confirm the final head and a clean tracked tree. Next: push, CI on
+the final head and the PR. Those are the coordinator's. 7b is stacked on this branch and has to take
+its final head.

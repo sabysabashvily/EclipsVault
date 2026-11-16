@@ -37,8 +37,6 @@ public sealed class OverviewApiTests(VaultFixture vault)
     public async Task An_administrator_gets_every_field_the_staff_count_and_the_vaults_activity()
     {
         var admin = await vault.AdminClientAsync();
-        // Sooner than any other test's secret, so it is among the vault's eight soonest.
-        var expiring = await OverviewSecrets.CreateAsync(vault, "it-overview-shape-expiring", "GLOBAL", expiresInDays: 0.01);
 
         var response = await admin.GetAsync("/api/ui/overview");
 
@@ -56,9 +54,20 @@ public sealed class OverviewApiTests(VaultFixture vault)
         Assert.NotEmpty(events);
         Assert.All(events, entry => Assert.Equal(
             ["action", "actionLabel", "actor", "isCritical", "resource", "timestampUtc", "tone"], NamesOf(entry)));
-        var listed = overview.GetProperty("expiringSoon").EnumerateArray()
-            .Single(secret => secret.GetProperty("secretId").GetGuid() == expiring.Id);
+    }
+
+    [Fact]
+    public async Task An_expiring_secret_has_its_id_name_environment_and_expiry()
+    {
+        const string project = "IT-OVERVIEW-SHAPE";
+        var expiring = await OverviewSecrets.CreateAsync(vault, "it-overview-shape-expiring", project, expiresInDays: 2);
+        var member = await vault.SignInNewAccountAsync("it-overview-shape", IPAddress.Parse("10.163.0.10"), project: project);
+
+        using var document = JsonDocument.Parse(await member.Client.GetStringAsync("/api/ui/overview"));
+
+        var listed = Assert.Single(document.RootElement.GetProperty("expiringSoon").EnumerateArray());
         Assert.Equal(["environment", "expiresAtUtc", "name", "secretId"], NamesOf(listed));
+        Assert.Equal(expiring.Id, listed.GetProperty("secretId").GetGuid());
         Assert.Equal("it-overview-shape-expiring", listed.GetProperty("name").GetString());
         Assert.Equal("Development", listed.GetProperty("environment").GetString());
         Assert.Equal(expiring.ExpiresAtUtc!.Value.UtcDateTime, listed.GetProperty("expiresAtUtc").GetDateTime(), TimeSpan.FromMilliseconds(1));
@@ -77,6 +86,25 @@ public sealed class OverviewApiTests(VaultFixture vault)
         Assert.Equal("own", overview.ActivityScope);
         Assert.NotEmpty(overview.RecentEvents);
         Assert.All(overview.RecentEvents, entry => Assert.Equal("it-overview-member", entry.Actor));
+    }
+
+    [Fact]
+    public async Task An_unlock_in_a_non_administrators_own_activity_does_not_name_the_administrator()
+    {
+        var member = await vault.SignInNewAccountAsync("it-overview-unlocked", IPAddress.Parse("10.163.0.9"));
+        var memberId = SessionApi.PrincipalOf(vault, member).GetUserId();
+        using (var setup = vault.Services.CreateScope())
+        {
+            var db = setup.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+            await db.Users.Where(account => account.Id == memberId)
+                .ExecuteUpdateAsync(change => change.SetProperty(account => account.LockedUntilUtc, DateTimeOffset.UtcNow.AddMinutes(15)));
+        }
+        Assert.Equal(HttpStatusCode.NoContent, (await UserActions.UnlockAsync(await vault.AdminClientAsync(), memberId)).StatusCode);
+
+        var overview = await member.Client.GetFromJsonAsync<OverviewResponse>("/api/ui/overview");
+
+        var unlocked = Assert.Single(overview!.RecentEvents, entry => entry.Action == "AccountUnlocked");
+        Assert.Equal("it-overview-unlocked", unlocked.Actor);
     }
 
     [Fact]
@@ -192,6 +220,17 @@ public sealed class OverviewApiTests(VaultFixture vault)
     }
 
     [Fact]
+    public async Task The_error_page_still_answers_with_its_status_and_title()
+    {
+        var error = await vault.CreateClient().GetAsync("/Home/Error?code=404");
+
+        Assert.Equal(HttpStatusCode.NotFound, error.StatusCode);
+        var html = await error.Content.ReadAsStringAsync();
+        Assert.Contains("404 — Not found", html);
+        Assert.DoesNotContain("<app-root>", html);
+    }
+
+    [Fact]
     public async Task A_denial_names_its_secret_to_administrators_and_never_in_the_callers_own_views()
     {
         var member = await vault.SignInNewAccountAsync("it-overview-denied", IPAddress.Parse("10.163.0.5"));
@@ -280,8 +319,8 @@ public sealed class OverviewProductionWindowTests(ClosedProductionWindowFixture 
 }
 
 /// <summary>
-/// Secrets for Overview tests. The administrator creates each one through the Legacy form, which files
-/// it under GLOBAL with no expiry; its project, expiry and decoy flag are then set in the database,
+/// Secrets for Overview and Secrets tests. The administrator creates each one through New secret, filed
+/// under GLOBAL with no expiry; its project, expiry and decoy flag are then set in the database,
 /// as an operator flags a decoy. The Overview reads metadata only, so no value is ever decrypted.
 /// </summary>
 internal static class OverviewSecrets

@@ -21,9 +21,6 @@ namespace EclipsVault.Web.Controllers;
 /// </summary>
 public sealed class SecretsController : VaultController
 {
-    /// <summary>Enough for the palette to show a useful shortlist; not a bulk-export channel.</summary>
-    private const int SearchResultLimit = 8;
-
     private const string NotPermittedReason = "Only an administrator or a member of this secret's project can change it.";
 
     private readonly ISecretService _secrets;
@@ -53,74 +50,6 @@ public sealed class SecretsController : VaultController
         _evaluations = evaluations;
         _clock = clock;
         _logger = logger;
-    }
-
-    [HttpGet]
-    public async Task<IActionResult> Index(CancellationToken ct)
-    {
-        // A name is not nothing: "Production_AWS_Root_Key" says what exists, where, and what it is
-        // worth. Every row goes through the same ABAC handler that gates opening one, so the list
-        // shows exactly what this caller could reach and nothing more.
-        var visible = await _authorization.VisibleToAsync(User, await _secrets.ListAsync(ct));
-
-        var items = visible
-            .Select(s => new SecretListItemViewModel(
-                s.Id, s.Name, s.ProjectKey, s.Environment, s.Sensitivity,
-                s.CreatedAtUtc, s.ExpiresAtUtc))
-            .ToList();
-        return View(items);
-    }
-
-    /// <summary>
-    /// Backs the command palette's secret search.
-    ///
-    /// This is <see cref="Index"/> with a substring match bolted on, and that is the point: it goes
-    /// through the same <c>ListAsync</c> (which drops honey tokens, so the palette can never invite
-    /// someone to open a decoy) and the same <c>VisibleToAsync</c>, so a search can only ever return
-    /// names the caller was already entitled to enumerate. A palette that queried the repository
-    /// directly — or filtered on claims of its own — would be a second, unpoliced enumeration route
-    /// around the ABAC filter.
-    ///
-    /// Enumeration is not per-row audited, matching every other list view; opening a result is.
-    /// </summary>
-    [HttpGet]
-    public async Task<IActionResult> Search(string? q, CancellationToken ct)
-    {
-        var query = (q ?? string.Empty).Trim();
-
-        // Two characters before anything is disclosed: a one-letter query is not a search, it is a
-        // request for the whole list, and the palette has no reason to serve that.
-        if (query.Length < 2)
-        {
-            return Json(Array.Empty<object>());
-        }
-
-        var visible = await _authorization.VisibleToAsync(User, await _secrets.ListAsync(ct));
-
-        var matches = visible
-            .Where(s => s.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
-                        || s.ProjectKey.Contains(query, StringComparison.OrdinalIgnoreCase))
-            // A name that starts with what was typed is likelier the one meant than one that merely
-            // contains it somewhere.
-            .OrderByDescending(s => s.Name.StartsWith(query, StringComparison.OrdinalIgnoreCase))
-            .ThenBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
-            .Take(SearchResultLimit)
-            .Select(s => new
-            {
-                id = s.Id,
-                name = s.Name,
-                project = s.ProjectKey,
-                environment = s.Environment.ToString(),
-                // Both forms: the number picks the badge's colour class, the name is what it reads.
-                // Sending the display name rather than mapping the enum again in JavaScript keeps the
-                // vocabulary in one place — a copy in the client is one that silently goes stale.
-                sensitivity = (int)s.Sensitivity,
-                sensitivityName = s.Sensitivity.ToDisplayName(),
-                url = Url.Action(nameof(Details), new { id = s.Id })
-            })
-            .ToList();
-
-        return Json(matches);
     }
 
     [HttpGet]
@@ -298,48 +227,6 @@ public sealed class SecretsController : VaultController
         return RedirectToAction(nameof(Details), new { id });
     }
 
-    [HttpGet]
-    public IActionResult Create()
-        => View(new CreateSecretViewModel
-        {
-            ProjectKey = User.GetProject()
-        });
-
-    [HttpPost]
-    public async Task<IActionResult> Create(CreateSecretViewModel model, CancellationToken ct)
-    {
-        if (!ModelState.IsValid)
-        {
-            return View(model);
-        }
-
-        // Project and sensitivity come from the form, so creation must enforce the same access
-        // boundary as reading: a caller cannot plant a credential in another project.
-        var projectKey = (model.ProjectKey ?? string.Empty).Trim();
-
-        var decision = SecretCreationPolicy.Evaluate(
-            new SubjectAttributes(User.GetClearance(), User.GetProject()),
-            projectKey,
-            model.Sensitivity);
-
-        if (!decision.IsAllowed)
-        {
-            _logger.LogWarning(
-                "User {Username} was denied creation of a secret in project {ProjectKey}: {Reasons}",
-                User.Identity?.Name, model.ProjectKey, string.Join(" ", decision.DenialReasons));
-
-            ModelState.AddModelError(string.Empty, string.Join(" ", decision.DenialReasons));
-            return View(model);
-        }
-
-        var id = await _secrets.CreateAsync(
-            new CreateSecretRequest(model.Name, model.Value, projectKey, model.Environment, model.Sensitivity, model.TtlDays),
-            ct);
-
-        this.FlashSuccess($"Secret '{model.Name}' was envelope-encrypted and stored.");
-        return RedirectToAction(nameof(Details), new { id });
-    }
-
     [HttpPost]
     public async Task<IActionResult> Grant(ShareSecretViewModel model, CancellationToken ct)
     {
@@ -411,8 +298,8 @@ public sealed class SecretsController : VaultController
         }
 
         await _secrets.DeleteAsync(id, ct);
-        this.FlashSuccess("Secret deleted. The action was recorded in the audit trail.");
-        return RedirectToAction(nameof(Index));
+        // The list is the Angular UI's, which reads the outcome from the address, not from TempData.
+        return LocalRedirect("/Secrets?deleted=1");
     }
 
     /// <summary>Null when access is allowed; otherwise the refusal is recorded and the caller is sent to

@@ -452,7 +452,10 @@ Commits after `6eb3518`:
 - `b81331c` Pin that no letter case or method reaches a retired Audit action
 - `97ee048` Say where Verify's proof ends and what each audit access records
 - `cf62d98` Put the audit reader port with the infrastructure abstractions
-- this delivery section, committed last
+- `a94d0d9` Record the completed Audit log verification and review results
+- `b684411` Wait for proof expiry on the server clock in Audit browser tests
+- `cfea70a` Arm the Audit download wait after the authenticator code is ready
+- this follow-up delivery note, committed last
 
 `RetiredAuditRoutesTests` sends 14 literal combinations of methods and spellings of `/Audit/Verify`,
 `/Audit/CreateCheckpoint` and `/Audit/Export` as separate administrators with valid antiforgery
@@ -503,3 +506,23 @@ chain lock is unverified. No new behavior was added for these items.
 To restart, confirm this worktree, `area-6b-audit-log`, a clean tracked tree, and the expected HEAD.
 Source `logs/ticket-144/env.sh`; read `final-report.md` and `review-ledger.md`. Do not push or merge.
 The coordinator chooses the next action. This ticket's Docker run finished and released its lock.
+
+### Follow-up on 15 November: deterministic Audit proof expiry
+
+The owner reopened 6B-STD-2. `b684411` restores the saved administrator cookie for each proof
+scenario and establishes expiry from the server's recorded session time and configured proof age.
+Audit depends on sign-in setup, with no License timing dependency. `cfea70a` generates the real TOTP
+before arming the download listener, fixing the reproduced 15-second wait race. Only tests changed.
+
+At `cfea70a`, the focused run passed 41/41, with 26 sign-in prerequisites and all 15 Audit tests;
+the former License chain passed 215/215, with all 15 Audit tests. Both passed `scripts/check.sh`
+restore, Release build with zero warnings and 927 unit tests. Exactly one fresh GPT Sol 6.1 xhigh
+Standards re-check passed 6B-STD-2; report: `logs/ticket-144/review-gpt-proof-expiry-r1.md`.
+
+The first former-chain run failed before Audit: 139 passed, one Profile passkey/begin 404 failure,
+75 not run. The unchanged-source rerun passed, but did not diagnose or fix that failure. It remains
+an owner follow-up under ADR-0035, with its original trace and logs retained. Interrupted runs and
+the earlier focused download-timer failure are retained too. Configured test/action timeouts and Playwright retries remain unchanged.
+
+Both completed stacks and the worker's reused image were removed. The worker did not push; the
+coordinator owns final-head CI. The earlier owner follow-ups remain unchanged.

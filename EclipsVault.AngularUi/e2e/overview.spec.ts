@@ -6,6 +6,7 @@ import { savedAdministratorCookies } from './administrator-cookies';
 import { refreshAdministratorProof } from './administrator-proof';
 import { AuthenticatorEnrollment } from './authenticator-enrollment';
 import { test, expect } from './fixtures';
+import { clearSignInBudget } from './profile-state';
 import { NewSecretForm } from './new-secret';
 import { Overview } from './overview';
 import { freshTotp } from './totp';
@@ -70,7 +71,7 @@ for (const [name, link, url, heading] of angularLinks) {
   });
 }
 
-test('Browse secrets opens the Legacy Secrets page', async ({ page }) => {
+test('Browse secrets opens the Secrets list without a page load', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const overview = new Overview(page);
   await overview.open();
@@ -78,7 +79,7 @@ test('Browse secrets opens the Legacy Secrets page', async ({ page }) => {
   const documents = recordDocuments(page);
   await overview.browseSecrets.click();
   await expect(page.getByRole('heading', { name: 'Secrets', exact: true })).toBeVisible();
-  expect(documents).toEqual(['/Secrets']);
+  expect(documents).toEqual([]);
 });
 
 test('a non-administrator sees their own activity, the critical count and their expiring secret, with no administration links', async ({
@@ -88,10 +89,9 @@ test('a non-administrator sees their own activity, the critical count and their 
   test.setTimeout(240_000);
   const password = `E2e-${randomBytes(24).toString('hex')}`;
   await page.context().addCookies(await savedAdministratorCookies());
-  // Sign-in's passkey scenarios spend the shared source's credential budget; start a fresh window.
+  // Sign-in's passkey scenarios spend the shared source's credential budget; start with a full one.
   // Its proof, sign-in and enrollment are three posts, which leave the next project's budget intact.
-  const windowMilliseconds = 120_000;
-  await page.waitForTimeout(windowMilliseconds - (Date.now() % windowMilliseconds) + 1_000);
+  clearSignInBudget();
   await refreshAdministratorProof(page);
   const creation = new AccountCreation(page);
   await creation.open();
