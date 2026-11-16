@@ -1385,7 +1385,12 @@ test('a committed password with failed session renewal has a truthful sign-in-re
   });
   browserHealth.expectConsoleError({ text: /status of 503/, url: /\/api\/ui\/profile\/password$/ });
   await new ChangePasswordPage(page).changeFromProfile(password, replacement);
-  lastStep = await profile.verifyOwner(password, secret, lastStep);
+  lastStep = await profile.fillOwnerVerification(password, secret, lastStep);
+  const committed = page.waitForResponse('**/api/ui/profile/password');
+  await profile.verifyAccount.click();
+  const response = await committed;
+  expect(response.status()).toBe(503);
+  await response.finished();
   await expect(
     profile.alertSaying(
       'The change was saved, but this browser could not stay signed in. Sign in again to continue.',
