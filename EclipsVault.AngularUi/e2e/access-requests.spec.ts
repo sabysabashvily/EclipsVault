@@ -352,14 +352,15 @@ test('a mixed-case Access requests bookmark serves the titled Angular page', asy
   await expect(page).toHaveTitle('Access requests — EclipsVault');
 });
 
-test('the sidebar opens Access requests in-app with its Access group active', async ({ page }) => {
+test('the sidebar opens Access requests in-app from its top-level item', async ({ page }) => {
   await openAsRequester(page, '/Access');
   const documents = recordDocuments(page);
   const link = page.getByRole('link', { name: 'Access requests', exact: true });
   await link.click();
   await expect(new AccessRequests(page).myRequest(approved)).toBeVisible();
   await expect(link).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('group').filter({ has: link })).toHaveJSProperty('open', true);
+  // Access requests sits at the top of the sidebar, in no folding group.
+  await expect(page.getByRole('group').filter({ has: link })).toHaveCount(0);
   expect(documents).toEqual([]);
 });
 
