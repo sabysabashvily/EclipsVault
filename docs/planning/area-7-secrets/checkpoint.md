@@ -206,7 +206,8 @@ For the final Standards re-check and detailed commands, counts and limitations, 
 Implemented from `94b9eb6` on `area-7a-overview-and-secrets`, verified 15–16 November 2026.
 Claude Opus 5.5 high implemented the feature and several browser corrections. GPT Sol 6.1 xhigh
 continued verification and made the validation-boundary and final browser-test corrections.
-Status: implementation verified, delivery blocked on the broader Users browser dependency gate.
+Status: implementation verified, delivery blocked on the broader Users browser dependency gate
+and the unexplained earlier Audit checkpoint failure.
 Nothing pushed, no PR or issue comment, and no CI result claimed.
 
 Code commits:
@@ -271,7 +272,14 @@ expected sign-in-required alert did not appear and the form stayed disabled. Thi
 Users dependency chain, so the owner's complete Overview/Users ordering gate is not green.
 No protected Profile implementation was changed, and no retry or skip was added to hide it.
 
+The coordinator also keeps r3's Audit checkpoint failure open until it has a diagnosis. In that
+run, Create signed checkpoint stayed disabled and no request was sent within 15 seconds. Later
+passes in r5 and r6 establish those runs' results but do not explain r3. Its retained trace and
+screenshot remain evidence for the responsible Area 6b investigation. Audit production code was
+not changed here.
+
 To restart, confirm this branch and checkpoint with a clean tracked tree. Read the final report
 and ledger. Obtain a root-cause correction for the Profile scenario in its responsible scope,
-then finish the owner-required Users dependency run. Keep the shared Docker lock, .NET 10.0.404
+diagnose the earlier Audit failure, then finish the owner-required Users dependency run.
+Keep the shared Docker lock, .NET 10.0.404
 and Node 24.22.0. The coordinator owns the next action; do not start #165 here.
