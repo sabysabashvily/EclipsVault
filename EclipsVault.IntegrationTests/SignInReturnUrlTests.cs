@@ -295,7 +295,7 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
     [Fact]
     public async Task A_password_sign_in_without_a_return_url_lands_on_the_Secrets_list()
     {
-        var (username, password, secret, enrolled) = await EnrollAccountAsync();
+        var (username, password, secret, enrolled, step) = await EnrollAccountAsync();
         enrolled.Dispose();
         using var client = NewClient();
         var afterPassword = await PostFormAsync(client, "/Account/Login", await client.GetStringAsync("/Account/Login"), new()
@@ -307,7 +307,7 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
 
         var signedIn = await PostFormAsync(client, "/Account/Totp", totp, new()
         {
-            ["Code"] = Totp.Code(secret, Totp.CurrentStep())
+            ["Code"] = Totp.Code(secret, Totp.StepStillAccepted(ServerNow(), step))
         });
 
         Assert.Equal(HttpStatusCode.Redirect, signedIn.StatusCode);
