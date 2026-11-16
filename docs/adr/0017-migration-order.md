@@ -31,6 +31,8 @@ material, then the audit chain.
 Area 7 runs in three parts, each with its own spec, branch and PR, after its grill found that a share
 let its recipient change and delete the secret, that a refused read was recorded as a view, and that
 step-up could be bypassed by sharing or minting (ADR-0031). Part 7a, Overview and Secrets list, goes
-first and settles the secrets UI API. Part 7b, Secret details (with Denied and filing an access
-request), and part 7c, Dynamic secrets, each branch from `main` after 7a merges; they touch unrelated
-code, so 7c may run beside 7b. Each part has its own security review.
+first and settles the secrets UI API. By the owner's decision it started from 6b's branch before 6b
+merged, and took `main` once 6b had. Part 7b, Secret details (with Denied and filing an access
+request), likewise started from 7a's branch before 7a merged, by the owner's decision. Part 7c, Dynamic
+secrets, branches from `main` after 7a merges; it touches code unrelated to 7b, so it may run beside
+7b. Each part has its own security review.
