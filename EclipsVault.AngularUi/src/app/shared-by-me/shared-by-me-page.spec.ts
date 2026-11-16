@@ -78,25 +78,37 @@ describe('SharedByMePage', () => {
     expect(page.querySelector('a')?.getAttribute('href')).toBe('/Secrets');
   });
 
-  it('shows each secret and recipient with UTC dates and no expiry where appropriate', async () => {
-    const { fixture, page } = render();
-    backend.expectOne('/api/ui/shared-by-me').flush({ shares: [share, expiring] });
-    await fixture.whenStable();
-    expect([...page.querySelectorAll('th')].map((cell) => cell.textContent?.trim())).toEqual([
-      'Secret',
-      'Shared with',
-      'Shared on',
-      'Access until',
-      '',
-    ]);
-    expect(
-      [...page.querySelectorAll('tbody tr')].map((row) =>
-        [...row.querySelectorAll('td')].map((cell) => cell.textContent?.trim()),
-      ),
-    ).toEqual([
-      ['Deployment_key', 'colleague', '2026-10-20 10:05', 'no expiry', 'Revoke'],
-      ['Expiring_key', 'another-colleague', '2026-10-19 09:00', '2026-10-26 09:00', 'Revoke'],
-    ]);
+  it('lists the soonest-ending share first, its close expiry as a yellow pill', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-22T09:00:00Z'));
+    try {
+      const { fixture, page } = render();
+      backend.expectOne('/api/ui/shared-by-me').flush({ shares: [share, expiring] });
+      await fixture.whenStable();
+      expect(page.querySelector('.page-sub')?.textContent).toBe(
+        '2 shares you gave · soonest ends 26 Oct. Revoking takes effect on their next request.',
+      );
+      expect([...page.querySelectorAll('th')].map((cell) => cell.textContent?.trim())).toEqual([
+        'Secret',
+        'Shared with',
+        'Shared on',
+        'Access until',
+        '',
+      ]);
+      expect(
+        [...page.querySelectorAll('tbody tr')].map((row) =>
+          [...row.querySelectorAll('td')].map((cell) => cell.textContent?.trim()),
+        ),
+      ).toEqual([
+        ['Expiring_key', 'another-colleague', '2026-10-19 09:00', 'In 4 days · 26 Oct', 'Revoke'],
+        ['Deployment_key', 'colleague', '2026-10-20 10:05', 'No expiry', 'Revoke'],
+      ]);
+      const pill = page.querySelector('tbody .badge')!;
+      expect(pill.classList).toContain('tone-warn');
+      expect(pill.getAttribute('title')).toBe('2026-10-26 09:00:00 UTC');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('names the recipient and secret in the confirmation and Cancel sends no request', async () => {
@@ -108,6 +120,13 @@ describe('SharedByMePage', () => {
     expect(page.querySelector('dialog p')?.textContent).toBe(
       "Revoke colleague's access to 'Deployment_key'? They lose access on their next request.",
     );
+    expect(page.querySelector('dialog h2')?.textContent).toBe("Revoke colleague's access?");
+    expect([...page.querySelectorAll('dialog .facts div')].map((row) => row.textContent)).toEqual([
+      'SecretDeployment_key',
+      'Recipientcolleague',
+      'Access untilNo expiry',
+    ]);
+    expect(page.querySelector('dialog .dialog-note')?.textContent).toBe('Saved to the audit log');
     button(page, 'Cancel').click();
     await fixture.whenStable();
     backend.expectNone({ method: 'DELETE', url: `/api/ui/shared-by-me/${share.shareId}` });
@@ -121,7 +140,7 @@ describe('SharedByMePage', () => {
     await fixture.whenStable();
     button(page, 'Revoke').click();
     await fixture.whenStable();
-    button(page, 'Continue').click();
+    button(page, 'Revoke access').click();
     fixture.detectChanges();
     const revoke = backend.expectOne({
       method: 'DELETE',
@@ -143,7 +162,7 @@ describe('SharedByMePage', () => {
     await fixture.whenStable();
     button(page, 'Revoke').click();
     await fixture.whenStable();
-    button(page, 'Continue').click();
+    button(page, 'Revoke access').click();
     backend
       .expectOne(`/api/ui/shared-by-me/${share.shareId}`)
       .flush({ code, title }, { status, statusText: 'Refused' });

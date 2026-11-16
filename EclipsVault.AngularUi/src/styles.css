@@ -115,6 +115,7 @@
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
   --dur: 200ms;
   --dur-press: 110ms;
+  --dur-sheet: 420ms;
 
   /* System faces stay behind Geist: font-display:swap paints in them first, and they are
        what renders if the woff2 ever fails to load. */
@@ -1575,6 +1576,103 @@ app-command-palette {
   text-align: right;
   white-space: nowrap;
 }
+
+/* A table that must not scroll sideways: below 880px of card its rows become cards. */
+.table-card {
+  container: rows / inline-size;
+}
+@container rows (width < 880px) {
+  .row-cards thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .row-cards,
+  .row-cards tbody {
+    display: block;
+  }
+  /* Line 1: the name and the verb. Then the meta cells flow like a sentence, then the pills. */
+  .row-cards tbody tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.35rem;
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .row-cards tbody tr:last-child {
+    border-bottom: none;
+  }
+  .row-cards tbody td {
+    display: block;
+    height: auto;
+    padding: 0;
+    border: none;
+  }
+  .row-cards tbody tr:hover td {
+    background: none;
+  }
+  .row-cards .cell-main {
+    flex: 1 1 calc(100% - 7.5rem);
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .row-cards .cell-verb {
+    order: 1;
+    margin-left: auto;
+  }
+  .row-cards .cell-meta {
+    order: 2;
+    min-width: 0;
+    color: var(--text-muted);
+    font-size: 0.86rem;
+  }
+  .row-cards .cell-meta[data-label]::before,
+  .row-cards .cell-pills[data-label]::before {
+    content: attr(data-label) ' ';
+  }
+  .row-cards .cell-pills[data-label] {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.86rem;
+  }
+  .row-cards .cell-pills {
+    order: 3;
+    flex-basis: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+}
+
+/* How a list is ordered, said beside its title. */
+.sort-note {
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+
+/* A screen's protection, said once and quietly. */
+.trust-line {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.6rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+.trust-line svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .inline-form {
   display: inline;
 }
@@ -1913,6 +2011,124 @@ app-command-palette {
   background: var(--scrim);
   -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
+}
+.confirmation-dialog > p {
+  margin: 0 0 1.1rem;
+  overflow-wrap: anywhere;
+}
+/* Under a title the message is the explanation, so it steps back. */
+.dialog-title + p {
+  color: var(--text-secondary);
+}
+.dialog-title {
+  margin-bottom: 0.75rem;
+  font-size: 1.3rem;
+  overflow-wrap: anywhere;
+}
+.dialog-extra:empty {
+  display: none;
+}
+.dialog-extra {
+  margin-bottom: 1.1rem;
+}
+.confirmation-dialog .button-row {
+  align-items: center;
+  justify-content: flex-end;
+}
+.dialog-note {
+  margin: 0 auto 0 0;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+
+/* Label and value rows on the inset tone: what a decision touches, said exactly. */
+.facts {
+  margin: 0 0 1.1rem;
+  padding: 0.35rem 1rem;
+  background: var(--bg-raised-2);
+  border-radius: var(--radius);
+}
+.facts div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 0;
+}
+.facts div + div {
+  border-top: 1px solid var(--border);
+}
+.facts dt {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+.facts dd {
+  margin: 0;
+  min-width: 0;
+  text-align: right;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+/* Below 768px a decision dialog is a bottom sheet: full width, pinned buttons, a grab handle. */
+@media (max-width: 767px) {
+  .confirmation-dialog {
+    inset: auto 0 0 0;
+    width: 100%;
+    max-width: none;
+    max-height: calc(100dvh - 40px);
+    margin: 0;
+    padding: 0.5rem 1rem calc(1rem + env(safe-area-inset-bottom));
+    border-bottom: 0;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    transition:
+      transform var(--dur-sheet) var(--ease),
+      overlay var(--dur-sheet) allow-discrete,
+      display var(--dur-sheet) allow-discrete;
+  }
+  .confirmation-dialog:not([open]) {
+    transform: translateY(100%);
+  }
+  @starting-style {
+    .confirmation-dialog[open] {
+      transform: translateY(100%);
+    }
+  }
+  /* Decorative: Escape, Cancel and the scrim dismiss the sheet. */
+  .confirmation-dialog::before {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 5px;
+    margin: 0.25rem auto 1rem;
+    border-radius: 3px;
+    background: var(--border-strong);
+  }
+  .confirmation-dialog .button-row .button {
+    flex: 1;
+  }
+  .dialog-note {
+    flex: 1 0 100%;
+  }
+}
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+  .confirmation-dialog {
+    transition:
+      opacity var(--dur) ease,
+      overlay var(--dur) allow-discrete,
+      display var(--dur) allow-discrete;
+  }
+  .confirmation-dialog:not([open]) {
+    transform: none;
+    opacity: 0;
+  }
+  @starting-style {
+    .confirmation-dialog[open] {
+      transform: none;
+      opacity: 0;
+    }
+  }
 }
 
 /* ---- Forms -------------------------------------------------------- */
