@@ -200,3 +200,40 @@ the fresh re-check pinned to `0527bfe` closed STD-4 and STD-5 with no new findin
 For the final Standards re-check and detailed commands, counts and limitations, see
 `logs/ticket-163/final-report.md` and `review-ledger.md` (ignored). To restart, read this section on
 `area-7a-overview-and-secrets`. The coordinator merges Area 6b's later changes before #164 starts.
+
+## Delivery: 7b ticket 1 (#166)
+
+Branch `area-7b-secret-details`, from `94b9eb6` (7a ticket 1 merged with Area 6b; owner override: 7b stacked
+on 7a before 7a merges). Claude Opus 5.5 high implemented the ticket.
+
+Commit: `d142bdd` Record secret refusals as denials and each action as one event.
+
+What changed: lookup by id records nothing (decoys still trip first); a served Legacy details page records
+`SecretMetadataViewed`; a refused by-id action on the Legacy pages and `GET /api/v1/secrets/{id}` records
+`SecretAccessDenied` with the reasons, as do the Legacy share and revoke refusals for a non-sharer; both rows
+fail closed. Restore and managed rotation commit `SecretVersionRestored` and `SecretUpstreamRotated` in the
+change's transaction: `ISecretRepository.RotateAsync` takes the action and saves through the interceptor's
+operation path, which replaces the generic secret row for the secret it names. Managed rotation reports
+"unchanged" only for a certain SQL Server refusal (statement never sent, or errors 15151, 15247, 15114–15118);
+any other failure puts the old password back ignoring cancellation; a store failure is put back only when a
+fresh read shows the archived version did not commit; drift is recorded critical, or logged critical when
+that row fails. `AuditChain.CommitAsync` now ends its transaction when the commit fails. The audit-failure
+vault gets a real SQL Server login target (`VaultFixture.HasManagedTarget`; a PostgreSQL run starts one
+SQL Server for it). No model change, so no migrations or database scripts.
+
+For the coordinator's merges: `SecretsController.cs` is also changed by #164 (here only the by-id actions
+and `CheckAccessAsync`); `ISecretRepository.RotateAsync` gained a parameter, so any new fake repository
+from 7a or 7c needs it; `SecretRepository` now takes `AuditSaveChangesInterceptor`.
+
+Verification: F1 and F3 failed first at `94b9eb6` (5 unit tests; 8 of 13 integration tests on PostgreSQL,
+run from a copy of the start code with the new tests). On the final tree `scripts/check.sh` passed (0
+warnings, 948 unit tests), `dotnet format` clean, `scripts/check.sh integration` with the ticket filter
+passed 17 on PostgreSQL. Full integration suites, one at a time: SQL Server 1265 passed before the
+Standards edits; PostgreSQL 1268 passed before the last two comment-only edits. Both pending-model checks,
+the hook tests and every Angular check (555 Vitest) passed. No browser spec changed.
+
+Reviews: security (Opus 5.5 high) found S1, S2 and R2-1..R2-4, all fixed and closed on its third pass.
+Spec (GPT Sol 6.1 xhigh) READY after SPEC-1 (evidence) closed. Standards (GPT Sol 6.1 xhigh) READY after
+STD-1..3 closed across two re-checks. Details: `logs/ticket-166/final-report.md` and `review-ledger.md`
+(ignored). To restart, read this section on `area-7b-secret-details`; ticket 2 (#167) starts after the
+coordinator accepts this one.
