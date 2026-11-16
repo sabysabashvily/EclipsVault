@@ -280,6 +280,11 @@ test('the keyboard alone approves through the expiry box', async ({ page, browse
   const request = requests.requestToReview(byKeyboard);
   await requests.introduction.click();
   await page.keyboard.press('Tab');
+  // A table wider than its card makes its scroll region a tab stop, for scrolling by keyboard.
+  const region = page.getByRole('region', { name: 'Requests to review', exact: true });
+  if (await region.evaluate((element) => element === document.activeElement)) {
+    await page.keyboard.press('Tab');
+  }
   await expect(requests.expiryOf(request)).toBeFocused();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.type('3');
