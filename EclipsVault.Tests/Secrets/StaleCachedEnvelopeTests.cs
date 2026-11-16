@@ -123,7 +123,7 @@ public class StaleCachedEnvelopeTests
     {
         public Task<Secret?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(row.Id == id ? row : null);
         public Task<IReadOnlyList<Secret>> ListActiveAsync(DateTimeOffset asOfUtc, CancellationToken ct) => Task.FromResult<IReadOnlyList<Secret>>([row]);
-        public Task RotateAsync(Secret secret, SecretVersion archivedVersion, CancellationToken ct) => Task.CompletedTask;
+        public Task RotateAsync(Secret secret, SecretVersion archivedVersion, AuditAction recordedAs, CancellationToken ct) => Task.CompletedTask;
         public Task<int> CountVersionsAsync(Guid secretId, CancellationToken ct) => Task.FromResult(0);
         public Task<IReadOnlyList<Secret>> ListExpiredAsync(DateTimeOffset asOfUtc, CancellationToken ct) => Task.FromResult<IReadOnlyList<Secret>>([]);
         public Task<IReadOnlyList<Secret>> ListExpiringAsync(DateTimeOffset asOfUtc, DateTimeOffset horizonUtc, CancellationToken ct)

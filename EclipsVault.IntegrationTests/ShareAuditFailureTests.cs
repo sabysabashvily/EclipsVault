@@ -42,9 +42,8 @@ public sealed class ShareAuditFailureTests(AuditFailureFixture failure)
     }
 
     /// <summary>
-    /// The sharing panel records a metadata view before it shares, so with every audit write
-    /// rejected it never reaches the share. The vault's own share service, from its own container,
-    /// makes the replacement the step that fails.
+    /// The vault's own share service, from its own container, makes replacing the expired share the
+    /// step that fails, with nothing else in the request writing first.
     /// </summary>
     [Fact]
     public async Task A_failed_audit_insert_rolls_back_replacing_an_expired_share_and_keeps_the_expired_one()

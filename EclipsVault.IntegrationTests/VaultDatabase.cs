@@ -40,6 +40,12 @@ internal abstract class VaultDatabase : IAsyncDisposable
 
     public abstract string ConnectionString();
 
+    /// <summary>
+    /// A SQL Server whose logins the vault may re-password, connected as its administrator: managed
+    /// rotation's target. A SQL Server run uses its own server; a PostgreSQL run starts one.
+    /// </summary>
+    public abstract Task<string> StartManagedTargetAsync();
+
     public abstract ValueTask DisposeAsync();
 
     protected static string ContainerName(string engine)
@@ -48,9 +54,13 @@ internal abstract class VaultDatabase : IAsyncDisposable
 
 internal sealed class SqlServerVaultDatabase : VaultDatabase
 {
-    // The vault signs in to its database as sa, so the password is per run rather than Testcontainers'
-    // published default. SQL Server requires upper and lower case, a digit and a symbol.
-    private readonly MsSqlContainer _sql = new MsSqlBuilder(VaultFixture.SqlServerImage)
+    private readonly MsSqlContainer _sql = NewSqlServer();
+
+    /// <summary>
+    /// The vault signs in to its database as sa, so the password is per run rather than Testcontainers'
+    /// published default. SQL Server requires upper and lower case, a digit and a symbol.
+    /// </summary>
+    internal static MsSqlContainer NewSqlServer() => new MsSqlBuilder(VaultFixture.SqlServerImage)
         .WithName(ContainerName("sql"))
         .WithPassword("Sa1!" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16)))
         .Build();
@@ -61,6 +71,9 @@ internal sealed class SqlServerVaultDatabase : VaultDatabase
 
     public override string ConnectionString()
         => new SqlConnectionStringBuilder(_sql.GetConnectionString()) { InitialCatalog = "EclipsVault" }.ConnectionString;
+
+    // A second SQL Server would not fit beside this one on a 4 GB Docker host.
+    public override Task<string> StartManagedTargetAsync() => Task.FromResult(_sql.GetConnectionString());
 
     public override ValueTask DisposeAsync() => _sql.DisposeAsync();
 }
@@ -74,6 +87,8 @@ internal sealed class PostgresVaultDatabase : VaultDatabase
         .WithPassword(Convert.ToHexString(RandomNumberGenerator.GetBytes(16)))
         .Build();
 
+    private MsSqlContainer? _managedTarget;
+
     public override string Provider => DatabaseProvider.Postgres;
 
     public override Task StartAsync() => _postgres.StartAsync();
@@ -81,5 +96,20 @@ internal sealed class PostgresVaultDatabase : VaultDatabase
     public override string ConnectionString()
         => new NpgsqlConnectionStringBuilder(_postgres.GetConnectionString()) { Database = "eclipsvault" }.ConnectionString;
 
-    public override ValueTask DisposeAsync() => _postgres.DisposeAsync();
+    public override async Task<string> StartManagedTargetAsync()
+    {
+        _managedTarget = SqlServerVaultDatabase.NewSqlServer();
+        await _managedTarget.StartAsync();
+        return _managedTarget.GetConnectionString();
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        if (_managedTarget is not null)
+        {
+            await _managedTarget.DisposeAsync();
+        }
+
+        await _postgres.DisposeAsync();
+    }
 }

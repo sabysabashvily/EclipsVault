@@ -30,19 +30,26 @@ public class ManagedRotationTests
     private sealed class FakeBackend : IManagedSecretBackend
     {
         public int FailAfter { get; init; } = int.MaxValue;
+
+        /// <summary>The first call changes the password and then fails, as when the reply is lost.</summary>
+        public bool LosesFirstReply { get; init; }
+
         public List<string> Rotations { get; } = [];
 
         public DynamicSecretBackend Backend => DynamicSecretBackend.SqlServer;
 
         public Task RotatePrincipalAsync(string principal, string newPassword, CancellationToken ct)
         {
+            ct.ThrowIfCancellationRequested();
             if (Rotations.Count >= FailAfter)
             {
-                throw new InvalidOperationException("backend refused");
+                throw new UpstreamRotationRefusedException(new InvalidOperationException("backend refused"));
             }
 
             Rotations.Add(newPassword);
-            return Task.CompletedTask;
+            return LosesFirstReply && Rotations.Count == 1
+                ? throw new InvalidOperationException("connection reset before the reply")
+                : Task.CompletedTask;
         }
     }
 
@@ -52,7 +59,17 @@ public class ManagedRotationTests
         public FakeRepository(Secret secret) => _secret = secret;
 
         public bool RotateThrows { get; init; }
+
+        /// <summary>The write commits, then its reply is lost: the caller sees a failure.</summary>
+        public bool CommitsThenThrows { get; init; }
+
+        /// <summary>The request this store's write abandons: it is cancelled, so the write never commits.</summary>
+        public CancellationTokenSource? AbandonedRequest { get; init; }
+
         public List<SecretVersion> Versions { get; } = [];
+
+        /// <summary>The audit action each committed write was recorded as.</summary>
+        public List<AuditAction> RecordedAs { get; } = [];
 
         // Note: the real repository also rewinds the entity when a write fails, so the caller never
         // holds a change that did not happen. That contract is the repository's own and is not
@@ -61,15 +78,24 @@ public class ManagedRotationTests
         public Task<Secret?> FindAsync(Guid id, CancellationToken ct)
             => Task.FromResult<Secret?>(id == _secret.Id ? _secret : null);
 
-        public Task RotateAsync(Secret secret, SecretVersion archivedVersion, CancellationToken ct)
+        public Task RotateAsync(Secret secret, SecretVersion archivedVersion, AuditAction recordedAs, CancellationToken ct)
         {
             if (RotateThrows)
             {
-                throw new InvalidOperationException("audit write failed");
+                throw new AuditWriteFailedException("audit write failed");
+            }
+
+            if (AbandonedRequest is { } request)
+            {
+                request.Cancel();
+                throw new OperationCanceledException(request.Token);
             }
 
             Versions.Add(archivedVersion);
-            return Task.CompletedTask;
+            RecordedAs.Add(recordedAs);
+            return CommitsThenThrows
+                ? throw new AuditWriteFailedException("connection reset after commit")
+                : Task.CompletedTask;
         }
 
         public Task<int> CountVersionsAsync(Guid secretId, CancellationToken ct) => Task.FromResult(Versions.Count);
@@ -104,8 +130,15 @@ public class ManagedRotationTests
     {
         public List<AuditEntry> Entries { get; } = [];
 
+        public bool Rejects { get; init; }
+
         public Task WriteAsync(AuditEntry entry, CancellationToken ct)
         {
+            if (Rejects)
+            {
+                throw new AuditWriteFailedException("audit trail unavailable");
+            }
+
             Entries.Add(entry);
             return Task.CompletedTask;
         }
@@ -119,6 +152,17 @@ public class ManagedRotationTests
         public Task SetAsync(EncryptedSecretEnvelope envelope, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task EvictAsync(Guid secretId, CancellationToken ct = default) => Task.CompletedTask;
+    }
+
+    private sealed class FailingEviction : ISecretCache
+    {
+        public Task<EncryptedSecretEnvelope?> GetAsync(Guid secretId, CancellationToken ct = default)
+            => Task.FromResult<EncryptedSecretEnvelope?>(null);
+
+        public Task SetAsync(EncryptedSecretEnvelope envelope, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task EvictAsync(Guid secretId, CancellationToken ct = default)
+            => throw new InvalidOperationException("cache unavailable");
     }
 
     private sealed class UnusedIntrusionResponse : IIntrusionResponseService
@@ -163,7 +207,11 @@ public class ManagedRotationTests
         => Build(repository, audit, new RecordingPremiumFeatureUsage(), backends);
 
     private static SecretService Build(FakeRepository repository, RecordingAuditSink audit, RecordingPremiumFeatureUsage usage, params IManagedSecretBackend[] backends)
-        => new(repository, new FakeCryptoEngine(), new NullCache(), new UnusedIntrusionResponse(),
+        => Build(repository, new NullCache(), audit, usage, backends);
+
+    private static SecretService Build(
+        FakeRepository repository, ISecretCache cache, RecordingAuditSink audit, RecordingPremiumFeatureUsage usage, params IManagedSecretBackend[] backends)
+        => new(repository, new FakeCryptoEngine(), cache, new UnusedIntrusionResponse(),
                audit, new StubActor(), backends, TimeProvider.System, usage);
 
     private static string StoredValue(Secret secret)
@@ -210,16 +258,15 @@ public class ManagedRotationTests
     }
 
     [Fact]
-    public async Task The_rotation_is_recorded_as_an_upstream_rotation()
+    public async Task The_rotation_is_committed_as_an_upstream_rotation_and_nothing_else()
     {
+        var repository = new FakeRepository(ManagedSecret());
         var audit = new RecordingAuditSink();
 
-        await Build(new FakeRepository(ManagedSecret()), audit, new FakeBackend())
-            .RotateManagedAsync(SecretId, null, CancellationToken.None);
+        await Build(repository, audit, new FakeBackend()).RotateManagedAsync(SecretId, null, CancellationToken.None);
 
-        var entry = Assert.Single(audit.Entries, e => e.Action == AuditAction.SecretUpstreamRotated);
-        Assert.Equal(SecretId, entry.ResourceId);
-        Assert.False(entry.IsCritical);
+        Assert.Equal([AuditAction.SecretUpstreamRotated], repository.RecordedAs);
+        Assert.Empty(audit.Entries);
     }
 
     [Fact]
@@ -257,12 +304,49 @@ public class ManagedRotationTests
         var secret = ManagedSecret();
         var repository = new FakeRepository(secret);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        await Assert.ThrowsAsync<UpstreamRotationRefusedException>(
             () => Build(repository, new RecordingAuditSink(), new FakeBackend { FailAfter = 0 })
                 .RotateManagedAsync(SecretId, null, CancellationToken.None));
 
         Assert.Equal(OriginalPassword, StoredValue(secret));
         Assert.Empty(repository.Versions);
+    }
+
+    [Fact]
+    public async Task A_backend_call_that_fails_after_changing_the_password_is_put_back_and_reported_as_refused()
+    {
+        // A failure does not prove the statement never ran, so the login is set back before the caller
+        // is told the credential is unchanged.
+        var secret = ManagedSecret();
+        var backend = new FakeBackend { LosesFirstReply = true };
+
+        await Assert.ThrowsAsync<UpstreamRotationRefusedException>(
+            () => Build(new FakeRepository(secret), new RecordingAuditSink(), backend).RotateManagedAsync(SecretId, null, CancellationToken.None));
+
+        Assert.Equal(OriginalPassword, backend.Rotations[^1]);
+        Assert.Equal(OriginalPassword, StoredValue(secret));
+    }
+
+    [Fact]
+    public async Task A_backend_call_that_fails_uncertainly_and_cannot_be_put_back_is_reported_as_drift()
+    {
+        var backend = new FakeBackend { LosesFirstReply = true, FailAfter = 1 };
+
+        await Assert.ThrowsAsync<UpstreamRotationDriftedException>(
+            () => Build(new FakeRepository(ManagedSecret()), new RecordingAuditSink(), backend).RotateManagedAsync(SecretId, null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_rotation_that_committed_before_its_reply_was_lost_is_kept()
+    {
+        var secret = ManagedSecret();
+        var repository = new FakeRepository(secret) { CommitsThenThrows = true };
+        var backend = new FakeBackend();
+
+        await Build(repository, new RecordingAuditSink(), backend).RotateManagedAsync(SecretId, null, CancellationToken.None);
+
+        var applied = Assert.Single(backend.Rotations);
+        Assert.Equal(applied, StoredValue(secret));
     }
 
     [Fact]
@@ -274,11 +358,42 @@ public class ManagedRotationTests
         var repository = new FakeRepository(secret) { RotateThrows = true };
         var backend = new FakeBackend();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        await Assert.ThrowsAsync<AuditWriteFailedException>(
             () => Build(repository, new RecordingAuditSink(), backend).RotateManagedAsync(SecretId, null, CancellationToken.None));
 
         Assert.Equal(2, backend.Rotations.Count);
         Assert.NotEqual(OriginalPassword, backend.Rotations[0]);
+        Assert.Equal(OriginalPassword, backend.Rotations[^1]);
+    }
+
+    [Fact]
+    public async Task A_rotation_that_committed_is_not_undone_when_clearing_the_cache_fails()
+    {
+        // The stored value and the live credential already agree once the write commits. Putting the
+        // old password back then would leave the vault serving a password the backend no longer takes.
+        var secret = ManagedSecret();
+        var backend = new FakeBackend();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Build(new FakeRepository(secret), new FailingEviction(), new RecordingAuditSink(), new RecordingPremiumFeatureUsage(), backend)
+                .RotateManagedAsync(SecretId, null, CancellationToken.None));
+
+        var applied = Assert.Single(backend.Rotations);
+        Assert.Equal(applied, StoredValue(secret));
+    }
+
+    [Fact]
+    public async Task The_password_is_put_back_even_when_the_request_was_cancelled()
+    {
+        // A caller who leaves mid-rotation must not leave the backend on a password nobody stored.
+        using var request = new CancellationTokenSource();
+        var repository = new FakeRepository(ManagedSecret()) { AbandonedRequest = request };
+        var backend = new FakeBackend();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => Build(repository, new RecordingAuditSink(), backend).RotateManagedAsync(SecretId, null, request.Token));
+
+        Assert.Equal(2, backend.Rotations.Count);
         Assert.Equal(OriginalPassword, backend.Rotations[^1]);
     }
 
@@ -288,7 +403,7 @@ public class ManagedRotationTests
         var repository = new FakeRepository(ManagedSecret()) { RotateThrows = true };
         var audit = new RecordingAuditSink();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        await Assert.ThrowsAsync<AuditWriteFailedException>(
             () => Build(repository, audit, new FakeBackend()).RotateManagedAsync(SecretId, null, CancellationToken.None));
 
         Assert.DoesNotContain(audit.Entries, e => e.Action == AuditAction.SecretUpstreamRotationDrifted);
@@ -304,13 +419,29 @@ public class ManagedRotationTests
         var audit = new RecordingAuditSink();
         var backend = new FakeBackend { FailAfter = 1 };
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        var drifted = await Assert.ThrowsAsync<UpstreamRotationDriftedException>(
             () => Build(repository, audit, backend).RotateManagedAsync(SecretId, null, CancellationToken.None));
 
+        Assert.True(drifted.Recorded);
         var drift = Assert.Single(audit.Entries, e => e.Action == AuditAction.SecretUpstreamRotationDrifted);
         Assert.True(drift.IsCritical);
+        Assert.Equal(drifted.Message, drift.Details);
         Assert.Equal(SecretId, drift.ResourceId);
         Assert.Contains(Principal, drift.Details);
+    }
+
+    [Fact]
+    public async Task Drift_the_audit_trail_cannot_record_is_still_reported_as_drift()
+    {
+        // The caller must still learn the login drifted, and know that only a log line can now say so.
+        var repository = new FakeRepository(ManagedSecret()) { RotateThrows = true };
+
+        var drifted = await Assert.ThrowsAsync<UpstreamRotationDriftedException>(
+            () => Build(repository, new RecordingAuditSink { Rejects = true }, new FakeBackend { FailAfter = 1 })
+                .RotateManagedAsync(SecretId, null, CancellationToken.None));
+
+        Assert.False(drifted.Recorded);
+        Assert.Contains(Principal, drifted.Message);
     }
 
     [Fact]
@@ -322,7 +453,7 @@ public class ManagedRotationTests
         var audit = new RecordingAuditSink();
         var backend = new FakeBackend { FailAfter = 1 };
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        await Assert.ThrowsAsync<UpstreamRotationDriftedException>(
             () => Build(repository, audit, backend).RotateManagedAsync(SecretId, null, CancellationToken.None));
 
         var applied = Assert.Single(backend.Rotations);

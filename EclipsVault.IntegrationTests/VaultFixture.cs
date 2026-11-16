@@ -77,9 +77,24 @@ public sealed partial class VaultFixture : IAsyncLifetime
     /// <summary>A master key the vault loads only to unwrap data keys still sealed under it.</summary>
     public string? RetiredMasterKey { get; init; }
 
+    /// <summary>Whether the vault gets a SQL Server whose logins it re-passwords for managed rotation.</summary>
+    public bool HasManagedTarget { get; init; }
+
+    /// <summary>The managed target's administrator connection, for tests that create and check its logins.</summary>
+    public string ManagedTargetConnectionString => _managedTarget
+        ?? throw new InvalidOperationException("This vault has no managed target; set HasManagedTarget.");
+
+    private string? _managedTarget;
+
     public async Task InitializeAsync()
     {
         await _database.StartAsync();
+        if (HasManagedTarget)
+        {
+            _managedTarget = await _database.StartManagedTargetAsync();
+            SetEnvironment("DynamicSecrets__TargetConnectionString", _managedTarget);
+        }
+
         if (Mailbox is not null)
         {
             await Mailbox.StartAsync();

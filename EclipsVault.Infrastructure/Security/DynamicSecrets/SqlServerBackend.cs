@@ -1,6 +1,7 @@
 using EclipsVault.Core.Application.DynamicSecrets;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Core.Domain.Exceptions;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -21,11 +22,10 @@ namespace EclipsVault.Infrastructure.Security;
 /// not strictly alphanumeric. No operator-supplied text is ever interpolated.
 ///
 /// The server it talks to is the <em>managed target</em> configured in
-/// <see cref="DynamicSecretTargetOptions"/> — never the vault's own database. It used to run these
-/// statements over the vault's <c>DbContext</c>, which quietly required the vault's own login to
-/// hold <c>ALTER ANY LOGIN</c>: a privilege that can re-password any principal on that instance,
-/// including on the server storing the audit trail. That made enabling this feature silently void
-/// the least-privilege property the threat model relies on to bound an application compromise.
+/// <see cref="DynamicSecretTargetOptions"/> — never the vault's own database. Running these statements
+/// as the vault's own login would require it to hold <c>ALTER ANY LOGIN</c>: a privilege that can
+/// re-password any principal on that instance, including on the server storing the audit trail. That
+/// would void the least-privilege property the threat model relies on to bound an application compromise.
 /// </summary>
 public sealed class SqlServerBackend : IDynamicSecretBackend, IManagedSecretBackend
 {
@@ -34,6 +34,13 @@ public sealed class SqlServerBackend : IDynamicSecretBackend, IManagedSecretBack
     /// A per-secret statement would make every managed secret a place to hide arbitrary SQL.
     /// </summary>
     private const string RotateStatement = "ALTER LOGIN [{{name}}] WITH PASSWORD = '{{password}}';";
+
+    /// <summary>
+    /// The errors with which SQL Server refuses <c>ALTER LOGIN</c> before changing anything: no such
+    /// login or no permission (15151, 15247), and a password its policy rejects (15114 to 15118).
+    /// Any other error, a cancellation or a trigger's message among them, may follow a change that held.
+    /// </summary>
+    private static readonly HashSet<int> PasswordUnchangedErrors = [15151, 15247, 15114, 15115, 15116, 15117, 15118];
 
     private readonly DynamicSecretTargetOptions _target;
     private readonly ILogger<SqlServerBackend> _logger;
@@ -54,6 +61,12 @@ public sealed class SqlServerBackend : IDynamicSecretBackend, IManagedSecretBack
     /// </summary>
     private async Task ExecuteOnTargetAsync(string sql, CancellationToken ct)
     {
+        await using var connection = await OpenTargetAsync(ct);
+        await ExecuteAsync(connection, sql, ct);
+    }
+
+    private async Task<SqlConnection> OpenTargetAsync(CancellationToken ct)
+    {
         if (!_target.IsConfigured)
         {
             throw new InvalidOperationException(
@@ -64,8 +77,21 @@ public sealed class SqlServerBackend : IDynamicSecretBackend, IManagedSecretBack
                 "would let a compromise of this application take over the server that stores the audit trail.");
         }
 
-        await using var connection = new SqlConnection(_target.TargetConnectionString);
-        await connection.OpenAsync(ct);
+        var connection = new SqlConnection(_target.TargetConnectionString);
+        try
+        {
+            await connection.OpenAsync(ct);
+            return connection;
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
+    }
+
+    private static async Task ExecuteAsync(SqlConnection connection, string sql, CancellationToken ct)
+    {
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
         await command.ExecuteNonQueryAsync(ct);
@@ -94,10 +120,37 @@ public sealed class SqlServerBackend : IDynamicSecretBackend, IManagedSecretBack
         _logger.LogInformation("Dropped SQL Server login {Identity} for role {RoleName}", identity, role.Name);
     }
 
+    /// <summary>
+    /// Throws <see cref="UpstreamRotationRefusedException"/> only when the password certainly did not
+    /// change: the statement was never sent, or the server refused it with an error that leaves the
+    /// password as it was. Any other failure
+    /// (a timeout, a lost connection, a cancelled call) leaves it unknown whether the server ran it.
+    /// </summary>
     public async Task RotatePrincipalAsync(string principal, string newPassword, CancellationToken ct)
     {
-        var sql = CredentialStatementTemplate.Render(RotateStatement, principal, newPassword, DateTimeOffset.UnixEpoch);
-        await ExecuteOnTargetAsync(sql, ct);
+        string sql;
+        SqlConnection connection;
+        try
+        {
+            sql = CredentialStatementTemplate.Render(RotateStatement, principal, newPassword, DateTimeOffset.UnixEpoch);
+            connection = await OpenTargetAsync(ct);
+        }
+        catch (Exception notSent)
+        {
+            throw new UpstreamRotationRefusedException(notSent);
+        }
+
+        await using (connection)
+        {
+            try
+            {
+                await ExecuteAsync(connection, sql, ct);
+            }
+            catch (SqlException refused) when (PasswordUnchangedErrors.Contains(refused.Number))
+            {
+                throw new UpstreamRotationRefusedException(refused);
+            }
+        }
 
         // Never log the password — only that the principal moved.
         _logger.LogInformation("Rotated the password of SQL Server login {Principal}", principal);

@@ -24,6 +24,8 @@ public sealed class SecretsController : VaultController
     /// <summary>Enough for the palette to show a useful shortlist; not a bulk-export channel.</summary>
     private const int SearchResultLimit = 8;
 
+    private const string NotPermittedReason = "Only an administrator or a member of this secret's project can change it.";
+
     private readonly ISecretService _secrets;
     private readonly ISecretGrantService _grants;
     private readonly IAuthorizationService _authorization;
@@ -125,11 +127,12 @@ public sealed class SecretsController : VaultController
     public async Task<IActionResult> Details(Guid id, CancellationToken ct)
     {
         var details = await _secrets.GetDetailsAsync(id, ct);
-        if (await CheckAccessAsync(details) is { } denied)
+        if (await CheckAccessAsync(details, ct) is { } denied)
         {
             return denied;
         }
 
+        await _secrets.RecordViewedAsync(details, ct);
         return View(await BuildViewModelAsync(details, ct));
     }
 
@@ -137,7 +140,7 @@ public sealed class SecretsController : VaultController
     public async Task<IActionResult> Reveal(Guid id, CancellationToken ct)
     {
         var details = await _secrets.GetDetailsAsync(id, ct);
-        if (await CheckAccessAsync(details) is { } denied)
+        if (await CheckAccessAsync(details, ct) is { } denied)
         {
             return denied;
         }
@@ -159,7 +162,7 @@ public sealed class SecretsController : VaultController
     public async Task<IActionResult> StepUpReveal(Guid id, string? code, Guid? versionId, CancellationToken ct)
     {
         var details = await _secrets.GetDetailsAsync(id, ct);
-        if (await CheckAccessAsync(details) is { } denied)
+        if (await CheckAccessAsync(details, ct) is { } denied)
         {
             return denied;
         }
@@ -189,7 +192,7 @@ public sealed class SecretsController : VaultController
     public async Task<IActionResult> Rotate(RotateSecretViewModel model, CancellationToken ct)
     {
         var details = await _secrets.GetDetailsAsync(model.Id, ct);
-        if (await CheckAccessAsync(details) is { } denied)
+        if (await CheckAccessAsync(details, ct) is { } denied)
         {
             return denied;
         }
@@ -221,7 +224,7 @@ public sealed class SecretsController : VaultController
     public async Task<IActionResult> RotateManaged(Guid id, int? renewTtlDays, CancellationToken ct)
     {
         var details = await _secrets.GetDetailsAsync(id, ct);
-        if (await CheckAccessAsync(details) is { } denied)
+        if (await CheckAccessAsync(details, ct) is { } denied)
         {
             return denied;
         }
@@ -241,11 +244,20 @@ public sealed class SecretsController : VaultController
         {
             this.FlashError(ex.Message);
         }
-        catch (Exception ex)
+        catch (UpstreamRotationRefusedException ex)
         {
-            // Don't leak the backend's message onto the page; the audit trail and logs have it.
-            _logger.LogError(ex, "Upstream rotation of secret {SecretId} failed", id);
-            this.FlashError("The backend refused the rotation. The credential is unchanged — check the audit trail.");
+            // The backend's own message stays in the log: it can name servers and logins.
+            _logger.LogError(ex.InnerException, "The backend refused the upstream rotation of secret {SecretId}", id);
+            this.FlashError(ex.Message);
+        }
+        catch (UpstreamRotationDriftedException ex)
+        {
+            if (!ex.Recorded)
+            {
+                _logger.LogCritical(ex, "Secret {SecretId} drifted from its login and the audit trail could not record it", id);
+            }
+
+            this.FlashError(ex.Message);
         }
 
         return RedirectToAction(nameof(Details), new { id });
@@ -255,7 +267,7 @@ public sealed class SecretsController : VaultController
     public async Task<IActionResult> RevealVersion(Guid id, Guid versionId, CancellationToken ct)
     {
         var details = await _secrets.GetDetailsAsync(id, ct);
-        if (await CheckAccessAsync(details) is { } denied)
+        if (await CheckAccessAsync(details, ct) is { } denied)
         {
             return denied;
         }
@@ -276,7 +288,7 @@ public sealed class SecretsController : VaultController
     public async Task<IActionResult> RestoreVersion(Guid id, Guid versionId, CancellationToken ct)
     {
         var details = await _secrets.GetDetailsAsync(id, ct);
-        if (await CheckAccessAsync(details) is { } denied)
+        if (await CheckAccessAsync(details, ct) is { } denied)
         {
             return denied;
         }
@@ -332,13 +344,14 @@ public sealed class SecretsController : VaultController
     public async Task<IActionResult> Grant(ShareSecretViewModel model, CancellationToken ct)
     {
         var details = await _secrets.GetDetailsAsync(model.SecretId, ct);
-        if (await CheckAccessAsync(details) is { } denied)
+        if (await CheckAccessAsync(details, ct) is { } denied)
         {
             return denied;
         }
 
         if (!CanShare(details))
         {
+            await _secrets.RecordAccessDeniedAsync(details, [NotPermittedReason], ct);
             return Forbid();
         }
 
@@ -365,13 +378,14 @@ public sealed class SecretsController : VaultController
     public async Task<IActionResult> RevokeGrant(Guid id, Guid grantId, CancellationToken ct)
     {
         var details = await _secrets.GetDetailsAsync(id, ct);
-        if (await CheckAccessAsync(details) is { } denied)
+        if (await CheckAccessAsync(details, ct) is { } denied)
         {
             return denied;
         }
 
         if (!CanShare(details))
         {
+            await _secrets.RecordAccessDeniedAsync(details, [NotPermittedReason], ct);
             return Forbid();
         }
 
@@ -391,7 +405,7 @@ public sealed class SecretsController : VaultController
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var details = await _secrets.GetDetailsAsync(id, ct);
-        if (await CheckAccessAsync(details) is { } denied)
+        if (await CheckAccessAsync(details, ct) is { } denied)
         {
             return denied;
         }
@@ -401,9 +415,9 @@ public sealed class SecretsController : VaultController
         return RedirectToAction(nameof(Index));
     }
 
-    /// <summary>Null when access is allowed; otherwise a redirect to the Denied page
-    /// carrying the policy's denial reasons so the user can see what was not satisfied.</summary>
-    private async Task<IActionResult?> CheckAccessAsync(SecretDetailsDto details)
+    /// <summary>Null when access is allowed; otherwise the refusal is recorded and the caller is sent to
+    /// the Denied page with the policy's reasons, so they can see what was not satisfied.</summary>
+    private async Task<IActionResult?> CheckAccessAsync(SecretDetailsDto details, CancellationToken ct)
     {
         var result = await _authorization.AuthorizeAsync(User, details, VaultPolicies.SecretAccess);
         if (result.Succeeded)
@@ -411,7 +425,8 @@ public sealed class SecretsController : VaultController
             return null;
         }
 
-        var reasons = result.Failure?.FailureReasons.Select(r => r.Message) ?? [];
+        var reasons = result.Failure?.FailureReasons.Select(r => r.Message).ToList() ?? [];
+        await _secrets.RecordAccessDeniedAsync(details, reasons, ct);
         TempData[AccountController.DenialReasonsTempDataKey] = string.Join('\n', reasons);
         // The secret id rides the query string (reliable across the redirect) so the Denied
         // page can offer to file an access request for it.

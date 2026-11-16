@@ -73,13 +73,25 @@ public sealed class SecretService : ISecretService
     {
         var envelope = await GetEnvelopeAsync(id, ct);
         await TripHoneyTokenIfNeededAsync(envelope, ct);
-        await AuditSecretAsync(envelope.Id, envelope.Name, AuditAction.SecretMetadataViewed, ct);
 
         return new SecretDetailsDto(
             envelope.Id, envelope.Name, envelope.ProjectKey, envelope.Environment, envelope.Sensitivity,
             envelope.Algorithm, envelope.CreatedAtUtc, envelope.UpdatedAtUtc, envelope.ExpiresAtUtc,
             envelope.IsManaged, envelope.RotationPrincipal);
     }
+
+    public Task RecordViewedAsync(SecretDetailsDto secret, CancellationToken ct)
+        => AuditSecretAsync(secret.Id, secret.Name, AuditAction.SecretMetadataViewed, ct);
+
+    public Task RecordAccessDeniedAsync(SecretDetailsDto secret, IEnumerable<string> reasons, CancellationToken ct)
+        => _audit.WriteAsync(new AuditEntry
+        {
+            Action = AuditAction.SecretAccessDenied,
+            ResourceType = nameof(Secret),
+            ResourceId = secret.Id,
+            ResourceName = secret.Name,
+            Details = string.Join(" ", reasons),
+        }, ct);
 
     public async Task<RevealedSecretDto> RevealAsync(Guid id, CancellationToken ct)
     {
@@ -144,18 +156,20 @@ public sealed class SecretService : ISecretService
         await TripHoneyTokenIfNeededAsync(envelope, ct);
 
         var entity = await _repository.FindAsync(id, ct) ?? throw new SecretNotFoundException(id);
-        await StoreRotatedValueAsync(entity, newValue, changeNote, renewTtlDays, ct);
+        await StoreRotatedValueAsync(entity, Guid.NewGuid(), newValue, changeNote, renewTtlDays, AuditAction.SecretUpdated, ct);
+        await _cache.EvictAsync(entity.Id, ct);
     }
 
     /// <summary>
-    /// Archives the current value and stores a new one. Shared by the two rotations — the operator
-    /// pasting a value, and the vault re-passwording a real principal — so they cannot drift in how
-    /// a rotation is recorded.
+    /// Archives the current value and commits a new one with its audit row. Shared by the two
+    /// rotations — the operator pasting a value, and the vault re-passwording a real principal — so
+    /// they cannot drift in how a rotation is stored. Clearing the cache is the caller's next step.
     /// </summary>
     private async Task StoreRotatedValueAsync(
-        Secret entity, string newValue, string? changeNote, int? renewTtlDays, CancellationToken ct)
+        Secret entity, Guid archivedVersionId, string newValue, string? changeNote, int? renewTtlDays, AuditAction recordedAs,
+        CancellationToken ct)
     {
-        var archived = await ArchiveCurrentAsync(entity, changeNote, ct);
+        var archived = await ArchiveCurrentAsync(entity, archivedVersionId, changeNote, ct);
 
         var now = _clock.GetUtcNow();
         var sealedSecret = await SealValueAsync(newValue, SecretBinding.ForCurrentValue(entity.Id), ct);
@@ -171,9 +185,7 @@ public sealed class SecretService : ISecretService
             entity.ExpiresAtUtc = now.AddDays(renewTtlDays.Value);
         }
 
-        // One transaction: the interceptor writes a SecretUpdated audit row atomically.
-        await _repository.RotateAsync(entity, archived, ct);
-        await _cache.EvictAsync(entity.Id, ct);
+        await _repository.RotateAsync(entity, archived, recordedAs, ct);
     }
 
     public async Task RotateManagedAsync(Guid id, int? renewTtlDays, CancellationToken ct)
@@ -207,44 +219,92 @@ public sealed class SecretService : ISecretService
 
         try
         {
-            // Change the real credential first: if the backend refuses, nothing has moved and the
-            // stored value is still the truth.
-            await backend.RotatePrincipalAsync(principal, newPassword, ct);
-
+            // Change the real credential first: if the backend refuses, the stored value is still the truth.
             try
             {
-                await StoreRotatedValueAsync(entity, newPassword, $"Upstream rotation of '{principal}'", renewTtlDays, ct);
+                await backend.RotatePrincipalAsync(principal, newPassword, ct);
+            }
+            catch (UpstreamRotationRefusedException)
+            {
+                throw;
+            }
+            catch (Exception uncertain)
+            {
+                // Any other failure does not prove the statement never ran (a lost reply, a caller who
+                // left), and setting the old password again changes nothing if it did not.
+                await PutBackUpstreamAsync(backend, principal, previousPassword, entity);
+                if (uncertain is OperationCanceledException)
+                {
+                    throw;
+                }
+
+                throw new UpstreamRotationRefusedException(uncertain);
+            }
+
+            var archivedVersionId = Guid.NewGuid();
+            try
+            {
+                await StoreRotatedValueAsync(
+                    entity, archivedVersionId, newPassword, $"Upstream rotation of '{principal}'", renewTtlDays,
+                    AuditAction.SecretUpstreamRotated, ct);
             }
             catch
             {
-                // The live credential moved but we could not record it, so the vault is now serving
-                // a password that does not work — the exact drift this feature exists to prevent.
-                // Put the principal back to the value the vault still holds.
-                await UndoUpstreamRotationAsync(backend, principal, previousPassword, entity, ct);
-                throw;
+                // A commit whose reply was lost already holds the new password; only a write that never
+                // committed leaves the login on a password the vault does not hold, so only that is undone.
+                if (!await StoredAnywayAsync(entity, archivedVersionId, principal))
+                {
+                    await PutBackUpstreamAsync(backend, principal, previousPassword, entity);
+                    throw;
+                }
             }
-
-            await AuditSecretAsync(entity.Id, entity.Name, AuditAction.SecretUpstreamRotated, ct);
         }
         finally
         {
             CryptographicOperations.ZeroMemory(previousPassword);
         }
+
+        // Committed: the login and the stored value agree, so nothing from here on undoes the rotation.
+        await _cache.EvictAsync(entity.Id, ct);
     }
 
     /// <summary>
-    /// Best-effort restore of the upstream password after a failed rotation. If it does not work the
-    /// stored value and the live credential are out of step and only a human can reconcile them, so
-    /// that is recorded as critical rather than swallowed.
+    /// Whether a rotation whose write reported failure committed after all, read afresh and whatever the
+    /// caller does meanwhile. When even that cannot be read, the login and the stored value may disagree.
     /// </summary>
-    private async Task UndoUpstreamRotationAsync(
-        IManagedSecretBackend backend, string principal, byte[] previousPassword, Secret entity, CancellationToken ct)
+    private async Task<bool> StoredAnywayAsync(Secret entity, Guid archivedVersionId, string principal)
     {
         try
         {
-            await backend.RotatePrincipalAsync(principal, Encoding.UTF8.GetString(previousPassword), ct);
+            return await _repository.FindVersionAsync(entity.Id, archivedVersionId, CancellationToken.None) is not null;
         }
-        catch
+        catch (Exception readFailure)
+        {
+            throw new UpstreamRotationDriftedException(principal, await RecordDriftAsync(principal, entity), readFailure);
+        }
+    }
+
+    /// <summary>
+    /// Puts the login back to the password the vault still holds, whether or not the caller is still
+    /// waiting: a caller who leaves must not strand the login on a password nobody stored. If that
+    /// fails too, only a human can reconcile the two, so the drift is recorded as critical.
+    /// </summary>
+    private async Task PutBackUpstreamAsync(IManagedSecretBackend backend, string principal, byte[] previousPassword, Secret entity)
+    {
+        try
+        {
+            await backend.RotatePrincipalAsync(principal, Encoding.UTF8.GetString(previousPassword), CancellationToken.None);
+        }
+        catch (Exception putBackFailure)
+        {
+            throw new UpstreamRotationDriftedException(principal, await RecordDriftAsync(principal, entity), putBackFailure);
+        }
+    }
+
+    /// <summary>Writes the critical drift row; false when even that cannot be written.</summary>
+    private async Task<bool> RecordDriftAsync(string principal, Secret entity)
+    {
+        try
         {
             await _audit.WriteAsync(new AuditEntry
             {
@@ -252,10 +312,14 @@ public sealed class SecretService : ISecretService
                 ResourceType = nameof(Secret),
                 ResourceId = entity.Id,
                 ResourceName = entity.Name,
-                Details = $"The password of '{principal}' was changed upstream but could not be stored or put back. " +
-                          "The stored value no longer opens it — reconcile by hand.",
+                Details = UpstreamRotationDriftedException.DriftSentence(principal),
                 IsCritical = true
-            }, ct);
+            }, CancellationToken.None);
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
         }
     }
 
@@ -312,7 +376,7 @@ public sealed class SecretService : ISecretService
         var version = await _repository.FindVersionAsync(id, versionId, ct)
                       ?? throw new SecretNotFoundException(versionId);
 
-        var archived = await ArchiveCurrentAsync(entity, $"Superseded by restore of version {version.VersionNumber}", ct);
+        var archived = await ArchiveCurrentAsync(entity, Guid.NewGuid(), $"Superseded by restore of version {version.VersionNumber}", ct);
 
         // Re-seal the chosen version into the live secret's binding. Copying the envelope across is
         // precisely the move the binding exists to stop — an archived value put back as the current
@@ -322,8 +386,7 @@ public sealed class SecretService : ISecretService
         entity.ApplyEnvelope(restored);
         entity.UpdatedAtUtc = _clock.GetUtcNow();
 
-        await _repository.RotateAsync(entity, archived, ct);
-        await AuditSecretAsync(id, envelope.Name, AuditAction.SecretVersionRestored, ct);
+        await _repository.RotateAsync(entity, archived, AuditAction.SecretVersionRestored, ct);
         await _cache.EvictAsync(id, ct);
     }
 
@@ -336,9 +399,8 @@ public sealed class SecretService : ISecretService
     /// and it costs one decrypt-and-re-encrypt on an operation that only happens when a secret is
     /// rotated.
     /// </summary>
-    private async Task<SecretVersion> ArchiveCurrentAsync(Secret entity, string? changeNote, CancellationToken ct)
+    private async Task<SecretVersion> ArchiveCurrentAsync(Secret entity, Guid versionId, string? changeNote, CancellationToken ct)
     {
-        var versionId = Guid.NewGuid();
         var resealed = await ResealForVersionAsync(entity, versionId, ct);
 
         return new SecretVersion

@@ -7,7 +7,7 @@ namespace EclipsVault.IntegrationTests;
 
 public sealed class AuditFailureFixture : IAsyncLifetime
 {
-    public AuditFailureFixture() => Vault = new() { Mailbox = new SmtpCapture(), RetiredMasterKey = RetiredMasterKey };
+    public AuditFailureFixture() => Vault = new() { Mailbox = new SmtpCapture(), RetiredMasterKey = RetiredMasterKey, HasManagedTarget = true };
 
     /// <summary>Loaded beside the current key, so a test can rotate secrets sealed under it.</summary>
     public string RetiredMasterKey { get; } = SecretsUnderMasterKey.NewMasterKey();

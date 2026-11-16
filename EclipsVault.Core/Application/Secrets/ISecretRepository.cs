@@ -1,4 +1,5 @@
 using EclipsVault.Core.Domain.Entities;
+using EclipsVault.Core.Domain.Enums;
 
 namespace EclipsVault.Core.Application.Secrets;
 
@@ -7,10 +8,11 @@ namespace EclipsVault.Core.Application.Secrets;
 /// with the change (create/update/shred) are audited by the SaveChanges interceptor;
 /// read/share auditing is written separately through <see cref="IAuditSink"/>.
 ///
-/// Every write here is all-or-nothing, including in memory: if one throws, the entity it was given
-/// is left exactly as it was and nothing remains staged for a later write to commit. Callers rely on
-/// this to undo the outside world — putting an upstream password back, say — knowing the value they
-/// still hold is the one that is stored.
+/// Every write here is all-or-nothing: if one throws, nothing remains staged for a later write to
+/// commit, and a write that did not commit leaves the entity it was given as it was. A throw almost
+/// always means no commit, but a commit whose reply is lost throws too. A caller that undoes the outside
+/// world on failure — putting an upstream password back, say — must first read afresh whether its
+/// write is there, as managed rotation does by the id of the version it archived.
 /// </summary>
 public interface ISecretRepository
 {
@@ -40,8 +42,13 @@ public interface ISecretRepository
 
     Task DeleteAsync(Secret secret, CancellationToken ct);
 
-    /// <summary>Persists a rotation: inserts the archived version and updates the secret in one transaction.</summary>
-    Task RotateAsync(Secret secret, SecretVersion archivedVersion, CancellationToken ct);
+    /// <summary>
+    /// Persists a new value: inserts the archived version and updates the secret in one transaction, with
+    /// one audit row recording the change as <paramref name="recordedAs"/>. Throws
+    /// <c>AuditWriteFailedException</c> when the write reports failure, which can, rarely, follow a
+    /// commit whose reply was lost.
+    /// </summary>
+    Task RotateAsync(Secret secret, SecretVersion archivedVersion, AuditAction recordedAs, CancellationToken ct);
 
     /// <summary>Shreds the secret and purges its archived versions (which hold key material) in one transaction.</summary>
     Task ShredAsync(Secret secret, CancellationToken ct);

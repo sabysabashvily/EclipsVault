@@ -19,8 +19,9 @@ public interface IManagedSecretBackend
     DynamicSecretBackend Backend { get; }
 
     /// <summary>
-    /// Sets <paramref name="principal"/>'s password to <paramref name="newPassword"/>. Throws if the
-    /// backend refuses — the caller must then assume the credential is unchanged.
+    /// Sets <paramref name="principal"/>'s password to <paramref name="newPassword"/>. Throws
+    /// <c>UpstreamRotationRefusedException</c> only when the password certainly did not change; after
+    /// any other failure the caller must assume it may have.
     /// </summary>
     Task RotatePrincipalAsync(string principal, string newPassword, CancellationToken ct);
 }

@@ -1,4 +1,7 @@
 using EclipsVault.Core.Domain.Entities;
+using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Core.Domain.Exceptions;
+using EclipsVault.Infrastructure.Persistence.Interceptors;
 using Microsoft.EntityFrameworkCore;
 
 namespace EclipsVault.Infrastructure.Persistence.Repositories;
@@ -6,8 +9,13 @@ namespace EclipsVault.Infrastructure.Persistence.Repositories;
 public sealed class SecretRepository : ISecretRepository
 {
     private readonly EclipsVaultDbContext _context;
+    private readonly AuditSaveChangesInterceptor _audit;
 
-    public SecretRepository(EclipsVaultDbContext context) => _context = context;
+    public SecretRepository(EclipsVaultDbContext context, AuditSaveChangesInterceptor audit)
+    {
+        _context = context;
+        _audit = audit;
+    }
 
     public Task<Secret?> FindAsync(Guid id, CancellationToken ct)
         => _context.Secrets.FirstOrDefaultAsync(s => s.Id == id, ct);
@@ -60,11 +68,19 @@ public sealed class SecretRepository : ISecretRepository
         await _context.SaveChangesAsync(ct);
     }
 
-    public async Task RotateAsync(Secret secret, SecretVersion archivedVersion, CancellationToken ct)
+    public async Task RotateAsync(Secret secret, SecretVersion archivedVersion, AuditAction recordedAs, CancellationToken ct)
     {
         _context.SecretVersions.Add(archivedVersion);
         _context.Secrets.Update(secret);
-        await _context.SaveChangesAsync(ct); // interceptor injects the SecretUpdated audit atomically
+        var recorded = new AuditEntry { Action = recordedAs, ResourceType = nameof(Secret), ResourceId = secret.Id, ResourceName = secret.Name };
+        try
+        {
+            await _audit.SaveOperationAsync(_context, [recorded], ct);
+        }
+        catch (Exception failure) when (failure is not OperationCanceledException)
+        {
+            throw new AuditWriteFailedException("The secret's new value and its audit row could not be stored.", failure);
+        }
     }
 
     public async Task ShredAsync(Secret secret, CancellationToken ct)

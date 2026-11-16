@@ -62,12 +62,12 @@ public abstract class ShareDatabases : IAsyncLifetime
     {
         var context = NewContext(new Actor(issuer.Id, issuer.Username), fault);
         var shares = new SecretGrantService(
-            new SecretGrantRepository(context), new SecretRepository(context), new UserRepository(context, TimeProvider.System),
+            new SecretGrantRepository(context), new SecretRepository(context, audit: null!), new UserRepository(context, TimeProvider.System),
             new Actor(issuer.Id, issuer.Username), TimeProvider.System);
         var notices = new NotificationService(new LoggingEmailSender(NullLogger<LoggingEmailSender>.Instance),
             new EmailLogRepository(context), new UserRepository(context, TimeProvider.System), new NotificationOptions(false), TimeProvider.System);
         var requests = new AccessRequestService(new AccessRequestRepository(context), new SecretGrantRepository(context),
-            new SecretRepository(context), new UserRepository(context, TimeProvider.System), new AccessRequestCommitter(context),
+            new SecretRepository(context, audit: null!), new UserRepository(context, TimeProvider.System), new AccessRequestCommitter(context),
             intrusion: null!, new Actor(issuer.Id, issuer.Username), notices, TimeProvider.System);
         return new ShareRequest(context, shares, requests);
     }

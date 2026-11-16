@@ -81,7 +81,7 @@ public class SecretGrantServiceTests
         public Task AddAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
         public Task UpdateAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
         public Task DeleteAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
-        public Task RotateAsync(Secret secret, SecretVersion archivedVersion, CancellationToken ct) => throw new NotSupportedException();
+        public Task RotateAsync(Secret secret, SecretVersion archivedVersion, AuditAction recordedAs, CancellationToken ct) => throw new NotSupportedException();
         public Task ShredAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<SecretVersion>> ListVersionsAsync(Guid secretId, CancellationToken ct) => throw new NotSupportedException();
         public Task<SecretVersion?> FindVersionAsync(Guid secretId, Guid versionId, CancellationToken ct) => throw new NotSupportedException();
