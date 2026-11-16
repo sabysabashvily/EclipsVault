@@ -364,8 +364,9 @@ button {
   position: relative;
   padding-top: 1.4rem;
 }
-.mobile-navigation .brand {
-  padding-right: 3rem;
+/* The drawer's close button sits in the top corner, so the workspace card stops short of it. */
+.mobile-navigation .workspace-card {
+  margin-right: 3.25rem;
 }
 body:has(.mobile-navigation[open]) {
   overflow: hidden;
