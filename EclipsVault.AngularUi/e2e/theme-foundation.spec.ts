@@ -155,15 +155,16 @@ for (const width of [300, 768, 1199]) {
     const shell = new ResponsiveShell(page);
     await expect(shell.editUser).toBeVisible();
     const edit = await shell.editUser.boundingBox();
-    expect(edit?.height).toBeGreaterThanOrEqual(44);
-    expect(edit?.width).toBeGreaterThanOrEqual(44);
+    // Boxes come back in floating point: a 2.75rem control can measure 43.99997px.
+    expect(Math.round(edit?.height ?? 0)).toBeGreaterThanOrEqual(44);
+    expect(Math.round(edit?.width ?? 0)).toBeGreaterThanOrEqual(44);
     const primary = await shell.newUser.boundingBox();
-    expect(primary?.height).toBeGreaterThanOrEqual(44);
-    expect(primary?.width).toBeGreaterThanOrEqual(44);
+    expect(Math.round(primary?.height ?? 0)).toBeGreaterThanOrEqual(44);
+    expect(Math.round(primary?.width ?? 0)).toBeGreaterThanOrEqual(44);
     await shell.open.click();
     const link = await shell.usersLink.boundingBox();
-    expect(link?.height).toBeGreaterThanOrEqual(44);
-    expect(link?.width).toBeGreaterThanOrEqual(44);
+    expect(Math.round(link?.height ?? 0)).toBeGreaterThanOrEqual(44);
+    expect(Math.round(link?.width ?? 0)).toBeGreaterThanOrEqual(44);
     await page.keyboard.press('Escape');
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
   });

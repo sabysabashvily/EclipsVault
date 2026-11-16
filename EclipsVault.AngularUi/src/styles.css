@@ -1518,6 +1518,9 @@ app-command-palette {
 
 .table-scroll {
   container: table-scroll / inline-size;
+  /* Holds absolutely positioned children, such as visually hidden text, inside the scroller;
+     otherwise they escape it and widen the page. */
+  position: relative;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }

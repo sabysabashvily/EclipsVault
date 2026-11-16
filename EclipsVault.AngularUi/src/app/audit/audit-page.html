@@ -12,7 +12,7 @@
     *appPagePrimary
     type="button"
     class="button"
-    [disabled]="closed"
+    [disabled]="writes.busy() || writes.awaitingProof() || writes.blocked()"
     (click)="verify()"
     aria-label="Verify integrity"
   >
