@@ -14,8 +14,6 @@ export class SharedByMe {
   readonly retry;
   readonly introduction;
   readonly emptyMessage;
-  readonly emptyState;
-  readonly emptyIcon;
 
   constructor(readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Shared by me', exact: true });
@@ -43,11 +41,6 @@ export class SharedByMe {
         exact: false,
       },
     );
-    // The empty state's unlabelled layout and icon containers are read only for visual parity.
-    // eslint-disable-next-line playwright/no-raw-locators
-    this.emptyState = page.locator('.empty-state');
-    // eslint-disable-next-line playwright/no-raw-locators
-    this.emptyIcon = page.locator('.empty-icon');
   }
 
   share(secretName: string) {

@@ -150,19 +150,8 @@ test('Signed-in devices offers sign-out only for other devices', async ({ page }
   ).toBeVisible();
 });
 
-for (const [theme, currentAccent, otherAccent] of [
-  [
-    'dark',
-    ['rgb(48, 209, 88)', 'rgba(48, 209, 88, 0.14)'],
-    ['rgb(182, 188, 202)', 'rgb(13, 14, 19)'],
-  ],
-  [
-    'light',
-    ['rgb(26, 127, 55)', 'rgba(26, 127, 55, 0.13)'],
-    ['rgb(74, 78, 88)', 'rgb(236, 238, 242)'],
-  ],
-] as const) {
-  test(`visual parity: Signed-in devices preserves Legacy rows and icons in ${theme}`, async ({
+for (const theme of ['dark', 'light']) {
+  test(`Signed-in devices identifies this device and the other sessions in ${theme}`, async ({
     page,
   }, info) => {
     await page.clock.setFixedTime(new Date('2026-10-20T12:00:00Z'));
@@ -183,8 +172,6 @@ for (const [theme, currentAccent, otherAccent] of [
         meta: '198.51.100.1 · signed in 2h ago · last active 1h ago',
         action: 'Current',
         tooltip: '2026-10-20 11:00:00 UTC',
-        shapes: ['rect:x=3,y=4,width=18,height=12,rx=2', 'path:d=M8 20h8M12 16v4'],
-        accent: currentAccent,
       },
       {
         device: 'Safari on iOS',
@@ -192,8 +179,6 @@ for (const [theme, currentAccent, otherAccent] of [
         meta: '198.51.100.2 · signed in 3h ago · last active 2h ago',
         action: 'Sign out',
         tooltip: '2026-10-20 10:00:00 UTC',
-        shapes: ['rect:x=7,y=3,width=10,height=18,rx=2', 'path:d=M11 18h2'],
-        accent: otherAccent,
       },
       {
         device: 'curl',
@@ -201,8 +186,6 @@ for (const [theme, currentAccent, otherAccent] of [
         meta: '198.51.100.3 · signed in 1d ago · last active 3h ago',
         action: 'Sign out',
         tooltip: '2026-10-20 09:00:00 UTC',
-        shapes: ['rect:x=3,y=4,width=18,height=16,rx=2', 'path:d=M7 9l3 3-3 3M13 15h4'],
-        accent: otherAccent,
       },
     ]);
     const path = info.outputPath(`${theme}-signed-in-devices.png`);

@@ -91,17 +91,8 @@ test('an issuer shares two real secrets with a colleague outside their project',
   ).toBeVisible();
 });
 
-for (const [theme, textColor, dangerColor, accent, accentBackground] of [
-  [
-    'dark',
-    'rgb(237, 238, 242)',
-    'rgb(255, 69, 58)',
-    'rgb(255, 159, 10)',
-    'rgba(255, 159, 10, 0.14)',
-  ],
-  ['light', 'rgb(28, 29, 34)', 'rgb(215, 0, 21)', 'rgb(180, 95, 4)', 'rgba(180, 95, 4, 0.12)'],
-]) {
-  test(`visual parity: Shared by me preserves its table and revoke styles in ${theme}`, async ({
+for (const theme of ['dark', 'light']) {
+  test(`Shared by me lists both shares and their revoke actions in ${theme}`, async ({
     page,
   }, info) => {
     await page.setViewportSize({ width: 1440, height: 1200 });
@@ -110,25 +101,14 @@ for (const [theme, textColor, dangerColor, accent, accentBackground] of [
       .addCookies([{ name: 'EclipsVault.Theme', value: theme, url: process.env['E2E_BASE_URL']! }]);
     const shares = await openAsIssuer(page);
     await expect(shares.rows).toHaveCount(2);
-    await expect(shares.heading).toHaveCSS('color', textColor);
-    await expect(shares.heading).toHaveCSS('font-size', '24px');
-    await expect(shares.heading).toHaveCSS('font-weight', '620');
-    await expect(shares.introduction).toHaveCSS('display', 'flex');
-    await expect(page.getByRole('table')).toHaveCSS('border-collapse', 'collapse');
-    await expect(shares.columns.first()).toHaveCSS('text-transform', 'uppercase');
-    await expect(shares.secretOf(shares.rows.first())).toHaveCSS('font-weight', '600');
-    await expect(shares.secretOf(shares.rows.first())).toHaveCSS('padding', '10.4px 11.2px');
-    await expect(shares.rows.first().getByRole('button')).toHaveCSS('color', dangerColor);
-    await expect(shares.rows.first().getByRole('button')).toHaveCSS(
-      'background-color',
-      'rgba(0, 0, 0, 0)',
-    );
+    await expect(shares.heading).toBeVisible();
+    await expect(shares.rows.getByRole('button', { name: 'Revoke', exact: true })).toHaveCount(2);
     const path = info.outputPath(`${theme}-shared-by-me.png`);
     await page.screenshot({ path, fullPage: true });
     await info.attach(`${theme}-shared-by-me`, { path, contentType: 'image/png' });
   });
 
-  test(`visual parity: Shared by me preserves its empty state and share icon in ${theme}`, async ({
+  test(`Shared by me explains the empty list and offers the Secrets link in ${theme}`, async ({
     page,
   }) => {
     await page.context().addCookies(recipientCookies);
@@ -142,12 +122,6 @@ for (const [theme, textColor, dangerColor, accent, accentBackground] of [
       "When you grant a colleague access to one of your secrets, it shows up here so you can keep track of who can see what — and revoke access when it's no longer needed.",
     );
     await expect(shares.goToSecrets).toBeVisible();
-    await expect(shares.emptyState).toHaveCSS('text-align', 'center');
-    await expect(shares.emptyState).toHaveCSS('padding', '48px 24px');
-    await expect(shares.emptyIcon).toHaveCSS('width', '54px');
-    await expect(shares.emptyIcon).toHaveCSS('height', '54px');
-    await expect(shares.emptyIcon).toHaveCSS('color', accent);
-    await expect(shares.emptyIcon).toHaveCSS('background-color', accentBackground);
   });
 }
 

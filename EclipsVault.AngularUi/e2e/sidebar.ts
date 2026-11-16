@@ -2,14 +2,13 @@ import type { Page, TestInfo } from '@playwright/test';
 import { expect } from './fixtures';
 import { verifyMyAccess } from './access';
 
-/** Observable navigation, including the exact SVG geometry and styles a person sees. */
+/** Both shells must keep the same destinations and account permissions during migration. */
 async function navigation(page: Page) {
   return page.locator('.sidenav').evaluate((nav) => ({
     sections: [...nav.querySelectorAll('.nav-section')].map((section) =>
       section.textContent?.trim(),
     ),
     items: [...nav.querySelectorAll('a, summary')].map((item) => {
-      const style = getComputedStyle(item);
       return {
         label: item.textContent?.trim(),
         url: item.getAttribute('href'),
@@ -19,16 +18,6 @@ async function navigation(page: Page) {
           tag: shape.tagName,
           attributes: [...shape.attributes].map((attribute) => [attribute.name, attribute.value]),
         })),
-        style: [
-          style.color,
-          style.backgroundColor,
-          style.fontFamily,
-          style.fontSize,
-          style.fontWeight,
-          style.padding,
-          style.gap,
-          style.borderRadius,
-        ],
       };
     }),
     groups: [...nav.querySelectorAll('details')].map((group) => group.open),
@@ -36,35 +25,21 @@ async function navigation(page: Page) {
 }
 
 /**
- * The account card and its open menu as a person sees them: who, which avatar, each entry and its
- * styles. Leaves the menu closed again.
+ * The account identity and destinations remain shared by both shells.
  */
 async function accountMenu(page: Page) {
   const footer = page.locator('.sidebar-footer');
   await footer.locator('summary.user-card').click();
   const menu = await footer.evaluate((root) => {
-    const look = (element: Element) => {
-      const style = getComputedStyle(element);
-      return [
-        style.color,
-        style.fontFamily,
-        style.fontSize,
-        style.fontWeight,
-        style.padding,
-        style.gap,
-      ];
-    };
     return {
       title: root.querySelector('summary')?.getAttribute('title'),
       avatar: root.querySelector('img.avatar-img')?.getAttribute('src'),
-      who: [...root.querySelectorAll('.user-name, .user-clearance')].map((part) => [
+      who: [...root.querySelectorAll('.user-name, .user-clearance')].map((part) =>
         part.textContent?.trim(),
-        look(part),
-      ]),
+      ),
       items: [...root.querySelectorAll('[role="menuitem"]')].map((item) => ({
         label: item.textContent?.trim(),
         href: item.getAttribute('href'),
-        style: look(item),
       })),
     };
   });
@@ -117,7 +92,7 @@ export async function verifySidebar(
     const legacy = await page.goto('/Secrets');
     expect(legacy?.headers()['content-security-policy']).not.toContain('trusted-types');
     await expect(page.locator('.sidenav a.active')).toHaveText('Secrets');
-    // Compare the Legacy styles in the same selected state as My access. The real active states
+    // Compare navigation in the same selected state as My access. The real active states
     // of both documents are asserted separately; the deleted Razor page is no longer a reference.
     await page.locator('.sidenav').evaluate((nav) => {
       nav

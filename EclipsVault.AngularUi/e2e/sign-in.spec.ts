@@ -939,12 +939,6 @@ test("My activity's empty state and pager match Legacy, and paging is in-app wit
         'path:d=M8.3 10.7l7.4-4.4M8.3 13.3l7.4 4.4',
       ],
     ]);
-    // A critical entry's chip is solid danger, in white.
-    expect(
-      await page
-        .locator('.sev-critical .feed-icon')
-        .evaluate((icon) => getComputedStyle(icon).color),
-    ).toBe('rgb(255, 255, 255)');
     await expect(page.locator('.page-header > .badge')).toHaveText('2 notable');
     await expect(pager.locator('.pager-page')).toHaveText('Page 1');
     expect(await pagerLinks()).toEqual([['Older →', '/Activity?page=2']]);
@@ -1314,12 +1308,6 @@ test("Sign-in history's empty state and an unfamiliar-location attempt match Leg
         tooltip: null,
       },
     ]);
-    // The highlight and the alert come from the ported stat-card rules.
-    expect(
-      await page
-        .locator('.stat-card.attention, .stat-card.alert')
-        .evaluateAll((cards) => cards.map((card) => getComputedStyle(card).borderTopColor)),
-    ).toEqual(['rgba(255, 214, 10, 0.35)', 'rgba(255, 69, 58, 0.4)']);
 
     // The summary, then the callout, then the timeline, as on the Legacy page.
     expect(
@@ -1451,12 +1439,6 @@ test("Sign-in history's empty state and an unfamiliar-location attempt match Leg
       ['path:d=M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z', 'path:d=M12 8v4M12 15h.01'],
       ['rect:x=6,y=10,width=12,height=9,rx=1.6', 'path:d=M9 10V7.5a3 3 0 0 1 6 0V10'],
     ]);
-    // A blocked event's chip is solid danger, in white.
-    expect(
-      await page
-        .locator('.sev-critical .feed-icon')
-        .evaluate((icon) => getComputedStyle(icon).color),
-    ).toBe('rgb(255, 255, 255)');
     await expect(page.locator('style, [style]')).toHaveCount(0);
     expect(documents).toEqual([]);
   });

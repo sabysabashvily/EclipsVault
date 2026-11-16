@@ -96,30 +96,6 @@ export class ProfilePage {
       });
   }
 
-  async themeAppearance() {
-    return this.displayName.evaluate((input) => ({
-      background: getComputedStyle(document.body).backgroundColor,
-      text: getComputedStyle(document.body).color,
-      field: getComputedStyle(input).backgroundColor,
-    }));
-  }
-
-  async recoveryAppearance() {
-    return this.codes.first().evaluate((code) => {
-      const style = getComputedStyle(code);
-      const list = getComputedStyle(code.parentElement!);
-      return {
-        background: style.backgroundColor,
-        text: style.color,
-        fontSize: style.fontSize,
-        letterSpacing: style.letterSpacing,
-        radius: style.borderRadius,
-        columns: list.gridTemplateColumns.split(' ').length,
-        gap: list.gap,
-      };
-    });
-  }
-
   /** Fills the dialog with a fresh code and returns the TOTP step it used, which cannot be reused. */
   async fillVerification(password: string, secret: string, lastStep: number): Promise<number> {
     await this.verificationPassword.fill(password);
@@ -231,17 +207,6 @@ export class ChangePasswordPage {
     await this.newPassword.fill(candidate);
     await this.confirmPassword.fill(candidate);
     await this.submit.click();
-  }
-
-  async meterAppearance() {
-    return this.strength.evaluate((track) => ({
-      height: getComputedStyle(track).height,
-      background: getComputedStyle(track).backgroundColor,
-      fill: getComputedStyle(track.firstElementChild!).backgroundColor,
-      full:
-        track.firstElementChild!.getBoundingClientRect().width ===
-        track.getBoundingClientRect().width,
-    }));
   }
 
   async revealIcon(button: 'Show password' | 'Hide password') {

@@ -11,7 +11,6 @@ export class AccessRequests {
   readonly browseSecrets;
   readonly error;
   readonly retry;
-  readonly emptyIcon;
 
   constructor(readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Access requests', exact: true });
@@ -39,9 +38,6 @@ export class AccessRequests {
     // The status line keeps an empty alert region for announcements; only one with text counts.
     this.error = page.getByRole('main').getByRole('alert').filter({ hasText: /\S/ });
     this.retry = page.getByRole('button', { name: 'Try again', exact: true });
-    // The empty state's unlabelled icon container is read only for visual parity.
-    // eslint-disable-next-line playwright/no-raw-locators
-    this.emptyIcon = page.locator('.empty-icon').first();
   }
 
   async open(path = '/AccessRequests'): Promise<void> {

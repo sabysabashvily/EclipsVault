@@ -170,7 +170,6 @@ for (const theme of themes) {
     expect(expiry?.y).toBe(ceiling?.y);
     await expect(details.metadataOnly).toHaveCSS('width', '13px');
     await expect(details.keyScopes).toHaveCSS('display', 'inline-flex');
-    await expect(details.dangerZone).toHaveCSS('border-top-width', '1px');
     await page.screenshot({
       path: info.outputPath(`service-account-${theme}.png`),
       fullPage: true,

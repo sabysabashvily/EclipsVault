@@ -59,7 +59,8 @@
         message="Domain events send email automatically — approving or rejecting an access request, a password change, or provisioning a user. Each one is recorded here with its delivery outcome."
       />
     } @else {
-      <div class="table-scroll">
+      <div class="table-scroll" role="region" aria-label="Outbox">
+        <p class="table-scroll-hint">Scroll horizontally to see all columns.</p>
         <table class="data-table">
           <thead>
             <tr>
