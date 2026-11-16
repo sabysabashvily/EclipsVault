@@ -33,8 +33,10 @@ secrets or your servers. This guide is the production runbook; for feature detai
 
 The running app does not have rights to change the schema. Run the migrations for each release from
 your deploy pipeline, with a login that has DDL rights (which the app's own login does not). They
-run from a checkout of the release you deploy, with the .NET 10 SDK and the EF Core tool
-(`dotnet tool install --global dotnet-ef`).
+run from the repository root of a checkout of the release you deploy, with the .NET 10 SDK.
+Restore the EF Core tool pinned in `dotnet-tools.json` before applying the migrations:
+
+    dotnet tool restore
 
 PostgreSQL:
 

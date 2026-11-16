@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace EclipsVault.IntegrationTests;
@@ -95,7 +96,7 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
     [InlineData("https://outside.example/", "/Secrets")]
     public async Task Password_totp_and_alternate_methods_keep_the_target_across_errors(string returnUrl, string expected)
     {
-        var (username, password, secret, enrolled) = await EnrollAccountAsync();
+        var (username, password, secret, enrolled, step) = await EnrollAccountAsync();
         enrolled.Dispose();
         using var client = NewClient();
         var login = await client.GetStringAsync(WithReturnUrl("/Account/Login", returnUrl));
@@ -153,7 +154,7 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         totp = await client.GetStringAsync(totpPath);
         var signedIn = await PostFormAsync(client, "/Account/Totp", totp, new()
         {
-            ["Code"] = Totp.Code(secret, Totp.CurrentStep()),
+            ["Code"] = Totp.Code(secret, Totp.StepStillAccepted(ServerNow(), step)),
             ["ReturnUrl"] = HiddenReturnUrl(totp)
         });
         Assert.Equal(HttpStatusCode.Redirect, signedIn.StatusCode);
@@ -166,7 +167,7 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
     [InlineData("https://outside.example/", "/Secrets")]
     public async Task Recovery_code_completion_checks_the_target_and_creates_a_real_session(string returnUrl, string expected)
     {
-        var (username, password, secret, enrolled) = await EnrollAccountAsync();
+        var (username, password, secret, enrolled, _) = await EnrollAccountAsync();
         using (enrolled)
         {
             var operationId = await VerifyProfileChangeAsync(enrolled, password, secret, new { kind = "ReplaceRecoveryCodes" });
@@ -214,7 +215,7 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
     [Fact]
     public async Task A_second_factor_page_that_expired_mid_sign_in_does_not_become_a_redirect_loop()
     {
-        var (username, password, secret, enrolled) = await EnrollAccountAsync();
+        var (username, password, secret, enrolled, step) = await EnrollAccountAsync();
         enrolled.Dispose();
         using var client = NewClient();
         // Past the MFA-pending cookie's six minutes, the second-factor page challenges like any
@@ -233,7 +234,7 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         var totp = await client.GetStringAsync(afterPassword.Headers.Location);
         var response = await PostFormAsync(client, "/Account/Totp", totp, new()
         {
-            ["Code"] = Totp.Code(secret, Totp.CurrentStep()),
+            ["Code"] = Totp.Code(secret, Totp.StepStillAccepted(ServerNow(), step)),
             ["ReturnUrl"] = HiddenReturnUrl(totp)
         });
         response = await FollowRedirectsAsync(client, response);
@@ -280,7 +281,7 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
     [InlineData("/Secrets?q=%C3%A9", "/Secrets?q=%C3%A9")]
     public async Task A_completed_sign_in_returns_neither_to_a_second_factor_page_nor_to_a_non_ascii_target(string target, string expected)
     {
-        var (_, _, _, client) = await EnrollAccountAsync();
+        var (_, _, _, client, _) = await EnrollAccountAsync();
         using (client)
         {
             // Every Account page but Denied is refused as written, before any decoding, as is any path
@@ -317,7 +318,7 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
     [Fact]
     public async Task A_non_ascii_target_falls_back_instead_of_failing_after_the_code_is_spent()
     {
-        var (username, password, secret, enrolled) = await EnrollAccountAsync();
+        var (username, password, secret, enrolled, step) = await EnrollAccountAsync();
         enrolled.Dispose();
         using var client = NewClient();
         var afterPassword = await PostFormAsync(client, "/Account/Login", await client.GetStringAsync("/Account/Login"), new()
@@ -330,7 +331,7 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         Assert.Equal("/Secrets?q=é", HiddenReturnUrl(totp));
         var signedIn = await PostFormAsync(client, "/Account/Totp", totp, new()
         {
-            ["Code"] = Totp.Code(secret, Totp.CurrentStep()),
+            ["Code"] = Totp.Code(secret, Totp.StepStillAccepted(ServerNow(), step)),
             ["ReturnUrl"] = HiddenReturnUrl(totp)
         });
         Assert.Equal(HttpStatusCode.Redirect, signedIn.StatusCode);
@@ -360,7 +361,7 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
     [InlineData("/Secrets?q=é", "/Secrets")]
     public async Task Passkey_sign_in_uses_the_server_checked_target_only_after_a_valid_assertion(string? target, string expected)
     {
-        var (username, password, secret, enrolled) = await EnrollAccountAsync();
+        var (username, password, secret, enrolled, _) = await EnrollAccountAsync();
         using var authenticator = new PasskeyAuthenticator();
         using (enrolled)
         {
@@ -395,7 +396,7 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
     [Fact]
     public async Task A_failed_passkey_attempt_returns_no_target_and_a_retry_replaces_its_target()
     {
-        var (username, password, secret, enrolled) = await EnrollAccountAsync();
+        var (username, password, secret, enrolled, _) = await EnrollAccountAsync();
         using var authenticator = new PasskeyAuthenticator();
         using (enrolled)
         {
@@ -461,7 +462,7 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
-    private async Task<(string Username, string Password, string Secret, HttpClient Client)> EnrollAccountAsync()
+    private async Task<(string Username, string Password, string Secret, HttpClient Client, long Step)> EnrollAccountAsync()
     {
         var (username, password) = await CreateAccountAsync();
         var client = NewClient();
@@ -474,15 +475,18 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         var enrollment = await client.GetStringAsync("/Account/EnrollTotp");
         var secret = EnrollmentSecret().Match(enrollment).Groups[1].Value;
         Assert.NotEmpty(secret);
+        // The verifier's own clock, read after the page load. The step it is on stays accepted if
+        // the check happens in the next step; the previous step does not.
+        var step = Totp.StepStillAccepted(ServerNow());
         var signedIn = await PostFormAsync(client, "/Account/EnrollTotp", enrollment, new()
         {
-            // Use the previous accepted step so a subsequent ordinary sign-in can use the current
-            // one without replaying enrollment's code or sleeping through a whole authenticator step.
-            ["Code"] = Totp.Code(secret, Totp.CurrentStep() - 1)
+            ["Code"] = Totp.Code(secret, step)
         });
         Assert.Equal(HttpStatusCode.Redirect, signedIn.StatusCode);
-        return (username, password, secret, client);
+        return (username, password, secret, client, step);
     }
+
+    private DateTimeOffset ServerNow() => vault.Services.GetRequiredService<TimeProvider>().GetUtcNow();
 
     private static string LinkTo(string page, string action)
     {
