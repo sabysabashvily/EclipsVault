@@ -314,3 +314,41 @@ The PR body is `logs/ticket-165/pr-body.md`. Details are in `logs/ticket-165/fin
 `review-ledger.md`. To restart, confirm the final head and a clean tracked tree. Next: push, CI on
 the final head and the PR. Those are the coordinator's. 7b is stacked on this branch and has to take
 its final head.
+
+## Delivery: 7c ticket 1 (#171)
+
+#171 started from `fb39fc2` (7a merged, #186). Issuing and revoking dynamic credentials now follow
+ADR-0031 through the still-Legacy Dynamic secrets page. F5 (issue half), F7, F8 and F11 were first shown
+failing against `fb39fc2` (8 red tests, `logs/ticket-171/red-findings-fb39fc2.txt`).
+
+- `ba65fbb` Require fresh proof for credentials and report mint failures truthfully.
+- `054eefe` Issue and revoke a real login on the e2e run's own SQL Server.
+
+What changed:
+
+- A Secret or Top Secret role issues only within the step-up window. A refused role writes
+  `SecretAccessDenied` on it; a step-up refusal writes nothing. Both come before the licence gate.
+- A failed or uncertain mint runs the role's revocation for the known login without the request's
+  cancellation: "Nothing was issued" when that works, the `mint_incomplete` text and a critical log line
+  naming role and login when it does not. A lease that cannot be recorded is undone the same way and
+  still fails closed. A target never reached refuses without cleanup.
+- Leases last at most 1440 minutes; revoke is truthful; `RevocationError` holds fixed notes; the
+  evaluation read fails open. `docs/INCIDENT_RESPONSE.md` has the operator check.
+- Test seams: `SerilogSetup` reads log sinks from services (production registers none), and
+  `VaultFixture.DynamicSecretsTarget` gives a vault a SQL Server target database. `DynamicSecretsFixture`
+  is a new collection that runs alone; `AuditFailureFixture` now has a target too.
+
+Security-reviewer (Opus 5.5 high) found no Critical, High or Medium. Two Low findings were fixed and
+closed on re-check; the third (a non-idempotent revocation relabelled on retry) is spec-accepted. It noted
+one unproven residual risk for the owner: a connection dropped while the server is still running the
+mint batch could let the cleanup run before `CREATE LOGIN`, leaving an unrecorded login with no critical log.
+
+Checks on `054eefe`: locked restore, Release build with 0 warnings, 981 unit tests; both full integration
+suites, 1314 each (SQL Server, then PostgreSQL), plus the 13 dynamic-secret tests on SQL Server after the
+review fixes; the dynamic secrets browser spec with its dependencies, 29 cases; format, both
+pending-model checks, hook tests, and the Angular lint, format, tests, build checks, API types, build
+and audit.
+
+To restart: confirm HEAD and a clean tracked tree; evidence and the final report are in
+`logs/ticket-171/`. Next is ticket 2 (#172), which serves the page from Angular and adds the Secret role's
+step-up browser flow; the e2e target and both roles are ready for it.
