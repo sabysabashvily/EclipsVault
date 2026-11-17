@@ -145,3 +145,15 @@ guard (README has the manual steps), and whether `IpRangeUnblocked` should list 
 Restart: Angular pages come next (ticket 2, #175) on these calls. The anonymous sign-in pages' request
 token still comes from the Legacy forms in the tests (`AuthApi.AnonymousTokenAsync`); ticket 2 moves it to
 the Angular documents. Ticket 3 narrows the `/Account/Recover` exemption when it deletes the Legacy POST.
+
+CI run 44137964907 on `df3fc54`: e2e passed; integration failed the same four tests on both databases
+(1340/1344). Three still began a named passkey sign-in, and the trusted-SSO mailbox test still expected
+`/Dashboard`. Frontend and security-scan failed on an unpatched picomatch advisory, which is not this ticket.
+
+`4372346` keeps those proofs on the usernameless flow. A password change or a sign-out everywhere that
+lands after the assertion has identified the account still refuses the proof and leaves the counter
+unspent. A username on begin lists no credential. SSO lands on `/Secrets`, and that session still cannot
+prepare an email change. On that commit, `scripts/check.sh` passed (957 unit tests) and
+`scripts/check.sh integration` on PostgreSQL passed 343, with `CredentialGenerationTests`,
+`EmailIdentitySignInTests` and `MailboxTests` added to the filter. `dotnet format --verify-no-changes`
+was clean. No production code changed, and no model change. This paragraph is the last commit.
