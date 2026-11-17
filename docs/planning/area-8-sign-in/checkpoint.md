@@ -122,3 +122,26 @@ tests), ticket 3 (failure UI) and ADR-0032. The guard precedes removal, is share
 is shared, and cannot expire into an unrecorded grant. A later protected request proves refusal.
 This supersedes the earlier no-compensation choice for block lifting only. The records remain
 uncommitted and unpublished, awaiting the fresh GPT re-check. No protected code was written here.
+
+## Delivery: 8a ticket 1 (#174)
+
+Branch `area-8a-sign-in` from `fb39fc2` (main after 7a). Commits: `07df782` records the grill (this
+folder, ADR-0032, ADR-0033, ADR-0017's Area 8 paragraph after Area 7's, `CONTEXT.md`); `0504d65` serves
+sign-in through `/api/ui/auth` (`AuthController`, `PendingSignInController`), fixes F2, F4, F5 and F6,
+hardens break-glass block lifting with a source guard and exact restoration, and removes the five
+leftover Area 3 methods; this section is the last commit.
+
+Checks on `0504d65`: `scripts/check.sh` (restore, Release build with 0 warnings, 957 unit tests);
+`scripts/check.sh integration "<filter>"` on PostgreSQL, 304 passed (filter in the ticket's evidence,
+`logs/ticket-174/integration-filter.txt`); `dotnet format --verify-no-changes`; both pending-model
+checks (no model change, no migration); hook tests; Angular lint, format, 578 Vitest tests, build checks,
+`check:api-types`, build, `npm audit --audit-level=high`. F2, F5, F6 failed first in unit tests and F4 in
+integration tests on the starting commit. Both full integration suites and the browser suite run in CI.
+
+Reviews: `security-reviewer` (Opus 5.5 high) on the whole diff and six re-checks; every finding fixed or
+answered, the last re-check clean. Left for the owner: a Networks action to clear a stuck break-glass
+guard (README has the manual steps), and whether `IpRangeUnblocked` should list the ranges lifted.
+
+Restart: Angular pages come next (ticket 2, #175) on these calls. The anonymous sign-in pages' request
+token still comes from the Legacy forms in the tests (`AuthApi.AnonymousTokenAsync`); ticket 2 moves it to
+the Angular documents. Ticket 3 narrows the `/Account/Recover` exemption when it deletes the Legacy POST.
