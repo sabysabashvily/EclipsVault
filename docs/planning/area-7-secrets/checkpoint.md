@@ -351,3 +351,45 @@ The PR body is `logs/ticket-165/pr-body.md`. Details are in `logs/ticket-165/fin
 `review-ledger.md`. To restart, confirm the final head and a clean tracked tree. Next: push, CI on
 the final head and the PR. Those are the coordinator's. 7b is stacked on this branch and has to take
 its final head.
+
+## Delivery: 7b ticket 2 (#167)
+
+Branch `area-7b-secret-details`, from `5ff08c7` (final 7a head `325bab8` merged into 7b by the
+coordinator). Claude Opus 5.5 high implemented the ticket; one Opus usage-limit pause on 17 November
+preserved the work unchanged (`logs/ticket-167/rate-limit-checkpoint.md`).
+
+Commit: `af432b8` Refuse recipients' changes and stale writes; step up sensitive shares.
+
+What changed: rotate, managed rotation, restore and delete need the change right (`SecretChangeRight`:
+administrator, or a member of the secret's project), as sharing already did; a share recipient is refused
+with one fail-closed `SecretAccessDenied` row ("A share grants read access only."). `SecretRepository`
+rotates and shreds only while the stored wrapped data key (and, for a shred, the past expiry) is still what
+was read, checked under the audit chain in the write's own transaction, and numbers the archived version
+inside that write; the loser gets `SecretChangedException`, and managed rotation puts the password back.
+Every write to a managed secret's value takes `IManagedPrincipalLock` (the session locker, keyed by backend
+and principal) without waiting, re-reads the secret under it and holds it through commit or put-back;
+another writer gets `ChangeInProgressException` before the backend is touched. Restoring a managed secret's
+version is refused with `RestoreManagedException` and changes nothing. The lifecycle worker shreds through
+`ISecretService.ShredIfExpiredAsync` and leaves a locked or changed secret for the next sweep. Legacy Grant
+and UI API approve need fresh proof at or above `StepUp:MinimumSensitivity` (`403 step_up_required` on the
+UI API); Access requests opens StepUpDialog and sends the approval once more. No model change.
+
+The Legacy actions answer these refusals as Details flashes with the spec's sentences; the `409` and
+`403 not_permitted` codes arrive with #168's `/api/ui/secrets/{id}` endpoints.
+
+For the coordinator's merges: `ISecretRepository.RotateAsync` takes the read wrapped key, `ShredAsync`
+returns whether it shredded, `ReloadAsync` is new and `CountVersionsAsync` is gone; `SecretService` takes
+`IManagedPrincipalLock`; `SecretRepository` takes `AuditChain`.
+
+Verification: the red proof stays tied to `32740c7` (25 PostgreSQL tests, 12 failing for F2, F4, F5's
+sharing half, the second managed rotation and the managed restore; `logs/ticket-167/`). On the final
+source `scripts/check.sh` passed (978 unit tests), `dotnet format` clean, both pending-model checks and the
+hook tests passed, every Angular check passed (581 Vitest) except `npm audit`, which fails on every branch
+for picomatch GHSA-fc5q-39xc-vjpf (no patched version). The ticket's PostgreSQL filter passed 115 before
+three wording-only edits. Full suites, SQL Server and the browser suite run in CI on `af432b8`.
+
+Reviews: security (Opus 5.5 high) found no critical, high or medium issue and four lows: R1-3 and R1-4
+fixed, R1-1 (a rotation can clear the expiry-notice marker, predates this ticket) left for the owner, R1-2
+(Legacy shows change buttons to a recipient) left to #168; a fresh re-check accepted every resolution. GPT
+reviews the whole part in #170. Details: `logs/ticket-167/final-report.md` and `review-ledger.md`
+(ignored). To restart, read this section; ticket 3 (#168) starts after the coordinator accepts this one.
