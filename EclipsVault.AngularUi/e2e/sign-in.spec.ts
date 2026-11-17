@@ -2,6 +2,7 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { test, expect } from './fixtures';
+import { clearSignInBudget } from './profile-state';
 import {
   type Activity,
   type ExpectedRow,
@@ -34,6 +35,7 @@ import {
 import { currentTotpStep, freshTotp } from './totp';
 import { ProfilePage } from './profile';
 import { SignedInDevices } from './sessions';
+import { SecretsList } from './secrets-list';
 
 // The tests share one vault: the first enrolls the administrator's authenticator, the next signs in with it.
 test.describe.configure({ mode: 'serial' });
@@ -61,16 +63,7 @@ async function signIn(page: Page): Promise<void> {
   lastSignInStep = currentTotpStep();
   await page.getByRole('button', { name: 'Verify and sign in' }).click();
   await expect(page).toHaveURL(/\/Secrets$/);
-}
-
-/**
- * Waits for a new production throttle window. Every credential POST in this suite comes from one
- * address, and the vault allows 11 per clock-aligned 120-second window. A scenario that needs
- * several starts its own window instead of depending on how the earlier tests happened to time.
- */
-async function freshThrottleWindow(page: Page): Promise<void> {
-  const windowMilliseconds = 120_000;
-  await page.waitForTimeout(windowMilliseconds - (Date.now() % windowMilliseconds) + 1_000);
+  await expect(new SecretsList(page).heading).toBeVisible();
 }
 
 /** Spend empty credential requests until the limiter answers or twelve ordinary replies exhaust its budget. */
@@ -114,6 +107,7 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
   const enrollmentStep = currentTotpStep();
   await page.getByRole('button', { name: 'Confirm enrollment' }).click();
   await expect(page).toHaveURL(/\/Secrets$/);
+  await expect(new SecretsList(page).heading).toBeVisible();
 
   await test.step('sign out through the Angular account menu, which ends the session on the server', async () => {
     const enrolled = (await context.cookies()).find(
@@ -160,6 +154,7 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
   lastSignInStep = currentTotpStep();
   await page.getByRole('button', { name: 'Verify and sign in' }).click();
   await expect(page).toHaveURL(/\/Secrets$/);
+  await expect(new SecretsList(page).heading).toBeVisible();
 
   const signInRequests: string[] = [];
   page.on('request', (request) => {
@@ -172,9 +167,11 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
   expect(session?.httpOnly).toBe(true);
 
   // The access component is a dynamic import, not part of main.js. Observe its actual chunk load.
+  // Cached shared chunks have no response body and cannot prove a new lazy load.
   const lazyAccess = page.waitForResponse(
     async (response) =>
       /\/ui\/chunk-[\w-]+\.js$/.test(response.url()) &&
+      response.status() === 200 &&
       (await response.text()).includes('What you can open right now'),
   );
   const angularDocument = await page.goto('/Access');
@@ -242,12 +239,12 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
   const legacyDocument = page.waitForResponse((response) =>
     response.request().isNavigationRequest(),
   );
-  await page.getByRole('link', { name: 'Secrets', exact: true }).click();
+  await page.getByRole('link', { name: 'Dynamic secrets', exact: true }).click();
   expect((await legacyDocument).headers()['content-security-policy']).not.toContain(
     'trusted-types',
   );
-  await expect(page).toHaveURL(/\/Secrets$/);
-  await expect(page.getByRole('heading', { name: 'Secrets', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/DynamicSecrets$/);
+  await expect(page.getByRole('heading', { name: 'Dynamic secrets', exact: true })).toBeVisible();
   await expect(page.locator('.sidebar')).toContainText('Vault Administrator');
   await page.getByText('Access', { exact: true }).click();
   await page.getByRole('link', { name: 'My access', exact: true }).click();
@@ -378,7 +375,7 @@ test('both UIs share the theme, and the Angular UI applies it before it starts',
   page,
 }) => {
   await page.context().addCookies(administratorCookies);
-  await page.goto('/Secrets');
+  await page.goto('/DynamicSecrets');
   await page.context().addCookies([
     {
       name: 'EclipsVault.Theme',
@@ -419,7 +416,7 @@ test('both UIs share the theme, and the Angular UI applies it before it starts',
     expect(
       (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Theme')?.value,
     ).toBe('dark');
-    await page.goto('/Secrets');
+    await page.goto('/DynamicSecrets');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   });
 });
@@ -434,7 +431,7 @@ test("the ⌘K palette offers exactly the sidebar's pages, as the Legacy palette
   await standard.context().addCookies(standardCookies);
 
   await test.step(`administrator: Legacy and Angular palettes list the same pages as the sidebar`, async () => {
-    await page.goto('/Secrets');
+    await page.goto('/DynamicSecrets');
     // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
     const legacyChord = await page.locator('.command-trigger kbd').textContent();
     await openPalette(page);
@@ -455,7 +452,7 @@ test("the ⌘K palette offers exactly the sidebar's pages, as the Legacy palette
     await expect(page.locator('style, [style]')).toHaveCount(0);
   });
   await test.step(`standard: Legacy and Angular palettes list the same pages as the sidebar`, async () => {
-    await standard.goto('/Secrets');
+    await standard.goto('/DynamicSecrets');
     // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
     const legacyChord = await standard.locator('.command-trigger kbd').textContent();
     await openPalette(standard);
@@ -528,41 +525,47 @@ test('palette search lists only secrets the account could already list, never a 
     await expect(standard.locator('.palette-empty')).toHaveText('Nothing matches that.');
   });
 
-  await test.step('a one-character query asks the server nothing, and the server would answer nothing', async () => {
-    const searches: string[] = [];
-    standard.on('request', (request) => {
-      if (new URL(request.url()).pathname === '/Secrets/Search') searches.push(request.url());
-    });
+  // That the palette never sends such a query is pinned by its unit test, on a controlled clock.
+  await test.step('a one-character query lists no secrets, and the server would answer nothing', async () => {
     await standard.locator('.palette-input').fill('P');
-    // Longer than the debounce, so a search that was going to be sent would have been.
-    await standard.waitForTimeout(600);
-    expect(searches).toEqual([]);
     expect((await paletteEntries(standard)).filter(([kind]) => kind === 'Secret')).toEqual([]);
     await test.step('an uppercase one-character query returns no secrets', async () => {
-      const direct = await standard.request.get(`/Secrets/Search?q=${encodeURIComponent('P')}`, {
-        headers: { Accept: 'application/json' },
-      });
+      const direct = await standard.request.get(
+        `/api/ui/secrets/search?q=${encodeURIComponent('P')}`,
+        {
+          headers: { Accept: 'application/json' },
+        },
+      );
       expect(direct.status()).toBe(200);
       expect(await direct.json()).toEqual([]);
     });
     await test.step('a lowercase one-character query returns no secrets', async () => {
-      const direct = await standard.request.get(`/Secrets/Search?q=${encodeURIComponent('p')}`, {
-        headers: { Accept: 'application/json' },
-      });
+      const direct = await standard.request.get(
+        `/api/ui/secrets/search?q=${encodeURIComponent('p')}`,
+        {
+          headers: { Accept: 'application/json' },
+        },
+      );
       expect(direct.status()).toBe(200);
       expect(await direct.json()).toEqual([]);
     });
     await test.step('a punctuation-only query returns no secrets', async () => {
-      const direct = await standard.request.get(`/Secrets/Search?q=${encodeURIComponent('_')}`, {
-        headers: { Accept: 'application/json' },
-      });
+      const direct = await standard.request.get(
+        `/api/ui/secrets/search?q=${encodeURIComponent('_')}`,
+        {
+          headers: { Accept: 'application/json' },
+        },
+      );
       expect(direct.status()).toBe(200);
       expect(await direct.json()).toEqual([]);
     });
     await test.step('a padded one-character query returns no secrets', async () => {
-      const direct = await standard.request.get(`/Secrets/Search?q=${encodeURIComponent(' P ')}`, {
-        headers: { Accept: 'application/json' },
-      });
+      const direct = await standard.request.get(
+        `/api/ui/secrets/search?q=${encodeURIComponent(' P ')}`,
+        {
+          headers: { Accept: 'application/json' },
+        },
+      );
       expect(direct.status()).toBe(200);
       expect(await direct.json()).toEqual([]);
     });
@@ -683,28 +686,31 @@ test('the palette is driven from the keyboard, traps focus, and hands it back on
   });
 });
 
-test('an ended session makes palette search report a failure, without a console error', async ({
+test('an ended session sends palette search to sign-in with its return URL', async ({
   page,
+  browserHealth,
 }) => {
   await page.context().addCookies(administratorCookies);
   await page.goto('/Access');
   await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
   // Only this browser forgets the session; the administrator's session itself stays valid for later tests.
   await page.context().clearCookies({ name: 'EclipsVault.Session' });
+  browserHealth.expectConsoleError({ text: /status of 401/, url: /\/api\/ui\/secrets\/search\?/ });
+
+  const refusals: { status: number; body: unknown }[] = [];
+  // Navigation discards browser response bodies, so capture the real reply before delivering it.
+  await page.route(/\/api\/ui\/secrets\/search\?/, async (route) => {
+    const response = await route.fetch();
+    refusals.push({ status: response.status(), body: await response.json() });
+    await route.fulfill({ response });
+  });
 
   await openPalette(page);
-  const redirected = page.waitForResponse(
-    (response) => new URL(response.url()).pathname === '/Secrets/Search',
-  );
-  await page.locator('.palette-input').fill('Palette_Probe');
-  // /Secrets/Search is a Legacy UI path: no session is answered by the sign-in redirect, not a 401 problem.
-  const answer = await redirected;
-  expect(answer.status()).toBe(302);
-  expect(answer.headers()['location']).toMatch(/\/Account\/Login\?ReturnUrl=/);
-  await expect(page.getByRole('alert')).toHaveText(/Secret search failed/);
-  await expect(page.locator('.palette-empty')).toHaveText('Nothing matches that.');
-  // eslint-disable-next-line playwright/no-raw-locators -- The command-palette input is the keyboard focus-trap target.
-  await expect(page.locator('.palette-input')).toBeFocused();
+  await page.getByRole('combobox').fill('Palette_Probe');
+  await expect(page).toHaveURL(/\/Account\/Login\?ReturnUrl=%2FAccess$/);
+  expect(refusals).toEqual([
+    { status: 401, body: expect.objectContaining({ code: 'unauthenticated' }) },
+  ]);
 });
 
 test('an access failure shows a retry and the next request restores the live grid', async ({
@@ -734,55 +740,21 @@ test('an access failure shows a retry and the next request restores the live gri
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
-test("My activity's empty state and pager match Legacy, and paging is in-app with back and forward refetching", async ({
-  page,
-}) => {
-  await page.context().addCookies(administratorCookies);
-  await page.goto('/Access');
-  await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
-  const documents: string[] = [];
-  page.on('request', (request) => {
-    if (request.isNavigationRequest() && request.resourceType() === 'document')
-      documents.push(new URL(request.url()).pathname);
-  });
+const emptyActivity: Activity = {
+  page: 1,
+  pageSize: 25,
+  hasMore: false,
+  hasPrevious: false,
+  notableCount: 0,
+  items: [],
+};
+const longName = 'Payments_Production_Database_Primary_Connection_String_Rotated_Quarterly';
 
-  await test.step('an account with no activity sees the empty state', async () => {
-    const empty: Activity = {
-      page: 1,
-      pageSize: 25,
-      hasMore: false,
-      hasPrevious: false,
-      notableCount: 0,
-      items: [],
-    };
-    const requested = await fulfilActivity(page, { '': empty });
-    await page.getByRole('link', { name: 'My activity', exact: true }).click();
-    // The Legacy partial's own element, not a host element carrying its class.
-    await expect(page.locator('div.empty-state')).toHaveCount(1);
-    await expect(page.locator('.empty-state')).toHaveCount(1);
-    await expect(page.locator('.empty-state h3')).toHaveText('No activity yet');
-    await expect(page.locator('.empty-state p')).toHaveText(
-      'As you sign in, view and reveal secrets, and update your account, each action is recorded here so you can review it later.',
-    );
-    expect(
-      await page
-        .locator('.empty-state .empty-icon svg')
-        .evaluate((icon) => [...icon.children].map((shape) => shape.getAttribute('d'))),
-    ).toEqual([
-      'M9 4h6a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h2V5a1 1 0 0 1 1-1Z',
-      'M9 14l2 2 4-4',
-    ]);
-    await expect(page.locator('.activity-feed, .pager, .page-header > .badge')).toHaveCount(0);
-    await expect(page.locator('.panel > p.muted')).toHaveCount(0);
-    await expect(page.locator('style, [style]')).toHaveCount(0);
-    expect(requested).toEqual(['']);
-    await page.unrouteAll({ behavior: 'wait' });
-  });
-
+/** Two mocked My activity pages, timed from now so their relative times read as the test expects. */
+function activityPages(): { first: Activity; second: Activity } {
   const minute = 60_000;
   const now = Date.now();
   const ago = (milliseconds: number) => new Date(now - milliseconds).toISOString();
-  const longName = 'Payments_Production_Database_Primary_Connection_String_Rotated_Quarterly';
   const first: Activity = {
     page: 1,
     pageSize: 25,
@@ -865,6 +837,39 @@ test("My activity's empty state and pager match Legacy, and paging is in-app wit
       },
     ],
   };
+  return { first, second };
+}
+
+test("My activity's empty state and pager match Legacy, and paging is in-app with back and forward refetching", async ({
+  page,
+}) => {
+  await page.context().addCookies(administratorCookies);
+  await page.goto('/Access');
+  await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
+  const documents: string[] = [];
+  page.on('request', (request) => {
+    if (request.isNavigationRequest() && request.resourceType() === 'document')
+      documents.push(new URL(request.url()).pathname);
+  });
+
+  await test.step('an account with no activity sees the empty state', async () => {
+    const requested = await fulfilActivity(page, { '': emptyActivity });
+    await page.getByRole('link', { name: 'My activity', exact: true }).click();
+    // The Legacy partial's own element, not a host element carrying its class.
+    await expect(page.locator('div.empty-state')).toHaveCount(1);
+    await expect(page.locator('.empty-state')).toHaveCount(1);
+    await expect(page.locator('.empty-state h3')).toHaveText('No activity yet');
+    await expect(page.locator('.empty-state p')).toHaveText(
+      'As you sign in, view and reveal secrets, and update your account, each action is recorded here so you can review it later.',
+    );
+    await expect(page.locator('.activity-feed, .pager, .page-header > .badge')).toHaveCount(0);
+    await expect(page.locator('.panel > p.muted')).toHaveCount(0);
+    await expect(page.locator('style, [style]')).toHaveCount(0);
+    expect(requested).toEqual(['']);
+    await page.unrouteAll({ behavior: 'wait' });
+  });
+
+  const { first, second } = activityPages();
   const requested = await fulfilActivity(page, { '': first, '1': first, '2': second });
   const pager = page.locator('nav.pager[aria-label="Activity pages"]');
   const pagerLinks = async () =>
@@ -874,7 +879,7 @@ test("My activity's empty state and pager match Legacy, and paging is in-app wit
         links.map((link) => [link.textContent?.trim(), link.getAttribute('href')]),
       );
 
-  await test.step('the first page shows each row, its accent, icon and badges, and only the older link', async () => {
+  await test.step('the first page shows each row, its accent and badges, and only the older link', async () => {
     await page.getByRole('link', { name: 'My access', exact: true }).click();
     await page.getByRole('link', { name: 'My activity', exact: true }).click();
     await expect(page).toHaveURL(/\/Activity$/);
@@ -916,27 +921,6 @@ test("My activity's empty state and pager match Legacy, and paging is in-app wit
         tooltip: expect.any(String),
         accent: 'sev-warn',
       },
-    ]);
-    expect(
-      await page
-        .locator('.feed-resource')
-        .first()
-        .evaluate((resource) => getComputedStyle(resource).textOverflow),
-    ).toBe('ellipsis');
-    expect(await feedIcons(page)).toEqual([
-      [
-        'rect:x=4,y=10,width=16,height=10,rx=2',
-        'path:d=M8 10V7a4 4 0 0 1 8 0v3',
-        'circle:cx=12,cy=15,r=1.4',
-      ],
-      ['path:d=M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z', 'path:d=M9 12l2 2 4-4'],
-      ['path:d=M15 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3', 'path:d=M8 7l5 5-5 5M13 12H3'],
-      [
-        'circle:cx=18,cy=5,r=2.6',
-        'circle:cx=6,cy=12,r=2.6',
-        'circle:cx=18,cy=19,r=2.6',
-        'path:d=M8.3 10.7l7.4-4.4M8.3 13.3l7.4 4.4',
-      ],
     ]);
     await expect(page.locator('.page-header > .badge')).toHaveText('2 notable');
     await expect(pager.locator('.pager-page')).toHaveText('Page 1');
@@ -988,15 +972,6 @@ test("My activity's empty state and pager match Legacy, and paging is in-app wit
         accent: 'sev-muted',
       },
     ]);
-    expect(await feedIcons(page)).toEqual([
-      [
-        'circle:cx=12,cy=12,r=3',
-        'path:d=M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1',
-      ],
-      ['circle:cx=12,cy=8,r=3.4', 'path:d=M5 20c.7-3.7 3-5.5 7-5.5s6.3 1.8 7 5.5'],
-      ['rect:x=5,y=7,width=14,height=12,rx=2', 'path:d=M9 3v4M15 3v4M9 12h.01M15 12h.01M9 16h6'],
-      ['circle:cx=12,cy=12,r=9', 'path:d=M12 8h.01M11 12h1v4h1'],
-    ]);
   });
 
   await test.step('back and forward move between the visited pages and refetch each', async () => {
@@ -1012,6 +987,71 @@ test("My activity's empty state and pager match Legacy, and paging is in-app wit
     await expect(pager.locator('.pager-page')).toHaveText('Page 1');
     expect(requested).toEqual(['', '2', '', '2', '1']);
     expect(documents).toEqual([]);
+  });
+  await page.unrouteAll({ behavior: 'wait' });
+});
+
+test("visual parity: My activity's empty state and rows keep their icons", async ({ page }) => {
+  await page.context().addCookies(administratorCookies);
+  await page.goto('/Access');
+  await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
+
+  await test.step('the empty state keeps its icon', async () => {
+    await fulfilActivity(page, { '': emptyActivity });
+    await page.getByRole('link', { name: 'My activity', exact: true }).click();
+    expect(
+      await page
+        .locator('.empty-state .empty-icon svg')
+        .evaluate((icon) => [...icon.children].map((shape) => shape.getAttribute('d'))),
+    ).toEqual([
+      'M9 4h6a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h2V5a1 1 0 0 1 1-1Z',
+      'M9 14l2 2 4-4',
+    ]);
+    await page.unrouteAll({ behavior: 'wait' });
+  });
+
+  const { first, second } = activityPages();
+  await fulfilActivity(page, { '': first, '1': first, '2': second });
+
+  await test.step('the first page keeps each icon and the ellipsis', async () => {
+    await page.getByRole('link', { name: 'My access', exact: true }).click();
+    await page.getByRole('link', { name: 'My activity', exact: true }).click();
+    await expect(page.getByText('Shared a secret', { exact: true })).toBeVisible();
+    expect(
+      await page
+        .locator('.feed-resource')
+        .first()
+        .evaluate((resource) => getComputedStyle(resource).textOverflow),
+    ).toBe('ellipsis');
+    expect(await feedIcons(page)).toEqual([
+      [
+        'rect:x=4,y=10,width=16,height=10,rx=2',
+        'path:d=M8 10V7a4 4 0 0 1 8 0v3',
+        'circle:cx=12,cy=15,r=1.4',
+      ],
+      ['path:d=M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z', 'path:d=M9 12l2 2 4-4'],
+      ['path:d=M15 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3', 'path:d=M8 7l5 5-5 5M13 12H3'],
+      [
+        'circle:cx=18,cy=5,r=2.6',
+        'circle:cx=6,cy=12,r=2.6',
+        'circle:cx=18,cy=19,r=2.6',
+        'path:d=M8.3 10.7l7.4-4.4M8.3 13.3l7.4 4.4',
+      ],
+    ]);
+  });
+
+  await test.step('the older page keeps each icon', async () => {
+    await page.getByRole('link', { name: 'Older →', exact: true }).click();
+    await expect(page.getByText('Some new action', { exact: true })).toBeVisible();
+    expect(await feedIcons(page)).toEqual([
+      [
+        'circle:cx=12,cy=12,r=3',
+        'path:d=M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1',
+      ],
+      ['circle:cx=12,cy=8,r=3.4', 'path:d=M5 20c.7-3.7 3-5.5 7-5.5s6.3 1.8 7 5.5'],
+      ['rect:x=5,y=7,width=14,height=12,rx=2', 'path:d=M9 3v4M15 3v4M9 12h.01M15 12h.01M9 16h6'],
+      ['circle:cx=12,cy=12,r=9', 'path:d=M12 8h.01M11 12h1v4h1'],
+    ]);
   });
   await page.unrouteAll({ behavior: 'wait' });
 });
@@ -1117,68 +1157,25 @@ test('signed out, My activity sends the browser to sign-in with its return URL',
   });
 });
 
-test("Sign-in history's empty state and an unfamiliar-location attempt match Legacy", async ({
-  page,
-}) => {
-  await page.context().addCookies(administratorCookies);
-  await page.goto('/Access');
-  await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
-  const documents: string[] = [];
-  page.on('request', (request) => {
-    if (request.isNavigationRequest() && request.resourceType() === 'document')
-      documents.push(new URL(request.url()).pathname);
-  });
+const emptySignIns: SignIns = {
+  summary: {
+    successCount: 0,
+    failedCount: 0,
+    suspiciousCount: 0,
+    distinctLocations: 0,
+    lastSuccessUtc: null,
+    lastFailedUtc: null,
+    needsAttention: false,
+  },
+  events: [],
+};
 
-  await test.step('an account with no sign-in events sees the empty state, without summary or callout', async () => {
-    const empty: SignIns = {
-      summary: {
-        successCount: 0,
-        failedCount: 0,
-        suspiciousCount: 0,
-        distinctLocations: 0,
-        lastSuccessUtc: null,
-        lastFailedUtc: null,
-        needsAttention: false,
-      },
-      events: [],
-    };
-    await page.route(
-      '**/api/ui/sign-ins',
-      async (route) => {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify(empty),
-        });
-      },
-      { times: 1 },
-    );
-    await page.getByRole('link', { name: 'Sign-in history', exact: true }).click();
-    // The Legacy partial's own element, not a host element carrying its class.
-    await expect(page.locator('div.empty-state')).toHaveCount(1);
-    await expect(page.locator('.empty-state')).toHaveCount(1);
-    await expect(page.locator('.empty-state h3')).toHaveText('No sign-in history yet');
-    await expect(page.locator('.empty-state p')).toHaveText(
-      'As you sign in — with your password, a passkey, or a recovery code — each attempt is recorded here ' +
-        'so you can review it later and spot anything unfamiliar.',
-    );
-    expect(await svgShapes(page.locator('.empty-state .empty-icon svg'))).toEqual([
-      [
-        'rect:x=4,y=10,width=16,height=10,rx=2',
-        'path:d=M8 10V7a4 4 0 0 1 8 0v3',
-        'circle:cx=12,cy=15,r=1.4',
-      ],
-    ]);
-    await expect(
-      page.locator('.stat-grid, .callout-warn, .activity-feed, .page-header > .badge'),
-    ).toHaveCount(0);
-    await expect(page.locator('style, [style]')).toHaveCount(0);
-  });
-
+/** An unfamiliar-location attempt among other sign-ins, timed from now. */
+function unfamiliarSignIns(): SignIns {
   const minute = 60_000;
   const now = Date.now();
   const ago = (milliseconds: number) => new Date(now - milliseconds).toISOString();
-  const unfamiliar: SignIns = {
+  return {
     summary: {
       successCount: 3,
       failedCount: 3,
@@ -1247,6 +1244,48 @@ test("Sign-in history's empty state and an unfamiliar-location attempt match Leg
       },
     ],
   };
+}
+
+test("Sign-in history's empty state and an unfamiliar-location attempt match Legacy", async ({
+  page,
+}) => {
+  await page.context().addCookies(administratorCookies);
+  await page.goto('/Access');
+  await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
+  const documents: string[] = [];
+  page.on('request', (request) => {
+    if (request.isNavigationRequest() && request.resourceType() === 'document')
+      documents.push(new URL(request.url()).pathname);
+  });
+
+  await test.step('an account with no sign-in events sees the empty state, without summary or callout', async () => {
+    await page.route(
+      '**/api/ui/sign-ins',
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(emptySignIns),
+        });
+      },
+      { times: 1 },
+    );
+    await page.getByRole('link', { name: 'Sign-in history', exact: true }).click();
+    // The Legacy partial's own element, not a host element carrying its class.
+    await expect(page.locator('div.empty-state')).toHaveCount(1);
+    await expect(page.locator('.empty-state')).toHaveCount(1);
+    await expect(page.locator('.empty-state h3')).toHaveText('No sign-in history yet');
+    await expect(page.locator('.empty-state p')).toHaveText(
+      'As you sign in — with your password, a passkey, or a recovery code — each attempt is recorded here ' +
+        'so you can review it later and spot anything unfamiliar.',
+    );
+    await expect(
+      page.locator('.stat-grid, .callout-warn, .activity-feed, .page-header > .badge'),
+    ).toHaveCount(0);
+    await expect(page.locator('style, [style]')).toHaveCount(0);
+  });
+
+  const unfamiliar = unfamiliarSignIns();
 
   await test.step('an unfamiliar-location attempt raises the badge, the alert card, the header badge and the callout', async () => {
     await page.route(
@@ -1304,7 +1343,6 @@ test("Sign-in history's empty state and an unfamiliar-location attempt match Leg
         tooltip: null,
       },
     ]);
-
     // The summary, then the callout, then the timeline, as on the Legacy page.
     expect(
       await page
@@ -1418,6 +1456,52 @@ test("Sign-in history's empty state and an unfamiliar-location attempt match Leg
         accent: 'sev-warn',
       },
     ]);
+    await expect(page.locator('style, [style]')).toHaveCount(0);
+    expect(documents).toEqual([]);
+  });
+  await page.unrouteAll({ behavior: 'wait' });
+});
+
+test("visual parity: Sign-in history's empty state and an unfamiliar-location attempt keep their icons", async ({
+  page,
+}) => {
+  await page.context().addCookies(administratorCookies);
+  await page.goto('/Access');
+  await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
+  const fulfilSignIns = (body: SignIns) =>
+    page.route(
+      '**/api/ui/sign-ins',
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(body),
+        });
+      },
+      { times: 1 },
+    );
+
+  await test.step('the empty state keeps its icon', async () => {
+    await fulfilSignIns(emptySignIns);
+    await page.getByRole('link', { name: 'Sign-in history', exact: true }).click();
+    await expect(
+      page.getByRole('heading', { name: 'No sign-in history yet', exact: true }),
+    ).toBeVisible();
+    expect(await svgShapes(page.locator('.empty-state .empty-icon svg'))).toEqual([
+      [
+        'rect:x=4,y=10,width=16,height=10,rx=2',
+        'path:d=M8 10V7a4 4 0 0 1 8 0v3',
+        'circle:cx=12,cy=15,r=1.4',
+      ],
+    ]);
+  });
+
+  await test.step('each row icon keeps its shape', async () => {
+    await fulfilSignIns(unfamiliarSignIns());
+    await page.getByRole('link', { name: 'My activity', exact: true }).click();
+    await expect(page).toHaveURL(/\/Activity$/);
+    await page.getByRole('link', { name: 'Sign-in history', exact: true }).click();
+    await expect(page.getByText('Two-factor code rejected', { exact: true })).toBeVisible();
     const system = [
       'circle:cx=12,cy=12,r=3',
       'path:d=M12 4v2M12 18v2M4 12h2M18 12h2M6.3 6.3l1.4 1.4M16.3 16.3l1.4 1.4M17.7 6.3l-1.4 1.4M7.7 16.3l-1.4 1.4',
@@ -1435,8 +1519,6 @@ test("Sign-in history's empty state and an unfamiliar-location attempt match Leg
       ['path:d=M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z', 'path:d=M12 8v4M12 15h.01'],
       ['rect:x=6,y=10,width=12,height=9,rx=1.6', 'path:d=M9 10V7.5a3 3 0 0 1 6 0V10'],
     ]);
-    await expect(page.locator('style, [style]')).toHaveCount(0);
-    expect(documents).toEqual([]);
   });
   await page.unrouteAll({ behavior: 'wait' });
 });
@@ -1934,11 +2016,12 @@ test('a session revoked from another browser signs in again and returns to My ac
   page,
   browserHealth,
 }) => {
-  // A fresh throttle window, then three sign-ins, each of which may wait for a new authenticator step.
+  // A fresh sign-in budget, then three sign-ins, each of which may wait for a new authenticator step.
   test.setTimeout(330_000);
   expect(authenticatorSecret).not.toBe('');
-  // Its six credential POSTs, with the earlier tests' seven, would exceed one window's budget.
-  await freshThrottleWindow(page);
+  // Every credential POST in this suite comes from one address, and the vault allows 11 per
+  // 120-second window: its six, with the earlier tests' seven, would exceed it.
+  clearSignInBudget();
 
   // Every session but the first browser's, as Signed-in devices shows them to it.
   let othersOfFirst: string[] = [];
@@ -2077,7 +2160,7 @@ test('a real passkey follows the server redirect for local and external return t
   });
   try {
     await page.goto('/Profile');
-    await freshThrottleWindow(page);
+    clearSignInBudget();
     await page.getByLabel('New passkey name').fill('issue53-browser');
     await page.getByRole('button', { name: 'Add a passkey', exact: true }).click();
     const profile = new ProfilePage(page);

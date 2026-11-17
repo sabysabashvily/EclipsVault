@@ -1767,6 +1767,73 @@ app-command-palette {
   margin-top: 0.9rem;
 }
 
+/* ---- Activity list (Overview) ---------------------------------------- */
+.activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.activity-item {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 0.2rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.88rem;
+}
+.activity-item:last-child {
+  border-bottom: none;
+}
+.activity-item.critical {
+  background: var(--danger-soft);
+  border-radius: var(--radius-sm);
+  padding-left: 0.55rem;
+  padding-right: 0.55rem;
+}
+.activity-target {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+}
+.activity-meta {
+  color: var(--text-faint);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+/* ---- Quick actions (Overview) ------------------------------------------ */
+.quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.quick-action {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  background: var(--bg-inset);
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+}
+.quick-action:hover {
+  border-color: var(--accent-line);
+  background: var(--bg-hover);
+  color: var(--text);
+  text-decoration: none;
+  transform: translateX(2px);
+}
+.quick-action span {
+  font-size: 0.8rem;
+}
+
 /* ---- Personal activity feed (My activity page) ------------------------- */
 .activity-feed {
   list-style: none;
@@ -2149,6 +2216,55 @@ app-command-palette {
   font-size: 0.88rem;
   font-weight: 500;
   color: var(--text-secondary);
+}
+
+/* The Legacy two-column row, its field errors and its form-level summary, for New secret. */
+.field-row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .field-row {
+    flex-direction: column;
+    gap: 0;
+  }
+}
+
+.field-error,
+.validation-summary {
+  color: var(--danger);
+  font-size: 0.84rem;
+}
+
+.validation-summary ul {
+  margin: 0.3rem 0 1rem;
+  padding-left: 1.2rem;
+}
+
+/* Legacy's form textarea and its clickable list rows, for New secret and Secrets. */
+.field textarea {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  background: var(--bg-raised-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 0.92rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.data-table tr[data-href] {
+  cursor: pointer;
 }
 
 input,
@@ -2562,6 +2678,15 @@ fieldset {
   .menu-item {
     min-height: 2.75rem;
     min-width: 2.75rem;
+  }
+  /* The show/hide button fills the field's right end, so it is a 44px target too. */
+  .affix-button {
+    right: 0;
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+  .input-affix > input {
+    padding-right: 3rem;
   }
 }
 

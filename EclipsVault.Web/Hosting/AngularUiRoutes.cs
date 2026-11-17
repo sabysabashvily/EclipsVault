@@ -53,6 +53,11 @@ public static class AngularUiRoutes
         "/Profile/ChangePassword",
         "/Profile/RecoveryCodes",
 
+        // Secrets and New secret
+        "/Secrets",
+        "/Secrets/Index",
+        "/Secrets/Create",
+
         // Shared by me
         "/Secrets/SharedByMe",
 
@@ -97,6 +102,13 @@ public static class AngularUiRoutes
     }
 
     private static IResult ServeIndex(HttpContext context, IWebHostEnvironment environment)
+        => Results.File(PrepareIndex(context, environment), "text/html; charset=utf-8");
+
+    /// <summary>
+    /// Sets the Angular document's Content Security Policy and returns its path, for a response that
+    /// serves it after authorization. The Overview's <c>HomeController.Index</c> serves it this way too.
+    /// </summary>
+    public static string PrepareIndex(HttpContext context, IWebHostEnvironment environment)
     {
         var index = environment.ContentRootFileProvider.GetFileInfo(IndexPath);
         if (!index.Exists)
@@ -108,6 +120,6 @@ public static class AngularUiRoutes
         // Set this only when serving the Angular document, after authorization and the file check.
         // Redirects, legacy pages, API responses and static bundles retain the existing policy.
         context.Response.Headers["Content-Security-Policy"] = SecurityHeadersMiddleware.AngularContentSecurityPolicy;
-        return Results.File(index.PhysicalPath!, "text/html; charset=utf-8");
+        return index.PhysicalPath!;
     }
 }

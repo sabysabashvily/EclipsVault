@@ -18,6 +18,7 @@ public static class AuditDisplay
         AuditAction.SecretVersionRestored => ("Version restored", "warn"),
         AuditAction.SecretShared => ("Shared", "ok"),
         AuditAction.SecretShareRevoked => ("Share revoked", "warn"),
+        AuditAction.SecretAccessDenied => ("Access denied", "warn"),
         AuditAction.LoginFailed => ("Login failed", "warn"),
         AuditAction.LoginSucceeded => ("Signed in", "ok"),
         AuditAction.SignInRefused => ("Sign-in refused", "warn"),

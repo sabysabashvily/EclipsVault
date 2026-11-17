@@ -26,6 +26,7 @@ export class UiApiError extends Error {
     readonly signedOut: number | null = null,
     readonly proof: StepUpProof | null = null,
     readonly errors: Readonly<Record<string, string[]>> = {},
+    readonly reasons: readonly string[] = [],
   ) {
     super(title);
     this.name = 'UiApiError';
@@ -61,6 +62,11 @@ function toUiApiError(response: HttpErrorResponse): UiApiError {
       ? problem.proof
       : null,
     fieldErrors(problem),
+    'reasons' in problem &&
+      Array.isArray(problem.reasons) &&
+      problem.reasons.every((reason: unknown) => typeof reason === 'string')
+      ? (problem.reasons as string[])
+      : [],
   );
 }
 

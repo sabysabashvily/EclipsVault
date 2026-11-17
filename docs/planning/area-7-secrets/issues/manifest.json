@@ -1,0 +1,147 @@
+{
+ "status": "published",
+ "confirmed": true,
+ "confirmedOn": "2026-11-11",
+ "publishedOn": "2026-11-13",
+ "publishedNote": "Published on the owner's word on 2026-11-13, before Area 6b merged; the Q23 challenge and its re-checks (r2, r3, Opus r4 READY) were folded in first.",
+ "repository": "sabysabashvily/EclipsVault",
+ "placeholders": {
+  "#SPEC": "this part's parent issue number",
+  "#SPEC7A": "part 7a parent issue number",
+  "#SPEC7B": "part 7b parent issue number",
+  "#SPEC7C": "part 7c parent issue number",
+  "#T<n>": "ticket n of the same part"
+ },
+ "parts": [
+  {
+   "key": "7a",
+   "parent": {
+    "title": "Angular migration — Area 7a: Overview and Secrets list",
+    "file": "7a/spec.md",
+    "number": 158
+   },
+   "tickets": [
+    {
+     "order": 1,
+     "title": "Area 7a · 1/3: Overview served by the Angular UI",
+     "file": "7a/ticket-1.md",
+     "blockedByOrders": [],
+     "number": 163
+    },
+    {
+     "order": 2,
+     "title": "Area 7a · 2/3: Secrets list, palette search and New secret served by the Angular UI",
+     "file": "7a/ticket-2.md",
+     "blockedByOrders": [
+      1
+     ],
+     "number": 164
+    },
+    {
+     "order": 3,
+     "title": "Area 7a · 3/3: Verify part 7a and prepare its PR",
+     "file": "7a/ticket-3.md",
+     "blockedByOrders": [
+      2
+     ],
+     "number": 165
+    }
+   ]
+  },
+  {
+   "key": "7b",
+   "parent": {
+    "title": "Angular migration — Area 7b: Secret details",
+    "file": "7b/spec.md",
+    "number": 159
+   },
+   "blockedByParts": [
+    "7a"
+   ],
+   "tickets": [
+    {
+     "order": 1,
+     "title": "Area 7b · 1/5: Record denials as denials and one event per secret action",
+     "file": "7b/ticket-1.md",
+     "blockedByOrders": [],
+     "number": 166
+    },
+    {
+     "order": 2,
+     "title": "Area 7b · 2/5: Shares only read, changes never overwrite, sharing needs fresh proof",
+     "file": "7b/ticket-2.md",
+     "blockedByOrders": [
+      1
+     ],
+     "number": 167
+    },
+    {
+     "order": 3,
+     "title": "Area 7b · 3/5: Secret details served by the Angular UI",
+     "file": "7b/ticket-3.md",
+     "blockedByOrders": [
+      2
+     ],
+     "number": 168
+    },
+    {
+     "order": 4,
+     "title": "Area 7b · 4/5: Denied page and access-request filing served by the Angular UI",
+     "file": "7b/ticket-4.md",
+     "blockedByOrders": [
+      3
+     ],
+     "number": 169
+    },
+    {
+     "order": 5,
+     "title": "Area 7b · 5/5: Verify part 7b and prepare its PR",
+     "file": "7b/ticket-5.md",
+     "blockedByOrders": [
+      4
+     ],
+     "number": 170
+    }
+   ]
+  },
+  {
+   "key": "7c",
+   "parent": {
+    "title": "Angular migration — Area 7c: Dynamic secrets",
+    "file": "7c/spec.md",
+    "number": 160
+   },
+   "blockedByParts": [
+    "7a"
+   ],
+   "tickets": [
+    {
+     "order": 1,
+     "title": "Area 7c · 1/3: Issue and revoke dynamic credentials under ADR-0031",
+     "file": "7c/ticket-1.md",
+     "blockedByOrders": [],
+     "number": 171
+    },
+    {
+     "order": 2,
+     "title": "Area 7c · 2/3: Dynamic secrets served by the Angular UI",
+     "file": "7c/ticket-2.md",
+     "blockedByOrders": [
+      1
+     ],
+     "number": 172
+    },
+    {
+     "order": 3,
+     "title": "Area 7c · 3/3: Verify part 7c and prepare its PR",
+     "file": "7c/ticket-3.md",
+     "blockedByOrders": [
+      2
+     ],
+     "number": 173
+    }
+   ]
+  }
+ ],
+ "followUps": []
+}

@@ -34,7 +34,7 @@ export interface PaletteCommand {
   readonly sensitivityName?: string;
 }
 
-/** The Legacy UI's search answers nothing shorter, and the palette does not ask. */
+/** The search answers nothing shorter, and the palette does not ask. */
 const MIN_QUERY = 2;
 const DEBOUNCE_MS = 160;
 
@@ -107,9 +107,9 @@ function isLocalPath(url: string, origin: string): boolean {
 }
 
 /**
- * Reads the Legacy UI's `GET /Secrets/Search` answer. That is not a UI API path: an expired session
- * there is redirected to the HTML sign-in page rather than answered with a 401 problem, so anything
- * but a JSON array of results is a failure, never data.
+ * Reads the `GET /api/ui/secrets/search` answer. A 401 never arrives here (the UI API's interceptor
+ * signs the browser in again), but anything other than a JSON array of results with local links is
+ * still a failure, never data.
  */
 export function secretsFrom(response: HttpResponse<string>, origin: string): PaletteCommand[] {
   if (
@@ -142,8 +142,8 @@ interface Search {
 
 /**
  * The ⌘K palette, as the Legacy UI's: jump to a page the sidebar offers, or search secrets through
- * the Legacy UI's existing endpoint, which lists only what the Secrets page would (its decoy and
- * ABAC filtering is the only enumeration path). Results are text bindings only.
+ * the UI API, which lists only what the Secrets page would (its decoy and ABAC filtering is the only
+ * enumeration path). Results are text bindings only.
  */
 @Component({
   selector: 'app-command-palette',
@@ -192,7 +192,7 @@ export class CommandPalette {
           query.length < MIN_QUERY
             ? of<Search>({ query, failed: false, secrets: [] })
             : this.http
-                .get('/Secrets/Search', {
+                .get('/api/ui/secrets/search', {
                   params: { q: query },
                   headers: { Accept: 'application/json' },
                   observe: 'response',

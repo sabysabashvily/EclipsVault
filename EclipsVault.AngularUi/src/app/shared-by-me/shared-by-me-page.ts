@@ -1,6 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { HttpClient, httpResource } from '@angular/common/http';
 import { Component, computed, DestroyRef, inject, signal, viewChild } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize } from 'rxjs';
 import { ConfirmationDialog } from '../shared/confirmation-dialog';
@@ -16,7 +17,7 @@ type Share = SharedByMe['shares'][number];
 
 @Component({
   selector: 'app-shared-by-me-page',
-  imports: [DatePipe, ConfirmationDialog, EmptyState, StatusLine],
+  imports: [DatePipe, ConfirmationDialog, EmptyState, RouterLink, StatusLine],
   templateUrl: './shared-by-me-page.html',
 })
 export class SharedByMePage {

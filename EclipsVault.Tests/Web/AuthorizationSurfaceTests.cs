@@ -212,7 +212,7 @@ public class AuthorizationSurfaceTests
         var controllers = new Dictionary<string, Type>
         {
             ["overview"] = typeof(HomeController),
-            ["secrets"] = typeof(SecretsController),
+            ["secrets"] = typeof(EclipsVault.Web.Controllers.Ui.SecretsController),
             ["dynamic-secrets"] = typeof(DynamicSecretsController),
             ["shared-with-me"] = typeof(EclipsVault.Web.Controllers.Ui.SharedWithMeController),
             ["shared-by-me"] = typeof(EclipsVault.Web.Controllers.Ui.SharedByMeController),

@@ -42,8 +42,8 @@ const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)
   {
     label: 'Vault',
     items: [
-      link('overview', 'Overview', '/'),
-      link('secrets', 'Secrets', '/Secrets'),
+      link('overview', 'Overview', '/', 'overview', true),
+      link('secrets', 'Secrets', '/Secrets', 'secrets', true),
       link('dynamic-secrets', 'Dynamic secrets', '/DynamicSecrets'),
       // Sharing becomes tabs on the Secrets card once the Secrets list is an Angular page; until
       // then its two pages keep a group of their own here.

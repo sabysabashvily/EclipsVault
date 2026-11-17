@@ -129,6 +129,7 @@ public class StaleCachedEnvelopeTests
         public Task<IReadOnlyList<Secret>> ListExpiringAsync(DateTimeOffset asOfUtc, DateTimeOffset horizonUtc, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<Secret>>([]);
         public Task MarkExpiryNoticeSentAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
+        public Task<bool> ExistsByNameAsync(string name, CancellationToken ct) => Task.FromResult(false);
         public Task AddAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
         public Task UpdateAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
         public Task DeleteAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;

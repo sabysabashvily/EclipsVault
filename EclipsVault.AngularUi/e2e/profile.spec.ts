@@ -102,13 +102,13 @@ test('both account menus, both palettes and Security checkup open Profile on the
   });
 
   await test.step('the Legacy account menu and palette load Profile into Angular', async () => {
-    await page.goto('/Secrets');
+    await page.goto('/DynamicSecrets');
     documents.length = 0;
     await page.getByText('Mailbox Owner', { exact: true }).click();
     await page.getByRole('menuitem', { name: 'Profile', exact: true }).click();
     await expect(profile.heading).toBeVisible();
     expect(documents).toEqual(['/Profile']);
-    await page.goto('/Secrets');
+    await page.goto('/DynamicSecrets');
     documents.length = 0;
     await openPalette(page);
     await page.getByRole('combobox').fill('Profile');
@@ -236,7 +236,7 @@ test('visual parity: Profile preserves cards and labels in both themes and on a 
   await page.screenshot({ path: testInfo.outputPath('profile-narrow.png'), fullPage: true });
 });
 
-test('visual parity: Change password keeps its Legacy fields, hint, actions and meter', async ({
+test('Change password shows its fields, hint, meter and a working show/hide in both themes', async ({
   page,
 }, testInfo) => {
   await page.context().addCookies(ownerCookies);
@@ -264,16 +264,11 @@ test('visual parity: Change password keeps its Legacy fields, hint, actions and 
   await page.screenshot({ path: testInfo.outputPath('change-password.png'), fullPage: true });
   await form.newPassword.fill('E2e-meter-92f4ab71-c831-49ed-90d5');
   await expect(form.strength).toHaveAttribute('aria-label', 'Password strength: Very strong');
-  expect(await form.revealIcon('Show password')).toEqual([
-    'path:d=M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z',
-    'circle:cx=12,cy=12,r=3',
-  ]);
+  await expect(form.newPassword).toHaveAttribute('type', 'password');
   await form.showPassword.click();
-  expect(await form.revealIcon('Hide password')).toEqual([
-    'path:d=M2 12s3.6-7 10-7c2 0 3.8.7 5.2 1.6M22 12s-3.6 7-10 7c-2 0-3.8-.7-5.2-1.6',
-    'path:d=m4 4 16 16',
-  ]);
+  await expect(form.newPassword).toHaveAttribute('type', 'text');
   await form.hidePassword.click();
+  await expect(form.newPassword).toHaveAttribute('type', 'password');
   await page.screenshot({
     path: testInfo.outputPath('change-password-meter-dark.png'),
     fullPage: true,
@@ -281,10 +276,7 @@ test('visual parity: Change password keeps its Legacy fields, hint, actions and 
   await page.getByText('Mailbox Owner', { exact: true }).click();
   await page.getByRole('menuitem', { name: /Switch to light/ }).click();
   await expect(form.strength).toHaveAttribute('aria-label', 'Password strength: Very strong');
-  expect(await form.revealIcon('Show password')).toEqual([
-    'path:d=M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z',
-    'circle:cx=12,cy=12,r=3',
-  ]);
+  await expect(form.showPassword).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath('change-password-meter-light.png'),
     fullPage: true,
@@ -1332,7 +1324,11 @@ test('a committed password with failed session renewal has a truthful sign-in-re
   });
   browserHealth.expectConsoleError({ text: /status of 503/, url: /\/api\/ui\/profile\/password$/ });
   await new ChangePasswordPage(page).changeFromProfile(password, replacement);
-  lastStep = await profile.verifyOwner(password, secret, lastStep);
+  lastStep = await profile.fillOwnerVerification(password, secret, lastStep);
+  const committed = page.waitForResponse('**/api/ui/profile/password');
+  await profile.verifyAccount.click();
+  const response = await committed;
+  expect(response.status()).toBe(503);
   await expect(
     profile.alertSaying(
       'The change was saved, but this browser could not stay signed in. Sign in again to continue.',

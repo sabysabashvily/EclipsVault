@@ -4,6 +4,7 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
+import { clearSignInBudget } from './profile-state';
 import { createSecret, openPalette } from './palette';
 import { SecretsList } from './secrets-list';
 import { SharedByMe } from './shared-by-me';
@@ -50,8 +51,7 @@ test('an issuer shares two real secrets with a colleague outside their project',
   await expect(page).toHaveURL(/\/Admin\/Users$/);
 
   // Earlier sign-in scenarios use the same proxy source; keep the production limiter enabled.
-  const windowMilliseconds = 120_000;
-  await page.waitForTimeout(windowMilliseconds - (Date.now() % windowMilliseconds) + 1_000);
+  clearSignInBudget();
   const recipient = await (await browserHealth.newContext()).newPage();
   await recipient.goto('/Account/Login');
   await recipient.getByLabel('Username').fill(recipientUsername);
@@ -208,7 +208,7 @@ test('the palette opens Shared by me without a document load', async ({ page }) 
 });
 
 test('the Legacy sidebar loads Shared by me into Angular', async ({ page }) => {
-  await openAsIssuer(page, '/Secrets');
+  await openAsIssuer(page, '/DynamicSecrets');
   const documents: string[] = [];
   page.on('request', (request) => {
     if (request.isNavigationRequest() && request.resourceType() === 'document')
@@ -222,7 +222,7 @@ test('the Legacy sidebar loads Shared by me into Angular', async ({ page }) => {
 });
 
 test('the Legacy palette loads Shared by me into Angular', async ({ page }) => {
-  await openAsIssuer(page, '/Secrets');
+  await openAsIssuer(page, '/DynamicSecrets');
   const documents: string[] = [];
   page.on('request', (request) => {
     if (request.isNavigationRequest() && request.resourceType() === 'document')

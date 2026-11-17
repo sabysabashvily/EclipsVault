@@ -1,4 +1,9 @@
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { TestBed } from '@angular/core/testing';
+import { Title } from '@angular/platform-browser';
 import { Route, UrlSegment, UrlSegmentGroup } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
+import { appConfig } from './app.config';
 import { ProfilePage } from './profile/profile-page';
 import { ChangePasswordPage } from './profile/change-password-page';
 import { AccessPage } from './access/access-page';
@@ -10,6 +15,7 @@ import { UsersPage } from './users/users-page';
 import { AuditPage } from './audit/audit-page';
 import { EncryptionPage } from './encryption/encryption-page';
 import { NetworksPage } from './networks/networks-page';
+import { OverviewPage } from './overview/overview-page';
 import { ServiceAccountsPage } from './service-accounts/service-accounts-page';
 import { NewServiceAccountPage } from './service-accounts/new-service-account-page';
 import { ServiceAccountPage } from './service-accounts/service-account-page';
@@ -18,6 +24,8 @@ import { SignInsPage } from './sign-ins/sign-ins-page';
 import { SecurityPage } from './security/security-page';
 import { SessionsPage } from './sessions/sessions-page';
 import { DataPage } from './data/data-page';
+import { NewSecretPage } from './secrets/new-secret-page';
+import { SecretsPage } from './secrets/secrets-page';
 import { SharedByMePage } from './shared-by-me/shared-by-me-page';
 import { SharedWithMePage } from './shared-with-me/shared-with-me-page';
 
@@ -32,6 +40,19 @@ function routeFor(url: string): Route | undefined {
 }
 
 describe('routes', () => {
+  it('opens the Overview at the root', async () => {
+    TestBed.configureTestingModule({
+      providers: [...appConfig.providers, provideHttpClientTesting()],
+    });
+    const harness = await RouterTestingHarness.create();
+
+    expect(await harness.navigateByUrl('/', OverviewPage)).toBeInstanceOf(OverviewPage);
+    expect(TestBed.inject(Title).getTitle()).toBe('Overview — EclipsVault');
+    TestBed.resetTestingModule();
+  });
+  it.each(['/Home', '/hOmE/InDeX'])('opens the Overview at %s', async (url) => {
+    expect(await routeFor(url)?.loadComponent?.()).toBe(OverviewPage);
+  });
   it.each(['/ServiceAccounts', '/sErViCeAcCoUnTs/InDeX'])(
     'opens Service accounts at %s',
     async (url) => {
@@ -129,6 +150,22 @@ describe('routes', () => {
       expect(routeFor(url)?.redirectTo).toBe('/Profile?recoveryCodes=display-once');
     },
   );
+  it.each(['/Secrets', '/Secrets/Index', '/secrets', '/SECRETS/index'])(
+    'opens Secrets at %s',
+    async (url) => {
+      const route = routeFor(url);
+      expect(route?.title).toBe('Secrets — EclipsVault');
+      expect(await route?.loadComponent?.()).toBe(SecretsPage);
+    },
+  );
+  it.each(['/Secrets/Create', '/secrets/create', '/sEcReTs/cReAtE'])(
+    'opens New secret at %s',
+    async (url) => {
+      const route = routeFor(url);
+      expect(route?.title).toBe('New secret — EclipsVault');
+      expect(await route?.loadComponent?.()).toBe(NewSecretPage);
+    },
+  );
   it.each(['/Secrets/SharedByMe', '/secrets/sharedbyme', '/sEcReTs/sHaReDbYmE'])(
     'opens Shared by me at %s',
     async (url) => {
@@ -213,7 +250,6 @@ describe('routes', () => {
   );
 
   it.each([
-    '/',
     '/Index',
     '/Accessories',
     '/Access/Index/extra',
@@ -228,8 +264,10 @@ describe('routes', () => {
     '/DataExport',
     '/Data/Index/extra',
     '/Data/Download',
-    '/Secrets',
     '/Secrets/Details',
+    '/Secrets/Index/extra',
+    '/Secrets/Create/extra',
+    '/Secrets/Search',
     '/Secrets/SharedWithMe/extra',
     '/Secrets/SharedByMe/extra',
   ])('leaves %s unmatched', (url) => {

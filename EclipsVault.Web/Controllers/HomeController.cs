@@ -1,7 +1,6 @@
 using System.Diagnostics;
-using EclipsVault.Core.Application.Secrets;
 using EclipsVault.Web.Authorization;
-using EclipsVault.Web.Extensions;
+using EclipsVault.Web.Hosting;
 using EclipsVault.Web.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -9,51 +8,19 @@ using Microsoft.AspNetCore.Mvc;
 namespace EclipsVault.Web.Controllers;
 
 [Authorize(Policy = VaultPolicies.Session)]
-public sealed class HomeController : Controller
+public sealed class HomeController(IWebHostEnvironment environment) : Controller
 {
-    private readonly IDashboardService _dashboard;
-    private readonly ISecretService _secrets;
-    private readonly IAuthorizationService _authorization;
-
-    public HomeController(IDashboardService dashboard, ISecretService secrets, IAuthorizationService authorization)
-    {
-        _dashboard = dashboard;
-        _secrets = secrets;
-        _authorization = authorization;
-    }
-
+    /// <summary>The Overview, served by the Angular UI, to a signed-in session; the landing page to anyone else.</summary>
     [AllowAnonymous]
     [HttpGet]
-    public async Task<IActionResult> Index(CancellationToken ct)
+    public IActionResult Index()
     {
         if (User.Identity?.IsAuthenticated != true)
         {
             return View();
         }
 
-        var isAdmin = User.IsAdmin();
-
-        // Secret names disclose what exists, so dashboard metadata needs the same access filter
-        // as the Secrets list. Listing through the service also excludes honey tokens.
-        var visible = await _authorization.VisibleToAsync(User, await _secrets.ListAsync(ct));
-
-        var dto = await _dashboard.GetAsync(visible, isAdmin ? null : User.GetUsername(), ct);
-        var displayName = User.GetDisplayName();
-
-        return View("Dashboard", new DashboardViewModel
-        {
-            Username = displayName,
-            IsAdmin = isAdmin,
-            TotalActiveSecrets = dto.TotalActiveSecrets,
-            DevelopmentCount = dto.DevelopmentCount,
-            StagingCount = dto.StagingCount,
-            ProductionCount = dto.ProductionCount,
-            ExpiringWithin7Days = dto.ExpiringWithin7Days,
-            UserCount = dto.UserCount,
-            CriticalEventsLast24h = dto.CriticalEventsLast24h,
-            RecentEvents = dto.RecentEvents,
-            ExpiringSoon = dto.ExpiringSoon
-        });
+        return PhysicalFile(AngularUiRoutes.PrepareIndex(HttpContext, environment), "text/html; charset=utf-8");
     }
 
     [AllowAnonymous]

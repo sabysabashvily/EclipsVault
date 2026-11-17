@@ -85,6 +85,8 @@ public class ManagedRotationTests
 
         public Task MarkExpiryNoticeSentAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
 
+        public Task<bool> ExistsByNameAsync(string name, CancellationToken ct) => Task.FromResult(false);
+
         public Task AddAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
 
         public Task UpdateAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;

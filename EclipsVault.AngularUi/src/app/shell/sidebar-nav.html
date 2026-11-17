@@ -46,8 +46,8 @@
       class="nav-item"
       data-command-angular
       [routerLink]="entry.url"
-      [class.active]="active(entry)"
-      [attr.aria-current]="active(entry) ? 'page' : null"
+      [class.active]="holds(entry)"
+      [attr.aria-current]="active(entry) ? 'page' : holds(entry) ? 'true' : null"
     >
       <app-nav-icon [icon]="entry.icon" />
       {{ entry.label }}

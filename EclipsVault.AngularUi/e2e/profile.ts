@@ -208,19 +208,6 @@ export class ChangePasswordPage {
     await this.confirmPassword.fill(candidate);
     await this.submit.click();
   }
-
-  async revealIcon(button: 'Show password' | 'Hide password') {
-    // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares Legacy's eye icon geometry.
-    return this.page
-      .getByRole('button', { name: button, exact: true })
-      .locator('svg')
-      .evaluate((svg) =>
-        [...svg.children].map(
-          (shape) =>
-            `${shape.tagName}:${[...shape.attributes].map((attribute) => `${attribute.name}=${attribute.value}`).join(',')}`,
-        ),
-      );
-  }
 }
 
 /** Native canvas produces disposable image inputs; none contains credential material. */

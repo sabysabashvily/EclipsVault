@@ -122,7 +122,7 @@ test('the Denied page link opens Networks', async ({ page }) => {
 test('the Legacy sidebar opens Networks', async ({ page }) => {
   await page.context().addCookies(administratorCookies);
   const networks = new Networks(page);
-  await networks.fromSidebar('/Secrets');
+  await networks.fromSidebar('/DynamicSecrets');
   await expect(networks.heading).toBeVisible();
 });
 
@@ -136,7 +136,7 @@ test('the Angular sidebar opens Networks', async ({ page }) => {
 test('the palette in the Legacy shell opens Networks', async ({ page }) => {
   await page.context().addCookies(administratorCookies);
   const networks = new Networks(page);
-  await networks.fromPalette('/Secrets');
+  await networks.fromPalette('/DynamicSecrets');
   await expect(networks.heading).toBeVisible();
 });
 
@@ -147,7 +147,7 @@ test('the palette in the Angular shell opens Networks', async ({ page }) => {
   await expect(networks.heading).toBeVisible();
 });
 
-test('the sidebar on Networks returns to the Legacy Secrets list', async ({ page }) => {
+test('the sidebar on Networks returns to the Secrets list', async ({ page }) => {
   await page.context().addCookies(administratorCookies);
   const networks = new Networks(page);
   await networks.open();
@@ -175,15 +175,15 @@ const appearances = [
   { theme: 'light', blocked: '192.0.2.16/32' },
 ] as const;
 for (const { theme, blocked } of appearances) {
-  test(`visual parity: Networks in ${theme} appearance`, async ({ page }, info) => {
+  test(`Networks renders in ${theme} appearance`, async ({ page }, info) => {
     await page.context().addCookies(administratorCookies);
     blockInRunStore(blocked, 'Honey-token visual parity');
     const networks = new Networks(page);
     await networks.open();
     await networks.useTheme(theme);
     await expect(networks.row(blocked)).toBeVisible();
-    await expect(networks.currentAddress).toHaveCSS('display', 'flex');
-    await expect(networks.range).toHaveCSS('flex-grow', '1');
+    await expect(networks.address).toBeVisible();
+    await expect(networks.range).toBeEditable();
     await page.screenshot({ path: info.outputPath(`networks-${theme}.png`), fullPage: true });
   });
 

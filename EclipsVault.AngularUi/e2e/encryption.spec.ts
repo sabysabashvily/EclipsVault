@@ -47,7 +47,7 @@ test('cancelling the confirmation rotates nothing and returns to the Rotate butt
 test('the Legacy sidebar opens Encryption keys', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const encryption = new EncryptionKeys(page);
-  await encryption.fromSidebar('/Secrets');
+  await encryption.fromSidebar('/DynamicSecrets');
   await expect(encryption.heading).toBeVisible();
   await expect(page).toHaveURL(/\/Encryption$/);
 });
@@ -63,7 +63,7 @@ test('the Angular sidebar opens Encryption keys', async ({ page }) => {
 test('the palette in the Legacy shell opens Encryption keys', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const encryption = new EncryptionKeys(page);
-  await encryption.fromPalette('/Secrets');
+  await encryption.fromPalette('/DynamicSecrets');
   await expect(encryption.heading).toBeVisible();
 });
 
@@ -74,7 +74,7 @@ test('the palette in the Angular shell opens Encryption keys', async ({ page }) 
   await expect(encryption.heading).toBeVisible();
 });
 
-test('the sidebar on Encryption keys returns to the Legacy Secrets list', async ({ page }) => {
+test('the sidebar on Encryption keys returns to the Secrets list', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const encryption = new EncryptionKeys(page);
   await encryption.open();

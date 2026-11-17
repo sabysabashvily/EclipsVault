@@ -21,12 +21,12 @@
   },
   "e2e/sidebar.ts": {
     "playwright/no-raw-locators": {
-      "count": 16
+      "count": 17
     }
   },
   "e2e/sign-in.spec.ts": {
     "playwright/no-raw-locators": {
-      "count": 126
+      "count": 124
     }
   },
   "e2e/sign-ins.ts": {
