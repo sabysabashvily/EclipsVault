@@ -1390,7 +1390,6 @@ test('a committed password with failed session renewal has a truthful sign-in-re
   await profile.verifyAccount.click();
   const response = await committed;
   expect(response.status()).toBe(503);
-  await response.finished();
   await expect(
     profile.alertSaying(
       'The change was saved, but this browser could not stay signed in. Sign in again to continue.',
