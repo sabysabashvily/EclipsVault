@@ -104,15 +104,18 @@ public sealed class EmailIdentitySignInTests(VaultFixture vault)
         Assert.Equal("Unknown username or email", failed.Details);
     }
 
+    /// <summary>
+    /// Passkey sign-in takes no username, so naming an account that has a passkey lists nothing.
+    /// </summary>
     [Fact]
-    public async Task Named_passkey_sign_in_offers_the_passkey_of_the_account_with_that_username()
+    public async Task Passkey_sign_in_lists_no_credential_when_the_body_names_an_account_that_has_one()
     {
         var account = await ProvisionAsync("it-email-passkey-named", "it-email-passkey-named@example.test");
         await RegisterPasskeyAsync(account.Id);
 
         var options = await BeginPasskeySignInAsync("it-email-passkey-named", "198.51.100.234");
 
-        Assert.Single(options.GetProperty("allowCredentials").EnumerateArray());
+        Assert.Empty(options.GetProperty("allowCredentials").EnumerateArray());
     }
 
     [Fact]

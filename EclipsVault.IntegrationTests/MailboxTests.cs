@@ -313,7 +313,7 @@ public sealed class MailboxTests(MailboxFixture fixture)
         await db.SaveChangesAsync();
         var browser = Vault.CreateSession(source: IPAddress.Parse("100.68.88.19"));
         var callback = await PostIdpAssertion.InvokeAsync(Vault, account.Email, browser, providerMfa: true);
-        Assert.Equal("/Dashboard", callback.Headers.Location?.OriginalString);
+        Assert.Equal("/Secrets", callback.Headers.Location?.OriginalString);
         var page = await browser.Client.GetFromJsonAsync<JsonElement>("/api/ui/profile");
         Assert.False(page.GetProperty("changes").GetProperty("changeEmail").GetProperty("available").GetBoolean());
         Assert.Empty(page.GetProperty("verificationMethods").EnumerateArray());
