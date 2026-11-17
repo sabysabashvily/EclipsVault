@@ -37,7 +37,7 @@
 <section class="panel">
     <div class="panel-header"><h2>Roles you can issue</h2></div>
 
-    @if (!Model.Licensed)
+    @if (!Model.Licensed && !Model.LicenceNoteUnavailable)
     {
         @if (Model.EvaluationDaysRemaining is null)
         {

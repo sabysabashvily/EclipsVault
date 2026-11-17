@@ -1,6 +1,7 @@
 using EclipsVault.Core.Application.DynamicSecrets;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Core.Domain.Exceptions;
 using Microsoft.EntityFrameworkCore;
 
 namespace EclipsVault.Infrastructure.Persistence.Repositories;
@@ -20,7 +21,7 @@ public sealed class DynamicSecretRepository : IDynamicSecretRepository
     public async Task AddLeaseAsync(DynamicSecretLease lease, CancellationToken ct)
     {
         _context.DynamicSecretLeases.Add(lease);
-        await _context.SaveChangesAsync(ct); // audit row injected atomically by the interceptor
+        await SaveLeaseChangeAsync(ct);
     }
 
     public Task<DynamicSecretLease?> FindLeaseAsync(Guid leaseId, CancellationToken ct)
@@ -50,6 +51,20 @@ public sealed class DynamicSecretRepository : IDynamicSecretRepository
     public async Task UpdateLeaseAsync(DynamicSecretLease lease, CancellationToken ct)
     {
         _context.DynamicSecretLeases.Update(lease);
-        await _context.SaveChangesAsync(ct); // audit row injected atomically by the interceptor
+        await SaveLeaseChangeAsync(ct);
+    }
+
+    private async Task SaveLeaseChangeAsync(CancellationToken ct)
+    {
+        try
+        {
+            await _context.SaveChangesAsync(ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The interceptor writes the lease's audit row in this transaction, so a failed save is an
+            // audit failure to the caller, answered fail-closed like a standalone audit write.
+            throw new AuditWriteFailedException("The lease and its audit row could not be stored.", ex);
+        }
     }
 }

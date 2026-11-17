@@ -18,7 +18,9 @@ public static class SerilogSetup
             .CreateBootstrapLogger();
 
     public static IHostBuilder UseEclipsVaultSerilog(this IHostBuilder host)
-        => host.UseSerilog((context, _, configuration) => configuration
+        => host.UseSerilog((context, services, configuration) => configuration
+            // Production registers no sinks in its services; a test host adds one to read the log.
+            .ReadFrom.Services(services)
             .MinimumLevel.Information()
             .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
             .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)

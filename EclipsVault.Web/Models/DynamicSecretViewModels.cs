@@ -21,6 +21,9 @@ public sealed class DynamicSecretsViewModel
     /// <summary>False when the vault holds no licence for dynamic secrets — the page nudges rather than hides.</summary>
     public bool Licensed { get; init; } = true;
 
+    /// <summary>True when the evaluation window could not be read, so the licence note is left out.</summary>
+    public bool LicenceNoteUnavailable { get; init; }
+
     /// <summary>
     /// Days left in the licence's evaluation period, or null when it has not started. Only
     /// meaningful while <see cref="Licensed"/> is false: null means the period is still available,
