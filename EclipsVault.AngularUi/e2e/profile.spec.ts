@@ -526,7 +526,7 @@ test('a wrong mailbox code is refused, then an expired code leaves the active ad
       verifications.push(request.method());
   });
   const active = await profile.email.inputValue();
-  const prepared = profile.preparedOperation();
+  const { prepared } = await profile.watchPreparedOperation();
   await profile.newEmail.fill('e2e-profile-expired@example.test');
   await page.getByRole('button', { name: 'Change email', exact: true }).click();
   lastStep = await profile.fillOwnerVerification(password, secret, lastStep);
@@ -572,7 +572,7 @@ test('an expired account grant requires fresh proof of the same pending mailbox'
   // The previous scenario's send still occupies the rolling minute.
   await waitForMailboxSendBudget();
   const active = await profile.email.inputValue();
-  const prepared = profile.preparedOperation();
+  const { prepared } = await profile.watchPreparedOperation();
   await profile.newEmail.fill('e2e-profile-grant@example.test');
   await page.getByRole('button', { name: 'Change email', exact: true }).click();
   lastStep = await profile.verifyOwner(password, secret, lastStep);
@@ -1049,7 +1049,7 @@ test('an expired prepared change is refused by the real server without a credent
     text: /status of 409/,
     url: /\/api\/ui\/profile\/operations\/[\da-f-]+\/verify$/,
   });
-  const prepared = profile.preparedOperation();
+  const { prepared } = await profile.watchPreparedOperation();
   await profile.resetAuthenticator.click();
   await profile.confirm();
   const operation = await prepared;

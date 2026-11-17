@@ -163,11 +163,18 @@ const destinations = {
 
 for (const shell of ['/DynamicSecrets', '/Access']) {
   for (const [label, { url, landmark }] of Object.entries(destinations)) {
-    test(`the sidebar on ${shell} opens ${label}`, async ({ page }) => {
+    // New secret left the Angular sidebar for the palette. Legacy still lists it.
+    const listed = shell === '/DynamicSecrets' || label !== 'New secret';
+    test(`the sidebar on ${shell} ${listed ? 'opens' : 'omits'} ${label}`, async ({ page }) => {
       await page.context().addCookies(await savedAdministratorCookies());
       await page.goto(shell);
+      const link = page.getByRole('link', { name: label, exact: true });
+      if (!listed) {
+        await expect(link).toHaveCount(0);
+        return;
+      }
 
-      await page.getByRole('link', { name: label, exact: true }).click();
+      await link.click();
 
       await expect(page).toHaveURL(url);
       await expect(landmark(page)).toBeVisible();

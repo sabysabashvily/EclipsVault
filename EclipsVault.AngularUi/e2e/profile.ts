@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Page, Route } from '@playwright/test';
 import { setTimeout } from 'node:timers/promises';
 import { clearSignInBudget, readProfileTotpStep } from './profile-state';
 import { currentTotpStep, freshTotp, totp } from './totp';
@@ -68,32 +68,39 @@ export class ProfilePage {
   }
 
   /**
-   * The id of the operation this page is preparing. The body is read in the response predicate,
-   * because a navigation that follows the response drops it before a later read.
+   * The next operation this page prepares. The body is copied as the response passes: Chromium
+   * drops it once the page moves on, and reading it later from the response then fails. Await
+   * this before the action that prepares the operation, then await `prepared`.
    */
-  preparedOperation(): Promise<{ operationId: string }> {
-    let body: { operationId: string } | undefined;
-    let failed: unknown;
-    return this.page
-      .waitForResponse(async (response) => {
-        if (
-          !response.url().endsWith('/api/ui/profile/operations') ||
-          response.request().method() !== 'POST'
-        ) {
-          return false;
-        }
-        try {
-          body = (await response.json()) as { operationId: string };
-        } catch (error) {
-          failed = error;
-        }
-        return true;
-      })
-      .then(() => {
-        if (failed) throw failed;
-        if (!body?.operationId) throw new Error('The prepared operation had no id');
-        return body;
-      });
+  async watchPreparedOperation(): Promise<{ prepared: Promise<{ operationId: string }> }> {
+    let settle!: (operation: { operationId: string }) => void;
+    let fail!: (error: unknown) => void;
+    const prepared = new Promise<{ operationId: string }>((resolve, reject) => {
+      settle = resolve;
+      fail = reject;
+    });
+    const isPrepare = (url: URL) => url.pathname === '/api/ui/profile/operations';
+    let captured = false;
+    const read = async (route: Route) => {
+      if (route.request().method() !== 'POST' || captured) {
+        await route.fallback();
+        return;
+      }
+      captured = true;
+      try {
+        const response = await route.fetch();
+        const body = (await response.json()) as { operationId?: string };
+        await route.fulfill({ response });
+        if (!body.operationId) throw new Error('The prepared operation had no id');
+        settle({ operationId: body.operationId });
+      } catch (error) {
+        fail(error);
+        throw error;
+      }
+    };
+    void prepared.finally(() => this.page.unroute(isPrepare, read));
+    await this.page.route(isPrepare, read);
+    return { prepared };
   }
 
   /** Fills the dialog with a fresh code and returns the TOTP step it used, which cannot be reused. */
