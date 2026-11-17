@@ -47,6 +47,7 @@ export default defineConfig({
             '**/audit.spec.ts',
             '**/overview.spec.ts',
             '**/secrets.spec.ts',
+            '**/dynamic-secrets.spec.ts',
           ],
           use: { ...devices['Desktop Chrome'] },
         },
@@ -87,6 +88,13 @@ export default defineConfig({
           // Needs the administrator session that sign-in saves.
           name: 'secrets',
           testMatch: '**/secrets.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          // Needs the administrator session that sign-in saves.
+          name: 'dynamic-secrets',
+          testMatch: '**/dynamic-secrets.spec.ts',
           dependencies: ['chromium'],
           use: { ...devices['Desktop Chrome'] },
         },
