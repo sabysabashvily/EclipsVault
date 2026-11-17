@@ -1,7 +1,9 @@
+using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using EclipsVault.Core.Application.Abstractions;
+using EclipsVault.Core.Application.Auditing;
 using EclipsVault.Core.Application.Licensing;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
@@ -312,7 +314,9 @@ public sealed partial class DynamicSecretIssueTests(DynamicSecretsFixture fixtur
 
         var lease = Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
         Assert.Equal(TimeSpan.FromMinutes(expectedMinutes), lease.ExpiresAtUtc - lease.IssuedAtUtc);
-        Assert.Equal(lease.ExpiresAtUtc, (await DynamicSecretsApi.JsonAsync(issued)).GetProperty("expiresAtUtc").GetDateTimeOffset());
+        // The page shows the expiry to the second. PostgreSQL keeps whole microseconds, and a Linux clock reads 100 ns.
+        Assert.Equal(lease.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
+            (await DynamicSecretsApi.JsonAsync(issued)).GetProperty("expiresAtUtc").GetDateTimeOffset().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
         await DynamicSecretsApi.RevokeAsync(admin, lease.Id);
     }
 
@@ -336,7 +340,8 @@ public sealed partial class DynamicSecretIssueTests(DynamicSecretsFixture fixtur
     public async Task A_two_day_lease_stored_before_the_ceiling_stays_active_past_a_day_until_it_expires()
     {
         var roleId = await DynamicSecretsApi.AddRoleAsync(vault, "it_dyn_stored", defaultTtlMinutes: 2880, maxTtlMinutes: 2880);
-        var issuedAt = DateTimeOffset.UtcNow.AddMinutes(-1500);
+        // Whole microseconds, as PostgreSQL stores it, so the expiry read back is the one written.
+        var issuedAt = TimeProvider.System.GetAuditUtcNow().AddMinutes(-1500);
         var lease = new DynamicSecretLease
         {
             Id = Guid.NewGuid(),
