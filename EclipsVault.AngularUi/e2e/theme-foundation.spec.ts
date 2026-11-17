@@ -51,6 +51,29 @@ for (const theme of ['dark', 'light']) {
   }
 }
 
+// Edit user needs a real account's id, so it opens from the list: the administrator always exists.
+for (const theme of ['dark', 'light']) {
+  for (const width of [300, 2000]) {
+    test(`Edit user fits ${width}px in ${theme} appearance`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page
+        .context()
+        .addCookies([
+          { name: 'EclipsVault.Theme', value: theme, url: process.env['E2E_BASE_URL']! },
+        ]);
+      await page.goto('/Admin/Users');
+      await new ResponsiveShell(page).editUser.click();
+      await expect(
+        page.getByRole('heading', { name: 'Edit user', exact: true, level: 1 }),
+      ).toBeVisible();
+      await expect(page.getByRole('status').filter({ hasText: /^Loading/ })).toHaveCount(0);
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+        .toBe(width);
+    });
+  }
+}
+
 for (const theme of ['dark', 'light']) {
   for (const width of [300, 375, 768, 1280, 2000]) {
     test(`My access fits ${width}px in ${theme} appearance`, async ({ page }, info) => {
@@ -167,6 +190,10 @@ for (const width of [300, 768, 1199]) {
     expect(Math.round(link?.width ?? 0)).toBeGreaterThanOrEqual(44);
     await page.keyboard.press('Escape');
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    await page.goto('/Admin/CreateUser');
+    const reveal = await shell.showPassword.boundingBox();
+    expect(Math.round(reveal?.height ?? 0)).toBeGreaterThanOrEqual(44);
+    expect(Math.round(reveal?.width ?? 0)).toBeGreaterThanOrEqual(44);
   });
 }
 

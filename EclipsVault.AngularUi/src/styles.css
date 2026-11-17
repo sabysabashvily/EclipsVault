@@ -2347,6 +2347,15 @@ fieldset {
     min-height: 2.75rem;
     min-width: 2.75rem;
   }
+  /* The show/hide button fills the field's right end, so it is a 44px target too. */
+  .affix-button {
+    right: 0;
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+  .input-affix > input {
+    padding-right: 3rem;
+  }
 }
 
 @media (max-width: 767px) {

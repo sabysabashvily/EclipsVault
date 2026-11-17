@@ -4,6 +4,7 @@ export class AccessRequests {
   readonly heading;
   readonly introduction;
   readonly toReview;
+  readonly reviewRegion;
   readonly mine;
   readonly reviewScope;
   readonly nothingToReview;
@@ -22,6 +23,7 @@ export class AccessRequests {
     this.toReview = page
       .getByRole('table')
       .filter({ has: page.getByRole('columnheader', { name: 'Requester', exact: true }) });
+    this.reviewRegion = page.getByRole('region', { name: 'Requests to review', exact: true });
     this.mine = page
       .getByRole('table')
       .filter({ has: page.getByRole('columnheader', { name: 'Decision', exact: true }) });

@@ -10,6 +10,7 @@ export class ResponsiveShell {
   readonly editUser;
   readonly usersLink;
   readonly users;
+  readonly showPassword;
 
   constructor(page: Page) {
     this.open = page.getByRole('button', { name: 'Open navigation', exact: true });
@@ -27,5 +28,6 @@ export class ResponsiveShell {
     this.editUser = page.getByRole('link', { name: 'Edit', exact: true }).first();
     this.usersLink = this.navigation.getByRole('link', { name: 'Users', exact: true });
     this.users = page.getByRole('region', { name: 'Users', exact: true });
+    this.showPassword = page.getByRole('button', { name: 'Show password', exact: true });
   }
 }

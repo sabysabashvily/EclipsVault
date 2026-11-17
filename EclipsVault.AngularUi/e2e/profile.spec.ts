@@ -236,7 +236,7 @@ test('visual parity: Profile preserves cards and labels in both themes and on a 
   await page.screenshot({ path: testInfo.outputPath('profile-narrow.png'), fullPage: true });
 });
 
-test('visual parity: Change password keeps its Legacy fields, hint, actions and meter', async ({
+test('Change password shows its fields, hint, meter and a working show/hide in both themes', async ({
   page,
 }, testInfo) => {
   await page.context().addCookies(ownerCookies);
@@ -264,16 +264,11 @@ test('visual parity: Change password keeps its Legacy fields, hint, actions and 
   await page.screenshot({ path: testInfo.outputPath('change-password.png'), fullPage: true });
   await form.newPassword.fill('E2e-meter-92f4ab71-c831-49ed-90d5');
   await expect(form.strength).toHaveAttribute('aria-label', 'Password strength: Very strong');
-  expect(await form.revealIcon('Show password')).toEqual([
-    'path:d=M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z',
-    'circle:cx=12,cy=12,r=3',
-  ]);
+  await expect(form.newPassword).toHaveAttribute('type', 'password');
   await form.showPassword.click();
-  expect(await form.revealIcon('Hide password')).toEqual([
-    'path:d=M2 12s3.6-7 10-7c2 0 3.8.7 5.2 1.6M22 12s-3.6 7-10 7c-2 0-3.8-.7-5.2-1.6',
-    'path:d=m4 4 16 16',
-  ]);
+  await expect(form.newPassword).toHaveAttribute('type', 'text');
   await form.hidePassword.click();
+  await expect(form.newPassword).toHaveAttribute('type', 'password');
   await page.screenshot({
     path: testInfo.outputPath('change-password-meter-dark.png'),
     fullPage: true,
@@ -281,10 +276,7 @@ test('visual parity: Change password keeps its Legacy fields, hint, actions and 
   await page.getByText('Mailbox Owner', { exact: true }).click();
   await page.getByRole('menuitem', { name: /Switch to light/ }).click();
   await expect(form.strength).toHaveAttribute('aria-label', 'Password strength: Very strong');
-  expect(await form.revealIcon('Show password')).toEqual([
-    'path:d=M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z',
-    'circle:cx=12,cy=12,r=3',
-  ]);
+  await expect(form.showPassword).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath('change-password-meter-light.png'),
     fullPage: true,

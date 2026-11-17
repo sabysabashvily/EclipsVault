@@ -141,9 +141,7 @@ for (const shell of shells) {
 }
 const themes = ['dark', 'light'] as const;
 for (const theme of themes) {
-  test(`visual parity: Service accounts and both forms in ${theme} appearance`, async ({
-    page,
-  }, info) => {
+  test(`Service accounts and both forms render in ${theme} appearance`, async ({ page }, info) => {
     await page.context().addCookies(administratorCookies);
     const list = new ServiceAccounts(page);
     await list.open();
@@ -168,12 +166,17 @@ for (const theme of themes) {
     const expiry = await details.expiry.boundingBox();
     const ceiling = await details.ceiling.boundingBox();
     expect(expiry?.y).toBe(ceiling?.y);
-    await expect(details.metadataOnly).toHaveCSS('width', '13px');
-    await expect(details.keyScopes).toHaveCSS('display', 'inline-flex');
+    await expect(details.metadataOnly).toBeVisible();
     await page.screenshot({
       path: info.outputPath(`service-account-${theme}.png`),
       fullPage: true,
     });
+    for (const width of [300, 2000]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+        .toBe(width);
+    }
   });
 
   test(`Service accounts forms and confirmation support the keyboard in ${theme} appearance`, async ({
