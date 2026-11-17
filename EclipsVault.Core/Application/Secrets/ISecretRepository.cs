@@ -49,19 +49,28 @@ public interface ISecretRepository
     Task DeleteAsync(Secret secret, CancellationToken ct);
 
     /// <summary>
-    /// Persists a new value: inserts the archived version and updates the secret in one transaction, with
-    /// one audit row recording the change as <paramref name="recordedAs"/>. Throws
-    /// <c>AuditWriteFailedException</c> when the write reports failure, which can, rarely, follow a
-    /// commit whose reply was lost.
+    /// Persists a new value, but only while the stored secret is unshredded and its wrapped data key is still
+    /// <paramref name="readWrappedDek"/>: inserts the archived version, numbered inside this write, and
+    /// updates the secret in one transaction, with one audit row recording the change as
+    /// <paramref name="recordedAs"/>.
     /// </summary>
-    Task RotateAsync(Secret secret, SecretVersion archivedVersion, AuditAction recordedAs, CancellationToken ct);
+    /// <exception cref="SecretChangedException">Another change committed after the value was read; nothing was saved.</exception>
+    /// <exception cref="AuditWriteFailedException">
+    /// The write reported failure. It normally saved nothing, but a commit whose reply was lost throws too.
+    /// </exception>
+    Task RotateAsync(Secret secret, byte[] readWrappedDek, SecretVersion archivedVersion, AuditAction recordedAs, CancellationToken ct);
 
-    /// <summary>Shreds the secret and purges its archived versions (which hold key material) in one transaction.</summary>
-    Task ShredAsync(Secret secret, CancellationToken ct);
+    /// <summary>
+    /// Shreds the secret and purges its archived versions (which hold key material) in one transaction,
+    /// but only while its wrapped data key and expiry are still what was read. False when it changed, so
+    /// nothing was shredded.
+    /// </summary>
+    Task<bool> ShredAsync(Secret secret, byte[] readWrappedDek, DateTimeOffset readExpiresAtUtc, CancellationToken ct);
+
+    /// <summary>Replaces what this request holds of the secret with what is stored now.</summary>
+    Task ReloadAsync(Secret secret, CancellationToken ct);
 
     Task<IReadOnlyList<SecretVersion>> ListVersionsAsync(Guid secretId, CancellationToken ct);
 
     Task<SecretVersion?> FindVersionAsync(Guid secretId, Guid versionId, CancellationToken ct);
-
-    Task<int> CountVersionsAsync(Guid secretId, CancellationToken ct);
 }

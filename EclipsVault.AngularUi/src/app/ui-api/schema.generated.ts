@@ -116,6 +116,15 @@ export interface paths {
                         "application/problem+json": components["schemas"]["AccessRequestProblemResponse"];
                     };
                 };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
                 /** @description Not Found */
                 404: {
                     headers: {

@@ -56,9 +56,11 @@ describe('AccessRequestsPage', () => {
     const fixture = TestBed.createComponent(AccessRequestsPage);
     fixture.detectChanges();
     const page = fixture.nativeElement as HTMLElement;
-    const dialog = page.querySelector('dialog')!;
-    dialog.showModal = () => dialog.setAttribute('open', '');
-    dialog.close = () => dialog.removeAttribute('open');
+    // The test DOM has no modal dialogs; each dialog only shows whether it is open.
+    for (const dialog of page.querySelectorAll('dialog')) {
+      dialog.showModal = () => dialog.setAttribute('open', '');
+      dialog.close = () => dialog.removeAttribute('open');
+    }
     return { fixture, page };
   }
 
@@ -95,6 +97,18 @@ describe('AccessRequestsPage', () => {
       ),
     ].map((cell) => cell.textContent);
   }
+
+  function stepUpDialog(page: HTMLElement): HTMLDialogElement {
+    return [...page.querySelectorAll('dialog')].find(
+      (dialog) => dialog.querySelector('h2')?.textContent === "Confirm it's you",
+    )!;
+  }
+
+  const staleProof = {
+    code: 'step_up_required',
+    title: "Confirm it's you before sharing this secret.",
+    proof: 'code',
+  };
 
   function announced(page: HTMLElement) {
     return {
@@ -324,6 +338,79 @@ describe('AccessRequestsPage', () => {
       error: '',
     });
     expect(page.textContent).toContain('Nothing waiting on you');
+  });
+
+  it('asks for an authenticator code when an approval needs fresh proof, then approves once', async () => {
+    const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
+    page.querySelector('input')!.value = '7';
+    button(page, 'Approve').click();
+    backend
+      .expectOne(`${path}/${toReview.requestId}/approve`)
+      .flush(staleProof, { status: 403, statusText: 'Forbidden' });
+    await fixture.whenStable();
+    const dialog = stepUpDialog(page);
+    expect(dialog.hasAttribute('open')).toBe(true);
+    expect(dialog.textContent).toContain('Enter an authenticator code to continue.');
+
+    dialog.querySelector('input')!.value = '123456';
+    dialog.querySelector('form')!.dispatchEvent(new Event('submit'));
+    const proof = backend.expectOne({ method: 'POST', url: '/api/ui/step-up' });
+    expect(proof.request.body).toEqual({ code: '123456' });
+    proof.flush(null, { status: 204, statusText: 'No Content' });
+    await fixture.whenStable();
+    const approval = backend.expectOne(`${path}/${toReview.requestId}/approve`);
+    expect(approval.request.body).toEqual({ expiresInDays: 7 });
+    approval.flush(null, { status: 204, statusText: 'No Content' });
+    fixture.detectChanges();
+    backend.expectOne(path).flush(empty);
+    await fixture.whenStable();
+
+    expect(dialog.hasAttribute('open')).toBe(false);
+    expect(announced(page)).toEqual({
+      success: 'Request approved — a grant was created for the requester.',
+      error: '',
+    });
+  });
+
+  it('approves nothing when the authenticator dialog is cancelled', async () => {
+    const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
+    button(page, 'Approve').click();
+    backend
+      .expectOne(`${path}/${toReview.requestId}/approve`)
+      .flush(staleProof, { status: 403, statusText: 'Forbidden' });
+    await fixture.whenStable();
+
+    button(stepUpDialog(page), 'Cancel').click();
+    await fixture.whenStable();
+
+    backend.expectNone(`${path}/${toReview.requestId}/approve`);
+    expect(stepUpDialog(page).hasAttribute('open')).toBe(false);
+    expect(announced(page)).toEqual({ success: '', error: '' });
+    expect(button(page, 'Approve').disabled).toBe(false);
+  });
+
+  it('asks for fresh proof only once and announces a second refusal as an error', async () => {
+    const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
+    button(page, 'Approve').click();
+    backend
+      .expectOne(`${path}/${toReview.requestId}/approve`)
+      .flush(staleProof, { status: 403, statusText: 'Forbidden' });
+    await fixture.whenStable();
+    const dialog = stepUpDialog(page);
+    dialog.querySelector('input')!.value = '123456';
+    dialog.querySelector('form')!.dispatchEvent(new Event('submit'));
+    backend.expectOne('/api/ui/step-up').flush(null, { status: 204, statusText: 'No Content' });
+    await fixture.whenStable();
+
+    backend
+      .expectOne(`${path}/${toReview.requestId}/approve`)
+      .flush(staleProof, { status: 403, statusText: 'Forbidden' });
+    fixture.detectChanges();
+    backend.expectOne(path).flush({ ...empty, toReview: [toReview] });
+    await fixture.whenStable();
+
+    expect(dialog.hasAttribute('open')).toBe(false);
+    expect(announced(page)).toEqual({ success: '', error: staleProof.title });
   });
 
   it('sends an empty expiry as null, which the server refuses as out of range', async () => {

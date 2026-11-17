@@ -75,7 +75,7 @@ public class StaleCachedEnvelopeTests
             row.Algorithm, row.IsHoneyToken, row.CreatedAtUtc, null, null));
         var service = new SecretService(
             new OneRowRepository(row), _engine = new RetiredKeyUnloaded(engine), cache, new NoIntrusion(), new NullAuditSink(),
-            new StubActor(), [], TimeProvider.System, new RecordingPremiumFeatureUsage());
+            new StubActor(), [], TimeProvider.System, new RecordingPremiumFeatureUsage(), new FakeLoginLock());
         return (service, id);
     }
 
@@ -123,8 +123,7 @@ public class StaleCachedEnvelopeTests
     {
         public Task<Secret?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(row.Id == id ? row : null);
         public Task<IReadOnlyList<Secret>> ListActiveAsync(DateTimeOffset asOfUtc, CancellationToken ct) => Task.FromResult<IReadOnlyList<Secret>>([row]);
-        public Task RotateAsync(Secret secret, SecretVersion archivedVersion, AuditAction recordedAs, CancellationToken ct) => Task.CompletedTask;
-        public Task<int> CountVersionsAsync(Guid secretId, CancellationToken ct) => Task.FromResult(0);
+        public Task RotateAsync(Secret secret, byte[] readWrappedDek, SecretVersion archivedVersion, AuditAction recordedAs, CancellationToken ct) => Task.CompletedTask;
         public Task<IReadOnlyList<Secret>> ListExpiredAsync(DateTimeOffset asOfUtc, CancellationToken ct) => Task.FromResult<IReadOnlyList<Secret>>([]);
         public Task<IReadOnlyList<Secret>> ListExpiringAsync(DateTimeOffset asOfUtc, DateTimeOffset horizonUtc, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<Secret>>([]);
@@ -133,7 +132,8 @@ public class StaleCachedEnvelopeTests
         public Task AddAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
         public Task UpdateAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
         public Task DeleteAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
-        public Task ShredAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
+        public Task<bool> ShredAsync(Secret secret, byte[] readWrappedDek, DateTimeOffset readExpiresAtUtc, CancellationToken ct) => Task.FromResult(true);
+        public Task ReloadAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
         public Task<IReadOnlyList<SecretVersion>> ListVersionsAsync(Guid secretId, CancellationToken ct) => Task.FromResult<IReadOnlyList<SecretVersion>>([]);
         public Task<SecretVersion?> FindVersionAsync(Guid secretId, Guid versionId, CancellationToken ct) => Task.FromResult<SecretVersion?>(null);
     }

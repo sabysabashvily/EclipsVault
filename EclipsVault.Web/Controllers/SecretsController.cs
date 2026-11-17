@@ -21,7 +21,8 @@ namespace EclipsVault.Web.Controllers;
 /// </summary>
 public sealed class SecretsController : VaultController
 {
-    private const string NotPermittedReason = "Only an administrator or a member of this secret's project can change it.";
+    private const string NotPermittedReason =
+        "Only an administrator or a member of this secret's project can change it. A share grants read access only.";
 
     private readonly ISecretService _secrets;
     private readonly ISecretGrantService _grants;
@@ -121,9 +122,9 @@ public sealed class SecretsController : VaultController
     public async Task<IActionResult> Rotate(RotateSecretViewModel model, CancellationToken ct)
     {
         var details = await _secrets.GetDetailsAsync(model.Id, ct);
-        if (await CheckAccessAsync(details, ct) is { } denied)
+        if ((await CheckAccessAsync(details, ct) ?? await CheckChangeRightAsync(details, ct)) is { } refused)
         {
-            return denied;
+            return refused;
         }
 
         if (!ModelState.IsValid)
@@ -132,16 +133,24 @@ public sealed class SecretsController : VaultController
             return RedirectToAction(nameof(Details), new { id = model.Id });
         }
 
-        await _secrets.RotateAsync(
-            model.Id,
-            model.NewValue,
-            string.IsNullOrWhiteSpace(model.ChangeNote) ? null : model.ChangeNote.Trim(),
-            model.RenewTtlDays,
-            ct);
+        try
+        {
+            await _secrets.RotateAsync(
+                model.Id,
+                model.NewValue,
+                string.IsNullOrWhiteSpace(model.ChangeNote) ? null : model.ChangeNote.Trim(),
+                model.RenewTtlDays,
+                ct);
 
-        this.FlashSuccess(model.RenewTtlDays is > 0
-            ? $"Secret rotated and renewed for {model.RenewTtlDays} more day(s). The previous value was archived to version history."
-            : "Secret rotated. The previous value was archived to version history.");
+            this.FlashSuccess(model.RenewTtlDays is > 0
+                ? $"Secret rotated and renewed for {model.RenewTtlDays} more day(s). The previous value was archived to version history."
+                : "Secret rotated. The previous value was archived to version history.");
+        }
+        catch (DomainException ex) when (ex is SecretChangedException or ChangeInProgressException)
+        {
+            this.FlashError(ex.Message);
+        }
+
         return RedirectToAction(nameof(Details), new { id = model.Id });
     }
 
@@ -153,9 +162,9 @@ public sealed class SecretsController : VaultController
     public async Task<IActionResult> RotateManaged(Guid id, int? renewTtlDays, CancellationToken ct)
     {
         var details = await _secrets.GetDetailsAsync(id, ct);
-        if (await CheckAccessAsync(details, ct) is { } denied)
+        if ((await CheckAccessAsync(details, ct) ?? await CheckChangeRightAsync(details, ct)) is { } refused)
         {
-            return denied;
+            return refused;
         }
 
         try
@@ -169,7 +178,7 @@ public sealed class SecretsController : VaultController
         {
             this.FlashError("The 30-day evaluation period for managed rotation has ended. Rotating the real credential needs a licence — the stored value is unaffected.");
         }
-        catch (VaultAdminException ex)
+        catch (DomainException ex) when (ex is VaultAdminException or SecretChangedException or ChangeInProgressException)
         {
             this.FlashError(ex.Message);
         }
@@ -217,13 +226,21 @@ public sealed class SecretsController : VaultController
     public async Task<IActionResult> RestoreVersion(Guid id, Guid versionId, CancellationToken ct)
     {
         var details = await _secrets.GetDetailsAsync(id, ct);
-        if (await CheckAccessAsync(details, ct) is { } denied)
+        if ((await CheckAccessAsync(details, ct) ?? await CheckChangeRightAsync(details, ct)) is { } refused)
         {
-            return denied;
+            return refused;
         }
 
-        await _secrets.RestoreVersionAsync(id, versionId, ct);
-        this.FlashSuccess("Secret reverted to the selected version. The value it replaced was archived.");
+        try
+        {
+            await _secrets.RestoreVersionAsync(id, versionId, ct);
+            this.FlashSuccess("Secret reverted to the selected version. The value it replaced was archived.");
+        }
+        catch (DomainException ex) when (ex is RestoreManagedException or SecretChangedException)
+        {
+            this.FlashError(ex.Message);
+        }
+
         return RedirectToAction(nameof(Details), new { id });
     }
 
@@ -236,10 +253,16 @@ public sealed class SecretsController : VaultController
             return denied;
         }
 
-        if (!CanShare(details))
+        if (await CheckChangeRightAsync(details, ct) is { } notPermitted)
         {
-            await _secrets.RecordAccessDeniedAsync(details, [NotPermittedReason], ct);
-            return Forbid();
+            return notPermitted;
+        }
+
+        if (StepUpNeeded(details.Sensitivity))
+        {
+            this.FlashError(
+                "Sharing a secret this sensitive needs a fresh sign-in. Confirm it's you by revealing it or signing in again, then share it.");
+            return RedirectToAction(nameof(Details), new { id = model.SecretId });
         }
 
         if (!ModelState.IsValid)
@@ -270,10 +293,9 @@ public sealed class SecretsController : VaultController
             return denied;
         }
 
-        if (!CanShare(details))
+        if (await CheckChangeRightAsync(details, ct) is { } notPermitted)
         {
-            await _secrets.RecordAccessDeniedAsync(details, [NotPermittedReason], ct);
-            return Forbid();
+            return notPermitted;
         }
 
         if (await _grants.RevokeAsync(grantId, id, ct))
@@ -292,14 +314,29 @@ public sealed class SecretsController : VaultController
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var details = await _secrets.GetDetailsAsync(id, ct);
-        if (await CheckAccessAsync(details, ct) is { } denied)
+        if ((await CheckAccessAsync(details, ct) ?? await CheckChangeRightAsync(details, ct)) is { } refused)
         {
-            return denied;
+            return refused;
         }
 
         await _secrets.DeleteAsync(id, ct);
         // The list is the Angular UI's, which reads the outcome from the address, not from TempData.
         return LocalRedirect("/Secrets?deleted=1");
+    }
+
+    /// <summary>
+    /// Null when the caller, who passed the access check, may change or share the secret; otherwise the
+    /// refusal is recorded and the caller is refused.
+    /// </summary>
+    private async Task<IActionResult?> CheckChangeRightAsync(SecretDetailsDto details, CancellationToken ct)
+    {
+        if (MayChange(details))
+        {
+            return null;
+        }
+
+        await _secrets.RecordAccessDeniedAsync(details, [NotPermittedReason], ct);
+        return Forbid();
     }
 
     /// <summary>Null when access is allowed; otherwise the refusal is recorded and the caller is sent to
@@ -324,7 +361,7 @@ public sealed class SecretsController : VaultController
         SecretDetailsDto dto, CancellationToken ct, string? revealedValue = null, string? revealedLabel = null,
         bool stepUpRequired = false, string? stepUpError = null, Guid? stepUpVersionId = null)
     {
-        var canShare = CanShare(dto);
+        var canShare = MayChange(dto);
         var rotationLicensed = _license.Allows(LicenseFeatures.ManagedRotation);
 
         // Only ask when the answer can be shown — an unlicensed vault, on a managed secret. Otherwise
@@ -381,8 +418,6 @@ public sealed class SecretsController : VaultController
             new AuthenticationProperties { IsPersistent = false });
     }
 
-    /// <summary>Sharing is managed by administrators and by members of the secret's own project.</summary>
-    private bool CanShare(SecretDetailsDto dto)
-        => User.IsAdmin() || string.Equals(User.GetProject(), dto.ProjectKey, StringComparison.OrdinalIgnoreCase);
+    private bool MayChange(SecretDetailsDto dto) => SecretChangeRight.Allows(User.IsAdmin(), User.GetProject(), dto.ProjectKey);
 
 }

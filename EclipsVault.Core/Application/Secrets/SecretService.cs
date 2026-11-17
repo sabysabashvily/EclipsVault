@@ -23,6 +23,7 @@ public sealed class SecretService : ISecretService
     private readonly IReadOnlyCollection<IManagedSecretBackend> _managedBackends;
     private readonly TimeProvider _clock;
     private readonly IPremiumFeatureUsage _premiumUsage;
+    private readonly IManagedPrincipalLock _logins;
 
     public SecretService(
         ISecretRepository repository,
@@ -33,7 +34,8 @@ public sealed class SecretService : ISecretService
         IAuditContext actor,
         IEnumerable<IManagedSecretBackend> managedBackends,
         TimeProvider clock,
-        IPremiumFeatureUsage premiumUsage)
+        IPremiumFeatureUsage premiumUsage,
+        IManagedPrincipalLock logins)
     {
         _repository = repository;
         _cryptoFactory = cryptoFactory;
@@ -44,6 +46,7 @@ public sealed class SecretService : ISecretService
         _managedBackends = [.. managedBackends];
         _clock = clock;
         _premiumUsage = premiumUsage;
+        _logins = logins;
     }
 
     private Task AuditSecretAsync(Guid id, string name, AuditAction action, CancellationToken ct)
@@ -163,8 +166,36 @@ public sealed class SecretService : ISecretService
         await TripHoneyTokenIfNeededAsync(envelope, ct);
 
         var entity = await _repository.FindAsync(id, ct) ?? throw new SecretNotFoundException(id);
+        await using var login = await LockLoginAsync(entity, ct);
         await StoreRotatedValueAsync(entity, Guid.NewGuid(), newValue, changeNote, renewTtlDays, AuditAction.SecretUpdated, ct);
         await _cache.EvictAsync(entity.Id, ct);
+    }
+
+    /// <summary>
+    /// For a managed secret, the lock on its backend login, then the secret read again under it: held from
+    /// that read through the commit or put-back, so no other writer of the login can act in between. Null
+    /// for a secret no login is bound to.
+    /// </summary>
+    /// <exception cref="ChangeInProgressException">Another writer holds the login.</exception>
+    private async Task<IAsyncDisposable?> LockLoginAsync(Secret entity, CancellationToken ct)
+    {
+        if (!entity.IsManaged)
+        {
+            return null;
+        }
+
+        var login = await _logins.TryAcquireAsync(entity.RotationBackend!.Value, entity.RotationPrincipal!, ct)
+            ?? throw new ChangeInProgressException();
+        try
+        {
+            await _repository.ReloadAsync(entity, ct);
+            return entity.IsShredded ? throw new SecretChangedException() : login;
+        }
+        catch
+        {
+            await login.DisposeAsync();
+            throw;
+        }
     }
 
     /// <summary>
@@ -176,6 +207,7 @@ public sealed class SecretService : ISecretService
         Secret entity, Guid archivedVersionId, string newValue, string? changeNote, int? renewTtlDays, AuditAction recordedAs,
         CancellationToken ct)
     {
+        var readWrappedDek = entity.WrappedDek;
         var archived = await ArchiveCurrentAsync(entity, archivedVersionId, changeNote, ct);
 
         var now = _clock.GetUtcNow();
@@ -192,7 +224,7 @@ public sealed class SecretService : ISecretService
             entity.ExpiresAtUtc = now.AddDays(renewTtlDays.Value);
         }
 
-        await _repository.RotateAsync(entity, archived, recordedAs, ct);
+        await _repository.RotateAsync(entity, readWrappedDek, archived, recordedAs, ct);
     }
 
     public async Task RotateManagedAsync(Guid id, int? renewTtlDays, CancellationToken ct)
@@ -216,6 +248,7 @@ public sealed class SecretService : ISecretService
         var backend = _managedBackends.FirstOrDefault(b => b.Backend == entity.RotationBackend)
             ?? throw new VaultAdminException($"No backend is configured for '{entity.RotationBackend}'.");
 
+        await using var login = await LockLoginAsync(entity, ct);
         var principal = entity.RotationPrincipal!;
         var newPassword = CredentialMint.NewPassword();
 
@@ -380,9 +413,15 @@ public sealed class SecretService : ISecretService
         await TripHoneyTokenIfNeededAsync(envelope, ct);
 
         var entity = await _repository.FindAsync(id, ct) ?? throw new SecretNotFoundException(id);
+        if (entity.IsManaged)
+        {
+            throw new RestoreManagedException(entity.RotationPrincipal!);
+        }
+
         var version = await _repository.FindVersionAsync(id, versionId, ct)
                       ?? throw new SecretNotFoundException(versionId);
 
+        var readWrappedDek = entity.WrappedDek;
         var archived = await ArchiveCurrentAsync(entity, Guid.NewGuid(), $"Superseded by restore of version {version.VersionNumber}", ct);
 
         // Re-seal the chosen version into the live secret's binding. Copying the envelope across is
@@ -393,8 +432,38 @@ public sealed class SecretService : ISecretService
         entity.ApplyEnvelope(restored);
         entity.UpdatedAtUtc = _clock.GetUtcNow();
 
-        await _repository.RotateAsync(entity, archived, AuditAction.SecretVersionRestored, ct);
+        await _repository.RotateAsync(entity, readWrappedDek, archived, AuditAction.SecretVersionRestored, ct);
         await _cache.EvictAsync(id, ct);
+    }
+
+    public async Task<bool> ShredIfExpiredAsync(Guid id, CancellationToken ct)
+    {
+        var entity = await _repository.FindAsync(id, ct);
+        var now = _clock.GetUtcNow();
+        if (entity is null || entity.IsShredded || entity.ExpiresAtUtc is not { } expiry || expiry > now)
+        {
+            return false;
+        }
+
+        // A managed secret's other writers hold its login until they commit or put the password back;
+        // it is shredded at a later sweep instead.
+        await using var login = entity.IsManaged
+            ? await _logins.TryAcquireAsync(entity.RotationBackend!.Value, entity.RotationPrincipal!, ct)
+            : null;
+        if (entity.IsManaged && login is null)
+        {
+            return false;
+        }
+
+        var readWrappedDek = entity.WrappedDek;
+        entity.Shred(now);
+        if (!await _repository.ShredAsync(entity, readWrappedDek, expiry, ct))
+        {
+            return false;
+        }
+
+        await _cache.EvictAsync(id, ct);
+        return true;
     }
 
     /// <summary>
@@ -414,7 +483,6 @@ public sealed class SecretService : ISecretService
         {
             Id = versionId,
             SecretId = entity.Id,
-            VersionNumber = await _repository.CountVersionsAsync(entity.Id, ct) + 1,
             Ciphertext = resealed.Ciphertext,
             WrappedDek = resealed.WrappedDek,
             KekId = resealed.KekId,

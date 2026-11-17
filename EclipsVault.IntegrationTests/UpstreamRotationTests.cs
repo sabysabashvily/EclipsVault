@@ -1,3 +1,4 @@
+using System.Net;
 using EclipsVault.Core.Application.Secrets;
 using EclipsVault.Core.Domain.Enums;
 using Microsoft.Extensions.DependencyInjection;
@@ -50,6 +51,49 @@ public sealed class UpstreamRotationTests(AuditFailureFixture failure)
         Assert.Empty(await LegacySecretActions.ActionsAfterAsync(vault, before, details));
         Assert.Contains("The backend refused the rotation. The credential is unchanged.", await admin.GetStringAsync(details));
         Assert.Equal("it-upstream-refused-value", await StoredValueAsync(vault, details));
+    }
+
+    [Fact]
+    public async Task Restoring_a_version_of_a_managed_secret_is_refused_and_changes_nothing()
+    {
+        var vault = failure.Vault;
+        var admin = await vault.AdminClientAsync();
+        await ManagedTargetLogins.CreateAsync(vault, "it_upstream_restore", ManagedTargetLogins.NewPassword());
+        var details = await LegacySharing.CreateSecretAsync(admin, "it-upstream-restore", value: "it-upstream-restore-unused");
+        await LegacySecretActions.MakeManagedAsync(vault, details, "it_upstream_restore");
+        var token = await LegacySecretActions.FormTokenAsync(admin, details);
+        LegacySecretActions.AssertRedirectedTo(await LegacySecretActions.RotateUpstreamAsync(admin, details, token), details);
+        var live = await StoredValueAsync(vault, details);
+        var before = await AuditTrail.HeadAsync(vault);
+
+        var response = await LegacySecretActions.RestoreAsync(admin, details, token, await LegacySecretActions.NewestVersionAsync(vault, details));
+
+        LegacySecretActions.AssertRedirectedTo(response, details);
+        Assert.Empty(await LegacySecretActions.ActionsAfterAsync(vault, before, details));
+        Assert.Contains(
+            "This secret is the live password of &#x27;it_upstream_restore&#x27;. Rotate it upstream instead; earlier versions stay readable.",
+            await admin.GetStringAsync(details));
+        Assert.Equal(live, await StoredValueAsync(vault, details));
+        Assert.True(await ManagedTargetLogins.OpensWithAsync(vault, "it_upstream_restore", live));
+    }
+
+    [Fact]
+    public async Task A_project_member_rotates_a_managed_secret_upstream()
+    {
+        var vault = failure.Vault;
+        var password = ManagedTargetLogins.NewPassword();
+        await ManagedTargetLogins.CreateAsync(vault, "it_upstream_member", password);
+        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-upstream-member", value: password);
+        await LegacySecretActions.MakeManagedAsync(vault, details, "it_upstream_member");
+        var member = await vault.SignInNewAccountAsync("it-upstream-member", IPAddress.Parse("10.167.0.10"));
+        var token = await LegacySecretActions.FormTokenAsync(member.Client, details);
+
+        var response = await LegacySecretActions.RotateUpstreamAsync(member.Client, details, token);
+
+        LegacySecretActions.AssertRedirectedTo(response, details);
+        var stored = await StoredValueAsync(vault, details);
+        Assert.NotEqual(password, stored);
+        Assert.True(await ManagedTargetLogins.OpensWithAsync(vault, "it_upstream_member", stored));
     }
 
     /// <summary>Read through the vault's own service, which records the reveal after the test's assertions on the trail.</summary>

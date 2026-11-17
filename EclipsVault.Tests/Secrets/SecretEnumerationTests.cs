@@ -34,8 +34,7 @@ public class SecretEnumerationTests
         public Task<Secret?> FindAsync(Guid id, CancellationToken ct)
             => Task.FromResult(_secrets.FirstOrDefault(s => s.Id == id));
 
-        public Task RotateAsync(Secret secret, SecretVersion archivedVersion, AuditAction recordedAs, CancellationToken ct) => Task.CompletedTask;
-        public Task<int> CountVersionsAsync(Guid secretId, CancellationToken ct) => Task.FromResult(0);
+        public Task RotateAsync(Secret secret, byte[] readWrappedDek, SecretVersion archivedVersion, AuditAction recordedAs, CancellationToken ct) => Task.CompletedTask;
         public Task<IReadOnlyList<Secret>> ListExpiredAsync(DateTimeOffset asOfUtc, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<Secret>>([]);
         public Task<IReadOnlyList<Secret>> ListExpiringAsync(DateTimeOffset asOfUtc, DateTimeOffset horizonUtc, CancellationToken ct)
@@ -45,7 +44,8 @@ public class SecretEnumerationTests
         public Task AddAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
         public Task UpdateAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
         public Task DeleteAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
-        public Task ShredAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
+        public Task<bool> ShredAsync(Secret secret, byte[] readWrappedDek, DateTimeOffset readExpiresAtUtc, CancellationToken ct) => Task.FromResult(true);
+        public Task ReloadAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
         public Task<IReadOnlyList<SecretVersion>> ListVersionsAsync(Guid secretId, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<SecretVersion>>([]);
         public Task<SecretVersion?> FindVersionAsync(Guid secretId, Guid versionId, CancellationToken ct)
@@ -107,7 +107,7 @@ public class SecretEnumerationTests
 
     private static SecretService Build(ISecretRepository repository, IIntrusionResponseService? intrusion = null)
         => new(repository, new FakeCryptoEngine(), new NullCache(), intrusion ?? new UnusedIntrusionResponse(),
-               new NullAuditSink(), new StubActor(), [], TimeProvider.System, new RecordingPremiumFeatureUsage());
+               new NullAuditSink(), new StubActor(), [], TimeProvider.System, new RecordingPremiumFeatureUsage(), new FakeLoginLock());
 
     [Fact]
     public async Task Listing_never_returns_a_decoy()

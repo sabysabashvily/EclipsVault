@@ -33,6 +33,23 @@ internal static class LegacySecretActions
             ["versionId"] = versionId.ToString(),
         });
 
+    public static Task<HttpResponseMessage> DeleteAsync(HttpClient client, string details, string token)
+        => PostAsync(client, details.Replace("/Details/", "/Delete/", StringComparison.Ordinal), token, []);
+
+    public static async Task<bool> ExistsAsync(VaultFixture vault, string details)
+    {
+        using var scope = vault.Services.CreateScope();
+        var secretId = LegacySharing.SecretIdOf(details);
+        return await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().Secrets.AnyAsync(secret => secret.Id == secretId);
+    }
+
+    public static async Task<int> VersionCountAsync(VaultFixture vault, string details)
+    {
+        using var scope = vault.Services.CreateScope();
+        var secretId = LegacySharing.SecretIdOf(details);
+        return await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().SecretVersions.CountAsync(version => version.SecretId == secretId);
+    }
+
     /// <summary>The newest archived version, the one a restore in these tests puts back.</summary>
     public static async Task<Guid> NewestVersionAsync(VaultFixture vault, string details)
     {

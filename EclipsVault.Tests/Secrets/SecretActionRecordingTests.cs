@@ -26,11 +26,15 @@ public sealed class SecretActionRecordingTests : IDisposable
     private const string Principal = "app_recording";
 
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
-    private readonly AuditSaveChangesInterceptor _interceptor = new(
-        new Actor(), new AuditChain(new UncontendedLocks()), TimeProvider.System, NullLogger<AuditSaveChangesInterceptor>.Instance);
+    private readonly AuditChain _chain = new(new UncontendedLocks());
+    private readonly AuditSaveChangesInterceptor _interceptor;
     private readonly RecordingAuditSink _standalone = new();
 
-    public SecretActionRecordingTests() => _connection.Open();
+    public SecretActionRecordingTests()
+    {
+        _interceptor = new(new Actor(), _chain, TimeProvider.System, NullLogger<AuditSaveChangesInterceptor>.Instance);
+        _connection.Open();
+    }
 
     public void Dispose() => _connection.Dispose();
 
@@ -64,6 +68,25 @@ public sealed class SecretActionRecordingTests : IDisposable
     }
 
     [Fact]
+    public async Task A_write_of_a_value_read_before_another_change_committed_saves_nothing_and_keeps_the_stored_value()
+    {
+        await using var db = await NewDatabaseAsync();
+        var secretId = await Service(db).CreateAsync(NewSecret("it-stale-write"), default);
+        await using var staleRequest = await NewDatabaseAsync();
+        var stale = await staleRequest.Secrets.SingleAsync(secret => secret.Id == secretId);
+        var readWrappedDek = stale.WrappedDek;
+        await Service(db).RotateAsync(secretId, "second value", changeNote: null, renewTtlDays: null, default);
+        stale.Name = "it-stale-write-overwritten";
+
+        await Assert.ThrowsAsync<Core.Domain.Exceptions.SecretChangedException>(() => new SecretRepository(staleRequest, _interceptor, _chain)
+            .RotateAsync(stale, readWrappedDek, new SecretVersion { Id = Guid.NewGuid(), SecretId = secretId }, AuditAction.SecretUpdated, default));
+
+        Assert.Equal("it-stale-write", stale.Name);
+        Assert.Equal([AuditAction.SecretCreated, AuditAction.SecretUpdated], await CommittedActionsAsync(db, secretId));
+        Assert.Equal([1], await db.SecretVersions.Where(version => version.SecretId == secretId).Select(version => version.VersionNumber).ToListAsync());
+    }
+
+    [Fact]
     public async Task Rotating_upstream_commits_one_upstream_rotation_row_with_the_change()
     {
         await using var db = await NewDatabaseAsync();
@@ -84,8 +107,8 @@ public sealed class SecretActionRecordingTests : IDisposable
     }
 
     private SecretService Service(EclipsVaultDbContext db)
-        => new(new SecretRepository(db, _interceptor), new FakeCryptoEngine(), new NoCache(), new NoIntrusion(), _standalone, new Actor(),
-            [new AcceptingBackend()], TimeProvider.System, new RecordingPremiumFeatureUsage());
+        => new(new SecretRepository(db, _interceptor, _chain), new FakeCryptoEngine(), new NoCache(), new NoIntrusion(), _standalone, new Actor(),
+            [new AcceptingBackend()], TimeProvider.System, new RecordingPremiumFeatureUsage(), new FakeLoginLock());
 
     private static CreateSecretRequest NewSecret(string name)
         => new(name, "first value", "RECORDING", SecretEnvironment.Development, SensitivityLevel.Internal, TtlDays: 0);

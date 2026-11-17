@@ -91,6 +91,28 @@ public sealed class KekRotationTests(KekRotationFixture fixture)
     }
 
     [Fact]
+    public async Task A_rotation_that_read_before_a_pass_re_wrapped_its_data_key_is_told_the_secret_changed()
+    {
+        await RotateAsync();
+        var secretId = await SecretsUnderMasterKey.CreateAsync(_vault, fixture.RetiredMasterKey, "rewrapped-under-a-rotation", "value");
+
+        Task<KekRotationResult> pass;
+        Task rotation;
+        await using (var held = await HeldAuditChain.TakeAsync(_vault))
+        {
+            pass = RotateAsync();
+            await held.WaitForQueuedWritersAsync(1);
+            rotation = ReplaceValueAsync(secretId, "value written after the pass read it");
+            await held.WaitForQueuedWritersAsync(2);
+        }
+
+        Assert.Equal(new KekRotationResult(CurrentKekId, 1, 0, 0), await pass);
+        await Assert.ThrowsAsync<SecretChangedException>(() => rotation);
+        Assert.Equal("value", await RevealAsync(secretId));
+        Assert.Equal(CurrentKekId, await KekIdOfSecretAsync(secretId));
+    }
+
+    [Fact]
     public async Task An_audited_write_queued_during_a_pass_commits_between_its_batches()
     {
         await RotateAsync();
@@ -196,6 +218,12 @@ public sealed class KekRotationTests(KekRotationFixture fixture)
     {
         using var scope = _vault.Services.CreateScope();
         return await scope.ServiceProvider.GetRequiredService<IKekRotationService>().RotateAsync(default);
+    }
+
+    private async Task ReplaceValueAsync(Guid secretId, string value)
+    {
+        using var scope = _vault.Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<ISecretService>().RotateAsync(secretId, value, null, null, default);
     }
 
     private async Task<Guid> CreateSecretAsync(string name)

@@ -21,7 +21,8 @@ namespace EclipsVault.Web.Controllers.Ui;
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 [TypeFilter(typeof(AccessRequestProblemFilter))]
 public sealed class AccessRequestsController(
-    IAccessRequestService requests, AccessRequestReviewers reviewers, IAntiforgery antiforgery) : ControllerBase
+    IAccessRequestService requests, AccessRequestReviewers reviewers, IAntiforgery antiforgery,
+    IStepUpService stepUp, IUserRepository users, TimeProvider clock) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType<AccessRequestsResponse>(StatusCodes.Status200OK, "application/json")]
@@ -59,6 +60,7 @@ public sealed class AccessRequestsController(
     [HttpPost("{requestId:guid}/approve")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<AccessRequestProblemResponse>(StatusCodes.Status400BadRequest, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status403Forbidden, "application/problem+json")]
     [ProducesResponseType<AccessRequestProblemResponse>(StatusCodes.Status404NotFound, "application/problem+json")]
     [ProducesResponseType<AccessRequestProblemResponse>(StatusCodes.Status409Conflict, "application/problem+json")]
     public async Task<IActionResult> Approve(Guid requestId, [FromBody] AccessApprovalRequest approval, CancellationToken ct)
@@ -68,9 +70,18 @@ public sealed class AccessRequestsController(
             return StaleSession();
         }
 
-        if (!await reviewers.MayDecideAsync(User, requestId, ct))
+        if (await reviewers.FindDecidableAsync(User, requestId, ct) is not { } candidate)
         {
             return AccessRequestProblems.RequestNotFound();
+        }
+
+        // Approving shares the secret, which needs the fresh proof its reveal needs.
+        if (stepUp.IsRequired(candidate.Secret.Sensitivity, User.GetLastStrongAuthUtc(), clock.GetUtcNow()))
+        {
+            return await users.FindByIdAsync(User.GetUserId(), ct) is { } reviewer
+                ? AdministratorProblems.Problem(StatusCodes.Status403Forbidden, "step_up_required",
+                    "Confirm it's you before sharing this secret.", reviewer.TotpEnabled ? "code" : "sign_in")
+                : StaleSession();
         }
 
         if (approval.ExpiresInDays is not { } days || days is < 0 or > AccessRequestService.LongestExpiryDays)

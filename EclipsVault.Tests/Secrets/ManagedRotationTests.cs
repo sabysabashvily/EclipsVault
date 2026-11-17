@@ -36,10 +36,16 @@ public class ManagedRotationTests
 
         public List<string> Rotations { get; } = [];
 
+        /// <summary>The login lock the service under test takes, to see whether it is held at each call.</summary>
+        public FakeLoginLock? Login { get; init; }
+
+        public List<bool> LoginHeldAtEachCall { get; } = [];
+
         public DynamicSecretBackend Backend => DynamicSecretBackend.SqlServer;
 
         public Task RotatePrincipalAsync(string principal, string newPassword, CancellationToken ct)
         {
+            LoginHeldAtEachCall.Add(Login?.Held == true);
             ct.ThrowIfCancellationRequested();
             if (Rotations.Count >= FailAfter)
             {
@@ -66,6 +72,11 @@ public class ManagedRotationTests
         /// <summary>The request this store's write abandons: it is cancelled, so the write never commits.</summary>
         public CancellationTokenSource? AbandonedRequest { get; init; }
 
+        /// <summary>Another change committed after the value was read, so the write saves nothing.</summary>
+        public bool LosesToAnotherChange { get; init; }
+
+        public bool Shredded { get; private set; }
+
         public List<SecretVersion> Versions { get; } = [];
 
         /// <summary>The audit action each committed write was recorded as.</summary>
@@ -78,7 +89,7 @@ public class ManagedRotationTests
         public Task<Secret?> FindAsync(Guid id, CancellationToken ct)
             => Task.FromResult<Secret?>(id == _secret.Id ? _secret : null);
 
-        public Task RotateAsync(Secret secret, SecretVersion archivedVersion, AuditAction recordedAs, CancellationToken ct)
+        public Task RotateAsync(Secret secret, byte[] readWrappedDek, SecretVersion archivedVersion, AuditAction recordedAs, CancellationToken ct)
         {
             if (RotateThrows)
             {
@@ -91,14 +102,17 @@ public class ManagedRotationTests
                 throw new OperationCanceledException(request.Token);
             }
 
+            if (LosesToAnotherChange)
+            {
+                throw new SecretChangedException();
+            }
+
             Versions.Add(archivedVersion);
             RecordedAs.Add(recordedAs);
             return CommitsThenThrows
                 ? throw new AuditWriteFailedException("connection reset after commit")
                 : Task.CompletedTask;
         }
-
-        public Task<int> CountVersionsAsync(Guid secretId, CancellationToken ct) => Task.FromResult(Versions.Count);
 
         public Task<IReadOnlyList<Secret>> ListActiveAsync(DateTimeOffset asOfUtc, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<Secret>>([_secret]);
@@ -119,7 +133,13 @@ public class ManagedRotationTests
 
         public Task DeleteAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
 
-        public Task ShredAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
+        public Task<bool> ShredAsync(Secret secret, byte[] readWrappedDek, DateTimeOffset readExpiresAtUtc, CancellationToken ct)
+        {
+            Shredded = true;
+            return Task.FromResult(true);
+        }
+
+        public Task ReloadAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
 
         public Task<IReadOnlyList<SecretVersion>> ListVersionsAsync(Guid secretId, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<SecretVersion>>(Versions);
@@ -213,8 +233,13 @@ public class ManagedRotationTests
 
     private static SecretService Build(
         FakeRepository repository, ISecretCache cache, RecordingAuditSink audit, RecordingPremiumFeatureUsage usage, params IManagedSecretBackend[] backends)
+        => Build(repository, cache, audit, usage, new FakeLoginLock(), backends);
+
+    private static SecretService Build(
+        FakeRepository repository, ISecretCache cache, RecordingAuditSink audit, RecordingPremiumFeatureUsage usage, FakeLoginLock logins,
+        params IManagedSecretBackend[] backends)
         => new(repository, new FakeCryptoEngine(), cache, new UnusedIntrusionResponse(),
-               audit, new StubActor(), backends, TimeProvider.System, usage);
+               audit, new StubActor(), backends, TimeProvider.System, usage, logins);
 
     private static string StoredValue(Secret secret)
         => Encoding.UTF8.GetString(FakeCryptoEngine.ValueOf(secret.Ciphertext));
@@ -397,6 +422,75 @@ public class ManagedRotationTests
 
         Assert.Equal(2, backend.Rotations.Count);
         Assert.Equal(OriginalPassword, backend.Rotations[^1]);
+    }
+
+    [Fact]
+    public async Task A_login_another_writer_holds_is_refused_before_the_backend_is_touched()
+    {
+        var backend = new FakeBackend();
+
+        await Assert.ThrowsAsync<ChangeInProgressException>(
+            () => Build(new FakeRepository(ManagedSecret()), new NullCache(), new RecordingAuditSink(), new RecordingPremiumFeatureUsage(),
+                new FakeLoginLock { HeldElsewhere = true }, backend).RotateManagedAsync(SecretId, null, CancellationToken.None));
+
+        Assert.Empty(backend.Rotations);
+    }
+
+    [Fact]
+    public async Task A_rotation_that_lost_to_another_change_puts_the_password_back_while_holding_the_login()
+    {
+        // Another writer of this login could otherwise act between the lost write and the put-back.
+        var login = new FakeLoginLock();
+        var backend = new FakeBackend { Login = login };
+
+        await Assert.ThrowsAsync<SecretChangedException>(
+            () => Build(new FakeRepository(ManagedSecret()) { LosesToAnotherChange = true }, new NullCache(), new RecordingAuditSink(),
+                new RecordingPremiumFeatureUsage(), login, backend).RotateManagedAsync(SecretId, null, CancellationToken.None));
+
+        Assert.Equal(OriginalPassword, backend.Rotations[^1]);
+        Assert.Equal([true, true], backend.LoginHeldAtEachCall);
+        Assert.False(login.Held);
+    }
+
+    [Fact]
+    public async Task Rotating_a_managed_secret_by_hand_is_refused_while_another_writer_holds_its_login()
+    {
+        var secret = ManagedSecret();
+
+        await Assert.ThrowsAsync<ChangeInProgressException>(
+            () => Build(new FakeRepository(secret), new NullCache(), new RecordingAuditSink(), new RecordingPremiumFeatureUsage(),
+                new FakeLoginLock { HeldElsewhere = true }).RotateAsync(SecretId, "pasted value", null, null, CancellationToken.None));
+
+        Assert.Equal(OriginalPassword, StoredValue(secret));
+    }
+
+    [Fact]
+    public async Task Restoring_a_version_of_a_managed_secret_is_refused_and_writes_nothing()
+    {
+        // Its value is the login's live password: a restore would change only the vault's copy.
+        var repository = new FakeRepository(ManagedSecret());
+
+        var refused = await Assert.ThrowsAsync<RestoreManagedException>(
+            () => Build(repository, new RecordingAuditSink()).RestoreVersionAsync(SecretId, Guid.NewGuid(), CancellationToken.None));
+
+        Assert.Equal(
+            "This secret is the live password of 'app_probe'. Rotate it upstream instead; earlier versions stay readable.",
+            refused.Message);
+        Assert.Empty(repository.RecordedAs);
+    }
+
+    [Fact]
+    public async Task An_expired_managed_secret_whose_login_another_writer_holds_is_left_for_the_next_sweep()
+    {
+        var secret = ManagedSecret();
+        secret.ExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1);
+        var repository = new FakeRepository(secret);
+
+        var shredded = await Build(repository, new NullCache(), new RecordingAuditSink(), new RecordingPremiumFeatureUsage(),
+            new FakeLoginLock { HeldElsewhere = true }).ShredIfExpiredAsync(SecretId, CancellationToken.None);
+
+        Assert.False(shredded);
+        Assert.False(repository.Shredded);
     }
 
     [Fact]

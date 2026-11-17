@@ -82,11 +82,11 @@ public class SecretGrantServiceTests
         public Task AddAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
         public Task UpdateAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
         public Task DeleteAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
-        public Task RotateAsync(Secret secret, SecretVersion archivedVersion, AuditAction recordedAs, CancellationToken ct) => throw new NotSupportedException();
-        public Task ShredAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
+        public Task RotateAsync(Secret secret, byte[] readWrappedDek, SecretVersion archivedVersion, AuditAction recordedAs, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> ShredAsync(Secret secret, byte[] readWrappedDek, DateTimeOffset readExpiresAtUtc, CancellationToken ct) => throw new NotSupportedException();
+        public Task ReloadAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<SecretVersion>> ListVersionsAsync(Guid secretId, CancellationToken ct) => throw new NotSupportedException();
         public Task<SecretVersion?> FindVersionAsync(Guid secretId, Guid versionId, CancellationToken ct) => throw new NotSupportedException();
-        public Task<int> CountVersionsAsync(Guid secretId, CancellationToken ct) => throw new NotSupportedException();
     }
 
     private sealed class FakeUsers(User recipient) : IUserRepository
