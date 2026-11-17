@@ -352,3 +352,38 @@ and audit.
 To restart: confirm HEAD and a clean tracked tree; evidence and the final report are in
 `logs/ticket-171/`. Next is ticket 2 (#172), which serves the page from Angular and adds the Secret role's
 step-up browser flow; the e2e target and both roles are ready for it.
+
+## Delivery: 7c ticket 2 (#172)
+
+#172 started from `3121901` (#171's head). The Angular UI now serves `/DynamicSecrets`; the Legacy
+controller, view and view models are gone. This ticket names no new finding, so there was no red-first run.
+
+- `eee3ac7` Serve Dynamic secrets from Angular, asking for proof before issuing.
+
+What changed:
+
+- `GET /api/ui/dynamic-secrets`, `POST …/issue` and `POST …/leases/{leaseId}/revoke` with the spec's codes,
+  reusing `AdministratorProblemResponse` (code, title, proof, errors). Two deliberate shapes beyond the
+  written contract: `licence` is null when the evaluation read fails, and the revoke answer carries
+  `revocationNote` beside `status`, so a refused revoke states its fixed cause. Stored notes that predate
+  the fixed sentences are answered as `BackendRefusedNote`.
+- The page issues through StepUpDialog, keeps the credential only in page memory and forgets it on
+  departure, pagehide or a lost session; Revoke asks with the Legacy confirmation.
+- Every sidebar page is now the Angular UI's. Browser specs and HTTP tests that used Dynamic secrets as
+  their Legacy page use `/Account/Denied`; 7b moves Denied too, so whichever of 7b and 7c merges second
+  must drop or re-home those Legacy-shell checks. `sign-in.spec.ts` and `e2e/sidebar.ts` are among them.
+- `LegacyDynamicSecrets` became `DynamicSecretsApi` (UI API calls; the target helpers are unchanged).
+
+Checks (local, 17 November rule): locked restore, Release build with 0 warnings, 983 unit tests; PostgreSQL
+integration for every touched class, 328/329 then 31/31 after an ordinal-sort test fix, and 32/32 after the
+review fix; format, both pending-model checks, hook tests; Angular lint, format, 619 Vitest, build checks,
+API types, build. `npm audit --audit-level=high` fails on a new upstream advisory (picomatch,
+GHSA-fc5q-39xc-vjpf, every version, fix only with `--force`) with no package change here; left for the owner.
+Browser specs and both full suites run in CI after the coordinator pushes; the run id is recorded in the final report.
+
+Security-reviewer (Opus 5.5 high): no Critical, High or Medium. L1 (raw backend text in notes stored before
+#171) fixed and re-checked; I1 (backend resolved after the licence gate) is pre-existing service order; I2
+accepted under Q10; I3 is the Denied merge point above.
+
+To restart: confirm HEAD and a clean tracked tree; evidence and the final report are in `logs/ticket-172/`.
+Next is ticket 3 (#173), verify the whole part and prepare its PR.
