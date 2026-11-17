@@ -78,7 +78,8 @@ public sealed class PersonalDataExportService : IPersonalDataExportService
 
         var activityList = activity
             .Select(a => new ExportActivityEntry(
-                a.TimestampUtc, ActivityDescriber.Describe(a.Action).Title, a.ResourceName, a.SourceIp))
+                a.TimestampUtc, ActivityDescriber.Describe(a.Action).Title,
+                ActivityDescriber.ResourceNameShownToActor(a.Action, a.ResourceName), a.SourceIp))
             .ToList();
 
         return new PersonalDataExport(

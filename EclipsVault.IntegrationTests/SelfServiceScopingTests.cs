@@ -295,7 +295,7 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         {
             ["Username"] = unknown,
             ["Password"] = "An-intentionally-incorrect-password-57!",
-        }, "/Secrets");
+        }, "/DynamicSecrets");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("Invalid username or password.", await response.Content.ReadAsStringAsync());
         Assert.NotNull(signedIn.SessionCookie);

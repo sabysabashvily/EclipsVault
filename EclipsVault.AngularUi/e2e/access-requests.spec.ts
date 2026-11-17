@@ -311,9 +311,7 @@ test("the reviewer's My activity lists their decisions by secret", async ({ page
   await expect(feedEntry(page, 'Approved an access request', byKeyboard)).toBeVisible();
 });
 
-test('with no requests of their own, Browse secrets opens the Legacy Secrets page', async ({
-  page,
-}) => {
+test('with no requests of their own, Browse secrets opens the Secrets list', async ({ page }) => {
   const requests = await openAsAdministrator(page);
   await expect(requests.noRequests).toBeVisible();
   await requests.browseSecrets.click();
@@ -397,7 +395,7 @@ test('the palette opens Access requests without a document load', async ({ page 
 });
 
 test('the Legacy sidebar loads Access requests into Angular', async ({ page }) => {
-  await openAsRequester(page, '/Secrets');
+  await openAsRequester(page, '/DynamicSecrets');
   const documents = recordDocuments(page);
   await page.getByText('Access', { exact: true }).click();
   await page.getByRole('link', { name: 'Access requests', exact: true }).click();
@@ -407,7 +405,7 @@ test('the Legacy sidebar loads Access requests into Angular', async ({ page }) =
 });
 
 test('the Legacy palette loads Access requests into Angular', async ({ page }) => {
-  await openAsRequester(page, '/Secrets');
+  await openAsRequester(page, '/DynamicSecrets');
   const documents = recordDocuments(page);
   await openPalette(page);
   await page.getByRole('combobox').fill('Access requests');

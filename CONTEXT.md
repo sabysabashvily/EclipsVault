@@ -58,6 +58,48 @@ _Avoid_: Bot, machine user
 The credential a service account presents, optionally narrowed below its account by a scope.
 _Avoid_: Token, bearer token
 
+### Secrets
+
+**Secret**:
+A named value the vault holds sealed. Its project, environment and sensitivity decide who may open it.
+_Avoid_: Credential (when the stored value is meant), key
+
+**Reveal**:
+Decrypting a secret's current value, or an archived version, for one response, recorded before decryption.
+_Avoid_: View (that is the metadata), decrypt
+
+**Secret version**:
+An earlier value of a secret, archived when the secret is rotated or restored.
+_Avoid_: Revision, history entry
+
+**Secret rotation**:
+Replacing a secret's value and archiving the old one as a secret version.
+_Avoid_: Master key rotation (that re-wraps data keys)
+
+**Managed secret**:
+A secret that is a real account's password on a backend, which the vault can change there itself.
+_Avoid_: Managed credential
+
+**Decoy**:
+A planted secret nobody should open. Opening one signs the session out and blocks its network range.
+_Avoid_: Honey token (in prose), trap
+
+**Access denial**:
+A refused attempt to open or act on a secret, recorded with the access policy's reasons.
+_Avoid_: View (a denial is never a view)
+
+**Dynamic role**:
+The recipe for creating dynamic credentials on one backend, carrying the same three access attributes as a secret.
+_Avoid_: Template
+
+**Dynamic credential**:
+A credential the vault creates on a backend on request, shows once and never stores.
+_Avoid_: Dynamic secret (the page's name), temporary password
+
+**Lease**:
+The vault's record of one dynamic credential: who holds it, until when, and how it ended.
+_Avoid_: Token
+
 ### Administration
 
 **Administrator**:
@@ -111,7 +153,7 @@ _Avoid_: Audit key, master key (that wraps data keys)
 ### Sharing
 
 **Share**:
-Access to one secret, given to one vault account by another, optionally until an expiry. Its issuer can revoke it, and it outlives the issuer's account.
+Read access to one secret, given to one vault account by another, optionally until an expiry. Its recipient may view and reveal the secret, never change, share or delete it. Its issuer can revoke it, and it outlives the issuer's account.
 _Avoid_: Grant, permission
 
 **Issuer**:
@@ -145,7 +187,7 @@ The versioned API service accounts call with an API key. A published contract th
 _Avoid_: REST API, external API
 
 **UI API**:
-The endpoints only the Angular UI calls, through a session. Never reachable with an API key.
+The endpoints the Angular UI calls, through a session. Never reachable with an API key. Until the Legacy UI is gone, its command palette also calls the secret search here.
 _Avoid_: Internal API, BFF API, backend
 
 ### The migration
@@ -155,7 +197,7 @@ The server-rendered pages being replaced. Shrinks to nothing by the end of the m
 _Avoid_: Old UI, MVC frontend
 
 **Area**:
-A group of related pages behind one sidebar entry (e.g. Profile, Secrets, Users), named by a stable key such as `users` in `/api/ui/me`. An area migrates as one unit; a migration step may move several at once, as the Administration step moves the administration areas in two parts. At any moment an area belongs wholly to either the Legacy UI or the Angular UI, never both.
+A group of related pages behind one sidebar entry (e.g. Profile, Secrets, Users), named by a stable key such as `users` in `/api/ui/me`. An area migrates as one unit; a migration step may move several at once, as the Administration step moves the administration areas in two parts. At any moment an area belongs wholly to either the Legacy UI or the Angular UI, never both. The one exception is Secrets, which Area 7 moves in parts: from 7a until 7b, its list and New secret are in the Angular UI and Secret details is still Legacy.
 _Avoid_: Module, feature, screen
 
 **Angular UI**:

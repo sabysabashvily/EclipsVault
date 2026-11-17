@@ -1,16 +1,22 @@
 import type { Locator, Page } from '@playwright/test';
 
-/** The Legacy Secrets list, whose rows Shared with me copies. */
+/** The Secrets list, whose rows Shared with me copies. */
 export class SecretsList {
   readonly heading;
   readonly introduction;
   readonly columns;
+  readonly rows;
+  readonly filter;
+  readonly newSecret;
 
   constructor(readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Secrets', exact: true });
     // The subtitle starts with a count of the caller's secrets.
     this.introduction = page.getByText('Opening one records an audit entry.', { exact: false });
     this.columns = page.getByRole('columnheader');
+    this.rows = page.getByRole('row');
+    this.filter = page.getByRole('searchbox', { name: 'Filter secrets' });
+    this.newSecret = page.getByRole('main').getByRole('link', { name: 'New secret', exact: true });
   }
 
   async open(): Promise<void> {

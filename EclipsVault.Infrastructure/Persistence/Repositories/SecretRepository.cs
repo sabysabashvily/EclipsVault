@@ -1,10 +1,13 @@
 using EclipsVault.Core.Domain.Entities;
+using EclipsVault.Core.Domain.Exceptions;
 using Microsoft.EntityFrameworkCore;
 
 namespace EclipsVault.Infrastructure.Persistence.Repositories;
 
 public sealed class SecretRepository : ISecretRepository
 {
+    internal const string UniqueNameIndex = "IX_Secrets_Name";
+
     private readonly EclipsVaultDbContext _context;
 
     public SecretRepository(EclipsVaultDbContext context) => _context = context;
@@ -34,10 +37,26 @@ public sealed class SecretRepository : ISecretRepository
             .OrderBy(s => s.ExpiresAtUtc)
             .ToListAsync(ct);
 
+    public Task<bool> ExistsByNameAsync(string name, CancellationToken ct)
+        => _context.Secrets.AnyAsync(s => s.Name == name, ct);
+
     public async Task AddAsync(Secret secret, CancellationToken ct)
     {
         _context.Secrets.Add(secret);
-        await _context.SaveChangesAsync(ct); // audit row injected atomically by the interceptor
+        // The interceptor saves the audit row in the same transaction, so any other failed save is the
+        // fail-closed audit failure. Losing the unique name to another request is a conflict instead.
+        try
+        {
+            await _context.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException failure) when (UniqueIndex.IsViolatedBy(failure, UniqueNameIndex))
+        {
+            throw new SecretNameTakenException();
+        }
+        catch (Exception failure) when (failure is not OperationCanceledException)
+        {
+            throw new AuditWriteFailedException("The secret and its audit row could not be stored.", failure);
+        }
     }
 
     public async Task UpdateAsync(Secret secret, CancellationToken ct)

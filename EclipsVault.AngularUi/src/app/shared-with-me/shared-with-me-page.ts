@@ -1,6 +1,7 @@
 import { formatDate } from '@angular/common';
 import { httpResource } from '@angular/common/http';
 import { Component, inject, LOCALE_ID } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { EmptyState } from '../shared/empty-state';
 import type { components, paths } from '../ui-api/schema.generated';
 
@@ -10,7 +11,7 @@ type ReceivedShare = components['schemas']['ReceivedShareResponse'];
 
 @Component({
   selector: 'app-shared-with-me-page',
-  imports: [EmptyState],
+  imports: [EmptyState, RouterLink],
   templateUrl: './shared-with-me-page.html',
 })
 export class SharedWithMePage {
