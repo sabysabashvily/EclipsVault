@@ -12,14 +12,6 @@ public interface IMfaRecoveryService
     Task<int> CountRemainingAsync(Guid userId, CancellationToken ct);
 
     /// <summary>
-    /// Generates a fresh set, invalidating any codes the user held before, and returns the
-    /// plaintext codes to display exactly once. Audited. A new set changes how the account signs in,
-    /// so it advances the credential generation of a session issued under <paramref name="credentialGeneration"/>.
-    /// </summary>
-    /// <exception cref="Domain.Exceptions.StaleProofException">The account's credentials changed after the session was issued.</exception>
-    Task<RecoveryCodeSet> GenerateAsync(Guid userId, long credentialGeneration, CancellationToken ct);
-
-    /// <summary>
     /// Stages replacing the account's codes with a fresh set, to be saved with the caller's change
     /// through <see cref="IAccountChangeCommitter"/>, and returns their plaintext.
     /// </summary>

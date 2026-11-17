@@ -5,8 +5,6 @@ namespace EclipsVault.Web.Models;
 /// <summary>Optional body posted to begin a passkey sign-in; a username scopes the allowed credentials.</summary>
 public sealed class PasskeyLoginRequest
 {
-    public string? Username { get; set; }
-
     public string? ReturnUrl { get; set; }
 }
 

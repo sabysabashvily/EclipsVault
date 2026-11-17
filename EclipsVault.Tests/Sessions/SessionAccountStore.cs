@@ -12,7 +12,7 @@ internal sealed class SessionAccountStore : IUserRepository
     public Task<User?> FindByEmailAsync(string email, CancellationToken ct)
         => Task.FromResult(_user);
 
-    public Task<User?> FindByUsernameOrEmailAsync(string identifier, CancellationToken ct) => throw new NotSupportedException();
+    public Task<User?> FindByUsernameOrEmailAsync(string identifier, CancellationToken ct) => Task.FromResult(_user);
     public Task<bool> IsEmailTakenAsync(string email, Guid accountId, CancellationToken ct) => throw new NotSupportedException();
 
     public Task<User?> FindByUsernameAsync(string username, CancellationToken ct) => Task.FromResult<User?>(null);

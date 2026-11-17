@@ -24,7 +24,7 @@ namespace EclipsVault.Tests.Web;
 
 /// <summary>
 /// When the identity provider satisfied both factors, SSO completes the session in its callback.
-/// Its default landing page is the dashboard;
+/// Its default landing page is the literal <c>/Secrets</c>, as after every other sign-in method;
 /// a return target replaces that default only when it is one the password flow would accept too.
 /// SSO needs a live identity provider, so this drives the callback directly rather than through
 /// the integration host.
@@ -51,19 +51,20 @@ public class SsoSignInRedirectTests
                 new SessionStamp(0, revocationVersion), true));
     }
 
-    // Conventional routes resolve to /Controller; local-URL checks are the framework's own.
+    // Conventional routes resolve to /Controller, except a controller the vault does not have;
+    // local-URL checks are the framework's own.
     private sealed class ConventionalUrls(ActionContext context) : UrlHelperBase(context)
     {
-        public override string? Action(UrlActionContext action) => "/" + action.Controller;
+        public override string? Action(UrlActionContext action) => action.Controller == "Dashboard" ? null : "/" + action.Controller;
         public override string? RouteUrl(UrlRouteContext route) => throw new NotSupportedException();
     }
 
     [Theory]
-    [InlineData(null, "/Dashboard")]
-    [InlineData("https://outside.example/", "/Dashboard")]
-    [InlineData("/Account/Totp", "/Dashboard")]
+    [InlineData(null, "/Secrets")]
+    [InlineData("https://outside.example/", "/Secrets")]
+    [InlineData("/Account/Totp", "/Secrets")]
     [InlineData("/Access", "/Access")]
-    public async Task Sso_that_satisfied_both_factors_lands_on_the_dashboard_unless_given_a_local_target(string? returnUrl, string expected)
+    public async Task Sso_that_satisfied_both_factors_lands_on_secrets_unless_given_a_local_target(string? returnUrl, string expected)
     {
         var http = new DefaultHttpContext
         {
@@ -76,7 +77,7 @@ public class SsoSignInRedirectTests
         var sessions = new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance, TimeProvider.System);
         var attempt = new RecordingAttempt();
         var issuer = new SessionIssuer(new SessionAccountStore(new User { Id = accountId }), revocation, sessions, attempt, NullLogger<SessionIssuer>.Instance);
-        var controller = new AccountController(null!, null!, null!, null!, sessions, null!,
+        var controller = new AccountController(null!, null!, null!, null!, null!, null!,
             new BothFactorsAtTheIdp(accountId, await revocation.CaptureAsync(accountId)), null!, issuer,
             NullLogger<AccountController>.Instance)
         {

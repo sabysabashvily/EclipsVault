@@ -4,13 +4,14 @@ namespace EclipsVault.Web.Middleware;
 /// <summary>
 /// Drops every request originating from a blacklisted range (populated by the
 /// honey-token intrusion response) before it reaches routing or authentication.
-/// The break-glass recovery endpoint is exempt: it demands full administrator
-/// multi-factor credentials before lifting a block, so a locked-out admin always
-/// has a way back in while a low-privilege intruder does not.
+/// Break-glass recovery is exempt, as the Recover page and its UI API call and nothing else
+/// (ADR-0032): it demands full administrator multi-factor credentials before lifting a block,
+/// so a locked-out admin always has a way back in while a low-privilege intruder does not.
 /// </summary>
 public sealed class IpBlacklistMiddleware
 {
     private static readonly PathString RecoveryPath = new("/Account/Recover");
+    private static readonly PathString RecoveryCall = new("/api/ui/auth/recover");
 
     // Deliberately vague: a honey-token trip must not be distinguishable from any
     // other network block, or the message itself tells the intruder what happened.
@@ -70,7 +71,7 @@ public sealed class IpBlacklistMiddleware
     {
         var sourceIp = context.Connection.RemoteIpAddress;
         if (sourceIp is not null
-            && !context.Request.Path.StartsWithSegments(RecoveryPath)
+            && !IsRecovery(context.Request)
             && await _blacklist.IsBlockedAsync(sourceIp, context.RequestAborted))
         {
             _logger.LogWarning("Rejected request to {Path} from blacklisted source {SourceIp}", context.Request.Path, sourceIp);
@@ -88,4 +89,8 @@ public sealed class IpBlacklistMiddleware
 
         await _next(context);
     }
+
+    private static bool IsRecovery(HttpRequest request)
+        => request.Path.StartsWithSegments(RecoveryPath)
+            || HttpMethods.IsPost(request.Method) && request.Path.Equals(RecoveryCall, StringComparison.OrdinalIgnoreCase);
 }

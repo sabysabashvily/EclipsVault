@@ -36,11 +36,11 @@ public abstract class CredentialGenerationPersistenceTests(AccountChangeDatabase
         var account = await databases.CreateEnrolledAccountAsync("it-generation-persistence");
         await using (var replacement = databases.NewRequest())
         {
-            Assert.Equal(1, (await replacement.Recovery.GenerateAsync(account.Id, 0, default)).CredentialGeneration);
+            Assert.Equal(1, (await replacement.ReplaceRecoveryCodesAsync(account.Id, 0)).CredentialGeneration);
         }
         await using (var reset = databases.NewRequest())
         {
-            await reset.Profile.ResetOwnMfaAsync(account.Id, 1, default);
+            await reset.ResetAuthenticatorAsync(account.Id, 1);
         }
 
         await using var check = databases.NewRequest();
@@ -56,11 +56,11 @@ public abstract class CredentialGenerationPersistenceTests(AccountChangeDatabase
         var account = await databases.CreateEnrolledAccountAsync("it-generation-stale-proof");
         await using (var first = databases.NewRequest())
         {
-            await first.Recovery.GenerateAsync(account.Id, 0, default);
+            await first.ReplaceRecoveryCodesAsync(account.Id, 0);
         }
         await using var stale = databases.NewRequest();
 
-        await Assert.ThrowsAsync<StaleProofException>(() => stale.Recovery.GenerateAsync(account.Id, 0, default));
+        await Assert.ThrowsAsync<StaleProofException>(() => stale.ReplaceRecoveryCodesAsync(account.Id, 0));
 
         await stale.Context.SaveChangesAsync();
         await using var check = databases.NewRequest();
@@ -76,7 +76,7 @@ public abstract class CredentialGenerationPersistenceTests(AccountChangeDatabase
         await databases.RejectAuditWritesAsync();
         try
         {
-            await Assert.ThrowsAsync<AuditWriteFailedException>(() => rejected.Recovery.GenerateAsync(account.Id, 0, default));
+            await Assert.ThrowsAsync<AuditWriteFailedException>(() => rejected.ReplaceRecoveryCodesAsync(account.Id, 0));
         }
         finally
         {

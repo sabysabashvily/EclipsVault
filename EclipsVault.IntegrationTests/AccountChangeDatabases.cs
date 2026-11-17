@@ -2,10 +2,8 @@ using System.Security.Cryptography;
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Authentication;
 using EclipsVault.Core.Application.Mfa;
-using EclipsVault.Core.Application.Notifications;
-using EclipsVault.Core.Application.Profile;
 using EclipsVault.Core.Domain.Entities;
-using EclipsVault.Infrastructure.Notifications;
+using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
 using EclipsVault.Infrastructure.Persistence.Interceptors;
 using EclipsVault.Infrastructure.Persistence.Locking;
@@ -132,12 +130,7 @@ public sealed class AccountRequest : IAsyncDisposable
         EmailLimits = new EmailVerificationSendLimits(context, locks);
         Attempt = new AuthenticationAttempt(context, transaction, interceptor, chain);
         SecondFactors = new SecondFactorVerifier(Users, RecoveryCodes, new TotpService(TimeProvider.System), hasher, TimeProvider.System);
-        var notices = new NotificationService(new LoggingEmailSender(NullLogger<LoggingEmailSender>.Instance),
-            new EmailLogRepository(context), Users, new NotificationOptions(false), TimeProvider.System);
-        Recovery = new MfaRecoveryService(Users, RecoveryCodes, hasher, Changes, TimeProvider.System, notices);
-        // Reset uses only the account, recovery, notification and commit ports; the other Profile
-        // operations need host services that this focused persistence fixture deliberately does not create.
-        Profile = new ProfileService(Users, hasher, null!, RecoveryCodes, null!, notices, Changes, null!, null!);
+        Recovery = new MfaRecoveryService(RecoveryCodes, hasher, TimeProvider.System);
     }
 
     public EclipsVaultDbContext Context { get; }
@@ -158,9 +151,35 @@ public sealed class AccountRequest : IAsyncDisposable
 
     public MfaRecoveryService Recovery { get; }
 
-    public IProfileService Profile { get; }
-
     public async Task<User> LoadAsync(Guid accountId) => (await Users.FindByIdAsync(accountId, default))!;
+
+    /// <summary>
+    /// Seeds a new recovery-code set the way the verified Profile change commits one: staged, under
+    /// <paramref name="credentialGeneration"/>, advancing it, in one commit with its audit row.
+    /// </summary>
+    public async Task<RecoveryCodeSet> ReplaceRecoveryCodesAsync(Guid accountId, long credentialGeneration)
+    {
+        var account = await LoadAsync(accountId);
+        account.RequireCredentialGeneration(credentialGeneration);
+        var codes = await Recovery.StageNewSetAsync(accountId, default);
+        account.CredentialGeneration++;
+        await Changes.CommitAsync(account, AuditAction.RecoveryCodesGenerated, "Recovery codes replaced", default);
+        return new RecoveryCodeSet(codes, account.CredentialGeneration);
+    }
+
+    /// <summary>Seeds an authenticator reset the way the verified Profile change commits one.</summary>
+    public async Task ResetAuthenticatorAsync(Guid accountId, long credentialGeneration)
+    {
+        var account = await LoadAsync(accountId);
+        account.RequireCredentialGeneration(credentialGeneration);
+        // Load the rows before changing the account, so a failed query leaves no reset staged.
+        await RecoveryCodes.StageRemovalOfAllAsync(accountId, default);
+        account.TotpSecret = null;
+        account.TotpEnabled = false;
+        account.LastTotpStep = null;
+        account.CredentialGeneration++;
+        await Changes.CommitAsync(account, AuditAction.SelfMfaReset, "Authenticator reset by owner", default);
+    }
 
     public ValueTask DisposeAsync() => Context.DisposeAsync();
 }

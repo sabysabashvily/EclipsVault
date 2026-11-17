@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace EclipsVault.Web.Authentication;
 
-public sealed record PasskeySignInState(string Challenge, string? ReturnUrl, PasskeyNamedAccount? NamedAccount)
+public sealed record PasskeySignInState(string Challenge, string? ReturnUrl)
 {
     public static PasskeySignInState? Read(string? stored)
     {

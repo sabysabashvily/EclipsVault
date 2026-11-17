@@ -184,7 +184,7 @@ public sealed class UiApiFailureContractTests(VaultFixture vault)
         }
         finally
         {
-            await blacklist.UnblockAddressAsync(source);
+            await (await blacklist.LiftForRecoveryAsync(source)).ReleaseAsync();
         }
     }
 

@@ -53,6 +53,14 @@ public sealed class GlobalExceptionMiddleware
             await FailAsync(context, StatusCodes.Status503ServiceUnavailable, "unblock_unrecorded",
                 UnblockUnrecordedException.FailureMessage);
         }
+        catch (RecoveryIncompleteException ex) when (!context.Response.HasStarted)
+        {
+            // The recorded session's cookie stays; the source's guard keeps every other request refused.
+            _logger.LogCritical(
+                "Break-glass recovery recorded its sign-in, but the block lift could not be settled; the source stays refused by {Guard}",
+                ex.Guard ?? "a guard the store logged when its lift failed");
+            await FailAsync(context, StatusCodes.Status503ServiceUnavailable, "recovery_incomplete", RecoveryIncompleteException.FailureMessage);
+        }
         catch (AuditWriteFailedException ex) when (!context.Response.HasStarted)
         {
             _logger.LogCritical(ex, "Fail-closed: request to {Path} aborted because the audit trail is unavailable", context.Request.Path);

@@ -92,8 +92,8 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
         using var second = vault.Services.CreateScope();
         var firstPasskeys = first.ServiceProvider.GetRequiredService<IPasskeyService>();
         var secondPasskeys = second.ServiceProvider.GetRequiredService<IPasskeyService>();
-        var firstCeremony = await firstPasskeys.BeginAssertionAsync(account.Username, default);
-        var secondCeremony = await secondPasskeys.BeginAssertionAsync(account.Username, default);
+        var firstCeremony = await firstPasskeys.BeginAssertionAsync(default);
+        var secondCeremony = await secondPasskeys.BeginAssertionAsync(default);
         var firstResponse = JsonSerializer.Serialize(authenticator.Assert(JsonSerializer.Deserialize<JsonElement>(firstCeremony.OptionsJson)));
         var secondResponse = JsonSerializer.Serialize(authenticator.Assert(JsonSerializer.Deserialize<JsonElement>(secondCeremony.OptionsJson)));
         // The second scope now holds the credential as it was before the first sign-in. Its service
@@ -102,8 +102,8 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
         await second.ServiceProvider.GetRequiredService<IPasskeyCredentialRepository>().FindByCredentialIdAsync(key.CredentialId, default);
         var before = await AuditTrail.HeadAsync(vault);
 
-        var firstOutcome = await firstPasskeys.CompleteAssertionAsync(firstCeremony.Challenge, firstCeremony.NamedAccount, firstResponse, default);
-        var secondOutcome = await secondPasskeys.CompleteAssertionAsync(secondCeremony.Challenge, secondCeremony.NamedAccount, secondResponse, default);
+        var firstOutcome = await firstPasskeys.CompleteAssertionAsync(firstCeremony.Challenge, firstResponse, default);
+        var secondOutcome = await secondPasskeys.CompleteAssertionAsync(secondCeremony.Challenge, secondResponse, default);
 
         Assert.True(firstOutcome.Success);
         Assert.True(secondOutcome.Success);
@@ -137,15 +137,15 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
         using var second = vault.Services.CreateScope();
         var firstPasskeys = first.ServiceProvider.GetRequiredService<IPasskeyService>();
         var secondPasskeys = second.ServiceProvider.GetRequiredService<IPasskeyService>();
-        var firstCeremony = await firstPasskeys.BeginAssertionAsync(account.Username, default);
-        var secondCeremony = await secondPasskeys.BeginAssertionAsync(account.Username, default);
+        var firstCeremony = await firstPasskeys.BeginAssertionAsync(default);
+        var secondCeremony = await secondPasskeys.BeginAssertionAsync(default);
         var firstResponse = JsonSerializer.Serialize(authenticator.AssertWithWrongSignature(JsonSerializer.Deserialize<JsonElement>(firstCeremony.OptionsJson)));
         var secondResponse = JsonSerializer.Serialize(authenticator.AssertWithWrongSignature(JsonSerializer.Deserialize<JsonElement>(secondCeremony.OptionsJson)));
         var before = await AuditTrail.HeadAsync(vault);
 
         var outcomes = await Task.WhenAll(
-            firstPasskeys.CompleteAssertionAsync(firstCeremony.Challenge, firstCeremony.NamedAccount, firstResponse, default),
-            secondPasskeys.CompleteAssertionAsync(secondCeremony.Challenge, secondCeremony.NamedAccount, secondResponse, default));
+            firstPasskeys.CompleteAssertionAsync(firstCeremony.Challenge, firstResponse, default),
+            secondPasskeys.CompleteAssertionAsync(secondCeremony.Challenge, secondResponse, default));
 
         Assert.All(outcomes, outcome => Assert.False(outcome.Success));
         var stored = await ProfileHttp.AccountAsync(vault, account.Username);
@@ -173,11 +173,11 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
 
         using var request = vault.Services.CreateScope();
         var passkeys = request.ServiceProvider.GetRequiredService<IPasskeyService>();
-        var ceremony = await passkeys.BeginAssertionAsync(account.Username, default);
+        var ceremony = await passkeys.BeginAssertionAsync(default);
         var response = JsonSerializer.Serialize(authenticator.Assert(JsonSerializer.Deserialize<JsonElement>(ceremony.OptionsJson)));
         var before = await AuditTrail.HeadAsync(vault);
 
-        var outcome = await passkeys.CompleteAssertionAsync(ceremony.Challenge, ceremony.NamedAccount, response, default);
+        var outcome = await passkeys.CompleteAssertionAsync(ceremony.Challenge, response, default);
 
         Assert.False(outcome.Success);
         Assert.NotNull((await ProfileHttp.AccountAsync(vault, account.Username)).LockedUntilUtc);
@@ -201,11 +201,11 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
 
         using var request = vault.Services.CreateScope();
         var passkeys = request.ServiceProvider.GetRequiredService<IPasskeyService>();
-        var ceremony = await passkeys.BeginAssertionAsync(account.Username, default);
+        var ceremony = await passkeys.BeginAssertionAsync(default);
         var response = JsonSerializer.Serialize(authenticator.Assert(JsonSerializer.Deserialize<JsonElement>(ceremony.OptionsJson)));
         var before = await AuditTrail.HeadAsync(vault);
 
-        var outcome = await passkeys.CompleteAssertionAsync(ceremony.Challenge, ceremony.NamedAccount, response, default);
+        var outcome = await passkeys.CompleteAssertionAsync(ceremony.Challenge, response, default);
 
         Assert.True(outcome.Success);
         Assert.Equal(0, (await ProfileHttp.AccountAsync(vault, account.Username)).FailedAccessCount);

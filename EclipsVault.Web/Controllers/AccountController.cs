@@ -8,7 +8,6 @@ using EclipsVault.Web.Extensions;
 using EclipsVault.Web.Models;
 using EclipsVault.Web.Services;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -34,7 +33,7 @@ public sealed class AccountController : Controller
     private readonly IPasskeyService _passkeys;
     private readonly IPasskeyCeremonyStore _passkeyCeremonies;
     private readonly IIpBlacklist _blacklist;
-    private readonly ISessionRegistry _sessions;
+    private readonly AccountSignOut _signOut;
     private readonly IAuditSink _audit;
     private readonly ISsoSignInService _sso;
     private readonly ISsoAvailability _ssoAvailability;
@@ -46,7 +45,7 @@ public sealed class AccountController : Controller
         IPasskeyService passkeys,
         IPasskeyCeremonyStore passkeyCeremonies,
         IIpBlacklist blacklist,
-        ISessionRegistry sessions,
+        AccountSignOut signOut,
         IAuditSink audit,
         ISsoSignInService sso,
         ISsoAvailability ssoAvailability,
@@ -57,7 +56,7 @@ public sealed class AccountController : Controller
         _passkeys = passkeys;
         _passkeyCeremonies = passkeyCeremonies;
         _blacklist = blacklist;
-        _sessions = sessions;
+        _signOut = signOut;
         _audit = audit;
         _sso = sso;
         _ssoAvailability = ssoAvailability;
@@ -72,37 +71,9 @@ public sealed class AccountController : Controller
             ? RedirectAfterSignIn(returnUrl)
             : View(Decorate(new LoginViewModel { ReturnUrl = returnUrl }));
 
-    // Form fields, query strings and passkey ceremony state are all untrusted. Make the final
-    // decision here, after authentication, and let LocalRedirect enforce it again at execution.
-    private LocalRedirectResult RedirectAfterSignIn(string? returnUrl, string defaultTarget = "/Secrets")
-        => LocalRedirect(SignInTarget(returnUrl, defaultTarget));
-
-    private string SignInTarget(string? returnUrl, string defaultTarget = "/Secrets")
-        => Url.IsLocalUrl(returnUrl)
-            // Location carries only ASCII: LocalRedirect would throw after the session exists.
-            && returnUrl.All(c => c is >= ' ' and <= '~')
-            && !MayLeadIntoAccount(returnUrl)
-                ? returnUrl
-                : defaultTarget;
-
-    // A second-factor page accepts only the MFA-pending cookie, which completing sign-in deletes, so a
-    // full session sent there is challenged back to Login with the page as its target, and Login sends
-    // it straight back. Rather than predict how the browser and Kestrel decode and route a path, judge
-    // it as written: refuse every Account page except Denied, the only one a full session is sent to,
-    // and any path that reads differently once decoded or resolved. The cost is the default page.
-    private static bool MayLeadIntoAccount(string target)
-    {
-        // The browser treats a backslash as a slash; that is the one rewrite applied here.
-        var path = (target.StartsWith('~') ? target[1..] : target).Split('?', '#')[0].Replace('\\', '/');
-        if (path.Contains('%') || path.Split('/').Any(segment => segment is "." or ".."))
-        {
-            return true;
-        }
-        return path != "/Account/Denied"
-            && (path.Equals("/Account", StringComparison.OrdinalIgnoreCase)
-                || path.StartsWith("/Account/", StringComparison.OrdinalIgnoreCase)
-                || path.StartsWith("/Account;", StringComparison.OrdinalIgnoreCase));
-    }
+    // The final decision is made here, after authentication, and LocalRedirect enforces it again at execution.
+    private LocalRedirectResult RedirectAfterSignIn(string? returnUrl)
+        => LocalRedirect(SignInTarget.Choose(Url, returnUrl));
 
     /// <summary>Stamps the SSO button's state onto the model — it is not part of the posted form.</summary>
     private LoginViewModel Decorate(LoginViewModel model)
@@ -300,8 +271,8 @@ public sealed class AccountController : Controller
     [HttpPost]
     public async Task<IActionResult> PasskeyLoginBegin([FromBody] PasskeyLoginRequest? model, CancellationToken ct)
     {
-        var options = await _passkeys.BeginAssertionAsync(model?.Username, ct);
-        var ceremony = new PasskeySignInState(options.Challenge, model?.ReturnUrl, options.NamedAccount);
+        var options = await _passkeys.BeginAssertionAsync(ct);
+        var ceremony = new PasskeySignInState(options.Challenge, model?.ReturnUrl);
         // A session value makes ASP.NET issue its opaque browser-session cookie.
         HttpContext.Session.SetString(PasskeyAssertionKey, "pending");
         await _passkeyCeremonies.ReplaceAsync(HttpContext.Session.Id, PasskeyCeremonyPurpose.SignIn, JsonSerializer.Serialize(ceremony), ct);
@@ -320,7 +291,7 @@ public sealed class AccountController : Controller
             return Json(new { success = false, error = "Sign-in timed out. Try again." });
         }
 
-        var result = await _passkeys.CompleteAssertionAsync(ceremony.Challenge, ceremony.NamedAccount, request.Credential.GetRawText(), ct);
+        var result = await _passkeys.CompleteAssertionAsync(ceremony.Challenge, request.Credential.GetRawText(), ct);
         if (!result.Success || result.User is null || result.Stamp is null)
         {
             _logger.LogWarning("Passkey sign-in failed from {SourceIp}: {Error}",
@@ -335,7 +306,7 @@ public sealed class AccountController : Controller
 
         // Fetch's Response.url drops fragments. Navigate at the top level through Login's
         // signed-in branch, which checks the target again and executes the final LocalRedirect.
-        return Json(new { success = true, redirect = Url.Action(nameof(Login), new { ReturnUrl = SignInTarget(ceremony.ReturnUrl) }) });
+        return Json(new { success = true, redirect = Url.Action(nameof(Login), new { ReturnUrl = SignInTarget.Choose(Url, ceremony.ReturnUrl) }) });
     }
 
     /// <summary>
@@ -387,32 +358,15 @@ public sealed class AccountController : Controller
         this.FlashSuccess(finished.BlockLifted
             ? "The intrusion-defence block on your network was lifted and your session restored."
             : "Access restored. Your network was not blocked.");
-        return RedirectToAction("Index", "Home");
+        return LocalRedirect(SignInTarget.AfterBreakGlass);
     }
 
+    /// <summary>The Error page's sign-out until Area 9; the UI API's sign-out runs the same implementation.</summary>
     [HttpPost]
     public async Task<IActionResult> Logout(CancellationToken ct)
-    {
-        // Clearing the cookie only makes this browser forget it; a copy taken earlier would stay
-        // valid until it expires. Revoking the session id is the tombstone the cookie validator
-        // checks, so that copy is refused on its next request and the device leaves the list.
-        // If the tombstone cannot be stored, the cookie is still cleared: a live session left in the
-        // browser (a shared machine) is the likelier threat even when a copy may remain usable.
-        if (User.GetSessionId() is { } sessionId)
-        {
-            try
-            {
-                await _sessions.RevokeAsync(User.GetUserId(), sessionId, ct);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                _logger.LogError(ex, "Sign-out could not revoke session {SessionId}; the cookie was cleared, but a copy of it stays valid until it expires", sessionId);
-            }
-        }
-
-        await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-        return RedirectToAction("Index", "Home");
-    }
+        => await _signOut.ThisSessionAsync(HttpContext, ct)
+            ? RedirectToAction("Index", "Home")
+            : LocalRedirect("/Account/Login?signOut=sign_out_incomplete");
 
     /// <summary>TempData key used to hand ABAC denial reasons to the Denied page ('\n'-separated).</summary>
     internal const string DenialReasonsTempDataKey = "AbacDenialReasons";
@@ -504,7 +458,7 @@ public sealed class AccountController : Controller
                 return await RestartSignInAsync(returnUrl);
             }
 
-            return RedirectAfterSignIn(returnUrl, Url.Action("Index", "Dashboard")!);
+            return RedirectAfterSignIn(returnUrl);
         }
 
         // The IdP proved one factor; this vault wants its own. Rejoin the ordinary flow rather than

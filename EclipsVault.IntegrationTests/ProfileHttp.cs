@@ -71,6 +71,18 @@ internal static class ProfileHttp
         return await db.Users.AsNoTracking().SingleAsync(user => user.Username == username);
     }
 
+    /// <summary>
+    /// Seeds a credential change: the account's generation moves on, as a committed password change
+    /// moves it, so every proof and session taken under the old one is retired.
+    /// </summary>
+    public static async Task AdvanceCredentialGenerationAsync(VaultFixture vault, Guid accountId)
+    {
+        using var scope = vault.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+        await db.Users.Where(user => user.Id == accountId)
+            .ExecuteUpdateAsync(set => set.SetProperty(user => user.CredentialGeneration, user => user.CredentialGeneration + 1));
+    }
+
     public static async Task<MfaRecoveryCode[]> RecoveryCodesAsync(VaultFixture vault, Guid accountId)
     {
         using var scope = vault.Services.CreateScope();
