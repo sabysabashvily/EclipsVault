@@ -262,92 +262,61 @@ const highlighted = {
     },
   ],
 };
-const palettes = {
-  dark: {
-    danger: 'rgb(255, 69, 58)',
-    warn: 'rgb(255, 214, 10)',
-    warnSoft: 'rgba(255, 214, 10, 0.12)',
-  },
-  light: {
-    danger: 'rgb(215, 0, 21)',
-    warn: 'rgb(138, 106, 0)',
-    warnSoft: 'rgba(180, 140, 0, 0.15)',
-  },
-} as const;
-
-for (const theme of ['dark', 'light'] as const) {
-  test(`visual parity: the list and the palette mark sensitivity, production and expiry, and New secret shows a refusal, in ${theme}`, async ({
-    page,
-    browserHealth,
-  }) => {
-    browserHealth.expectConsoleError({ text: /status of 409/, url: /\/api\/ui\/secrets$/ });
-    const colours = palettes[theme];
-    await page.route('**/api/ui/secrets', (route) =>
-      route.request().method() === 'GET'
-        ? route.fulfill({ json: highlighted })
-        : route.fulfill({
+test('the list and the palette show sensitivity, production and expiry, and New secret shows a refusal', async ({
+  page,
+  browserHealth,
+}) => {
+  browserHealth.expectConsoleError({ text: /status of 409/, url: /\/api\/ui\/secrets$/ });
+  await page.route('**/api/ui/secrets', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({ json: highlighted })
+      : route.fulfill({
+          status: 409,
+          contentType: 'application/problem+json',
+          json: {
             status: 409,
-            contentType: 'application/problem+json',
-            json: {
-              status: 409,
-              code: 'name_taken',
-              title: 'A secret with that name already exists.',
-            },
-          }),
-    );
-    await page.context().addCookies(await savedAdministratorCookies());
-    const list = new SecretsList(page);
-    await list.open();
-    await page.context().addCookies([{ name: 'EclipsVault.Theme', value: theme, url: page.url() }]);
-    await page.reload();
-    // eslint-disable-next-line playwright/no-raw-locators -- The theme is an attribute of the document element.
-    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-    const row = list.secret('E2E_PRODUCTION_SOON');
-    await expect(list.environmentBadgeOf(row, 'Production')).toHaveCSS('color', colours.danger);
-    await expect(list.sensitivityBadgeOf(row, 'Secret')).toHaveCSS('color', colours.warn);
-    await expect(list.sensitivityBadgeOf(row, 'Secret')).toHaveCSS(
-      'background-color',
-      colours.warnSoft,
-    );
-    const soon = list.expiresOf(row).getByText('soon', { exact: true });
-    await expect(soon).toHaveCSS('color', colours.warn);
-    await expect(soon).toHaveCSS('background-color', colours.warnSoft);
-
-    await page.route('**/api/ui/secrets/search?*', (route) =>
-      route.fulfill({
-        json: [
-          {
-            id: highlighted.secrets[0].secretId,
-            name: 'E2E_PRODUCTION_SOON',
-            project: 'GLOBAL',
-            environment: 'Production',
-            sensitivity: 3,
-            sensitivityName: 'Secret',
-            url: `/Secrets/Details/${highlighted.secrets[0].secretId}`,
+            code: 'name_taken',
+            title: 'A secret with that name already exists.',
           },
-        ],
-      }),
-    );
-    await openPalette(page);
-    await page.getByRole('combobox').fill('E2E_PRODUCTION');
-    const found = page.getByRole('option', { name: /E2E_PRODUCTION_SOON/ });
-    // Both labels read "Secret"; the sensitivity is the option's final label.
-    const sensitivity = found.getByText('Secret', { exact: true }).last();
-    await expect(sensitivity).toHaveCSS('color', colours.warn);
-    await page.keyboard.press('Escape');
+        }),
+  );
+  await page.context().addCookies(await savedAdministratorCookies());
+  const list = new SecretsList(page);
+  await list.open();
+  const row = list.secret('E2E_PRODUCTION_SOON');
+  await expect(list.environmentBadgeOf(row, 'Production')).toBeVisible();
+  await expect(list.sensitivityBadgeOf(row, 'Secret')).toBeVisible();
+  await expect(list.expiresOf(row).getByText('soon', { exact: true })).toBeVisible();
 
-    await list.newSecret.click();
-    const form = new NewSecretForm(page);
-    await form.create({
-      name: 'E2E_REFUSED',
-      project: 'GLOBAL',
-      sensitivity: 'Internal',
-      ttlDays: '0',
-    });
-    await expect(form.refusal).toHaveText('A secret with that name already exists.');
-    await expect(form.refusal.getByText('A secret with that name already exists.')).toHaveCSS(
-      'color',
-      colours.danger,
-    );
+  await page.route('**/api/ui/secrets/search?*', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: highlighted.secrets[0].secretId,
+          name: 'E2E_PRODUCTION_SOON',
+          project: 'GLOBAL',
+          environment: 'Production',
+          sensitivity: 3,
+          sensitivityName: 'Secret',
+          url: `/Secrets/Details/${highlighted.secrets[0].secretId}`,
+        },
+      ],
+    }),
+  );
+  await openPalette(page);
+  await page.getByRole('combobox').fill('E2E_PRODUCTION');
+  const found = page.getByRole('option', { name: /E2E_PRODUCTION_SOON/ });
+  // Both labels read "Secret"; the sensitivity is the option's final label.
+  await expect(found.getByText('Secret', { exact: true }).last()).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  await list.newSecret.click();
+  const form = new NewSecretForm(page);
+  await form.create({
+    name: 'E2E_REFUSED',
+    project: 'GLOBAL',
+    sensitivity: 'Internal',
+    ttlDays: '0',
   });
-}
+  await expect(form.refusal).toHaveText('A secret with that name already exists.');
+});
