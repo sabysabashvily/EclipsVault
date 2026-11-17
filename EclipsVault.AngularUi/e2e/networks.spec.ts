@@ -122,7 +122,7 @@ test('the Denied page link opens Networks', async ({ page }) => {
 test('the Legacy sidebar opens Networks', async ({ page }) => {
   await page.context().addCookies(administratorCookies);
   const networks = new Networks(page);
-  await networks.fromSidebar('/DynamicSecrets');
+  await networks.fromSidebar('/Account/Denied');
   await expect(networks.heading).toBeVisible();
 });
 
@@ -136,7 +136,7 @@ test('the Angular sidebar opens Networks', async ({ page }) => {
 test('the palette in the Legacy shell opens Networks', async ({ page }) => {
   await page.context().addCookies(administratorCookies);
   const networks = new Networks(page);
-  await networks.fromPalette('/DynamicSecrets');
+  await networks.fromPalette('/Account/Denied');
   await expect(networks.heading).toBeVisible();
 });
 

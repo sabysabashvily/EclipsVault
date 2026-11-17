@@ -102,13 +102,13 @@ test('both account menus, both palettes and Security checkup open Profile on the
   });
 
   await test.step('the Legacy account menu and palette load Profile into Angular', async () => {
-    await page.goto('/DynamicSecrets');
+    await page.goto('/Account/Denied');
     documents.length = 0;
     await page.getByText('Mailbox Owner', { exact: true }).click();
     await page.getByRole('menuitem', { name: 'Profile', exact: true }).click();
     await expect(profile.heading).toBeVisible();
     expect(documents).toEqual(['/Profile']);
-    await page.goto('/DynamicSecrets');
+    await page.goto('/Account/Denied');
     documents.length = 0;
     await openPalette(page);
     await page.getByRole('combobox').fill('Profile');

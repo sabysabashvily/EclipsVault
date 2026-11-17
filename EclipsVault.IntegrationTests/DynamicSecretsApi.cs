@@ -1,5 +1,6 @@
 using System.Net;
-using System.Text.RegularExpressions;
+using System.Net.Http.Json;
+using System.Text.Json;
 using EclipsVault.Core.Application.DynamicSecrets;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
@@ -7,17 +8,18 @@ using EclipsVault.Infrastructure.Persistence;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Xunit;
 
 namespace EclipsVault.IntegrationTests;
 
 /// <summary>
-/// The Legacy Dynamic secrets page as a browser drives it, and the vault's target database as an
+/// The Dynamic secrets UI API as the Angular page calls it, and the vault's target database as an
 /// operator inspects it. A production vault has no screen that creates roles, so tests add them to
 /// its database, as an operator provisions them out of band.
 /// </summary>
-internal static partial class LegacyDynamicSecrets
+internal static class DynamicSecretsApi
 {
-    public const string Page = "/DynamicSecrets";
+    public const string Path = "/api/ui/dynamic-secrets";
 
     /// <summary>The Development seed's reader recipe: a login, its user, and read access.</summary>
     public const string ReaderRecipe = """
@@ -44,7 +46,8 @@ internal static partial class LegacyDynamicSecrets
 
     public static async Task<Guid> AddRoleAsync(
         VaultFixture vault, string name, SensitivityLevel sensitivity = SensitivityLevel.Internal,
-        string creation = ReaderRecipe, string revocation = RepeatableRevocation, int defaultTtlMinutes = 15, int maxTtlMinutes = 60)
+        string creation = ReaderRecipe, string revocation = RepeatableRevocation, int defaultTtlMinutes = 15, int maxTtlMinutes = 60,
+        string project = "GLOBAL", SecretEnvironment environment = SecretEnvironment.Development, bool enabled = true)
     {
         using var scope = vault.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
@@ -53,15 +56,15 @@ internal static partial class LegacyDynamicSecrets
             Id = Guid.NewGuid(),
             Name = name,
             Description = "Integration test role.",
-            ProjectKey = "GLOBAL",
-            Environment = SecretEnvironment.Development,
+            ProjectKey = project,
+            Environment = environment,
             Sensitivity = sensitivity,
             Backend = DynamicSecretBackend.SqlServer,
             CreationStatements = creation,
             RevocationStatements = revocation,
             DefaultTtlMinutes = defaultTtlMinutes,
             MaxTtlMinutes = maxTtlMinutes,
-            IsEnabled = true,
+            IsEnabled = enabled,
             CreatedAtUtc = DateTimeOffset.UtcNow,
         };
         db.DynamicSecretRoles.Add(role);
@@ -69,42 +72,50 @@ internal static partial class LegacyDynamicSecrets
         return role.Id;
     }
 
-    /// <summary>The page's antiforgery token. It belongs to the session, so one serves every form on it.</summary>
-    public static async Task<string> TokenAsync(HttpClient client)
-        => VaultFixture.FormTokenOf(await client.GetStringAsync(Page), Page);
+    /// <summary>The session's antiforgery token, which serves every write it makes.</summary>
+    public static Task<string> TokenAsync(HttpClient client) => UiApiRequest.AntiforgeryTokenAsync(client);
 
-    public static async Task<HttpResponseMessage> IssueAsync(HttpClient client, Guid roleId, int? ttlMinutes = null, string? token = null)
+    public static async Task<JsonElement> GetAsync(HttpClient client)
     {
-        var form = new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = token ?? await TokenAsync(client),
-            ["RoleId"] = roleId.ToString(),
-        };
-        if (ttlMinutes is { } minutes)
-        {
-            form["TtlMinutes"] = minutes.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        }
-        return await client.PostAsync($"{Page}/Issue", new FormUrlEncodedContent(form));
+        using var response = await client.GetAsync(Path);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(response.Headers.CacheControl?.NoStore, "The response is not no-store");
+        return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
+    public static async Task<HttpResponseMessage> IssueAsync(HttpClient client, Guid roleId, int? ttlMinutes = null, string? token = null)
+        => await UiApiRequest.SendWithTokenAsync(client, token ?? await TokenAsync(client), HttpMethod.Post, $"{Path}/issue",
+            JsonContent.Create(new { roleId, ttlMinutes }));
+
     public static async Task<HttpResponseMessage> RevokeAsync(HttpClient client, Guid leaseId, string? token = null)
-        => await client.PostAsync($"{Page}/Revoke", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = token ?? await TokenAsync(client),
-            ["id"] = leaseId.ToString(),
-        }));
+        => await UiApiRequest.SendWithTokenAsync(client, token ?? await TokenAsync(client), HttpMethod.Post, $"{Path}/leases/{leaseId}/revoke");
 
-    /// <summary>The message the page shows after a refused or completed action redirects back to it.</summary>
-    public static async Task<string> FlashAsync(HttpClient client)
-        => FlashMessage().Match(await client.GetStringAsync(Page)) is { Success: true } match
-            ? WebUtility.HtmlDecode(match.Groups[1].Value)
-            : throw new InvalidOperationException("The page showed no message.");
+    public static async Task<JsonElement> JsonAsync(HttpResponseMessage response)
+    {
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        return await response.Content.ReadFromJsonAsync<JsonElement>();
+    }
 
-    /// <summary>The username and password the page shows once, after issuing.</summary>
+    /// <summary>A refused call's problem, carrying nothing beyond the members the contract names.</summary>
+    public static async Task<JsonElement> AssertProblemAsync(HttpResponseMessage response, int status, string code)
+    {
+        Assert.Equal(status, (int)response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        Assert.True(response.Headers.CacheControl?.NoStore, "The response is not no-store");
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.All(problem.EnumerateObject(), member => Assert.Contains(member.Name, ProblemMembers));
+        Assert.Equal(code, problem.GetProperty("code").GetString());
+        return problem;
+    }
+
+    private static readonly string[] ProblemMembers = ["code", "errors", "proof", "status", "title", "type"];
+
+    /// <summary>The username and password the issue response carries, once.</summary>
     public static async Task<(string Username, string Password)> IssuedCredentialAsync(HttpResponseMessage issued)
     {
-        var page = await issued.Content.ReadAsStringAsync();
-        return (IssuedField("Username").Match(page).Groups[1].Value, IssuedField("Password").Match(page).Groups[1].Value);
+        Assert.Equal(HttpStatusCode.OK, issued.StatusCode);
+        var credential = await issued.Content.ReadFromJsonAsync<JsonElement>();
+        return (credential.GetProperty("username").GetString()!, credential.GetProperty("password").GetString()!);
     }
 
     public static async Task<DynamicSecretLease[]> LeasesOfRoleAsync(VaultFixture vault, Guid roleId)
@@ -170,9 +181,4 @@ internal static partial class LegacyDynamicSecrets
         drop.CommandText = $"DROP USER IF EXISTS [{login}]; DROP LOGIN [{login}];";
         await drop.ExecuteNonQueryAsync();
     }
-
-    [GeneratedRegex("<div class=\"flash [^\"]+\" data-flash role=\"status\">\\s*<span>([^<]*)</span>")]
-    private static partial Regex FlashMessage();
-
-    private static Regex IssuedField(string label) => new($"<th scope=\"row\">{label}</th><td><code class=\"mono\">([^<]+)</code></td>");
 }

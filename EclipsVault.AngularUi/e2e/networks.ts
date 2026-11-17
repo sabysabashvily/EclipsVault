@@ -54,11 +54,11 @@ export class Networks {
     await this.page.goto('/Account/Denied');
     await this.page.getByRole('link', { name: 'Manage trusted networks', exact: true }).click();
   }
-  async fromSidebar(path: '/DynamicSecrets' | '/Access'): Promise<void> {
+  async fromSidebar(path: '/Account/Denied' | '/Access'): Promise<void> {
     await this.page.goto(path);
     await this.page.getByRole('link', { name: 'Networks', exact: true }).click();
   }
-  async fromPalette(path: '/DynamicSecrets' | '/Access'): Promise<void> {
+  async fromPalette(path: '/Account/Denied' | '/Access'): Promise<void> {
     await this.page.goto(path);
     await openPalette(this.page);
     await this.page.getByRole('combobox').fill('Networks');

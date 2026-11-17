@@ -29,7 +29,7 @@ describe('sidebar mapping', () => {
             label: 'Dynamic secrets',
             icon: 'dynamic-secrets',
             url: '/DynamicSecrets',
-            angular: false,
+            angular: true,
           },
           {
             label: 'Sharing',

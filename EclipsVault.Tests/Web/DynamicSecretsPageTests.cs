@@ -7,24 +7,23 @@ using EclipsVault.Core.Application.StepUp;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
+using EclipsVault.Tests.Sessions;
 using EclipsVault.Tests.TestDoubles;
 using EclipsVault.Web.Authorization;
-using EclipsVault.Web.Controllers;
-using EclipsVault.Web.Extensions;
-using EclipsVault.Web.Models;
+using EclipsVault.Web.Controllers.Ui;
+using EclipsVault.Web.Models.Ui;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Infrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace EclipsVault.Tests.Web;
 
 /// <summary>
-/// The Legacy Dynamic secrets page over the real lease service and a fake target: what it tells the
-/// person, what it records and what it logs when issuing or revoking goes wrong.
+/// The Dynamic secrets UI API over the real lease service and a fake target: what it answers, what it
+/// records and what it logs when issuing or revoking goes wrong.
 /// </summary>
 public sealed class DynamicSecretsPageTests
 {
@@ -88,12 +87,6 @@ public sealed class DynamicSecretsPageTests
             => Entries.Add((logLevel, $"{formatter(state, exception)} {exception}"));
     }
 
-    private sealed class NoTempDataStore : ITempDataProvider
-    {
-        public IDictionary<string, object> LoadTempData(HttpContext context) => new Dictionary<string, object>();
-        public void SaveTempData(HttpContext context, IDictionary<string, object> values) { }
-    }
-
     private static readonly IStepUpService StepUp = new StepUpService(
         new StepUpOptions { MinimumSensitivity = SensitivityLevel.Secret, MaxAuthAgeMinutes = 10 },
         users: null!, secondFactors: null!, attempt: null!, failures: null!, clock: null!, revocation: null!);
@@ -117,7 +110,7 @@ public sealed class DynamicSecretsPageTests
 
     private static DynamicSecretsController Page(
         IDynamicSecretService service, PageLog log, IAuthorizationService? access = null,
-        IEvaluationWindowStore? evaluations = null, int minutesSinceSignIn = 1)
+        IEvaluationWindowStore? evaluations = null, int minutesSinceSignIn = 1, bool totpEnabled = true)
     {
         var signedIn = DateTimeOffset.UtcNow.AddMinutes(-minutesSinceSignIn).ToUnixTimeSeconds();
         var identity = new ClaimsIdentity(
@@ -128,10 +121,9 @@ public sealed class DynamicSecretsPageTests
         ], "test");
         var http = new DefaultHttpContext { User = new ClaimsPrincipal(identity) };
         return new DynamicSecretsController(service, access ?? new AccessPolicy(), new Unlicensed(),
-            evaluations ?? new EvaluationStore(), StepUp, TimeProvider.System, log)
+            evaluations ?? new EvaluationStore(), StepUp, new SessionAccountStore(new User { Id = Holder, TotpEnabled = totpEnabled }), TimeProvider.System, log)
         {
             ControllerContext = new ControllerContext { HttpContext = http },
-            TempData = new TempDataDictionary(http, new NoTempDataStore()),
         };
     }
 
@@ -142,9 +134,10 @@ public sealed class DynamicSecretsPageTests
         var page = Page(Service(new FakeLeaseRepository(Role()), new FakeDynamicTarget()), log,
             evaluations: new EvaluationStore(readFails: true));
 
-        var view = Assert.IsType<ViewResult>(await page.Index(CancellationToken.None));
+        var answer = (await page.Get(CancellationToken.None)).Value;
 
-        Assert.True(Assert.IsType<DynamicSecretsViewModel>(view.Model).LicenceNoteUnavailable);
+        Assert.Null(Assert.IsType<DynamicSecretsResponse>(answer).Licence);
+        Assert.Single(answer.Roles);
         Assert.Equal(LogLevel.Warning, Assert.Single(log.Entries).Level);
     }
 
@@ -164,22 +157,26 @@ public sealed class DynamicSecretsPageTests
         var licence = new RecordingPremiumFeatureUsage();
         var page = Page(Service(repository, new FakeDynamicTarget(), audit, licence), new PageLog(), minutesSinceSignIn: minutesSinceSignIn);
 
-        await page.Issue(new IssueCredentialViewModel { RoleId = role.Id }, CancellationToken.None);
+        await page.Issue(new IssueDynamicCredentialRequest { RoleId = role.Id }, CancellationToken.None);
 
         Assert.Equal(issued, repository.Leases.Count == 1);
         Assert.Equal(issued, licence.Recorded.Count == 1); // a refusal never reaches the licence gate
         Assert.Empty(audit.Entries);
     }
 
-    [Fact]
-    public async Task A_stale_session_is_asked_to_sign_in_again_before_issuing_a_secret_role()
+    [Theory]
+    [InlineData(true, "code")]
+    [InlineData(false, "sign_in")]
+    public async Task A_stale_session_is_asked_for_the_proof_its_account_can_give_before_issuing_a_secret_role(bool totpEnabled, string proof)
     {
         var role = Role(SensitivityLevel.Secret);
-        var page = Page(Service(new FakeLeaseRepository(role), new FakeDynamicTarget()), new PageLog(), minutesSinceSignIn: 11);
+        var page = Page(Service(new FakeLeaseRepository(role), new FakeDynamicTarget()), new PageLog(), minutesSinceSignIn: 11,
+            totpEnabled: totpEnabled);
 
-        await page.Issue(new IssueCredentialViewModel { RoleId = role.Id }, CancellationToken.None);
+        var problem = ProblemOf(await page.Issue(new IssueDynamicCredentialRequest { RoleId = role.Id }, CancellationToken.None));
 
-        Assert.Equal("Confirm it's you before issuing 'reader': sign in again, then retry.", page.TempData[FlashExtensions.MessageKey]);
+        Assert.Equal((403, "step_up_required", "Confirm it's you before issuing 'reader'.", proof),
+            (problem.Status, problem.Code, problem.Title, problem.Proof));
     }
 
     [Fact]
@@ -192,14 +189,29 @@ public sealed class DynamicSecretsPageTests
         var page = Page(Service(new FakeLeaseRepository(role), target, audit, licence), new PageLog(),
             access: new AccessPolicy("Clearance too low."));
 
-        await page.Issue(new IssueCredentialViewModel { RoleId = role.Id }, CancellationToken.None);
+        var problem = ProblemOf(await page.Issue(new IssueDynamicCredentialRequest { RoleId = role.Id }, CancellationToken.None));
 
         var denial = Assert.Single(audit.Entries);
         Assert.Equal(AuditAction.SecretAccessDenied, denial.Action);
         Assert.Equal("Clearance too low.", denial.Details);
         Assert.Empty(target.Passwords);
         Assert.Empty(licence.Recorded);
-        Assert.Equal("Your clearance and project do not permit issuing 'reader'.", page.TempData[FlashExtensions.MessageKey]);
+        Assert.Equal((403, "access_denied", "Your clearance and project do not permit issuing 'reader'."), (problem.Status, problem.Code, problem.Title));
+    }
+
+    [Fact]
+    public async Task An_expired_evaluation_refuses_with_the_legacy_sentence_and_mints_nothing()
+    {
+        var role = Role();
+        var target = new FakeDynamicTarget();
+        var licence = new RecordingPremiumFeatureUsage();
+        licence.Denied.Add(LicenseFeatures.DynamicSecrets);
+        var page = Page(Service(new FakeLeaseRepository(role), target, licence: licence), new PageLog());
+
+        var problem = ProblemOf(await page.Issue(new IssueDynamicCredentialRequest { RoleId = role.Id }, CancellationToken.None));
+
+        Assert.Equal((402, "premium_not_licensed", DynamicSecretsController.NotLicensedMessage), (problem.Status, problem.Code, problem.Title));
+        Assert.Empty(target.Passwords);
     }
 
     [Fact]
@@ -215,12 +227,9 @@ public sealed class DynamicSecretsPageTests
         var log = new PageLog();
         var page = Page(Service(new FakeLeaseRepository(role), target), log);
 
-        await page.Issue(new IssueCredentialViewModel { RoleId = role.Id }, CancellationToken.None);
+        var problem = ProblemOf(await page.Issue(new IssueDynamicCredentialRequest { RoleId = role.Id }, CancellationToken.None));
 
-        Assert.Equal(
-            "The backend failed part-way through, and the vault could not confirm that the login it started to create was removed. " +
-            "No password was shown or kept. An administrator must check the target.",
-            page.TempData[FlashExtensions.MessageKey]);
+        Assert.Equal((502, "mint_incomplete", MintIncompleteException.FailureMessage), (problem.Status, problem.Code, problem.Title));
         var alert = Assert.Single(log.Entries, entry => entry.Level == LogLevel.Critical);
         Assert.Contains("reader", alert.Text);
         Assert.Contains(Assert.Single(target.Logins), alert.Text);
@@ -236,7 +245,7 @@ public sealed class DynamicSecretsPageTests
         var page = Page(Service(new FakeLeaseRepository(role) { AddFails = true }, target), log);
 
         await Assert.ThrowsAsync<MintUnrecordedException>(
-            () => page.Issue(new IssueCredentialViewModel { RoleId = role.Id }, CancellationToken.None));
+            () => page.Issue(new IssueDynamicCredentialRequest { RoleId = role.Id }, CancellationToken.None));
 
         var alert = Assert.Single(log.Entries, entry => entry.Level == LogLevel.Critical);
         Assert.Contains("reader", alert.Text);
@@ -254,9 +263,9 @@ public sealed class DynamicSecretsPageTests
         target.RevokeFailure = new InvalidOperationException("Cannot drop the login.");
         var page = Page(service, new PageLog());
 
-        await page.Revoke(issued.LeaseId, CancellationToken.None);
+        var answer = Assert.IsType<OkObjectResult>(await page.Revoke(issued.LeaseId, CancellationToken.None)).Value;
 
-        Assert.Equal("The backend refused to destroy the credential; it may still work.", page.TempData[FlashExtensions.MessageKey]);
+        Assert.Equal(new RevokedLeaseResponse("RevocationFailed", "The backend refused to destroy the credential; it may still work."), answer);
     }
 
     [Fact]
@@ -269,11 +278,10 @@ public sealed class DynamicSecretsPageTests
         repository.RoleRemoved = true;
         var page = Page(service, new PageLog());
 
-        await page.Revoke(issued.LeaseId, CancellationToken.None);
+        var answer = Assert.IsType<OkObjectResult>(await page.Revoke(issued.LeaseId, CancellationToken.None)).Value;
 
-        Assert.Equal(
-            "The role that minted this credential no longer exists, so it could not be destroyed automatically.",
-            page.TempData[FlashExtensions.MessageKey]);
+        Assert.Equal(new RevokedLeaseResponse("RevocationFailed",
+            "The role that minted this credential no longer exists, so it could not be destroyed automatically."), answer);
     }
 
     [Fact]
@@ -286,10 +294,11 @@ public sealed class DynamicSecretsPageTests
         repository.UpdatesToFail = 1;
         var page = Page(service, new PageLog());
 
-        await page.Revoke(issued.LeaseId, CancellationToken.None);
+        var problem = ProblemOf(await page.Revoke(issued.LeaseId, CancellationToken.None));
 
-        Assert.Equal(
-            "The credential was destroyed, but the vault couldn't record it in the audit trail. Its lease shows Active until it expires.",
-            page.TempData[FlashExtensions.MessageKey]);
+        Assert.Equal((503, "revoked_unrecorded", RevokedUnrecordedException.FailureMessage), (problem.Status, problem.Code, problem.Title));
     }
+
+    private static AdministratorProblemResponse ProblemOf(IActionResult result)
+        => Assert.IsType<AdministratorProblemResponse>(Assert.IsType<JsonResult>(result).Value);
 }

@@ -43,7 +43,7 @@ const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)
       link('overview', 'Overview', '/', 'overview', true),
       link('secrets', 'Secrets', '/Secrets', 'secrets', true),
       link('secrets', 'New secret', '/Secrets/Create', 'new-secret', true),
-      link('dynamic-secrets', 'Dynamic secrets', '/DynamicSecrets'),
+      link('dynamic-secrets', 'Dynamic secrets', '/DynamicSecrets', 'dynamic-secrets', true),
       {
         label: 'Sharing',
         icon: 'shared-with-me',
