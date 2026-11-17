@@ -161,25 +161,36 @@ const destinations = {
   },
 };
 
+const sidebarLinks = [
+  ['/DynamicSecrets', 'Overview'],
+  ['/DynamicSecrets', 'Secrets'],
+  ['/DynamicSecrets', 'New secret'],
+  ['/Access', 'Overview'],
+  ['/Access', 'Secrets'],
+] as const;
+
+for (const [shell, label] of sidebarLinks) {
+  test(`the sidebar on ${shell} opens ${label}`, async ({ page }) => {
+    await page.context().addCookies(await savedAdministratorCookies());
+    await page.goto(shell);
+
+    await page.getByRole('link', { name: label, exact: true }).click();
+
+    await expect(page).toHaveURL(destinations[label].url);
+    await expect(destinations[label].landmark(page)).toBeVisible();
+  });
+}
+
+// New secret left the Angular sidebar for the palette. Legacy still lists it.
+test('the sidebar on /Access omits New secret', async ({ page }) => {
+  await page.context().addCookies(await savedAdministratorCookies());
+  await page.goto('/Access');
+
+  await expect(page.getByRole('link', { name: 'New secret', exact: true })).toHaveCount(0);
+});
+
 for (const shell of ['/DynamicSecrets', '/Access']) {
   for (const [label, { url, landmark }] of Object.entries(destinations)) {
-    // New secret left the Angular sidebar for the palette. Legacy still lists it.
-    const listed = shell === '/DynamicSecrets' || label !== 'New secret';
-    test(`the sidebar on ${shell} ${listed ? 'opens' : 'omits'} ${label}`, async ({ page }) => {
-      await page.context().addCookies(await savedAdministratorCookies());
-      await page.goto(shell);
-      const link = page.getByRole('link', { name: label, exact: true });
-      if (!listed) {
-        await expect(link).toHaveCount(0);
-        return;
-      }
-
-      await link.click();
-
-      await expect(page).toHaveURL(url);
-      await expect(landmark(page)).toBeVisible();
-    });
-
     test(`the palette's Go to ${label} on ${shell} opens it`, async ({ page }) => {
       await page.context().addCookies(await savedAdministratorCookies());
       await page.goto(shell);
@@ -255,8 +266,8 @@ const highlighted = {
       name: 'E2E_PRODUCTION_SOON',
       project: 'GLOBAL',
       environment: 'Production',
-      sensitivity: 3,
-      sensitivityLabel: 'Secret',
+      sensitivity: 2,
+      sensitivityLabel: 'Confidential',
       createdAtUtc: new Date(now - day).toISOString(),
       expiresAtUtc: new Date(now + 2 * day).toISOString(),
     },
@@ -285,7 +296,7 @@ test('the list and the palette show sensitivity, production and expiry, and New 
   await list.open();
   const row = list.secret('E2E_PRODUCTION_SOON');
   await expect(list.environmentBadgeOf(row, 'Production')).toBeVisible();
-  await expect(list.sensitivityBadgeOf(row, 'Secret')).toBeVisible();
+  await expect(list.sensitivityBadgeOf(row, 'Confidential')).toBeVisible();
   await expect(list.expiresOf(row).getByText('soon', { exact: true })).toBeVisible();
 
   await page.route('**/api/ui/secrets/search?*', (route) =>
@@ -296,8 +307,8 @@ test('the list and the palette show sensitivity, production and expiry, and New 
           name: 'E2E_PRODUCTION_SOON',
           project: 'GLOBAL',
           environment: 'Production',
-          sensitivity: 3,
-          sensitivityName: 'Secret',
+          sensitivity: 2,
+          sensitivityName: 'Confidential',
           url: `/Secrets/Details/${highlighted.secrets[0].secretId}`,
         },
       ],
@@ -306,8 +317,8 @@ test('the list and the palette show sensitivity, production and expiry, and New 
   await openPalette(page);
   await page.getByRole('combobox').fill('E2E_PRODUCTION');
   const found = page.getByRole('option', { name: /E2E_PRODUCTION_SOON/ });
-  // Both labels read "Secret"; the sensitivity is the option's final label.
-  await expect(found.getByText('Secret', { exact: true }).last()).toBeVisible();
+  // Confidential, unlike Secret, cannot be confused with the option's "Secret" kind label.
+  await expect(found.getByText('Confidential', { exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
 
   await list.newSecret.click();
