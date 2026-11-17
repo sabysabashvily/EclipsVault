@@ -36,3 +36,10 @@ merged, and took `main` once 6b had. Part 7b, Secret details (with Denied and fi
 request), likewise started from 7a's branch before 7a merged, by the owner's decision. Part 7c, Dynamic
 secrets, branches from `main` after 7a merges; it touches code unrelated to 7b, so it may run beside
 7b. Each part has its own security review.
+
+Area 8 runs in two parts, each with its own spec, branch and PR, after its grill found that the
+first sign-in of a new account can be completed by whoever knows the password an administrator chose
+(#117, ADR-0033), and that the sign-in pages revealed which accounts exist (ADR-0032). Part 8a,
+Sign-in, branches from `main` after 7a merges and may run beside 7b and 7c. Part 8b, Provisioning,
+branches from `main` after 8a merges, because it reuses 8a's anonymous pages. Area 9 depends only on
+8a. Each part has its own security review.
