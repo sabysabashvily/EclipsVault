@@ -123,9 +123,21 @@ export async function verifySidebar(
         secure: true,
       },
     ]);
-    const legacy = await page.goto('/Secrets');
+    const legacy = await page.goto('/DynamicSecrets');
     expect(legacy?.headers()['content-security-policy']).not.toContain('trusted-types');
-    await expect(page.locator('.sidenav a.active')).toHaveText('Secrets');
+    await expect(page.locator('.sidenav a.active')).toHaveText('Dynamic secrets');
+    // Compare the Legacy styles in the same selected state as My access. The real active states
+    // of both documents are asserted separately; the deleted Razor page is no longer a reference.
+    await page.locator('.sidenav').evaluate((nav) => {
+      nav
+        .querySelectorAll('.active, .has-active')
+        .forEach((item) => item.classList.remove('active', 'has-active'));
+      nav.querySelectorAll('details').forEach((group) => group.removeAttribute('open'));
+      const access = nav.querySelector('a[href="/Access"]')!;
+      access.classList.add('active');
+      access.closest('details')!.setAttribute('open', '');
+      access.closest('details')!.querySelector('summary')!.classList.add('has-active');
+    });
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     const referenceMenu = await accountMenu(page);
     const referenceNotices = await notices(page);
@@ -219,12 +231,12 @@ export async function verifySidebar(
   const legacyDocument = page.waitForResponse((response) =>
     response.request().isNavigationRequest(),
   );
-  await page.getByRole('link', { name: 'Secrets', exact: true }).click();
+  await page.getByRole('link', { name: 'Dynamic secrets', exact: true }).click();
   expect((await legacyDocument).headers()['content-security-policy']).not.toContain(
     'trusted-types',
   );
-  await expect(page).toHaveURL(/\/Secrets$/);
-  await expect(page.getByRole('heading', { name: 'Secrets', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/DynamicSecrets$/);
+  await expect(page.getByRole('heading', { name: 'Dynamic secrets', exact: true })).toBeVisible();
   await page.getByText('Access', { exact: true }).click();
   const angularDocument = page.waitForResponse((response) =>
     response.request().isNavigationRequest(),
@@ -235,7 +247,7 @@ export async function verifySidebar(
   );
   await expect(page).toHaveURL(/\/Access$/);
   await expect(page.locator('.sidenav a.active')).toHaveText('My access');
-  expect(documents.map((url) => new URL(url).pathname)).toEqual(['/Secrets', '/Access']);
+  expect(documents.map((url) => new URL(url).pathname)).toEqual(['/DynamicSecrets', '/Access']);
   expect(signInRequests).toEqual([]);
   expect(
     (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')?.value,

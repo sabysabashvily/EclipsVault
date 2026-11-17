@@ -35,7 +35,8 @@ export class SidebarNav {
 
   /** The link is the current page. */
   protected active(link: SidebarLink): boolean {
-    const target = link.url.toLowerCase();
+    // The Overview's link is the root, which reads as an empty path once its slash is trimmed.
+    const target = link.url.replace(/\/$/, '').toLowerCase();
     return this.path() === target || this.path() === `${target}/index`;
   }
 

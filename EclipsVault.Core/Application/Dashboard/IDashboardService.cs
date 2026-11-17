@@ -12,7 +12,7 @@ public sealed record DashboardDto(
     int StagingCount,
     int ProductionCount,
     int ExpiringWithin7Days,
-    int UserCount,
+    int? StaffAccounts,
     int CriticalEventsLast24h,
     IReadOnlyList<AuditEntryDto> RecentEvents,
     IReadOnlyList<ExpiringSecretDto> ExpiringSoon);
@@ -20,7 +20,10 @@ public sealed record DashboardDto(
 /// <summary>Aggregates vault state for the overview page.</summary>
 public interface IDashboardService
 {
-    /// <summary>Pass a username to restrict the activity feed to that actor (non-admin view).</summary>
+    /// <summary>
+    /// An administrator gets the vault's activity and the staff account count; anyone else gets only
+    /// their own activity, with the names a denial row would disclose withheld, and no account count.
+    /// </summary>
     Task<DashboardDto> GetAsync(
-        IReadOnlyList<SecretSummaryDto> visibleSecrets, string? restrictActivityToUsername, CancellationToken ct);
+        IReadOnlyList<SecretSummaryDto> visibleSecrets, Guid userId, bool isAdministrator, CancellationToken ct);
 }

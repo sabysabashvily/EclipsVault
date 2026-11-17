@@ -1046,6 +1046,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ui/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OverviewResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ui/passwords/check-breached": {
         parameters: {
             query?: never;
@@ -2351,6 +2386,141 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SecretsResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateSecretUiRequest"];
+                    "text/json": components["schemas"]["CreateSecretUiRequest"];
+                    "application/*+json": components["schemas"]["CreateSecretUiRequest"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CreatedSecretResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["SecretProblemResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["SecretProblemResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["SecretProblemResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["SecretProblemResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/secrets/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    q?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["SecretSearchResultResponse"][];
+                        "application/json": components["schemas"]["SecretSearchResultResponse"][];
+                        "text/json": components["schemas"]["SecretSearchResultResponse"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4064,6 +4234,10 @@ export interface components {
             operationId: string;
             code: string;
         };
+        CreatedSecretResponse: {
+            /** Format: uuid */
+            secretId: string;
+        };
         CreatedServiceAccountResponse: {
             /** Format: uuid */
             serviceAccountId: string;
@@ -4073,6 +4247,17 @@ export interface components {
             userId: string;
             username: string;
             email: string;
+        };
+        CreateSecretUiRequest: {
+            name: null | string;
+            value: null | string;
+            project: null | string;
+            /** @enum {null|string} */
+            environment?: "Development" | "Staging" | "Production" | null;
+            /** Format: int32 */
+            sensitivity?: null | number | string;
+            /** Format: int32 */
+            ttlDays?: null | number | string;
         };
         CreateServiceAccountUiRequest: {
             name?: null | string;
@@ -4126,6 +4311,15 @@ export interface components {
             awaitingRotation: number | string;
             /** Format: int32 */
             onMissingKeys: number | string;
+        };
+        ExpiringSecretResponse: {
+            /** Format: uuid */
+            secretId: string;
+            name: string;
+            /** @enum {string} */
+            environment: "Development" | "Staging" | "Production";
+            /** Format: date-time */
+            expiresAtUtc: string;
         };
         FiledRequestResponse: {
             /** Format: uuid */
@@ -4253,6 +4447,38 @@ export interface components {
             delivery: "off" | "smtp" | "log";
             smtpTarget: null | string;
             outbox: components["schemas"]["NotificationResponse"][];
+        };
+        OverviewEventResponse: {
+            /** Format: date-time */
+            timestampUtc: string;
+            action: string;
+            actionLabel: string;
+            /** @enum {string} */
+            tone: "ok" | "muted" | "warn" | "danger" | "critical";
+            resource: string;
+            actor: string;
+            isCritical: boolean;
+        };
+        OverviewResponse: {
+            displayName: string;
+            /** Format: int32 */
+            totalActiveSecrets: number | string;
+            /** Format: int32 */
+            developmentCount: number | string;
+            /** Format: int32 */
+            stagingCount: number | string;
+            /** Format: int32 */
+            productionCount: number | string;
+            /** Format: int32 */
+            expiringWithin7Days: number | string;
+            /** Format: int32 */
+            criticalEventsLast24h: number | string;
+            /** Format: int32 */
+            staffAccounts: null | number | string;
+            /** @enum {string} */
+            activityScope: "vault" | "own";
+            recentEvents: components["schemas"]["OverviewEventResponse"][];
+            expiringSoon: components["schemas"]["ExpiringSecretResponse"][];
         };
         PasskeyOptionsResponse: {
             publicKey: components["schemas"]["JsonElement"];
@@ -4406,6 +4632,49 @@ export interface components {
             secretsRewrapped: number | string;
             /** Format: int32 */
             versionsRewrapped: number | string;
+        };
+        SecretListItemResponse: {
+            /** Format: uuid */
+            secretId: string;
+            name: string;
+            project: string;
+            /** @enum {string} */
+            environment: "Development" | "Staging" | "Production";
+            /** Format: int32 */
+            sensitivity: number | string;
+            sensitivityLabel: string;
+            /** Format: date-time */
+            createdAtUtc: string;
+            /** Format: date-time */
+            expiresAtUtc: null | string;
+        };
+        SecretProblemResponse: {
+            type?: null | string;
+            title?: null | string;
+            /** Format: int32 */
+            status?: null | number | string;
+            detail?: null | string;
+            instance?: null | string;
+            code: string;
+            errors?: null | {
+                [key: string]: string[];
+            };
+            reasons?: null | string[];
+        };
+        SecretSearchResultResponse: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            project: string;
+            /** @enum {string} */
+            environment: "Development" | "Staging" | "Production";
+            /** Format: int32 */
+            sensitivity: number | string;
+            sensitivityName: string;
+            url: string;
+        };
+        SecretsResponse: {
+            secrets: components["schemas"]["SecretListItemResponse"][];
         };
         SecurityCheckResponse: {
             /** @enum {string} */

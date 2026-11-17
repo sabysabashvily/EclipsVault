@@ -26,6 +26,7 @@ public class ActivityDescriberTests
     [InlineData(AuditAction.LoginSucceeded, ActivityCategory.Authentication, ActivitySeverity.Routine)]
     [InlineData(AuditAction.PasskeyLogin, ActivityCategory.Authentication, ActivitySeverity.Routine)]
     [InlineData(AuditAction.SecretRevealed, ActivityCategory.Secrets, ActivitySeverity.Notable)]
+    [InlineData(AuditAction.SecretAccessDenied, ActivityCategory.Secrets, ActivitySeverity.Notable)]
     [InlineData(AuditAction.SecretShared, ActivityCategory.Sharing, ActivitySeverity.Notable)]
     [InlineData(AuditAction.PasswordChanged, ActivityCategory.Account, ActivitySeverity.Notable)]
     [InlineData(AuditAction.HoneyTokenTripped, ActivityCategory.Security, ActivitySeverity.Critical)]

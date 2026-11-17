@@ -73,16 +73,7 @@ public sealed partial class AccountDeletionTests(VaultFixture vault)
     /// <summary>Creates a secret the way an administrator does and returns its details page.</summary>
     private static async Task<string> CreateSecretAsync(HttpClient admin, string name, string value)
     {
-        var form = await admin.GetStringAsync("/Secrets/Create");
-        var created = await admin.PostAsync("/Secrets/Create", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(form, "/Secrets/Create"),
-            ["Name"] = name,
-            ["Value"] = value,
-            ["ProjectKey"] = "GLOBAL",
-            ["Environment"] = "Development",
-            ["Sensitivity"] = "Internal",
-        }));
+        var created = await SecretsApi.CreateAsync(admin, name, value, "GLOBAL");
 
         return created.Headers.Location?.OriginalString is { } details && details.StartsWith("/Secrets/Details/", StringComparison.Ordinal)
             ? details

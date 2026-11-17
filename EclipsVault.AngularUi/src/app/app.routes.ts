@@ -1,7 +1,8 @@
 import { Routes, UrlMatcher } from '@angular/router';
 
 // Every path here must also be listed in the server's route table (AngularUiRoutes.cs), which is
-// what serves this app at that URL. Paths keep the Legacy UI's URLs so bookmarks keep working.
+// what serves this app at that URL; the Overview's are served by HomeController.Index instead. Paths
+// keep the Legacy UI's URLs so bookmarks keep working.
 
 /**
  * Matches `path` ignoring case, as the server and the Legacy UI's routes do, so a bookmark to
@@ -49,8 +50,13 @@ const notifications = () =>
 const license = () => import('./license/license-page').then((m) => m.LicensePage);
 const encryption = () => import('./encryption/encryption-page').then((m) => m.EncryptionPage);
 const audit = () => import('./audit/audit-page').then((m) => m.AuditPage);
+const overview = () => import('./overview/overview-page').then((m) => m.OverviewPage);
+const secrets = () => import('./secrets/secrets-page').then((m) => m.SecretsPage);
 
 export const routes: Routes = [
+  { path: '', pathMatch: 'full', loadComponent: overview, title: 'Overview — EclipsVault' },
+  { matcher: legacyPath('Home'), loadComponent: overview, title: 'Overview — EclipsVault' },
+  { matcher: legacyPath('Home/Index'), loadComponent: overview, title: 'Overview — EclipsVault' },
   {
     matcher: legacyPath('Notifications'),
     loadComponent: notifications,
@@ -125,6 +131,13 @@ export const routes: Routes = [
   {
     matcher: legacyPath('Profile/RecoveryCodes'),
     redirectTo: '/Profile?recoveryCodes=display-once',
+  },
+  { matcher: legacyPath('Secrets'), loadComponent: secrets, title: 'Secrets — EclipsVault' },
+  { matcher: legacyPath('Secrets/Index'), loadComponent: secrets, title: 'Secrets — EclipsVault' },
+  {
+    matcher: legacyPath('Secrets/Create'),
+    loadComponent: () => import('./secrets/new-secret-page').then((m) => m.NewSecretPage),
+    title: 'New secret — EclipsVault',
   },
   {
     matcher: legacyPath('Secrets/SharedByMe'),

@@ -95,14 +95,15 @@ public class PersonalDataExportServiceTests
         public Task<bool> CancelAsync(Guid id, Guid requesterUserId, CancellationToken ct) => throw new NotSupportedException();
     }
 
-    private sealed class FakeAuditReader(int rows) : IAuditLogReader
+    /// <summary>The caller's <paramref name="named"/> rows, then <paramref name="rows"/> sign-ins.</summary>
+    private sealed class FakeAuditReader(int rows, params AuditEntryDto[] named) : IAuditLogReader
     {
         public Task<IReadOnlyList<AuditEntryDto>> ListForActorAsync(Guid actorUserId, int skip, int take, CancellationToken ct)
         {
             if (actorUserId != User) return Task.FromResult<IReadOnlyList<AuditEntryDto>>([]);
-            IReadOnlyList<AuditEntryDto> list = Enumerable.Range(0, Math.Min(rows, take))
+            IReadOnlyList<AuditEntryDto> list = named.Concat(Enumerable.Range(0, rows)
                 .Select(_ => new AuditEntryDto(Guid.NewGuid(), DateTimeOffset.UtcNow, "alice", "203.0.113.5",
-                    AuditAction.LoginSucceeded, "Account", null, null, false)).ToList();
+                    AuditAction.LoginSucceeded, "Account", null, null, false))).Take(take).ToList();
             return Task.FromResult(list);
         }
         public Task<IReadOnlyList<AuditEntryDto>> ListRecentAsync(int count, string? username, CancellationToken ct) => throw new NotSupportedException();
@@ -163,6 +164,24 @@ public class PersonalDataExportServiceTests
 
         var entry = Assert.Single(export!.RecentActivity);
         Assert.Equal("Signed in", entry.Action);
+    }
+
+    [Fact]
+    public async Task A_denial_is_exported_without_the_refused_secrets_name_and_other_names_are_kept()
+    {
+        var service = new PersonalDataExportService(
+            new FakeProfile(Profile()), new FakePasskeys(0), new FakeRecovery(0), new FakeSessions(0), new FakeAccessRequests(0),
+            new FakeAuditReader(0,
+                new AuditEntryDto(Guid.NewGuid(), DateTimeOffset.UtcNow, "alice", "203.0.113.5",
+                    AuditAction.SecretAccessDenied, "Secret", "PAYMENTS_DB_PASSWORD", "Clearance too low.", false),
+                new AuditEntryDto(Guid.NewGuid(), DateTimeOffset.UtcNow, "alice", "203.0.113.5",
+                    AuditAction.SecretRevealed, "Secret", "PHOENIX_API_KEY", null, false)));
+
+        var export = await service.BuildForUserAsync(User, CancellationToken.None);
+
+        Assert.Equal(
+            [("Was refused access to a secret", (string?)null), ("Revealed a secret value", "PHOENIX_API_KEY")],
+            export!.RecentActivity.Select(entry => (entry.Action, entry.Resource)));
     }
 
     [Fact]

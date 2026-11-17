@@ -1,0 +1,177 @@
+<div class="page-header">
+  <div>
+    <h1>Overview</h1>
+    @if (overview.hasValue()) {
+      <p class="page-sub">
+        Welcome back, {{ overview.value().displayName }}. Here is the vault at a glance.
+      </p>
+    }
+  </div>
+  <div class="page-actions">
+    <a class="button primary" routerLink="/Secrets/Create">New secret</a>
+  </div>
+</div>
+@if (overview.isLoading() && !overview.hasValue()) {
+  <p role="status">Loading the overview…</p>
+} @else if (overview.error() && !overview.hasValue()) {
+  <p role="alert">Could not load the overview. Try again.</p>
+  <button type="button" class="button" (click)="overview.reload()">Try again</button>
+} @else if (overview.hasValue()) {
+  @let snapshot = overview.value();
+  @if (expiring() > 0) {
+    <div class="notice notice-warn">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path
+          d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"
+        />
+      </svg>
+      <span
+        ><strong>{{ expiring() }} secret{{ expiring() === 1 ? '' : 's' }}</strong> will expire
+        within 7 days and be shredded automatically. Rotate them to extend their life.</span
+      >
+    </div>
+  }
+
+  <div class="stat-grid">
+    <a class="stat-card" routerLink="/Secrets">
+      <span class="stat-value">{{ snapshot.totalActiveSecrets }}</span>
+      <span class="stat-label">Active secrets</span>
+      <span class="stat-detail"
+        >{{ snapshot.developmentCount }} dev · {{ snapshot.stagingCount }} staging ·
+        {{ snapshot.productionCount }} prod</span
+      >
+    </a>
+    <a class="stat-card" [class.attention]="expiring() > 0" routerLink="/Secrets">
+      <span class="stat-value">{{ expiring() }}</span>
+      <span class="stat-label">Expiring within 7 days</span>
+      <span class="stat-detail">Shredded automatically at TTL</span>
+    </a>
+    @if (mayOpenAuditLog()) {
+      <a class="stat-card" [class.alert]="critical() > 0" routerLink="/Audit">
+        <span class="stat-value">{{ critical() }}</span>
+        <span class="stat-label">Critical alerts (24 h)</span>
+        <span class="stat-detail">{{
+          critical() > 0 ? 'Review the audit log →' : 'All quiet'
+        }}</span>
+      </a>
+    } @else {
+      <div class="stat-card" [class.alert]="critical() > 0">
+        <span class="stat-value">{{ critical() }}</span>
+        <span class="stat-label">Critical alerts (24 h)</span>
+        <span class="stat-detail">{{
+          critical() > 0 ? 'Reported to administrators' : 'All quiet'
+        }}</span>
+      </div>
+    }
+    @if (mayManageUsers() && snapshot.staffAccounts !== null) {
+      <a class="stat-card" routerLink="/Admin/Users">
+        <span class="stat-value">{{ snapshot.staffAccounts }}</span>
+        <span class="stat-label">Staff accounts</span>
+        <span class="stat-detail">Manage users →</span>
+      </a>
+    }
+  </div>
+
+  <div class="two-col">
+    <section class="panel">
+      <div class="panel-header">
+        <h2>
+          {{ snapshot.activityScope === 'vault' ? 'Recent activity' : 'Your recent activity' }}
+        </h2>
+        @if (mayOpenAuditLog()) {
+          <a class="button small" routerLink="/Audit">Full audit log</a>
+        }
+      </div>
+      @if (events().length === 0) {
+        <p class="muted">No recorded activity yet.</p>
+      } @else {
+        <ul class="activity-list">
+          @for (event of events(); track $index) {
+            <li class="activity-item" [class.critical]="event.isCritical">
+              <span [class]="'badge tone-' + event.tone">{{ event.actionLabel }}</span>
+              <span class="activity-target mono">{{ event.resource }}</span>
+              <span class="activity-meta">{{ event.actor }} · {{ event.ago }}</span>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+
+    <section class="panel">
+      <div class="panel-header"><h2>Quick actions</h2></div>
+      <div class="quick-actions">
+        <a class="quick-action" routerLink="/Secrets">
+          <strong>Browse secrets</strong>
+          <span class="muted">Metadata only — reveals are audited</span>
+        </a>
+        <a class="quick-action" routerLink="/Secrets/Create">
+          <strong>Store a new secret</strong>
+          <span class="muted">AES-256-GCM envelope encryption</span>
+        </a>
+        @if (mayManageUsers()) {
+          <a class="quick-action" routerLink="/Admin/CreateUser">
+            <strong>Provision a user</strong>
+            <span class="muted">TOTP enrollment at first sign-in</span>
+          </a>
+        }
+        @if (mayManageNetworks()) {
+          <a class="quick-action" routerLink="/Admin/Networks">
+            <strong>Manage trusted networks</strong>
+            <span class="muted">Trust your current IP, lift blocks</span>
+          </a>
+        }
+      </div>
+    </section>
+  </div>
+
+  @if (expiringSoon().length > 0) {
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Expiring soon</h2>
+        <a class="button small" routerLink="/Secrets">All secrets</a>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Environment</th>
+            <th>Expires (UTC)</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (secret of expiringSoon(); track secret.secretId) {
+            <tr>
+              <td class="mono cell-strong">{{ secret.name }}</td>
+              <td>
+                <span [class]="'badge env-' + secret.environment.toLowerCase()">{{
+                  secret.environment
+                }}</span>
+              </td>
+              <td class="muted">
+                {{ secret.expires }}
+                <span
+                  class="badge"
+                  [class.tone-danger]="secret.withinDay"
+                  [class.tone-warn]="!secret.withinDay"
+                  >{{ secret.until }}</span
+                >
+              </td>
+              <td class="cell-actions">
+                <a class="button small" [href]="'/Secrets/Details/' + secret.secretId">Rotate</a>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </section>
+  }
+}

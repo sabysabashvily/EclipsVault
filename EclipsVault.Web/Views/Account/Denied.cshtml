@@ -32,7 +32,7 @@
         </p>
     }
     <div class="button-row">
-        <a class="button" asp-controller="Secrets" asp-action="Index">Back to secrets</a>
+        <a class="button" href="/Secrets">Back to secrets</a>
         @if (User.IsAdmin())
         {
             <a class="button" href="/Admin/Networks">Manage trusted networks</a>

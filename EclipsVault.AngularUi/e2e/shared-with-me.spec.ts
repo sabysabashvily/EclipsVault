@@ -254,7 +254,7 @@ test('the palette opens Shared with me without a document load', async ({ page }
 });
 
 test('the Legacy sidebar loads Shared with me into Angular', async ({ page }) => {
-  await openAsRecipient(page, '/Secrets');
+  await openAsRecipient(page, '/DynamicSecrets');
   const documents = recordDocuments(page);
   await page.getByText('Sharing', { exact: true }).click();
   await page.getByRole('link', { name: 'Shared with me', exact: true }).click();
@@ -264,7 +264,7 @@ test('the Legacy sidebar loads Shared with me into Angular', async ({ page }) =>
 });
 
 test('the Legacy palette loads Shared with me into Angular', async ({ page }) => {
-  await openAsRecipient(page, '/Secrets');
+  await openAsRecipient(page, '/DynamicSecrets');
   const documents = recordDocuments(page);
   await openPalette(page);
   await page.getByRole('combobox').fill('Shared with me');
