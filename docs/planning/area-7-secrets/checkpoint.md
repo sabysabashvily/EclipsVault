@@ -359,6 +359,7 @@ step-up browser flow; the e2e target and both roles are ready for it.
 controller, view and view models are gone. This ticket names no new finding, so there was no red-first run.
 
 - `eee3ac7` Serve Dynamic secrets from Angular, asking for proof before issuing.
+- `607fa6c` Compare dynamic lease times at the precision PostgreSQL stores (CI fix, tests only).
 
 What changed:
 
@@ -379,7 +380,14 @@ integration for every touched class, 328/329 then 31/31 after an ordinal-sort te
 review fix; format, both pending-model checks, hook tests; Angular lint, format, 619 Vitest, build checks,
 API types, build. `npm audit --audit-level=high` fails on a new upstream advisory (picomatch,
 GHSA-fc5q-39xc-vjpf, every version, fix only with `--force`) with no package change here; left for the owner.
-Browser specs and both full suites run in CI after the coordinator pushes; the run id is recorded in the final report.
+CI run 44190362488 on `7e2da26`: integration (SqlServer) green; integration (Postgres) failed three
+`DynamicSecretIssueTests` by under a microsecond (the Linux runner's clock reads 100 ns, PostgreSQL keeps whole
+microseconds). `607fa6c` compares at the stored precision and leaves the lease logic unchanged: the issue
+response's expiry can differ from the stored one by up to 999 ns, which no screen shows (both show whole seconds;
+accepted by the coordinator). CI run 44195066273 on `607fa6c` passed every required check: build-test, integration
+on SQL Server and PostgreSQL, e2e (full browser suite and verify-guards), image, sbom, migrations and
+agent-guardrails. frontend and security-scan are red only on picomatch GHSA-fc5q-39xc-vjpf, under the owner's
+merge exception (#188). The coordinator accepted #172 on 18 November.
 
 Security-reviewer (Opus 5.5 high): no Critical, High or Medium. L1 (raw backend text in notes stored before
 #171) fixed and re-checked; I1 (backend resolved after the licence gate) is pre-existing service order; I2
