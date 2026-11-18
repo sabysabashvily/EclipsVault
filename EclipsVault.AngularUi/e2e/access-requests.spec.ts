@@ -202,8 +202,9 @@ test("an approval with an expiry reaches the requester's Shared with me", async 
   await requester.context().addCookies(requesterCookies);
   await requester.goto('/Secrets/SharedWithMe');
   const shared = new SharedWithMe(requester);
+  // Approved for 7 days a moment ago: the pill counts the whole days left.
   await expect(shared.accessUntilOf(shared.secret(approved))).toHaveText(
-    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
+    /^In 6 days · \d{1,2} [A-Z][a-z]{2}( \d{4})?$/,
   );
   const mine = await openAsRequester(requester);
   await expect(mine.cellsOf(mine.myRequest(approved))).toHaveText([
