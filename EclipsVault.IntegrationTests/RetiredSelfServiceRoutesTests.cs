@@ -19,6 +19,7 @@ public sealed class RetiredSelfServiceRoutesTests(VaultFixture vault)
         Assert.Contains("href=\"/Secrets/SharedByMe\"", page, StringComparison.Ordinal);
         Assert.Contains("href=\"/Secrets/SharedWithMe\"", page, StringComparison.Ordinal);
         Assert.Contains("href=\"/AccessRequests\"", page, StringComparison.Ordinal);
+        Assert.Contains("href=\"/DynamicSecrets\"", page, StringComparison.Ordinal);
     }
 
     [Theory]

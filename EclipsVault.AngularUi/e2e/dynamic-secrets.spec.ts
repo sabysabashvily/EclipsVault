@@ -149,6 +149,36 @@ test('cancelling Revoke keeps the login, and Continue removes it', async ({ page
   expect(loginExists(internalLogin)).toBe(false);
 });
 
+test('the Legacy sidebar opens Dynamic secrets', async ({ page }) => {
+  await page.context().addCookies(await savedAdministratorCookies());
+  const dynamicSecrets = new DynamicSecretsPage(page);
+  await dynamicSecrets.fromSidebar('/Account/Denied');
+  await expect(dynamicSecrets.heading).toBeVisible();
+  await expect(page).toHaveURL(/\/DynamicSecrets$/);
+});
+
+test('the Angular sidebar opens Dynamic secrets', async ({ page }) => {
+  await page.context().addCookies(await savedAdministratorCookies());
+  const dynamicSecrets = new DynamicSecretsPage(page);
+  await dynamicSecrets.fromSidebar('/Access');
+  await expect(dynamicSecrets.heading).toBeVisible();
+  await expect(page).toHaveURL(/\/DynamicSecrets$/);
+});
+
+test('the palette in the Legacy shell opens Dynamic secrets', async ({ page }) => {
+  await page.context().addCookies(await savedAdministratorCookies());
+  const dynamicSecrets = new DynamicSecretsPage(page);
+  await dynamicSecrets.fromPalette('/Account/Denied');
+  await expect(dynamicSecrets.heading).toBeVisible();
+});
+
+test('the palette in the Angular shell opens Dynamic secrets', async ({ page }) => {
+  await page.context().addCookies(await savedAdministratorCookies());
+  const dynamicSecrets = new DynamicSecretsPage(page);
+  await dynamicSecrets.fromPalette('/Access');
+  await expect(dynamicSecrets.heading).toBeVisible();
+});
+
 for (const theme of ['dark', 'light'] as const) {
   test(`visual parity: Dynamic secrets in ${theme} appearance`, async ({ page }, info) => {
     await page.context().addCookies(await savedAdministratorCookies());

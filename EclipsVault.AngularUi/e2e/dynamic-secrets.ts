@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { openPalette } from './palette';
 
 /** Dynamic secrets: roles to issue from, the one-time credential, leases and their dialogs. */
 export class DynamicSecretsPage {
@@ -29,6 +30,18 @@ export class DynamicSecretsPage {
   async open(): Promise<void> {
     await this.page.goto('/DynamicSecrets');
     await this.page.getByRole('heading', { name: 'Roles you can issue' }).waitFor();
+  }
+
+  async fromSidebar(path: '/Account/Denied' | '/Access'): Promise<void> {
+    await this.page.goto(path);
+    await this.page.getByRole('link', { name: 'Dynamic secrets', exact: true }).click();
+  }
+
+  async fromPalette(path: '/Account/Denied' | '/Access'): Promise<void> {
+    await this.page.goto(path);
+    await openPalette(this.page);
+    await this.page.getByRole('combobox').fill('Dynamic secrets');
+    await this.page.getByRole('option', { name: /Dynamic secrets/ }).click();
   }
 
   generate(role: string) {
