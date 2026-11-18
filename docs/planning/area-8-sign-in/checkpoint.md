@@ -157,3 +157,10 @@ prepare an email change. On that commit, `scripts/check.sh` passed (957 unit tes
 `scripts/check.sh integration` on PostgreSQL passed 343, with `CredentialGenerationTests`,
 `EmailIdentitySignInTests` and `MailboxTests` added to the filter. `dotnet format --verify-no-changes`
 was clean. No production code changed, and no model change. This paragraph is the last commit.
+
+Accepted on 18 November. CI run 44191638627 on `811add2` passed every required check: build-test,
+integration on SqlServer and Postgres, e2e (the full browser suite and `e2e:verify-guards`), image, sbom,
+migrations and agent-guardrails. Frontend and security-scan failed only on the unpatched picomatch
+advisory GHSA-fc5q-39xc-vjpf, under the owner's merge exception (#188). Security re-check 8 found no
+defect in a passkey challenge begun before a password change or a sign-out everywhere and completed
+after it (`logs/ticket-174/security-review-8.md`).
