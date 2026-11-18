@@ -44,6 +44,10 @@ high-sensitivity secret, needed no fresh proof, though revealing a secret of the
   a lease never ask (ADR-0028).
 - **A taken name is a conflict.** Secret names stay unique across the vault; creating one with a taken
   name answers `409 name_taken` and changes nothing.
+- **A lease's note is a fixed sentence per cause.** When a revoke or the sweep cannot destroy a dynamic
+  credential, the lease is closed as RevocationFailed with a fixed sentence; the backend's own error,
+  which can quote a statement or name the target, goes only to the log. A note stored before this rule
+  is answered as the fixed sentence.
 - **Licence lookups on page views fail open.** A failed evaluation-window read leaves the page's licence
   note out and logs a warning; it never stops a page or a reveal, and viewing never starts a window.
 
@@ -53,6 +57,8 @@ high-sensitivity secret, needed no fresh proof, though revealing a secret of the
   or whether it is a decoy.
 - The Denied page names the secret's project and sensitivity to anyone holding its id, never its name,
   so the person knows what to fix and whom to ask.
+- Someone holding a dynamic role's id learns whether it exists, and its name when refused
+  (`404 role_not_found` against `403 access_denied`), as the Legacy page told them.
 - The trail grows by one `SecretAccessDenied` row per refused attempt. This is the record PCI DSS v4.0
   requirement 10.2.1.4 asks for.
 - Share recipients who relied on rotating a shared secret must ask a project member or administrator.
