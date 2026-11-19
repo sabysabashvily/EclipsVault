@@ -1648,13 +1648,12 @@ app-command-palette {
   .row-cards tbody tr:not(:has(.cell-verb)) .cell-main {
     flex-basis: 100%;
   }
-  /* Pills in cells of their own share the second line; the meta line after them closes the card. */
+  /* Pills in cells of their own share the second line; the meta cells after them follow on. */
   .row-cards .cell-pill {
     order: 2;
   }
   .row-cards .cell-pill ~ .cell-meta {
     order: 3;
-    flex-basis: 100%;
   }
   .row-cards .cell-pills {
     order: 3;
@@ -1694,6 +1693,148 @@ tr:has(.row-link) [title] {
   font-size: 0.8rem;
 }
 
+/* A page title and its verdict pill on one line. */
+.title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+.title-row h1 {
+  margin: 0;
+}
+
+/* A short code beside a name, such as a project key. */
+.code-chip {
+  display: inline-block;
+  padding: 0.05rem 0.45rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 400;
+  vertical-align: 0.08em;
+}
+
+/* Items that wait on a decision: a tinted icon tile, what and who, how long, then the verbs. */
+.attention-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  container: attention / inline-size;
+}
+.attention-list > li {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.attention-list > li:first-child {
+  padding-top: 0;
+}
+.attention-list > li:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.attention-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised-2);
+  color: var(--text-secondary);
+}
+.attention-icon.tone-warn {
+  background: var(--warn-soft);
+}
+.attention-icon.tone-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.attention-icon svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.attention-body {
+  min-width: 0;
+}
+.attention-title {
+  margin: 0;
+  font-size: 0.97rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.attention-meta {
+  margin: 0.2rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+.attention-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+/* In a narrow card the chip moves under the text and the verbs take a full-width row. */
+@container attention (width < 560px) {
+  .attention-list > li {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+  .attention-chip {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .attention-actions {
+    grid-column: 1 / -1;
+  }
+  .attention-actions .button {
+    flex: 1;
+    min-height: 44px;
+  }
+}
+
+/* What a decision sends along, as outlined chips with an icon. */
+.scope-title {
+  margin: 0 0 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+.scope-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.scope-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.7rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+.scope-chips svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 /* How a list is ordered, said beside its title. */
 .sort-note {
   color: var(--text-muted);
@@ -1718,16 +1859,6 @@ tr:has(.row-link) [title] {
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-.inline-form {
-  display: inline;
-}
-/* Legacy put Reject in a form of its own; here it is a button after the Approve form. */
-.cell-actions .inline-form + .button {
-  margin-left: 0.4rem;
-}
-.review-approve input {
-  max-width: 74px;
 }
 
 /* Status pills: a soft tint with a dot, never a solid block, and each colour always means the

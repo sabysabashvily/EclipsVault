@@ -126,7 +126,8 @@ test('a requester denied in another project sees the request they filed from the
 
   const requests = await fileRequest(requester, approved);
   await expect(requests.announcement(filedMessage)).toBeVisible();
-  await expect(requests.reviewScope).toHaveText('Your project');
+  await expect(requests.verdict).toHaveText('Nothing to review');
+  await expect(requests.reviewScope).toHaveText('Your project · Newest first');
   await expect(requests.nothingToReview).toBeVisible();
   const filed = requests.myRequest(approved);
   await expect(requests.cellsOf(filed)).toHaveText([
@@ -170,29 +171,17 @@ test("an approval with an expiry reaches the requester's Shared with me", async 
   browserHealth,
 }) => {
   const requests = await openAsAdministrator(page);
-  await expect(requests.reviewScope).toHaveText('All projects');
-  await expect(requests.toReview.getByRole('columnheader')).toHaveText([
-    'Secret',
-    'Requester',
-    'Reason',
-    'Denied because',
-    'Requested',
-    '',
-  ]);
+  await expect(requests.verdict).toHaveText('Waiting on you');
+  await expect(requests.reviewScope).toHaveText('All projects · Newest first');
   const request = requests.requestToReview(approved);
-  await expect(requests.cellsOf(request)).toHaveText([
-    `${approved} GLOBAL`,
-    requesterUsername,
-    reason,
-    /Subject project 'E2E-AR' does not match resource project 'GLOBAL'\./,
-    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
-    'Approve Reject',
-  ]);
-  const expiry = requests.expiryOf(request);
-  await expect(expiry).toHaveValue('0');
-  await expect(expiry).toHaveAttribute('title', 'Grant expires in days (0 = no expiry)');
-  await expiry.fill('7');
+  await expect(request).toContainText(`${requesterUsername} · ${reason}`);
+  await expect(request).toContainText(
+    "Denied because: Subject project 'E2E-AR' does not match resource project 'GLOBAL'.",
+  );
   await requests.approveOf(request).click();
+  await expect(requests.expiry).toHaveValue('0');
+  await requests.expiry.fill('7');
+  await requests.approveAndGrant.click();
   await expect(
     requests.announcement('Request approved — a grant was created for the requester.'),
   ).toBeVisible();
@@ -236,7 +225,7 @@ test('a reviewer rejects through the confirmation dialog, after cancelling once'
 
   const requests = await openAsAdministrator(page);
   const request = requests.requestToReview(rejected);
-  const question = `Reject ${requesterUsername}'s request for ${rejected}?`;
+  const question = 'Reject this request?';
   await requests.rejectOf(request).click();
   await requests.confirmation(question).getByRole('button', { name: 'Cancel' }).click();
   await expect(requests.confirmation(question)).toBeHidden();
@@ -244,7 +233,7 @@ test('a reviewer rejects through the confirmation dialog, after cancelling once'
   await expect(request).toBeVisible();
 
   await requests.rejectOf(request).click();
-  await requests.confirmation(question).getByRole('button', { name: 'Continue' }).click();
+  await requests.confirmation(question).getByRole('button', { name: 'Reject request' }).click();
   await expect(requests.announcement('Request rejected.')).toBeVisible();
   await expect(request).toHaveCount(0);
 
@@ -261,7 +250,7 @@ test('the requester withdraws a pending request through the confirmation dialog'
   const request = requests.myRequest(withdrawn);
   const question = `Withdraw your request for ${withdrawn}?`;
   await requests.withdrawOf(request).click();
-  await requests.confirmation(question).getByRole('button', { name: 'Continue' }).click();
+  await requests.confirmation(question).getByRole('button', { name: 'Withdraw request' }).click();
   await expect(requests.announcement('Request withdrawn.')).toBeVisible();
   await expect(requests.cellsOf(request)).toHaveText([
     `${withdrawn} GLOBAL`,
@@ -273,23 +262,49 @@ test('the requester withdraws a pending request through the confirmation dialog'
   ]);
 });
 
-test('the keyboard alone approves through the expiry box', async ({ page, browserHealth }) => {
+test('on a phone the approval opens as a bottom sheet', async ({ page, browserHealth }) => {
   const requester = await (await browserHealth.newContext()).newPage();
   await expect((await fileRequest(requester, byKeyboard)).announcement(filedMessage)).toBeVisible();
 
-  // At this width the review table is wider than its card, so its scroll region is a tab stop.
-  await page.setViewportSize({ width: 800, height: 900 });
+  await page.setViewportSize({ width: 375, height: 800 });
+  const requests = await openAsAdministrator(page);
+  await requests.approveOf(requests.requestToReview(byKeyboard)).click();
+  await expect(requests.approval).toBeVisible();
+  // The sheet slides up; once it settles it spans the width and sits on the bottom edge.
+  await expect
+    .poll(async () => {
+      const box = await requests.approval.boundingBox();
+      return box && [Math.round(box.x), Math.round(box.width), Math.round(box.y + box.height)];
+    })
+    .toEqual([0, 375, 800]);
+  await page.keyboard.press('Escape');
+  await expect(requests.approval).toBeHidden();
+});
+
+for (const width of [300, 2000]) {
+  test(`Access requests has no sideways scroll at ${width}px with a request to review`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const requests = await openAsAdministrator(page);
+    await expect(requests.requestToReview(byKeyboard)).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  });
+}
+
+test('the keyboard alone approves with an end date', async ({ page }) => {
   const requests = await openAsAdministrator(page);
   const request = requests.requestToReview(byKeyboard);
-  await requests.introduction.click();
+  await requests.heading.click();
   await page.keyboard.press('Tab');
-  await expect(requests.reviewRegion).toBeFocused();
-  await page.keyboard.press('Tab');
-  await expect(requests.expiryOf(request)).toBeFocused();
+  await expect(requests.approveOf(request)).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(requests.expiry).toBeFocused();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.type('3');
   await page.keyboard.press('Tab');
-  await expect(requests.approveOf(request)).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(requests.approveAndGrant).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(
     requests.announcement('Request approved — a grant was created for the requester.'),
