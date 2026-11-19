@@ -379,6 +379,37 @@ test('visual parity: the administrator and Standard sidebars match Legacy in bot
   standardCookies = await standard.context().cookies();
 });
 
+test('a denied My access cell explains itself in a side panel, a bottom sheet on a phone', async ({
+  page,
+}) => {
+  await page.context().addCookies(standardCookies);
+  await page.goto('/Access');
+  const cell = page.getByRole('button', {
+    name: 'Clearance too low, Top Secret · Production',
+    exact: true,
+  });
+  const panel = page.getByRole('dialog', { name: 'Top Secret · Production', exact: true });
+  await cell.click();
+  await expect(panel).toContainText('Not now: Clearance too low');
+  await expect(panel.getByRole('definition').first()).toHaveText('Standard');
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
+  await expect(cell).toBeFocused();
+
+  await page.setViewportSize({ width: 375, height: 800 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
+  await cell.click();
+  await expect
+    .poll(async () => {
+      const box = await panel.boundingBox();
+      return box && [Math.round(box.x), Math.round(box.width), Math.round(box.y + box.height)];
+    })
+    .toEqual([0, 375, 800]);
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
+  await expect(cell).toBeFocused();
+});
+
 test('both UIs share the theme, and the Angular UI applies it before it starts', async ({
   page,
 }) => {

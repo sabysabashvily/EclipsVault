@@ -2,8 +2,7 @@
   <div>
     <h1>My access</h1>
     <p class="page-sub">
-      What you can open right now, and — where you can't — exactly why. This is computed from the
-      same rules that actually guard every secret, so it always matches what you'll see.
+      What you can open right now, decided by the same rules that guard every secret.
     </p>
   </div>
 </div>
@@ -12,51 +11,114 @@
   @let model = access.value();
   <div class="two-col">
     <section class="panel">
-      <div class="panel-header"><h2>You</h2></div>
-      <dl class="detail-grid">
-        <dt>Clearance</dt>
-        <dd>
-          <span class="badge sens-{{ model.clearanceRank }}">{{ model.clearance }}</span> &mdash;
-          you can open secrets classified up to <strong>{{ model.clearance }}</strong
-          >.
-        </dd>
-        <dt>Project</dt>
-        <dd>
-          <span class="mono">{{ model.project }}</span>
-        </dd>
-        <dt>Other projects</dt>
-        <dd>
-          @if (model.crossesProjects) {
-            Your TopSecret clearance lets you reach secrets in <strong>any</strong> project.
-          } @else {
-            You can only reach secrets in <span class="mono">{{ model.project }}</span
-            >, unless a secret is explicitly shared with you.
-          }
-        </dd>
-      </dl>
+      <div class="panel-header matrix-header">
+        <h2>What you can open right now</h2>
+        <span class="code-chip">Your own project assumed</span>
+      </div>
+      <p class="matrix-legend">
+        <span class="matrix-tile allow"
+          ><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7" /></svg></span
+        >Can open ·
+        <span class="matrix-tile deny"
+          ><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17" /></svg></span
+        >Not now — select it for why
+      </p>
+      <div class="matrix-card">
+        <table class="access-matrix">
+          <thead>
+            <tr>
+              <th scope="col">Sensitivity</th>
+              @for (env of model.environments; track env) {
+                <th scope="col">{{ env }}</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of model.rows; track row.sensitivityRank) {
+              <tr>
+                <th scope="row">
+                  <span class="badge sens-{{ row.sensitivityRank }}">{{ row.sensitivity }}</span>
+                </th>
+                @for (cell of row.cells; track cell.environment) {
+                  <td>
+                    @if (cell.allowed) {
+                      <span class="matrix-cell"
+                        ><span class="matrix-tile allow"
+                          ><svg aria-hidden="true" viewBox="0 0 24 24">
+                            <path d="M5 12.5l4.5 4.5L19 7" /></svg></span
+                        ><span class="matrix-word">Can open</span></span
+                      >
+                    } @else {
+                      <button
+                        type="button"
+                        class="matrix-cell"
+                        [attr.aria-label]="
+                          cell.reason + ', ' + row.sensitivity + ' · ' + cell.environment
+                        "
+                        (click)="explain(row, cell, $event)"
+                      >
+                        <span class="matrix-tile deny"
+                          ><svg aria-hidden="true" viewBox="0 0 24 24">
+                            <path d="M7 7l10 10M17 7L7 17" /></svg></span
+                        ><span class="matrix-word">{{ cell.reason }}</span>
+                      </button>
+                    }
+                  </td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <section class="panel">
-      <div class="panel-header"><h2>Right now</h2></div>
-      <dl class="detail-grid">
-        <dt>Your network</dt>
-        <dd>
-          <span class="mono">{{ model.sourceIp }}</span>
-          @if (model.isTrustedNetwork) {
-            <span class="badge tone-ok">Trusted</span>
-          } @else {
-            <span class="badge tone-warn">Not trusted</span>
-          }
-        </dd>
-        <dt>Production window</dt>
-        <dd>
-          @if (model.isProductionWindowOpen) {
-            <span class="badge tone-ok">Open now</span>
-          } @else {
-            <span class="badge tone-warn">Closed</span>
-          }
-          <span class="muted">{{ windowRange(model) }}</span>
-        </dd>
+      <div class="panel-header"><h2>You · right now</h2></div>
+      <dl class="facts">
+        <div>
+          <dt>Clearance</dt>
+          <dd>
+            <span class="badge sens-{{ model.clearanceRank }}">{{ model.clearance }}</span>
+          </dd>
+        </div>
+        <div>
+          <dt>Project</dt>
+          <dd>
+            <code class="code-chip">{{ model.project }}</code>
+          </dd>
+        </div>
+        <div>
+          <dt>Other projects</dt>
+          <dd>
+            @if (model.crossesProjects) {
+              Any project
+            } @else {
+              Only {{ model.project }}, unless shared with you
+            }
+          </dd>
+        </div>
+        <div>
+          <dt>Network</dt>
+          <dd>
+            <span class="mono">{{ model.sourceIp }}</span>
+            @if (model.isTrustedNetwork) {
+              <span class="badge tone-ok">Trusted</span>
+            } @else {
+              <span class="badge tone-warn">Not trusted</span>
+            }
+          </dd>
+        </div>
+        <div>
+          <dt>Production window</dt>
+          <dd>
+            @if (model.isProductionWindowOpen) {
+              <span class="badge tone-ok">Open now</span>
+            } @else {
+              <span class="badge tone-warn">Closed</span>
+            }
+            <span class="muted">{{ windowRange(model) }}</span>
+          </dd>
+        </div>
       </dl>
       <p class="muted access-hint">
         Confidential secrets and above can only be opened from a trusted network; production secrets
@@ -65,89 +127,71 @@
     </section>
   </div>
 
-  <section class="panel">
-    <div class="panel-header matrix-header">
-      <h2>What you can open right now</h2>
-      <p class="matrix-legend" aria-hidden="true">
-        <span class="cell-mark cell-allow"
-          ><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7" /></svg></span
-        >Can open
-        <span class="cell-mark cell-deny"
-          ><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17" /></svg></span
-        >Denied, with the reason
+  <section class="notice" aria-labelledby="access-decoys">
+    <span class="notice-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24">
+        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+        <path d="M12 9v4M12 17h.01" />
+      </svg>
+    </span>
+    <div class="notice-body">
+      <h2 id="access-decoys">Decoys always trip the trap</h2>
+      <p class="muted">
+        Some entries are <strong>intrusion-detection decoys</strong> (honey-tokens). These rules do
+        <em>not</em> apply to them: opening a decoy always trips the trap — your session is revoked
+        and your network is blocked — no matter your clearance or project. In the secrets list they
+        carry a red <span class="badge tone-critical">decoy</span> badge for authorised staff, so
+        you can steer clear.
       </p>
     </div>
-    <div
-      class="table-scroll"
-      appScrollRegion
-      role="region"
-      aria-label="What you can open right now"
-    >
-      <p class="table-scroll-hint">Scroll horizontally to see all columns.</p>
-      <table class="access-matrix">
-        <thead>
-          <tr>
-            <th scope="col">Sensitivity</th>
-            @for (env of model.environments; track env) {
-              <th scope="col">{{ env }}</th>
-            }
-          </tr>
-        </thead>
-        <tbody>
-          @for (row of model.rows; track row.sensitivityRank) {
-            <tr>
-              <th scope="row">
-                <span class="badge sens-{{ row.sensitivityRank }}">{{ row.sensitivity }}</span>
-              </th>
-              @for (cell of row.cells; track cell.environment) {
-                <td>
-                  @if (cell.allowed) {
-                    <span class="cell-mark cell-allow">
-                      <svg aria-hidden="true" viewBox="0 0 24 24">
-                        <path d="M5 12.5l4.5 4.5L19 7" />
-                      </svg>
-                    </span>
-                    <span class="visually-hidden">Can open</span>
-                  } @else {
-                    <span class="cell-mark cell-deny">
-                      <svg aria-hidden="true" viewBox="0 0 24 24">
-                        <path d="M7 7l10 10M17 7L7 17" />
-                      </svg>
-                    </span>
-                    <span class="cell-reason">{{ cell.reason }}</span>
-                  }
-                </td>
-              }
-            </tr>
-          }
-        </tbody>
-      </table>
-    </div>
-    <p class="muted access-hint">
-      The grid assumes a secret in your own project. A denial you can act on is
-      <em>Untrusted network</em> (sign in from a trusted range) or
-      <em>Outside access hours</em> (production, outside the window). <em>Clearance too low</em> is
-      fixed by an administrator.
-    </p>
   </section>
 
-  <section class="panel callout-warn">
-    <div class="panel-header">
-      <span class="callout-icon" aria-hidden="true"
-        ><svg viewBox="0 0 24 24">
-          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
-          <path d="M12 9v4M12 17h.01" /></svg
-      ></span>
-      <h2>One exception: decoys</h2>
-    </div>
-    <p class="muted">
-      Some entries are <strong>intrusion-detection decoys</strong> (honey-tokens). These rules do
-      <em>not</em> apply to them: opening a decoy always trips the trap — your session is revoked
-      and your network is blocked — no matter your clearance or project. In the secrets list they
-      carry a red <span class="badge tone-critical">decoy</span> badge for authorised staff, so you
-      can steer clear.
-    </p>
-  </section>
+  <dialog #panel class="side-panel" aria-labelledby="access-panel-title" (close)="closed()">
+    @if (selected(); as chosen) {
+      <div class="side-panel-header">
+        <span class="attention-icon tone-danger" aria-hidden="true"
+          ><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17" /></svg
+        ></span>
+        <h2 id="access-panel-title">
+          {{ chosen.row.sensitivity }} · {{ chosen.cell.environment }}
+        </h2>
+        <button type="button" class="close-circle" aria-label="Close" (click)="panel.close()">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17" /></svg>
+        </button>
+      </div>
+      <p class="notice notice-critical">Not now: {{ chosen.cell.reason }}</p>
+      <dl class="facts">
+        <div>
+          <dt>Your clearance</dt>
+          <dd>{{ model.clearance }}</dd>
+        </div>
+        <div>
+          <dt>Your project</dt>
+          <dd>{{ model.project }}</dd>
+        </div>
+        <div>
+          <dt>Your network</dt>
+          <dd>
+            <span class="mono">{{ model.sourceIp }}</span>
+            {{ model.isTrustedNetwork ? 'Trusted' : 'Not trusted' }}
+          </dd>
+        </div>
+        <div>
+          <dt>Production window</dt>
+          <dd>{{ model.isProductionWindowOpen ? 'Open' : 'Closed' }} {{ windowRange(model) }}</dd>
+        </div>
+      </dl>
+      <p class="muted access-hint">
+        The grid assumes a secret in your own project. A denial you can act on is
+        <em>Untrusted network</em> (sign in from a trusted range) or
+        <em>Outside access hours</em> (production, outside the window).
+        <em>Clearance too low</em> is fixed by an administrator.
+      </p>
+      <div class="button-row side-panel-footer">
+        <button type="button" class="button" (click)="panel.close()">Close</button>
+      </div>
+    }
+  </dialog>
 } @else if (access.error()) {
   <section class="panel">
     <p role="alert">Could not load your access. Reload the page to try again.</p>

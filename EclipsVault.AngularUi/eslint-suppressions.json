@@ -1,7 +1,7 @@
 {
   "e2e/access.ts": {
     "playwright/no-raw-locators": {
-      "count": 13
+      "count": 6
     }
   },
   "e2e/activity.ts": {

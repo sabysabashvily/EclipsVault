@@ -1474,13 +1474,14 @@ app-command-palette {
 }
 
 /* ---- My access (permission matrix) ------------------------------------ */
+/* Read-only: a tinted tile per verdict, the word beside it while the card has room. */
+.matrix-card {
+  container: matrix / inline-size;
+}
 .access-matrix {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.86rem;
-  /* The same minimum as every scrolling table, so one hint threshold is always right. Its
-     longest cells ("Clearance too low") need about 615px. */
-  min-width: 640px;
 }
 .access-matrix th,
 .access-matrix td {
@@ -1504,36 +1505,69 @@ app-command-palette {
 .access-matrix tbody th {
   font-weight: 500;
 }
-/* A verdict is a small tinted square with its icon; the cell itself stays plain. */
-.cell-mark {
+/* A long reason wraps inside its cell rather than widening the card. */
+.access-matrix td {
+  white-space: normal;
+}
+.matrix-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--text-muted);
+}
+button.matrix-cell {
+  min-height: 44px;
+  padding: 0 0.4rem 0 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+button.matrix-cell:hover .matrix-word {
+  color: var(--text);
+  text-decoration: underline;
+}
+.matrix-tile {
   display: inline-grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   vertical-align: middle;
 }
-.cell-mark svg {
-  width: 15px;
-  height: 15px;
+.matrix-tile svg {
+  width: 18px;
+  height: 18px;
   fill: none;
   stroke: currentColor;
   stroke-width: 2.4;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.cell-allow {
+.matrix-tile.allow {
   color: var(--ok);
   background: var(--ok-soft);
 }
-.cell-deny {
+.matrix-tile.deny {
   color: var(--danger);
   background: var(--danger-soft);
 }
-.cell-reason {
-  margin-left: 0.6rem;
-  vertical-align: middle;
-  color: var(--text-muted);
+/* In a narrow card only the tiles show; the word stays for screen readers and the name. */
+@container matrix (width < 560px) {
+  .access-matrix th,
+  .access-matrix td {
+    padding: 0 0.3rem;
+  }
+  .matrix-word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 .matrix-header {
   flex-wrap: wrap;
@@ -1544,26 +1578,104 @@ app-command-palette {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin: 0;
+  margin: 0 0 0.9rem;
   color: var(--text-muted);
   font-size: 0.82rem;
 }
-.matrix-legend .cell-mark {
+.matrix-legend .matrix-tile {
   width: 20px;
   height: 20px;
   border-radius: 6px;
 }
-.matrix-legend .cell-mark svg {
+.matrix-legend .matrix-tile svg {
   width: 12px;
   height: 12px;
-}
-.matrix-legend .cell-deny {
-  margin-left: 0.6rem;
 }
 .access-hint {
   margin: 0.9rem 0 0;
   font-size: 0.82rem;
   line-height: 1.5;
+}
+
+/* Why a cell is denied: a modal panel docked right, a bottom sheet below 768px. */
+.side-panel {
+  inset: 0 0 0 auto;
+  width: min(420px, 100%);
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 1.4rem 1.5rem;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: none;
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-dialog);
+  overflow-y: auto;
+}
+.side-panel::backdrop {
+  background: transparent;
+}
+.side-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.1rem;
+}
+.side-panel-header h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 1.15rem;
+}
+.side-panel .notice {
+  margin-bottom: 1.1rem;
+}
+.side-panel-footer {
+  justify-content: flex-end;
+  margin-top: 1.2rem;
+}
+.close-circle {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--bg-raised);
+  color: var(--text);
+  cursor: pointer;
+}
+.close-circle svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+@media (max-width: 767px) {
+  .side-panel {
+    inset: auto 0 0 0;
+    width: 100%;
+    height: auto;
+    max-height: calc(100dvh - 40px);
+    padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom));
+    border-left: none;
+    border-top: 1px solid var(--border);
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  }
+  .side-panel::backdrop {
+    background: var(--scrim);
+  }
+  .side-panel-footer .button {
+    flex: 1;
+  }
+}
+@media (min-width: 1920px) {
+  .side-panel {
+    width: 480px;
+  }
 }
 
 /* A notice card: a yellow wash over the card, ink text, and the colour carried by the icon tile. */
