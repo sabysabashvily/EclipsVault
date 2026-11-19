@@ -8,6 +8,7 @@ import { createSecret, openPalette } from './palette';
 import { SecretsList } from './secrets-list';
 import { SharedByMe } from './shared-by-me';
 import { SharedWithMe } from './shared-with-me';
+import { Users } from './users';
 import { freshTotp } from './totp';
 
 test.describe.configure({ mode: 'serial' });
@@ -79,12 +80,9 @@ test('a share whose recipient was later under-cleared is not listed for them', a
   // lowered after: the state a later change of role leaves behind.
   await createSecret(page, underCleared, 'Confidential');
   await shareWithRecipient(page, underCleared);
-  await page.goto('/Admin/Users');
-  await page
-    .getByRole('row')
-    .filter({ hasText: recipientUsername })
-    .getByRole('link', { name: 'Edit', exact: true })
-    .click();
+  const users = new Users(page);
+  await users.open();
+  await users.edit(recipientUsername);
   await page.getByLabel('Clearance').selectOption({ label: 'Standard' });
   await page.getByRole('button', { name: 'Save role', exact: true }).click();
   await expect(page).toHaveURL(/\/Admin\/Users$/);
