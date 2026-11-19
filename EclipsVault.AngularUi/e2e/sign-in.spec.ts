@@ -33,11 +33,11 @@ import { verifySidebar } from './sidebar';
 import {
   allClear,
   atRisk,
-  backupIcon,
-  checkRows,
-  devicesIcon,
-  passkeyIcon,
-  twoStepIcon,
+  checksNeedingYou,
+  failingRows,
+  passingChecks,
+  passingRows,
+  securityVerdict,
   verifySecurityCheckup,
 } from './security';
 import { currentTotpStep, freshTotp } from './totp';
@@ -319,7 +319,7 @@ test("Sign-in history shows the administrator's real sign-ins in both themes", a
   });
 });
 
-test("visual parity: Security checkup shows the administrator's real posture without a passkey in both themes", async ({
+test("Security checkup shows the administrator's real posture without a passkey in both themes", async ({
   page,
 }, info) => {
   await page.context().addCookies(administratorCookies);
@@ -1670,56 +1670,23 @@ test('Security checkup shows all-clear and at-risk postures with only actionable
   );
   await page.goto('/sEcUrItY/INDEX');
   await expect(page).toHaveTitle('Security checkup — EclipsVault');
+  await expect(securityVerdict(page)).toHaveText('All good');
   await expect(
-    page.getByRole('img', { name: 'Security score 100 out of 100 — Strong', exact: true }),
-  ).toContainClass('score-ring grade-strong');
-  await expect(page.locator('.grade-label')).toHaveText('Strong');
-  await expect(page.locator('.grade-label')).toContainClass('grade-label grade-strong');
-  await expect(page.locator('.ring-value')).toHaveAttribute('stroke-dasharray', '326.7 0.0');
-  await expect(page.locator('.checkup-lead')).toHaveText(
-    'Everything checks out. Your account is well protected — nice work.',
-  );
-  await expect(page.locator('.checkup-counts .badge')).toHaveText(['4 secured']);
-  await expect(page.locator('.feed-action a, .check-rec')).toHaveCount(0);
-  expect(await checkRows(page)).toEqual([
-    {
-      title: 'Two-step sign-in',
-      status: 'Secured',
-      tone: 'tone-ok',
-      accent: 'check-pass',
-      detail: 'An authenticator app is protecting your sign-in.',
-      recommendation: null,
-      fix: null,
-    },
-    {
-      title: 'Backup codes',
-      status: 'Secured',
-      tone: 'tone-ok',
-      accent: 'check-pass',
-      detail: 'You have 10 one-time backup codes.',
-      recommendation: null,
-      fix: null,
-    },
-    {
-      title: 'Passkey',
-      status: 'Secured',
-      tone: 'tone-ok',
-      accent: 'check-pass',
-      detail: 'You have 1 passkey for phishing-resistant sign-in.',
-      recommendation: null,
-      fix: null,
-    },
-    {
-      title: 'Signed-in devices',
-      status: 'Secured',
-      tone: 'tone-ok',
-      accent: 'check-pass',
-      detail: 'Only this device is signed in.',
-      recommendation: null,
-      fix: null,
-    },
+    page.getByText('All 4 checks pass. Everything here is about your account only.', {
+      exact: true,
+    }),
+  ).toBeVisible();
+  // All clear: no score tile, no list of checks to fix, no link to follow and no zero count.
+  await expect(page.getByRole('img', { name: /^Security score / })).toHaveCount(0);
+  await expect(checksNeedingYou(page)).toHaveCount(0);
+  await expect(passingChecks(page).getByRole('link')).toHaveCount(0);
+  await expect(page.getByRole('main').getByText('0', { exact: true })).toHaveCount(0);
+  expect(await passingRows(page)).toEqual([
+    { title: 'Two-step sign-in', detail: 'An authenticator app is protecting your sign-in.' },
+    { title: 'Backup codes', detail: 'You have 10 one-time backup codes.' },
+    { title: 'Passkey', detail: 'You have 1 passkey for phishing-resistant sign-in.' },
+    { title: 'Signed-in devices', detail: 'Only this device is signed in.' },
   ]);
-  expect(await feedIcons(page)).toEqual([twoStepIcon, backupIcon, passkeyIcon, devicesIcon]);
   await expect(page.locator('style, [style]')).toHaveCount(0);
 
   await page.route(
@@ -1734,26 +1701,23 @@ test('Security checkup shows all-clear and at-risk postures with only actionable
     { times: 1 },
   );
   await page.goto('/Security/Index');
+  await expect(securityVerdict(page)).toHaveText('Action needed');
   await expect(
-    page.getByRole('img', { name: 'Security score 30 out of 100 — At risk', exact: true }),
-  ).toContainClass('score-ring grade-atrisk');
-  await expect(page.locator('.grade-label')).toHaveText('At risk');
-  await expect(page.locator('.grade-label')).toContainClass('grade-label grade-atrisk');
-  await expect(page.locator('.ring-value')).toHaveAttribute('stroke-dasharray', '98.0 228.7');
-  await expect(page.locator('.checkup-lead')).toHaveText(
-    "Next step: Turn on an authenticator app so a stolen password isn't enough to get in.",
-  );
-  await expect(page.locator('.checkup-counts .badge')).toHaveText([
-    '1 action needed',
-    '3 recommended',
-    '0 secured',
-  ]);
-  expect(await checkRows(page)).toEqual([
+    page.getByText(
+      "4 checks need you · next: Turn on an authenticator app so a stolen password isn't enough to get in.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  const tile = page.getByRole('img', {
+    name: 'Security score 30 out of 100 — At risk',
+    exact: true,
+  });
+  await expect(tile).toContainText('30 / 100');
+  await expect(tile).toContainText('At risk');
+  expect(await failingRows(page)).toEqual([
     {
       title: 'Two-step sign-in',
       status: 'Action needed',
-      tone: 'tone-danger',
-      accent: 'check-fail',
       detail: 'Your account relies on a password alone.',
       recommendation: "Turn on an authenticator app so a stolen password isn't enough to get in.",
       fix: ['Set up two-step', '/Profile'],
@@ -1761,8 +1725,6 @@ test('Security checkup shows all-clear and at-risk postures with only actionable
     {
       title: 'Backup codes',
       status: 'Recommended',
-      tone: 'tone-warn',
-      accent: 'check-warn',
       detail: 'Backup codes become available once two-step sign-in is on.',
       recommendation: 'Turn on two-step sign-in, then generate a set of one-time backup codes.',
       fix: ['Generate codes', '/Profile'],
@@ -1770,8 +1732,6 @@ test('Security checkup shows all-clear and at-risk postures with only actionable
     {
       title: 'Passkey',
       status: 'Recommended',
-      tone: 'tone-warn',
-      accent: 'check-warn',
       detail: "You haven't added a passkey yet.",
       recommendation:
         "Add a passkey for sign-in that can't be phished, even if your password leaks.",
@@ -1780,14 +1740,12 @@ test('Security checkup shows all-clear and at-risk postures with only actionable
     {
       title: 'Signed-in devices',
       status: 'Recommended',
-      tone: 'tone-warn',
-      accent: 'check-warn',
       detail: '4 devices are signed in to your account.',
       recommendation: "Review the list and sign out anything you don't recognise.",
       fix: ['Review devices', '/Sessions'],
     },
   ]);
-  expect(await feedIcons(page)).toEqual([twoStepIcon, backupIcon, passkeyIcon, devicesIcon]);
+  await expect(passingChecks(page)).toHaveCount(0);
   await expect(page.locator('style, [style]')).toHaveCount(0);
 
   // None suppresses the link even for a non-secured check; the server remains the source of prose.
@@ -1807,9 +1765,19 @@ test('Security checkup shows all-clear and at-risk postures with only actionable
     { times: 1 },
   );
   await page.goto('/Security');
-  await expect(page.locator('.check-rec')).toHaveCount(4);
-  // eslint-disable-next-line playwright/no-raw-locators -- The feed action wrapper excludes navigation links from this remediation count.
-  await expect(page.locator('.feed-action a')).toHaveCount(0);
+  await expect(checksNeedingYou(page).getByRole('listitem')).toHaveCount(4);
+  await expect(checksNeedingYou(page).getByRole('link')).toHaveCount(0);
+});
+
+test('Security checkup at risk fits 300px with its longest copy', async ({ page }) => {
+  await page.context().addCookies(administratorCookies);
+  await page.setViewportSize({ width: 300, height: 900 });
+  await page.route('**/api/ui/security', (route) => route.fulfill({ json: atRisk }), {
+    times: 1,
+  });
+  await page.goto('/Security');
+  await expect(checksNeedingYou(page).getByRole('listitem')).toHaveCount(4);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(300);
 });
 
 test('the sidebar and palette open Security checkup in-app, and its fixes open Profile on the same session', async ({
@@ -1832,7 +1800,9 @@ test('the sidebar and palette open Security checkup in-app, and its fixes open P
   await page.getByRole('link', { name: 'Security checkup', exact: true }).click();
   await expect(page).toHaveURL(/\/Security$/);
   await expect(page).toHaveTitle('Security checkup — EclipsVault');
-  await expect(page.locator('.activity-feed > li')).toHaveCount(4);
+  await expect(
+    page.getByRole('list', { name: /^(Needs you|Passing)$/ }).getByRole('listitem'),
+  ).toHaveCount(4);
   await expect(page.locator('.sidenav a.active')).toHaveText('Security checkup');
   await expect(page.locator('.sidenav a.active')).toHaveAttribute('aria-current', 'page');
   await expect(page.locator('.sidenav summary.has-active')).toHaveText('You');
@@ -1847,7 +1817,9 @@ test('the sidebar and palette open Security checkup in-app, and its fixes open P
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/Security$/);
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page.locator('.activity-feed > li')).toHaveCount(4);
+  await expect(
+    page.getByRole('list', { name: /^(Needs you|Passing)$/ }).getByRole('listitem'),
+  ).toHaveCount(4);
   expect(documents).toEqual([]);
 
   await test.step(`Set up two-step opens Profile inside Angular on the same session`, async () => {
@@ -1863,12 +1835,9 @@ test('the sidebar and palette open Security checkup in-app, and its fixes open P
       { times: 1 },
     );
     await page.goto('/Security');
-    // eslint-disable-next-line playwright/no-raw-locators -- The feed action wrapper excludes navigation links from this remediation count.
-    await expect(page.locator('.feed-action a')).toHaveCount(4);
+    await expect(checksNeedingYou(page).getByRole('link')).toHaveCount(4);
     documents.length = 0;
-    // eslint-disable-next-line playwright/no-raw-locators -- The feed action wrapper distinguishes remediation from the account-menu link.
-    await page
-      .locator('.feed-action')
+    await checksNeedingYou(page)
       .getByRole('link', { name: 'Set up two-step', exact: true })
       .click();
     await expect(page).toHaveURL(/\/Profile$/);
@@ -1893,14 +1862,9 @@ test('the sidebar and palette open Security checkup in-app, and its fixes open P
       { times: 1 },
     );
     await page.goto('/Security');
-    // eslint-disable-next-line playwright/no-raw-locators -- The feed action wrapper excludes navigation links from this remediation count.
-    await expect(page.locator('.feed-action a')).toHaveCount(4);
+    await expect(checksNeedingYou(page).getByRole('link')).toHaveCount(4);
     documents.length = 0;
-    // eslint-disable-next-line playwright/no-raw-locators -- The feed action wrapper distinguishes remediation from the account-menu link.
-    await page
-      .locator('.feed-action')
-      .getByRole('link', { name: 'Generate codes', exact: true })
-      .click();
+    await checksNeedingYou(page).getByRole('link', { name: 'Generate codes', exact: true }).click();
     await expect(page).toHaveURL(/\/Profile$/);
     await expect(page.getByRole('heading', { name: 'Profile', exact: true })).toBeVisible();
     expect(documents).toEqual([]);
@@ -1923,14 +1887,9 @@ test('the sidebar and palette open Security checkup in-app, and its fixes open P
       { times: 1 },
     );
     await page.goto('/Security');
-    // eslint-disable-next-line playwright/no-raw-locators -- The feed action wrapper excludes navigation links from this remediation count.
-    await expect(page.locator('.feed-action a')).toHaveCount(4);
+    await expect(checksNeedingYou(page).getByRole('link')).toHaveCount(4);
     documents.length = 0;
-    // eslint-disable-next-line playwright/no-raw-locators -- The feed action wrapper distinguishes remediation from the account-menu link.
-    await page
-      .locator('.feed-action')
-      .getByRole('link', { name: 'Add a passkey', exact: true })
-      .click();
+    await checksNeedingYou(page).getByRole('link', { name: 'Add a passkey', exact: true }).click();
     await expect(page).toHaveURL(/\/Profile$/);
     await expect(page.getByRole('heading', { name: 'Profile', exact: true })).toBeVisible();
     expect(documents).toEqual([]);
@@ -1968,7 +1927,7 @@ test('Security checkup loads, reports a fetch failure, and retries in place', as
   await page.goto('/Security');
   await requested;
   await expect(page.getByRole('status')).toHaveText('Loading your security checkup…');
-  await expect(page.locator('.checkup-hero, .activity-feed')).toHaveCount(0);
+  await expect(page.getByRole('list', { name: /^(Needs you|Passing)$/ })).toHaveCount(0);
   release();
   await expect(page.getByRole('alert')).toHaveText(
     'Could not load your security checkup. Reload the page to try again.',
@@ -1979,8 +1938,9 @@ test('Security checkup loads, reports a fetch failure, and retries in place', as
       documents.push(request.url());
   });
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
-  await expect(page.locator('.activity-feed > li')).toHaveCount(4);
-  await expect(page.locator('.checkup-hero')).toBeVisible();
+  await expect(
+    page.getByRole('list', { name: /^(Needs you|Passing)$/ }).getByRole('listitem'),
+  ).toHaveCount(4);
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(page.locator('style, [style]')).toHaveCount(0);
   expect(documents).toEqual([]);

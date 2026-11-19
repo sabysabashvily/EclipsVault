@@ -2222,107 +2222,101 @@ tr:has(.row-link) [title] {
 }
 
 /* ---- Security checkup -------------------------------------------------- */
-.checkup-hero {
-  display: flex;
-  align-items: center;
-  gap: 1.6rem;
-  flex-wrap: wrap;
-}
-
-.score-ring {
-  position: relative;
-  width: 132px;
-  height: 132px;
-  flex-shrink: 0;
-}
-.score-ring svg {
-  display: block;
-}
-.ring-track {
-  stroke: var(--border);
-}
-/* The value arc inherits the grade colour via currentColor; its length is set server-side
-   as a stroke-dasharray presentation attribute, so no inline style is needed (CSP-clean). */
-.ring-value {
-  stroke: currentColor;
-  transition: stroke-dasharray var(--dur) var(--ease);
-}
-.score-center {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  align-content: center;
-}
-.score-number {
-  font-size: 2.2rem;
-  font-weight: 400;
-  color: var(--text);
-  line-height: 1;
-}
-.score-outof {
-  font-size: 0.72rem;
-  color: var(--text-faint);
-}
-
-.checkup-summary {
-  flex: 1;
-  min-width: 240px;
+/* The score against its target: label, the number, a bar, then "Target 100" and the grade. */
+.target-tile {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  max-width: 360px;
+  margin-bottom: 1.5rem;
+  padding: 1.1rem 1.3rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-card);
 }
-.grade-label {
-  display: inline-block;
-  font-size: 0.94rem;
+.target-label {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.target-value {
+  font-size: 3.5rem;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.target-outof {
+  color: var(--text-faint);
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+.target-bar {
+  display: block;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+}
+.target-track {
+  fill: var(--border);
+}
+.target-fill.tone-ok {
+  fill: var(--ok);
+}
+.target-fill.tone-warn {
+  fill: var(--warn);
+}
+.target-fill.tone-danger {
+  fill: var(--danger);
+}
+.target-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+@media (max-width: 767px) {
+  .target-tile {
+    max-width: none;
+  }
+}
+
+/* Checks that pass: quiet rows with a dot, nothing to do. */
+.check-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.check-list > li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.check-list > li:first-child {
+  padding-top: 0;
+}
+.check-list > li:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.check-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.check-title {
+  margin: 0;
   font-weight: 500;
 }
-.checkup-lead {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-}
-.checkup-counts {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  margin-top: 0.2rem;
-}
-
-/* Grade colour, shared by the ring (currentColor) and the headline label. */
-.grade-strong {
-  color: var(--ok);
-}
-.grade-good {
-  color: var(--ok);
-}
-.grade-fair {
-  color: var(--warn);
-}
-.grade-atrisk {
-  color: var(--danger);
-}
-
-/* Per-control icon chip, coloured by standing (mirrors the activity feed's severity chips). */
-.feed-item.check-pass .feed-icon {
-  color: var(--ok);
-  border-color: transparent;
-  background: var(--ok-soft);
-}
-.feed-item.check-warn .feed-icon {
-  color: var(--warn);
-  border-color: transparent;
-  background: var(--warn-soft);
-}
-.feed-item.check-fail .feed-icon {
-  color: var(--danger);
-  border-color: transparent;
-  background: var(--danger-soft);
-}
-.check-rec {
-  margin-top: 0.3rem;
-  font-size: 0.82rem;
-  color: var(--text-secondary);
+.check-detail {
+  margin: 0.15rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.86rem;
 }
 
 /* ---- Signed-in devices ------------------------------------------------------- */
@@ -3011,7 +3005,6 @@ fieldset {
   .page-actions,
   .danger-zone,
   .settings-row,
-  .checkup-hero,
   .pager {
     flex-wrap: wrap;
   }
