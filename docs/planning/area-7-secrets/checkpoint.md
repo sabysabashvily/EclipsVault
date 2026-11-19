@@ -393,3 +393,47 @@ fixed, R1-1 (a rotation can clear the expiry-notice marker, predates this ticket
 (Legacy shows change buttons to a recipient) left to #168; a fresh re-check accepted every resolution. GPT
 reviews the whole part in #170. Details: `logs/ticket-167/final-report.md` and `review-ledger.md`
 (ignored). To restart, read this section; ticket 3 (#168) starts after the coordinator accepts this one.
+
+## Delivery: 7b ticket 3 (#168)
+
+Branch `area-7b-secret-details`, from `274a064` (main `fb39fc2` merged into 7b by the coordinator).
+Claude Opus 5.5 high implemented the ticket, with one Opus 5.5 high delegate for the Angular page.
+
+Commit: `8f11597` Serve a secret's details from the Angular UI and retire the Legacy page.
+
+What changed: `SecretDetailsController` answers `/api/ui/secrets/{id}` (page, reveal, version reveal,
+rotate, managed rotation, restore, share, revoke, delete), no-store, under global antiforgery. Every action
+runs the access check, then the change right for a change; each refusal writes one fail-closed
+`SecretAccessDenied` row; reveal, version reveal and a sensitive share answer `403 step_up_required`; a decoy
+answers exactly as an unknown id and trips the trap. Another secret's version or share answers as missing.
+The managed licence note (`ManagedRotationNote`) only peeks at the evaluation window and leaves the note out
+when the read fails. An existing grant raises `ShareExistsException` (`409 share_exists`).
+`SecretRepository.DeleteAsync` now raises `AuditWriteFailedException` on a failed save, so a delete whose
+audit row cannot be stored answers `503 audit_unavailable` (it answered 500). The Angular page
+(`/Secrets/Details/{id}`) copies the Legacy words, shows change controls only from `canChange` and
+sharing only from `canShare` (#167's R1-2), hides Restore for a managed secret, keeps a revealed value only
+in page memory and opens StepUpDialog when asked. New secret announces the stored secret through router
+state; the 7a flash bridge is gone. The Legacy `SecretsController`, Details view and view models are
+deleted. No model change.
+
+Legacy shell touched: `_Layout.cshtml`'s Sharing links now point at the Angular paths.
+
+Deviations: access_denied opens `/Account/Denied?secretId=` without the reasons in navigation memory,
+because the Denied page stays Legacy until #169; the page's response carries `evaluationKnown` so a failed
+evaluation read leaves the note out; the theme test checks the theme attribute and a screenshot, with no
+`visual parity:` colour checks. Not covered over HTTP: `402 premium_not_licensed` and
+`409 rotation_unavailable`, which the fixtures cannot produce without side effects (Vitest covers the page's
+handling).
+
+Verification on the final source: `scripts/check.sh` passed (981 unit tests), `dotnet format` clean, both
+pending-model checks and the hook tests passed, the Angular checks passed (623 Vitest, lint, build checks,
+`check:api-types`; `npm audit --audit-level=high` passed with 10 moderate findings). The ticket's PostgreSQL filter passed 352 tests (30 classes); after the last test-only
+fix its three cases passed again. Browser specs were written but not run locally (`secret-details.spec.ts`,
+its own Playwright project); they, the full suites and SQL Server run in CI.
+
+Reviews: security (Opus 5.5 high) found no defects; one low (`.First` in the version label) and two
+coverage gaps were fixed. A fresh re-check of the fixes found no defects, one low test gap (fixed and
+re-checked OK) and one non-security label: two simultaneous deletes give the loser 503 rather than 500,
+left as is. GPT reviews the whole part in #170. Details: `logs/ticket-168/final-report.md` and
+`review-ledger.md` (ignored). To restart, read this section; ticket 4 (#169) starts after the coordinator
+accepts this one.
