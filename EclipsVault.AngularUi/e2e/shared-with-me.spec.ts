@@ -223,7 +223,9 @@ test('the keyboard reaches the first row and opens its Legacy Details page', asy
 test('a click anywhere on a row, not only its name, opens the secret', async ({ page }) => {
   const shared = await openAsRecipient(page);
 
-  await shared.sharedByOf(shared.secret('E2e_Shared_With_Me')).click();
+  // The name's link stretches over the row, so the cell is covered: click where a person would,
+  // and let the topmost element, the link, take it.
+  await shared.sharedByOf(shared.secret('E2e_Shared_With_Me')).click({ force: true });
 
   await expect(page).toHaveURL(/\/Secrets\/Details\/[0-9a-f-]{36}$/);
   await expect(
