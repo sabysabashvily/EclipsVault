@@ -23,52 +23,62 @@
           ><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17" /></svg></span
         >Not now — select it for why
       </p>
-      <div class="matrix-card">
-        <table class="access-matrix">
-          <thead>
-            <tr>
-              <th scope="col">Sensitivity</th>
-              @for (env of model.environments; track env) {
-                <th scope="col">{{ env }}</th>
-              }
-            </tr>
-          </thead>
-          <tbody>
-            @for (row of model.rows; track row.sensitivityRank) {
+      <!-- Whole environment names can't fit four columns into a phone's card, so the matrix
+           scrolls inside its card rather than widening the page. -->
+      <div
+        class="table-scroll"
+        appScrollRegion
+        role="region"
+        aria-label="What you can open right now"
+      >
+        <p class="table-scroll-hint">Scroll horizontally to see all columns.</p>
+        <div class="matrix-card">
+          <table class="access-matrix">
+            <thead>
               <tr>
-                <th scope="row">
-                  <span class="badge sens-{{ row.sensitivityRank }}">{{ row.sensitivity }}</span>
-                </th>
-                @for (cell of row.cells; track cell.environment) {
-                  <td>
-                    @if (cell.allowed) {
-                      <span class="matrix-cell"
-                        ><span class="matrix-tile allow"
-                          ><svg aria-hidden="true" viewBox="0 0 24 24">
-                            <path d="M5 12.5l4.5 4.5L19 7" /></svg></span
-                        ><span class="matrix-word">Can open</span></span
-                      >
-                    } @else {
-                      <button
-                        type="button"
-                        class="matrix-cell"
-                        [attr.aria-label]="
-                          cell.reason + ', ' + row.sensitivity + ' · ' + cell.environment
-                        "
-                        (click)="explain(row, cell, $event)"
-                      >
-                        <span class="matrix-tile deny"
-                          ><svg aria-hidden="true" viewBox="0 0 24 24">
-                            <path d="M7 7l10 10M17 7L7 17" /></svg></span
-                        ><span class="matrix-word">{{ cell.reason }}</span>
-                      </button>
-                    }
-                  </td>
+                <th scope="col">Sensitivity</th>
+                @for (env of model.environments; track env) {
+                  <th scope="col">{{ env }}</th>
                 }
               </tr>
-            }
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              @for (row of model.rows; track row.sensitivityRank) {
+                <tr>
+                  <th scope="row">
+                    <span class="badge sens-{{ row.sensitivityRank }}">{{ row.sensitivity }}</span>
+                  </th>
+                  @for (cell of row.cells; track cell.environment) {
+                    <td>
+                      @if (cell.allowed) {
+                        <span class="matrix-cell"
+                          ><span class="matrix-tile allow"
+                            ><svg aria-hidden="true" viewBox="0 0 24 24">
+                              <path d="M5 12.5l4.5 4.5L19 7" /></svg></span
+                          ><span class="matrix-word">Can open</span></span
+                        >
+                      } @else {
+                        <button
+                          type="button"
+                          class="matrix-cell"
+                          [attr.aria-label]="
+                            cell.reason + ', ' + row.sensitivity + ' · ' + cell.environment
+                          "
+                          (click)="explain(row, cell, $event)"
+                        >
+                          <span class="matrix-tile deny"
+                            ><svg aria-hidden="true" viewBox="0 0 24 24">
+                              <path d="M7 7l10 10M17 7L7 17" /></svg></span
+                          ><span class="matrix-word">{{ cell.reason }}</span>
+                        </button>
+                      }
+                    </td>
+                  }
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
 

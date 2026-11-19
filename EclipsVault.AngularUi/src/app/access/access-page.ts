@@ -8,6 +8,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { ScrollRegion } from '../shared/scroll-region';
 import type { paths } from '../ui-api/schema.generated';
 
 type Access = paths['/api/ui/access']['get']['responses'][200]['content']['application/json'];
@@ -17,6 +18,7 @@ type Cell = Row['cells'][number];
 /** A live, self-scoped explanation. The server makes every access decision. */
 @Component({
   selector: 'app-access-page',
+  imports: [ScrollRegion],
   templateUrl: './access-page.html',
   // Keep the spaces between an address and its badge, and a badge and the window hours.
   preserveWhitespaces: true,
