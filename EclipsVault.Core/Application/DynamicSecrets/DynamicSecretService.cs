@@ -49,8 +49,8 @@ public sealed class DynamicSecretService : IDynamicSecretService
     public async Task<DynamicSecretRoleDto?> FindRoleAsync(Guid roleId, CancellationToken ct)
         => await _repository.FindRoleAsync(roleId, ct) is { } role ? Map(role) : null;
 
-    public Task<DynamicSecretLease?> FindLeaseAsync(Guid leaseId, CancellationToken ct)
-        => _repository.FindLeaseAsync(leaseId, ct);
+    public async Task<LeaseDto?> FindLeaseAsync(Guid leaseId, CancellationToken ct)
+        => await _repository.FindLeaseAsync(leaseId, ct) is { } lease ? Map(lease) : null;
 
     public Task RecordAccessDeniedAsync(DynamicSecretRoleDto role, IEnumerable<string> reasons, CancellationToken ct)
         => _audit.WriteAsync(new AuditEntry

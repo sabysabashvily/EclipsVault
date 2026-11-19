@@ -1,4 +1,3 @@
-using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
 
 namespace EclipsVault.Core.Application.DynamicSecrets;
@@ -43,6 +42,6 @@ public interface IDynamicSecretService
     /// <summary>Destroys every credential whose lease has elapsed. Returns how many were closed.</summary>
     Task<int> ReapDueLeasesAsync(CancellationToken ct);
 
-    /// <summary>The role behind a lease, for re-checking access before revoking.</summary>
-    Task<DynamicSecretLease?> FindLeaseAsync(Guid leaseId, CancellationToken ct);
+    /// <summary>One lease, as the lease list shows it.</summary>
+    Task<LeaseDto?> FindLeaseAsync(Guid leaseId, CancellationToken ct);
 }
