@@ -79,7 +79,7 @@ public sealed class AuthThrottleFilterTests
 
         Assert.Null(context.Result);
         Assert.True(called);
-        var (credential, credentialCalled) = await RunAsync(throttle, AccountPost(nameof(AccountController.Login)));
+        var (credential, credentialCalled) = await RunAsync(throttle, AccountPost(nameof(AccountController.ExternalLogin)));
         Assert.Equal(429, Assert.IsType<StatusCodeResult>(credential.Result).StatusCode);
         Assert.False(credentialCalled);
     }
@@ -105,7 +105,7 @@ public sealed class AuthThrottleFilterTests
         var posts = typeof(AccountController).GetMethods()
             .Where(method => method.IsDefined(typeof(HttpPostAttribute)))
             .Select(method => method.Name).Order(StringComparer.Ordinal).ToArray();
-        string[] metered = ["EnrollTotp", "ExternalLogin", "Login", "PasskeyLoginBegin", "PasskeyLoginComplete", "Recover", "RecoveryCode", "Totp"];
+        string[] metered = ["ExternalLogin", "Recover"];
         Assert.Equal(metered.Append("Logout").Order(StringComparer.Ordinal), posts);
 
         foreach (var name in metered)
@@ -165,7 +165,7 @@ public sealed class AuthThrottleFilterTests
     public async Task Credential_attempts_keep_the_normalized_shared_partition(string? address, string expected)
     {
         var throttle = new RecordingThrottle(allow: true);
-        var (_, called) = await RunAsync(throttle, AccountPost(nameof(AccountController.Login)), address: address);
+        var (_, called) = await RunAsync(throttle, AccountPost(nameof(AccountController.ExternalLogin)), address: address);
         Assert.True(called);
         Assert.Equal(expected, Assert.Single(throttle.Partitions));
     }

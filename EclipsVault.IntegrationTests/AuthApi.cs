@@ -12,11 +12,13 @@ namespace EclipsVault.IntegrationTests;
 internal static class AuthApi
 {
     /// <summary>
-    /// The anonymous request token a sign-in page carries. Until the Angular sign-in pages are served,
-    /// it is the Legacy form's; the Recover page is the one a blocked network can load.
+    /// The anonymous request token a sign-in page carries: the Angular Login document's cookie, or the
+    /// Legacy Recover form's, the page a blocked network can load.
     /// </summary>
     public static async Task<string> AnonymousTokenAsync(VaultSession session, string page = "/Account/Login")
-        => VaultFixture.FormTokenOf(await session.Client.GetStringAsync(page), page);
+        => page.StartsWith("/Account/Recover", StringComparison.OrdinalIgnoreCase)
+            ? VaultFixture.FormTokenOf(await session.Client.GetStringAsync(page), page)
+            : await SignInDocument.TokenAsync(session.Client, page);
 
     /// <summary>The request token the last change of identity reissued, as the Angular UI reads it.</summary>
     public static string ReissuedToken(VaultSession session)

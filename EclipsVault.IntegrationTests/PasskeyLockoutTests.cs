@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Passkeys;
@@ -33,15 +32,15 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
         }
 
         var browser = vault.CreateSession(source: IPAddress.Parse("203.0.113.185"));
-        var page = await browser.Client.GetStringAsync("/Account/Login");
-        var options = await PostSignInJsonAsync(browser.Client, "/Account/PasskeyLoginBegin", page, new { username = account.Username });
+        var token = await AuthApi.AnonymousTokenAsync(browser);
+        var options = (await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/passkey/begin", token, new { }))).GetProperty("publicKey");
         var before = await AuditTrail.HeadAsync(vault);
 
-        var result = await PostSignInJsonAsync(browser.Client, "/Account/PasskeyLoginComplete", page,
-            new { credential = authenticator.AssertWithWrongSignature(options) });
+        var result = await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/passkey/complete", token,
+            new { credential = authenticator.AssertWithWrongSignature(options) }), HttpStatusCode.BadRequest);
 
-        Assert.False(result.GetProperty("success").GetBoolean());
-        Assert.Equal("This passkey could not be verified.", result.GetProperty("error").GetString());
+        Assert.Equal("passkey_failed", result.GetProperty("code").GetString());
+        Assert.Equal("This passkey could not be verified.", result.GetProperty("title").GetString());
         Assert.False(result.TryGetProperty("redirect", out _));
         Assert.Equal(2, (await ProfileHttp.AccountAsync(vault, account.Username)).FailedAccessCount);
         Assert.Equal(0, Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id)).SignCount);
@@ -65,15 +64,15 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
         }
 
         var browser = vault.CreateSession(source: IPAddress.Parse("203.0.113.187"));
-        var page = await browser.Client.GetStringAsync("/Account/Login");
-        var options = await PostSignInJsonAsync(browser.Client, "/Account/PasskeyLoginBegin", page, new { username = account.Username });
+        var token = await AuthApi.AnonymousTokenAsync(browser);
+        var options = (await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/passkey/begin", token, new { }))).GetProperty("publicKey");
         var before = await AuditTrail.HeadAsync(vault);
 
-        var result = await PostSignInJsonAsync(browser.Client, "/Account/PasskeyLoginComplete", page,
-            new { credential = authenticator.AssertWithWrongSignature(options) });
+        var result = await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/passkey/complete", token,
+            new { credential = authenticator.AssertWithWrongSignature(options) }), HttpStatusCode.BadRequest);
 
-        Assert.False(result.GetProperty("success").GetBoolean());
-        Assert.Equal("This passkey could not be verified.", result.GetProperty("error").GetString());
+        Assert.Equal("passkey_failed", result.GetProperty("code").GetString());
+        Assert.Equal("This passkey could not be verified.", result.GetProperty("title").GetString());
         Assert.False(result.TryGetProperty("redirect", out _));
         Assert.Equal(2, (await ProfileHttp.AccountAsync(vault, account.Username)).FailedAccessCount);
         Assert.Equal(0, Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id)).SignCount);
@@ -220,14 +219,5 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
         var http = new DefaultHttpContext { RequestServices = scope.ServiceProvider };
         return scope.ServiceProvider.GetRequiredService<SessionIssuer>().SignInAsync(
             http, outcome.User!, outcome.Stamp!, new SignInAudit(AuditAction.PasskeyLogin, "Passwordless sign-in with a passkey"), default);
-    }
-
-    private static async Task<JsonElement> PostSignInJsonAsync(HttpClient client, string path, string page, object body)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(body) };
-        request.Headers.Add("RequestVerificationToken", VaultFixture.FormTokenOf(page, "/Account/Login"));
-        using var response = await client.SendAsync(request);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 }

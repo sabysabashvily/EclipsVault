@@ -19,17 +19,12 @@ public sealed class PendingProofTests(VaultFixture vault)
         await vault.SignInNewAccountAsync("it-proof-totp", IPAddress.Parse("192.0.2.110"), password: Password);
         var account = await ProfileHttp.AccountAsync(vault, "it-proof-totp");
         var pending = vault.CreateSession(source: IPAddress.Parse("192.0.2.111"));
-        await SignInProof.BeginPasswordAsync(pending.Client, account.Username, Password);
-        var token = VaultFixture.FormTokenOf(await pending.Client.GetStringAsync("/Account/Totp"), "/Account/Totp");
+        var token = await AuthApi.PendingAsync(pending, account.Username, Password);
         await ProfileHttp.AdvanceCredentialGenerationAsync(vault, account.Id);
 
-        var response = await pending.Client.PostAsync("/Account/Totp", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = token,
-            ["Code"] = Totp.NextCode(account.TotpSecret!),
-        }));
+        var response = await AuthApi.PostAsync(pending, "/api/ui/auth/totp", token, new { code = Totp.NextCode(account.TotpSecret!) });
 
-        Assert.Equal("/Account/Login", response.Headers.Location?.AbsolutePath);
+        await UiApiFailureContractTests.AssertProblemAsync(response, 401, "sign_in_expired");
         Assert.Null(pending.SessionCookie);
         Assert.Equal(account.LastTotpStep, (await ProfileHttp.AccountAsync(vault, account.Username)).LastTotpStep);
     }
@@ -41,17 +36,12 @@ public sealed class PendingProofTests(VaultFixture vault)
         var codes = await ProfileApi.RecoverySetAsync(owner.ProfileOwner!);
         var account = await ProfileHttp.AccountAsync(vault, "it-proof-recovery");
         var pending = vault.CreateSession(source: IPAddress.Parse("192.0.2.113"));
-        await SignInProof.BeginPasswordAsync(pending.Client, account.Username, Password);
-        var token = VaultFixture.FormTokenOf(await pending.Client.GetStringAsync("/Account/RecoveryCode"), "/Account/RecoveryCode");
+        var token = await AuthApi.PendingAsync(pending, account.Username, Password);
         await ProfileHttp.AdvanceCredentialGenerationAsync(vault, account.Id);
 
-        var response = await pending.Client.PostAsync("/Account/RecoveryCode", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = token,
-            ["Code"] = codes[0],
-        }));
+        var response = await AuthApi.PostAsync(pending, "/api/ui/auth/recovery-code", token, new { code = codes[0] });
 
-        Assert.Equal("/Account/Login", response.Headers.Location?.AbsolutePath);
+        await UiApiFailureContractTests.AssertProblemAsync(response, 401, "sign_in_expired");
         Assert.Null(pending.SessionCookie);
         Assert.All(await ProfileHttp.RecoveryCodesAsync(vault, account.Id), code => Assert.Null(code.UsedAtUtc));
     }
@@ -63,18 +53,14 @@ public sealed class PendingProofTests(VaultFixture vault)
         await ProfileHttp.ResetAuthenticatorAsync(owner);
         var account = await ProfileHttp.AccountAsync(vault, "it-proof-enrollment");
         var pending = vault.CreateSession(source: IPAddress.Parse("192.0.2.115"));
-        await SignInProof.BeginPasswordAsync(pending.Client, account.Username, Password);
-        var token = VaultFixture.FormTokenOf(await pending.Client.GetStringAsync("/Account/EnrollTotp"), "/Account/EnrollTotp");
-        var enrollment = await ProfileHttp.AccountAsync(vault, account.Username);
+        var token = await AuthApi.PendingAsync(pending, account.Username, Password, next: "enroll");
+        var secret = (await AuthApi.JsonAsync(await AuthApi.PostAsync(pending, "/api/ui/auth/enrollment", token)))
+            .GetProperty("secretBase32").GetString()!;
         await ProfileHttp.AdvanceCredentialGenerationAsync(vault, account.Id);
 
-        var response = await pending.Client.PostAsync("/Account/EnrollTotp", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = token,
-            ["Code"] = Totp.Code(enrollment.TotpSecret!, Totp.CurrentStep()),
-        }));
+        var response = await AuthApi.PostAsync(pending, "/api/ui/auth/enrollment/confirm", token, new { code = Totp.Code(secret, Totp.CurrentStep()) });
 
-        Assert.Equal("/Account/Login", response.Headers.Location?.AbsolutePath);
+        await UiApiFailureContractTests.AssertProblemAsync(response, 401, "sign_in_expired");
         Assert.Null(pending.SessionCookie);
         Assert.False((await ProfileHttp.AccountAsync(vault, account.Username)).TotpEnabled);
     }

@@ -5,6 +5,7 @@ import {
   Subject,
   catchError,
   finalize,
+  map,
   of,
   takeUntil,
   switchMap,
@@ -118,19 +119,20 @@ export class ProfileWrites {
   signOutEverywhere(): void {
     this.localSignOutAvailable.set(true);
     this.write(
-      this.http
-        .post<void>('/api/ui/profile/sign-out-everywhere', null)
-        .pipe(
-          catchError((error: unknown) =>
-            error instanceof UiApiError &&
-            (error.code === 'revoked_unrecorded' || error.code === 'sign_out_incomplete')
-              ? of(undefined)
+      this.http.post<void>('/api/ui/profile/sign-out-everywhere', null).pipe(
+        map(() => 'everywhere'),
+        // Each outcome keeps its own sentence on Login; the local-clear code is not this one's.
+        catchError((error: unknown) =>
+          error instanceof UiApiError && error.code === 'revoked_unrecorded'
+            ? of('revoked_unrecorded')
+            : error instanceof UiApiError && error.code === 'sign_out_incomplete'
+              ? of('everywhere_incomplete')
               : throwError(() => error),
-          ),
         ),
-      () => {
+      ),
+      (outcome) => {
         this.clear();
-        this.document.location.assign('/Account/Login');
+        this.document.location.assign(`/Account/Login?signOut=${outcome}`);
       },
     );
   }

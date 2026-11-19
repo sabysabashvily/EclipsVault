@@ -6,6 +6,7 @@ using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Net.Http.Headers;
 using Xunit;
 
 namespace EclipsVault.IntegrationTests;
@@ -170,18 +171,37 @@ public sealed class PreparedProfileTests(VaultFixture vault)
         await ProfileApi.AssertNoticeAsync(vault, owner, "ResetAuthenticator");
     }
 
+    /// <summary>
+    /// The reset hands Login a cookie only that document reads, and the Angular page shows the
+    /// sentence from the document. The first load takes it; no later load sees it.
+    /// </summary>
     [Fact]
     public async Task Sign_in_explains_an_authenticator_reset_once()
     {
         var owner = await ProfileAccount.CreateAsync(vault, "it-ui90-reset-notice", "100.65.90.1");
         var operationId = await ProfileApi.VerifiedWithAuthenticatorAsync(owner, new { kind = "ResetAuthenticator" });
-        await ProfileApi.SendAsync(owner.Browser, HttpMethod.Post, "/api/ui/profile/authenticator/reset", new { operationId });
+        var reset = await ProfileApi.SendAsync(owner.Browser, HttpMethod.Post, "/api/ui/profile/authenticator/reset", new { operationId });
 
+        SignInDocument.AssertNoTempData(reset);
+        var handoff = Assert.Single(SetCookieHeaderValue.ParseList(reset.Headers.GetValues(HeaderNames.SetCookie).ToList()),
+            cookie => cookie.Name == "EclipsVault.SignInNotice");
+        Assert.Equal("authenticator_reset", handoff.Value.ToString());
+        Assert.True(handoff.HttpOnly);
+        Assert.True(handoff.Secure);
+        Assert.Equal(Microsoft.Net.Http.Headers.SameSiteMode.Strict, handoff.SameSite);
+        Assert.Equal("/Account/Login", handoff.Path.ToString());
+        Assert.Equal(TimeSpan.FromMinutes(10), handoff.MaxAge);
+
+        // A HEAD request is not a page load, so it leaves the notice for the page.
+        using (var probe = await owner.Browser.Client.SendAsync(new HttpRequestMessage(HttpMethod.Head, "/Account/Login")))
+        {
+            Assert.Equal(HttpStatusCode.OK, probe.StatusCode);
+        }
         var signIn = await owner.Browser.Client.GetStringAsync("/Account/Login");
         var signInAgain = await owner.Browser.Client.GetStringAsync("/Account/Login");
 
-        Assert.Contains("Your authenticator was reset. Sign in to set up a new one.", signIn, StringComparison.Ordinal);
-        Assert.DoesNotContain("Your authenticator was reset.", signInAgain, StringComparison.Ordinal);
+        Assert.Contains(ResetNotice, signIn, StringComparison.Ordinal);
+        Assert.DoesNotContain("eclipsvault-sign-in-notice", signInAgain, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -191,6 +211,20 @@ public sealed class PreparedProfileTests(VaultFixture vault)
 
         var signIn = await client.GetStringAsync("/Account/Login?signOut=authenticator_reset");
 
-        Assert.DoesNotContain("Your authenticator was reset.", signIn, StringComparison.Ordinal);
+        Assert.DoesNotContain("eclipsvault-sign-in-notice", signIn, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task A_forged_notice_cookie_claims_nothing_and_is_cleared()
+    {
+        var browser = vault.CreateSession(source: IPAddress.Parse("100.65.90.2"));
+        browser.Cookies.Add(browser.Client.BaseAddress!, new Cookie("EclipsVault.SignInNotice", "everywhere", "/Account/Login") { Secure = true });
+
+        var signIn = await browser.Client.GetStringAsync("/Account/Login");
+
+        Assert.DoesNotContain("eclipsvault-sign-in-notice", signIn, StringComparison.Ordinal);
+        Assert.Null(browser.Cookies.GetCookies(new Uri(browser.Client.BaseAddress!, "/Account/Login"))["EclipsVault.SignInNotice"]);
+    }
+
+    private const string ResetNotice = "<meta name=\"eclipsvault-sign-in-notice\" content=\"authenticator_reset\" />";
 }

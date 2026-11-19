@@ -558,6 +558,15 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PasswordStageResponse"];
+                    };
+                };
                 /** @description Bad Request */
                 400: {
                     headers: {
@@ -617,6 +626,15 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PasskeyOptionsResponse"];
+                    };
+                };
                 /** @description Too Many Requests */
                 429: {
                     headers: {
@@ -658,6 +676,15 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SignInRedirectResponse"];
+                    };
+                };
                 /** @description Bad Request */
                 400: {
                     headers: {
@@ -726,6 +753,15 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RecoverResponse"];
+                    };
+                };
                 /** @description Bad Request */
                 400: {
                     headers: {
@@ -1452,6 +1488,15 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SignInRedirectResponse"];
+                    };
+                };
                 /** @description Bad Request */
                 400: {
                     headers: {
@@ -1529,6 +1574,15 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RecoveryCodeSignInResponse"];
+                    };
+                };
                 /** @description Bad Request */
                 400: {
                     headers: {
@@ -1600,6 +1654,15 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TotpEnrollmentResponse"];
+                    };
+                };
                 /** @description Unauthorized */
                 401: {
                     headers: {
@@ -1659,6 +1722,15 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SignInRedirectResponse"];
+                    };
+                };
                 /** @description Bad Request */
                 400: {
                     headers: {
@@ -5107,6 +5179,10 @@ export interface components {
             password: string;
             returnUrl: null | string;
         };
+        PasswordStageResponse: {
+            /** @enum {string} */
+            next: "totp" | "enroll";
+        };
         PendingEmailResponse: {
             /** Format: uuid */
             operationId: string;
@@ -5204,9 +5280,17 @@ export interface components {
             password: string;
             code: string;
         };
+        RecoverResponse: {
+            blockLifted: boolean;
+        };
         RecoveryCodeSignInRequest: {
             code: string;
             returnUrl: null | string;
+        };
+        RecoveryCodeSignInResponse: {
+            redirect: string;
+            /** Format: int32 */
+            codesRemaining: number | string;
         };
         RecoveryCodesResponse: {
             codes: string[];
@@ -5429,6 +5513,9 @@ export interface components {
             instance?: null | string;
             code: string;
         };
+        SignInRedirectResponse: {
+            redirect: string;
+        };
         SignInsResponse: {
             summary: components["schemas"]["SignInSummaryResponse"];
             events: components["schemas"]["SignInEventResponse"][];
@@ -5457,6 +5544,10 @@ export interface components {
         };
         /** Format: binary */
         Stream: string;
+        TotpEnrollmentResponse: {
+            secretBase32: string;
+            qrCodeDataUri: string;
+        };
         TrustedNetworkResponse: {
             /** Format: uuid */
             networkId: string;

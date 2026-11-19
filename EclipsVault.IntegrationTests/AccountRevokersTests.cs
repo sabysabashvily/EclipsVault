@@ -212,34 +212,22 @@ public abstract class AccountRevokersTests(VaultFixture vault)
             ClearanceLevel.TopSecret, password: password);
         var account = await ProfileHttp.AccountAsync(vault, username);
         var pending = vault.CreateSession(source: IPAddress.Parse("198.18.91.21"));
-        await SignInProof.BeginPasswordAsync(pending.Client, username, password);
-        var token = VaultFixture.FormTokenOf(await pending.Client.GetStringAsync("/Account/Totp"), "/Account/Totp");
+        var token = await AuthApi.PendingAsync(pending, username, password);
         var code = Totp.NextCode(account.TotpSecret!);
         var admin = await vault.AdminClientAsync();
         var changed = await UserAccounts.EditRoleAsync(admin, account.Id, ClearanceLevel.Standard, "ROLE-HTTP");
         Assert.Equal(HttpStatusCode.NoContent, changed.StatusCode);
-        var refused = await pending.Client.PostAsync("/Account/Totp", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = token,
-            ["Code"] = code,
-        }));
+        var refused = await AuthApi.PostAsync(pending, "/api/ui/auth/totp", token, new { code });
 
-        Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
-        Assert.Equal("/Account/Login", refused.Headers.Location?.AbsolutePath);
+        await UiApiFailureContractTests.AssertProblemAsync(refused, 401, "sign_in_expired");
         Assert.Null(pending.SessionCookie);
         Assert.Equal(HttpStatusCode.Unauthorized, (await pending.Client.GetAsync("/api/ui/me")).StatusCode);
         Assert.Equal(account.LastTotpStep, (await ProfileHttp.AccountAsync(vault, username)).LastTotpStep);
 
-        await SignInProof.BeginPasswordAsync(pending.Client, username, password);
-        var freshToken = VaultFixture.FormTokenOf(await pending.Client.GetStringAsync("/Account/Totp"), "/Account/Totp");
-        var signedIn = await pending.Client.PostAsync("/Account/Totp", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = freshToken,
-            ["Code"] = code,
-        }));
+        var freshToken = await AuthApi.PendingAsync(pending, username, password);
+        var signedIn = await AuthApi.JsonAsync(await AuthApi.PostAsync(pending, "/api/ui/auth/totp", freshToken, new { code }));
 
-        Assert.Equal(HttpStatusCode.Redirect, signedIn.StatusCode);
-        Assert.Equal("/Secrets", signedIn.Headers.Location?.OriginalString);
+        Assert.Equal("/Secrets", signedIn.GetProperty("redirect").GetString());
         Assert.Equal(HttpStatusCode.OK, (await pending.Client.GetAsync("/api/ui/me")).StatusCode);
         var principal = SessionApi.PrincipalOf(vault, pending);
         Assert.Equal(ClearanceLevel.Standard, principal.GetClearance());

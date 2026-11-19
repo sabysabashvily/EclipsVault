@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Security.Cryptography;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
@@ -89,10 +90,10 @@ public sealed class ProfileAuditTests(VaultFixture vault)
         var browser = vault.CreateSession(source: IPAddress.Parse("203.0.113.110"));
         var before = await AuditTrail.HeadAsync(vault);
 
-        await SignInPasswordAsync(browser.Client, "it-profile-sign-in", password);
+        await SignInProof.BeginPasswordAsync(browser.Client, "it-profile-sign-in", password);
         var signedIn = await SubmitAuthenticatorCodeAsync(browser.Client, NextCode(account.TotpSecret!));
 
-        Assert.Equal(HttpStatusCode.Redirect, signedIn.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, signedIn.StatusCode);
         Assert.Equal([AuditAction.SignInFactorVerified, AuditAction.LoginSucceeded], await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
         Assert.NotEqual(account.LastTotpStep, (await ProfileHttp.AccountAsync(vault, "it-profile-sign-in")).LastTotpStep);
     }
@@ -104,7 +105,7 @@ public sealed class ProfileAuditTests(VaultFixture vault)
         await vault.SignInNewAccountAsync("it-profile-wrong-code", IPAddress.Parse("203.0.113.119"), password: password);
         var account = await ProfileHttp.AccountAsync(vault, "it-profile-wrong-code");
         var browser = vault.CreateSession(source: IPAddress.Parse("203.0.113.120"));
-        await SignInPasswordAsync(browser.Client, "it-profile-wrong-code", password);
+        await SignInProof.BeginPasswordAsync(browser.Client, "it-profile-wrong-code", password);
         var before = await AuditTrail.HeadAsync(vault);
 
         await SubmitAuthenticatorCodeAsync(browser.Client, Totp.Code(account.TotpSecret!, account.LastTotpStep!.Value));
@@ -121,8 +122,8 @@ public sealed class ProfileAuditTests(VaultFixture vault)
         var account = await ProfileHttp.AccountAsync(vault, "it-profile-replay");
         var first = vault.CreateSession(source: IPAddress.Parse("203.0.113.112"));
         var second = vault.CreateSession(source: IPAddress.Parse("203.0.113.113"));
-        await SignInPasswordAsync(first.Client, "it-profile-replay", password);
-        await SignInPasswordAsync(second.Client, "it-profile-replay", password);
+        await SignInProof.BeginPasswordAsync(first.Client, "it-profile-replay", password);
+        await SignInProof.BeginPasswordAsync(second.Client, "it-profile-replay", password);
         var code = NextCode(account.TotpSecret!);
         var before = await AuditTrail.HeadAsync(vault);
 
@@ -130,8 +131,8 @@ public sealed class ProfileAuditTests(VaultFixture vault)
             SubmitAuthenticatorCodeAsync(first.Client, code),
             SubmitAuthenticatorCodeAsync(second.Client, code));
 
-        Assert.Single(outcomes, outcome => outcome.StatusCode == HttpStatusCode.Redirect);
         Assert.Single(outcomes, outcome => outcome.StatusCode == HttpStatusCode.OK);
+        Assert.Single(outcomes, outcome => outcome.StatusCode == HttpStatusCode.BadRequest);
         Assert.Equal(1, (await ProfileHttp.AccountAsync(vault, "it-profile-replay")).FailedAccessCount);
         // The failed attempt commits on its own. The sign-in is recorded later, when the session is issued.
         var actions = await ProfileHttp.EventsAfterAsync(vault, before, account.Id);
@@ -193,25 +194,8 @@ public sealed class ProfileAuditTests(VaultFixture vault)
     // The step after the current one: the drift window accepts it, and enrollment spent the current one.
     private static string NextCode(string secret) => Totp.Code(secret, Totp.CurrentStep() + 1);
 
-    private static async Task SignInPasswordAsync(HttpClient client, string username, string password)
-    {
-        var login = await client.GetStringAsync("/Account/Login");
-        var response = await client.PostAsync("/Account/Login", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(login, "/Account/Login"),
-            ["Username"] = username,
-            ["Password"] = password,
-        }));
-        Assert.Equal("/Account/Totp", response.Headers.Location?.OriginalString);
-    }
-
+    /// <summary>The code as the Totp page submits it, with the token its document set for the pending sign-in.</summary>
     private static async Task<HttpResponseMessage> SubmitAuthenticatorCodeAsync(HttpClient client, string code)
-    {
-        var page = await client.GetStringAsync("/Account/Totp");
-        return await client.PostAsync("/Account/Totp", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(page, "/Account/Totp"),
-            ["Code"] = code,
-        }));
-    }
+        => await UiApiRequest.SendWithTokenAsync(client, await SignInDocument.TokenAsync(client, "/Account/Totp"), HttpMethod.Post,
+            "/api/ui/auth/totp", JsonContent.Create(new { code }));
 }

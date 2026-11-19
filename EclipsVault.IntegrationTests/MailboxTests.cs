@@ -292,12 +292,12 @@ public sealed class MailboxTests(MailboxFixture fixture)
         var owner = await ProfileAccount.CreateAsync(Vault, "it-mailbox-sso", "100.68.88.15");
         var operation = await VerifiedAsync(owner, "mailbox.sso@example.test");
         await RequestAsync(owner, operation);
-        Assert.Equal("/Account/Login", (await PostIdpAssertion.InvokeAsync(Vault, "mailbox.sso@example.test", "100.68.88.16")).Headers.Location?.OriginalString);
+        Assert.Equal("/Account/Login?sso=refused", (await PostIdpAssertion.InvokeAsync(Vault, "mailbox.sso@example.test", "100.68.88.16")).Headers.Location?.OriginalString);
         var code = await Vault.Mailbox!.CodeForAsync("mailbox.sso@example.test");
         Assert.Equal(HttpStatusCode.NoContent, (await ConfirmAsync(owner, operation, code)).StatusCode);
         var head = await AuditTrail.HeadAsync(Vault);
 
-        Assert.Equal("/Account/Login", (await PostIdpAssertion.InvokeAsync(Vault, owner.Stored.Email, "100.68.88.17")).Headers.Location?.OriginalString);
+        Assert.Equal("/Account/Login?sso=refused", (await PostIdpAssertion.InvokeAsync(Vault, owner.Stored.Email, "100.68.88.17")).Headers.Location?.OriginalString);
         Assert.Equal("/Account/Totp", (await PostIdpAssertion.InvokeAsync(Vault, "MAILBOX.SSO@EXAMPLE.TEST", "100.68.88.18")).Headers.Location?.OriginalString);
 
         Assert.Equal(owner.Id, Assert.Single(await AuditTrail.RowsAfterAsync(Vault, head), row => row.Action == AuditAction.SsoIdentityLinked).UserId);

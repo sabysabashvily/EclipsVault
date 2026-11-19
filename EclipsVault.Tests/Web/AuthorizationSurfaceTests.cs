@@ -35,19 +35,16 @@ public class AuthorizationSurfaceTests
 
     /// <summary>
     /// The complete set of actions reachable without a session, as <c>Controller.Action</c>.
-    /// Every one of them by definition runs before a session exists: the password sign-in, the
-    /// passkey ceremony's two legs, the SSO redirect and its callback from the identity provider,
-    /// break-glass recovery for a locked-out administrator, the landing page, and the error page.
-    /// The UI API's sign-in calls (ADR-0032) are the same steps, plus the Login page's options.
+    /// Every one of them by definition runs before a session exists: the SSO redirect and its
+    /// callback from the identity provider, break-glass recovery for a locked-out administrator,
+    /// the landing page, the error page, and the UI API's sign-in calls (ADR-0032): the password,
+    /// the passkey ceremony's two legs, recovery, and the Login page's options.
     /// Adding a name here is a decision that an unauthenticated stranger may reach it.
     /// </summary>
     private static readonly string[] IntentionallyAnonymous =
     [
         "AccountController.ExternalCallback",
         "AccountController.ExternalLogin",
-        "AccountController.Login",
-        "AccountController.PasskeyLoginBegin",
-        "AccountController.PasskeyLoginComplete",
         "AccountController.Recover",
         "HomeController.Error",
         "HomeController.Index",
@@ -56,14 +53,11 @@ public class AuthorizationSurfaceTests
 
     /// <summary>
     /// The only actions allowed to accept a principal that has passed the password factor but not a
-    /// second one — the three second-factor screens themselves, each a GET/POST pair, and their UI
-    /// API calls, which accept nothing else.
+    /// second one: the UI API's second-factor calls, which accept nothing else. The route table
+    /// serves the second-factor pages themselves.
     /// </summary>
     private static readonly string[] MayAcceptPendingMfa =
     [
-        "AccountController.EnrollTotp",
-        "AccountController.RecoveryCode",
-        "AccountController.Totp",
         "PendingSignInController.BeginEnrollment",
         "PendingSignInController.ConfirmEnrollment",
         "PendingSignInController.RecoveryCode",

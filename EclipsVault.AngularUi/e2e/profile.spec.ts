@@ -29,6 +29,7 @@ let password = `E2e-${randomBytes(24).toString('hex')}`;
 let secret = '';
 let lastStep = -1;
 let recoveryProof = '';
+let signInRecoveryCode = '';
 
 // This account belongs only to this flow; sensitive changes never retire another suite's session.
 test('Profile opens through production routes after real enrollment', async ({
@@ -695,6 +696,7 @@ test('visual parity: ten recovery codes print once and clear on Done, direct vis
   await expect(page).toHaveTitle('Recovery codes — EclipsVault');
   await expect(profile.codes).toHaveCount(10);
   recoveryProof = await profile.codes.first().innerText();
+  signInRecoveryCode = await profile.codes.nth(1).innerText();
   await expect
     .poll(() => profile.recoveryAppearance())
     .toEqual({
@@ -765,6 +767,99 @@ test('visual parity: ten recovery codes print once and clear on Done, direct vis
   await page.reload();
   await expect(profile.codes).toHaveCount(0);
   ownerCookies = await page.context().cookies();
+});
+
+test('a recovery code signs in from the keyboard in both themes, then the menu sign-out reports an unconfirmed revocation', async ({
+  browserHealth,
+}) => {
+  test.setTimeout(240_000);
+  const context = await browserHealth.newContext();
+  const page = await context.newPage();
+  new ProfilePage(page).releaseSignInBudget();
+  await page.goto('/Account/Login');
+  await context.addCookies([
+    { name: 'EclipsVault.Theme', value: 'dark', url: new URL('/', page.url()).href, secure: true },
+  ]);
+  await page.reload();
+
+  await test.step('the sign-in pages follow the shared theme and switch it', async () => {
+    const theme = () => page.evaluate(() => document.documentElement.dataset['theme']);
+    const background = () =>
+      page
+        .getByRole('heading', { name: 'Sign in', exact: true })
+        .evaluate((heading) => getComputedStyle(heading.closest('.auth-card')!).backgroundColor);
+    await expect.poll(theme).toBe('dark');
+    const dark = await background();
+    await page.getByRole('button', { name: 'Switch color theme', exact: true }).click();
+    await expect.poll(theme).toBe('light');
+    expect(await background()).not.toBe(dark);
+    expect(
+      (await context.cookies()).find((cookie) => cookie.name === 'EclipsVault.Theme')?.value,
+    ).toBe('light');
+    await page.reload();
+    await expect.poll(theme).toBe('light');
+  });
+
+  await test.step('password, then a recovery code, from the keyboard alone', async () => {
+    await expect(page.getByLabel('Username')).toBeFocused();
+    await page.keyboard.type('e2e-profile-owner');
+    await page.keyboard.press('Tab');
+    await expect(page.getByLabel('Password', { exact: true })).toBeFocused();
+    await page.keyboard.type(password);
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/\/Account\/Totp$/);
+    await expect(page.getByLabel('Authenticator code')).toBeFocused();
+    await page.getByRole('link', { name: 'Use a recovery code', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/\/Account\/RecoveryCode$/);
+    await expect(page.getByLabel('Recovery code')).toBeFocused();
+    await page.keyboard.type(signInRecoveryCode);
+    await page.keyboard.press('Enter');
+  });
+
+  await test.step('the notice says the code is spent and how many are left before Continue', async () => {
+    await expect(
+      page.getByRole('status').filter({ hasText: 'You signed in with a recovery code' }),
+    ).toContainText('that code is now used up. You have 9 recovery codes left.');
+    await expect(page.getByRole('button', { name: 'Continue', exact: true })).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/\/Secrets$/);
+  });
+
+  await test.step('a menu sign-out the vault could not confirm still reaches sign-in with the local-clear warning', async () => {
+    // The integration tests pin when the vault answers sign_out_incomplete. The real call clears
+    // this browser's cookie; the transport reports that the store did not confirm the revocation.
+    await page.route(
+      '**/api/ui/auth/sign-out',
+      async (route) => {
+        const response = await route.fetch();
+        expect(response.status()).toBe(204);
+        await route.fulfill({
+          response,
+          status: 503,
+          contentType: 'application/problem+json',
+          body: JSON.stringify({
+            status: 503,
+            code: 'sign_out_incomplete',
+            title: "This browser's cookie was cleared. Other devices may still be signed in.",
+          }),
+        });
+      },
+      { times: 1 },
+    );
+    browserHealth.expectConsoleError({ text: /status of 503/, url: /\/api\/ui\/auth\/sign-out$/ });
+    await page.getByText('After Password Renewal', { exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click();
+    await expect(page).toHaveURL(/\/Account\/Login\?signOut=sign_out_incomplete$/);
+    await expect(
+      page.getByText("This browser's cookie was cleared. Other devices may still be signed in.", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect((await context.cookies()).some((cookie) => cookie.name === 'EclipsVault.Session')).toBe(
+      false,
+    );
+  });
 });
 
 test('a UV virtual passkey is added, verifies a frozen change and is removed using a surviving authenticator', async ({
@@ -999,6 +1094,10 @@ test('authenticator reset ends current and copied sessions before Legacy reenrol
   await expect(
     page.getByText('Your authenticator was reset. Sign in to set up a new one.', { exact: true }),
   ).toBeVisible();
+  // That load took the one-time handoff; a second one shows nothing.
+  await page.reload();
+  await expect(page.getByLabel('Username')).toBeVisible();
+  await expect(page.getByText(/Your authenticator was reset/)).toHaveCount(0);
   expect(
     (await page.context().cookies()).some((cookie) => cookie.name === 'EclipsVault.Session'),
   ).toBe(false);
@@ -1223,7 +1322,12 @@ test('sign out everywhere ends this and copied sessions, and the account signs i
   await page.getByRole('button', { name: 'Sign out everywhere', exact: true }).click();
   await expect(profile.cancelConfirmation).toBeFocused();
   await profile.confirm();
-  await expect(page).toHaveURL(/\/Account\/Login$/);
+  await expect(page).toHaveURL(/\/Account\/Login\?signOut=everywhere$/);
+  await expect(
+    page.getByText('You have been signed out of all sessions. Sign in again to continue.', {
+      exact: true,
+    }),
+  ).toBeVisible();
   expect((await page.request.get('/api/ui/me')).status()).toBe(401);
   expect((await copied.request.get('/api/ui/me')).status()).toBe(401);
   await new AccountSignIn(page).submitPassword('e2e-profile-owner', password);
@@ -1290,12 +1394,70 @@ test('sign-out revocation stands and its audit failure warning reaches Legacy si
   try {
     await page.getByRole('button', { name: 'Sign out everywhere', exact: true }).click();
     await profile.confirm();
-    await expect(page).toHaveURL(/\/Account\/Login$/);
-    await expect(page.getByText(/couldn't record it in the audit trail/)).toBeVisible();
+    await expect(page).toHaveURL(/\/Account\/Login\?signOut=revoked_unrecorded$/);
+    await expect(
+      page.getByText(
+        "You have been signed out of all sessions, but the vault couldn't record it in the audit trail. Tell your administrator.",
+        { exact: true },
+      ),
+    ).toBeVisible();
   } finally {
     rejectAuditWrites(false);
   }
   expect((await copied.request.get('/api/ui/me')).status()).toBe(401);
+  await new AccountSignIn(page).submitPassword('e2e-profile-owner', password);
+  await page.getByLabel('Authenticator code').fill(await freshProfileTotp(secret));
+  lastStep = currentTotpStep();
+  await page.getByRole('button', { name: 'Verify and sign in', exact: true }).click();
+  await expect(page).toHaveURL(/\/Secrets$/);
+  ownerCookies = await page.context().cookies();
+});
+
+test('an unconfirmed sign-out everywhere reaches sign-in with its own warning', async ({
+  page,
+  browserHealth,
+}) => {
+  test.setTimeout(240_000);
+  await page.context().addCookies(ownerCookies);
+  const profile = new ProfilePage(page);
+  await profile.open();
+  profile.releaseSignInBudget();
+  // The integration tests pin when the vault answers sign_out_incomplete; no production screen can
+  // make the session store stop confirming. The real call still signs this browser out, and the
+  // transport reports the outcome the store would have.
+  await page.route(
+    '**/api/ui/profile/sign-out-everywhere',
+    async (route) => {
+      const response = await route.fetch();
+      expect(response.status()).toBe(204);
+      await route.fulfill({
+        response,
+        status: 503,
+        contentType: 'application/problem+json',
+        body: JSON.stringify({
+          status: 503,
+          code: 'sign_out_incomplete',
+          title:
+            "This browser was signed out, but the vault couldn't confirm that your other devices were. Sign in and try again.",
+        }),
+      });
+    },
+    { times: 1 },
+  );
+  browserHealth.expectConsoleError({
+    text: /status of 503/,
+    url: /\/api\/ui\/profile\/sign-out-everywhere$/,
+  });
+  await page.getByRole('button', { name: 'Sign out everywhere', exact: true }).click();
+  await profile.confirm();
+  await expect(page).toHaveURL(/\/Account\/Login\?signOut=everywhere_incomplete$/);
+  await expect(
+    page.getByText(
+      "This browser was signed out, but the vault couldn't confirm that your other devices were. Sign in and try again.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.getByText(/Other devices may still be signed in/)).toHaveCount(0);
   await new AccountSignIn(page).submitPassword('e2e-profile-owner', password);
   await page.getByLabel('Authenticator code').fill(await freshProfileTotp(secret));
   lastStep = currentTotpStep();

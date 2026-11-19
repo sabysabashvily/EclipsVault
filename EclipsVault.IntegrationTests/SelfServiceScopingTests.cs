@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -289,15 +290,11 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         const string unknown = "it-scope-authenticated-does-not-exist";
         const string source = "198.51.100.97";
         var signedIn = vault.CreateSession(Assert.IsType<Cookie>(a.SessionCookie), IPAddress.Parse(source));
-        // Login's GET redirects a signed-in caller. A token from Secrets is valid for their
-        // current identity and proves this unsafe request genuinely carries A's session.
-        var response = await PostFormAsync(signedIn.Client, "/Account/Login", new()
-        {
-            ["Username"] = unknown,
-            ["Password"] = "An-intentionally-incorrect-password-57!",
-        }, "/DynamicSecrets");
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("Invalid username or password.", await response.Content.ReadAsStringAsync());
+        // Login's GET redirects a signed-in caller. A token issued to their current identity
+        // proves this unsafe request genuinely carries A's session.
+        var response = await UiApiRequest.SendWithTokenAsync(signedIn.Client, await UiApiRequest.AntiforgeryTokenAsync(signedIn.Client),
+            HttpMethod.Post, "/api/ui/auth/password", JsonContent.Create(new { username = unknown, password = "An-intentionally-incorrect-password-57!" }));
+        await UiApiFailureContractTests.AssertProblemAsync(response, 400, "sign_in_failed");
         Assert.NotNull(signedIn.SessionCookie);
 
         var afterA = await ReadEndpointsAsync(a.Client);
@@ -355,7 +352,7 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         var response = await callback.Client.GetAsync("/Account/ExternalCallback");
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/Account/Login", response.Headers.Location?.OriginalString);
+        Assert.Equal("/Account/Login?sso=refused", response.Headers.Location?.OriginalString);
         Assert.Null(callback.Cookies.GetCookies(callback.Client.BaseAddress!)[cookieName]);
         Assert.NotNull(callback.SessionCookie);
         var afterA = await ReadEndpointsAsync(a.Client);
@@ -466,33 +463,18 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
     private async Task FailSignInAsync(string username, string source)
     {
         var anonymous = vault.CreateSession(source: IPAddress.Parse(source));
-        var response = await PostFormAsync(anonymous.Client, "/Account/Login", new()
-        {
-            ["Username"] = username,
-            ["Password"] = "An-intentionally-incorrect-password-57!",
-        });
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("Invalid username or password.", await response.Content.ReadAsStringAsync());
+        var response = await AuthApi.PasswordAsync(anonymous, username, "An-intentionally-incorrect-password-57!");
+        await UiApiFailureContractTests.AssertProblemAsync(response, 400, "sign_in_failed");
         Assert.Null(anonymous.SessionCookie);
     }
 
     private async Task<VaultSession> SignInWithRecoveryCodeAsync(string username, string password, string code, string source)
     {
         var session = vault.CreateSession(source: IPAddress.Parse(source));
-        var passwordStep = await PostFormAsync(session.Client, "/Account/Login", new() { ["Username"] = username, ["Password"] = password });
-        Assert.Equal(HttpStatusCode.Redirect, passwordStep.StatusCode);
-        Assert.Equal("/Account/Totp", passwordStep.Headers.Location?.OriginalString);
-        var secondFactor = await PostFormAsync(session.Client, "/Account/RecoveryCode", new() { ["Code"] = code });
-        Assert.Equal(HttpStatusCode.Redirect, secondFactor.StatusCode);
-        Assert.Equal("/Secrets", secondFactor.Headers.Location?.OriginalString);
+        var pending = await AuthApi.PendingAsync(session, username, password);
+        var secondFactor = await AuthApi.JsonAsync(await AuthApi.PostAsync(session, "/api/ui/auth/recovery-code", pending, new { code }));
+        Assert.Equal("/Secrets", secondFactor.GetProperty("redirect").GetString());
         return session;
-    }
-
-    private static async Task<HttpResponseMessage> PostFormAsync(HttpClient client, string path, Dictionary<string, string> fields, string? formPage = null)
-    {
-        var page = formPage ?? path;
-        fields["__RequestVerificationToken"] = VaultFixture.FormTokenOf(await client.GetStringAsync(page), page);
-        return await client.PostAsync(path, new FormUrlEncodedContent(fields));
     }
 
     private Guid AccountIdOf(VaultSession session)

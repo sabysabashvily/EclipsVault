@@ -10,7 +10,6 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ViewFeatures;
 
 namespace EclipsVault.Web.Controllers.Ui;
 
@@ -31,7 +30,6 @@ public sealed class ProfileDetailsController(
     ProfileOperationPreparation preparation,
     IProfileOperationRepository operations,
     AccountSignOut signOut,
-    ITempDataDictionaryFactory tempData,
     IAntiforgery antiforgery) : ControllerBase
 {
     private const int AvatarRequestLimit = 6 * 1024 * 1024;
@@ -117,7 +115,7 @@ public sealed class ProfileDetailsController(
 
     /// <summary>
     /// Ends every session of the account, this one included, whatever the session store or audit trail
-    /// answers. The outcome also waits on the next Legacy sign-in page, where the browser goes next.
+    /// answers. The Profile page takes the outcome on to the sign-in page as its own query code.
     /// </summary>
     [HttpPost("sign-out-everywhere")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -135,9 +133,6 @@ public sealed class ProfileDetailsController(
         }
 
         var message = SignOutEverywhereMessages.For(outcome);
-        var flash = tempData.GetTempData(HttpContext);
-        flash[FlashExtensions.TypeKey] = outcome == SignOutEverywhereOutcome.SignedOut ? "info" : "error";
-        flash[FlashExtensions.MessageKey] = message;
         return outcome switch
         {
             SignOutEverywhereOutcome.SignedOut => NoContent(),

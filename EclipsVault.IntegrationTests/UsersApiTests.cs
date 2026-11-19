@@ -103,12 +103,12 @@ public sealed class UsersApiTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.Redirect, loginWhileAuthenticated.StatusCode);
         Assert.Equal("/Admin/Users", loginWhileAuthenticated.Headers.Location?.OriginalString);
 
-        var signedOut = await UiApiRequest.WriteWithAntiforgeryAsync(stale, HttpMethod.Post, "/Account/Logout");
-        Assert.Equal(HttpStatusCode.Redirect, signedOut.StatusCode);
+        var signedOut = await UiApiRequest.WriteWithAntiforgeryAsync(stale, HttpMethod.Post, "/api/ui/auth/sign-out");
+        Assert.Equal(HttpStatusCode.NoContent, signedOut.StatusCode);
         Assert.Null(stale.SessionCookie);
         var login = await stale.Client.GetAsync("/Account/Login?ReturnUrl=%2FAdmin%2FUsers");
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
-        Assert.Contains("/Admin/Users", await login.Content.ReadAsStringAsync());
+        Assert.Contains("<app-root>", await login.Content.ReadAsStringAsync(), StringComparison.Ordinal);
     }
 
     [Theory]

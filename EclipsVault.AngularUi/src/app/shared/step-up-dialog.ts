@@ -13,8 +13,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize, Subscription } from 'rxjs';
-import { PAGE_LOCATION } from '../shell/command-palette';
-import { signInUrl, StepUpProof, UiApiError } from '../ui-api/ui-api-errors';
+import { SessionSignOut, signInUrl, StepUpProof, UiApiError } from '../ui-api/ui-api-errors';
 import type { components } from '../ui-api/schema.generated';
 
 @Component({
@@ -78,7 +77,7 @@ export class StepUpDialog {
   private readonly document = inject(DOCUMENT);
   protected readonly signIn = signInUrl(this.document.location);
   private readonly http = inject(HttpClient);
-  private readonly location = inject(PAGE_LOCATION);
+  private readonly sessionSignOut = inject(SessionSignOut);
   private readonly injector = inject(Injector);
   private readonly destroyRef = inject(DestroyRef);
   private readonly dialog = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
@@ -128,18 +127,15 @@ export class StepUpDialog {
     if (this.busy()) return;
     this.busy.set(true);
     this.error.set('');
-    this.verification = this.http
-      .post('/Account/Logout', null, { responseType: 'text' })
-      .pipe(
-        takeUntilDestroyed(this.destroyRef),
-        finalize(() => this.busy.set(false)),
-      )
+    // The shared sign-out leaves for sign-in, so only a failure comes back to the dialog.
+    this.verification = this.sessionSignOut
+      .end(this.signIn)
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: () => {
-          this.finish(false);
-          this.location.assign(this.signIn);
+        error: () => {
+          this.busy.set(false);
+          this.error.set('Could not sign out. Reload the page to try again.');
         },
-        error: () => this.error.set('Could not sign out. Reload the page to try again.'),
       });
   }
 

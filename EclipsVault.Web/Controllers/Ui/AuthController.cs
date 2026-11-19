@@ -54,6 +54,7 @@ public sealed class AuthController(
     [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status400BadRequest, "application/problem+json")]
     [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status429TooManyRequests, "application/problem+json")]
     [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
+    [ProducesResponseType<PasswordStageResponse>(StatusCodes.Status200OK, "application/json")]
     public async Task<ActionResult<PasswordStageResponse>> Password([FromBody] PasswordSignInRequest request, CancellationToken ct)
     {
         var result = await auth.ValidateCredentialsAsync(request.Username, request.Password, ct);
@@ -77,6 +78,7 @@ public sealed class AuthController(
     [HttpPost("passkey/begin")]
     [RequestSizeLimit(4096)]
     [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status429TooManyRequests, "application/problem+json")]
+    [ProducesResponseType<PasskeyOptionsResponse>(StatusCodes.Status200OK, "application/json")]
     public async Task<ActionResult<PasskeyOptionsResponse>> BeginPasskey([FromBody] PasskeySignInBeginRequest request, CancellationToken ct)
     {
         var options = await passkeys.BeginAssertionAsync(ct);
@@ -95,6 +97,7 @@ public sealed class AuthController(
     [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status409Conflict, "application/problem+json")]
     [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status429TooManyRequests, "application/problem+json")]
     [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
+    [ProducesResponseType<SignInRedirectResponse>(StatusCodes.Status200OK, "application/json")]
     public async Task<ActionResult<SignInRedirectResponse>> CompletePasskey([FromBody] PasskeySignInCompleteRequest request, CancellationToken ct)
     {
         var ceremony = PasskeySignInState.Read(await passkeyCeremonies.TakeAsync(HttpContext.Session.Id, PasskeyCeremonyPurpose.SignIn, ct));
@@ -130,6 +133,7 @@ public sealed class AuthController(
     [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status400BadRequest, "application/problem+json")]
     [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status429TooManyRequests, "application/problem+json")]
     [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
+    [ProducesResponseType<RecoverResponse>(StatusCodes.Status200OK, "application/json")]
     public async Task<ActionResult<RecoverResponse>> Recover([FromBody] RecoverRequest request, CancellationToken ct)
     {
         var source = HttpContext.Connection.RemoteIpAddress;

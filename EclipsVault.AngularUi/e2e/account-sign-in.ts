@@ -3,9 +3,10 @@ import type { Page } from '@playwright/test';
 export class AccountSignIn {
   constructor(private readonly page: Page) {}
 
+  /** Login's StatusLine announces a warning as an alert. */
   get warning() {
     return this.page
-      .getByRole('status')
+      .getByRole('alert')
       .filter({ hasText: "couldn't record it in the audit trail" });
   }
 

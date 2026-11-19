@@ -511,7 +511,7 @@ describe('Audit log', () => {
       expect(page.querySelector('app-step-up-dialog dialog[open]')).not.toBeNull();
     });
     button(page, 'Sign in again').click();
-    backend.expectOne('/Account/Logout').flush('');
+    backend.expectOne('/api/ui/auth/sign-out').flush('');
     await fixture.whenStable();
     expect(assign).toHaveBeenCalledWith('/Account/Login?ReturnUrl=%2FAudit');
   });

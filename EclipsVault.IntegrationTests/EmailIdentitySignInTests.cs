@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -63,7 +62,7 @@ public sealed class EmailIdentitySignInTests(VaultFixture vault)
 
         var response = await CallBackFromIdentityProviderAsync("it-email-sso-name-only@example.test", "198.51.100.232");
 
-        Assert.Equal("/Account/Login", response.Headers.Location?.OriginalString);
+        Assert.Equal("/Account/Login?sso=refused", response.Headers.Location?.OriginalString);
         var refused = Assert.Single(await AuditTrail.RowsAfterAsync(vault, head), row => row.Action == AuditAction.SsoSignInRefused);
         Assert.Null(refused.UserId);
         Assert.Equal("it-email-sso-name-only@example.test", refused.Username);
@@ -77,7 +76,7 @@ public sealed class EmailIdentitySignInTests(VaultFixture vault)
 
         var response = await CallBackFromIdentityProviderAsync("it-email-sso-adm\u0131n@example.test", "198.51.100.236");
 
-        Assert.Equal("/Account/Login", response.Headers.Location?.OriginalString);
+        Assert.Equal("/Account/Login?sso=refused", response.Headers.Location?.OriginalString);
         Assert.DoesNotContain(await AuditTrail.RowsAfterAsync(vault, head), row => row.Action == AuditAction.SsoIdentityLinked);
     }
 
@@ -90,15 +89,9 @@ public sealed class EmailIdentitySignInTests(VaultFixture vault)
         var session = vault.CreateSession(source: IPAddress.Parse("198.51.100.233"));
         var head = await AuditTrail.HeadAsync(vault);
 
-        var response = await session.Client.PostAsync("/Account/Login", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["Username"] = "it-email-login-alias@example.test",
-            ["Password"] = password,
-            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(await session.Client.GetStringAsync("/Account/Login"), "/Account/Login"),
-        }));
+        var response = await AuthApi.PasswordAsync(session, "it-email-login-alias@example.test", password);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("Invalid username or password.", await response.Content.ReadAsStringAsync());
+        await UiApiFailureContractTests.AssertProblemAsync(response, 400, "sign_in_failed");
         var failed = Assert.Single(await AuditTrail.RowsAfterAsync(vault, head), row => row.Action == AuditAction.LoginFailed);
         Assert.Null(failed.UserId);
         Assert.Equal("Unknown username or email", failed.Details);
@@ -179,16 +172,8 @@ public sealed class EmailIdentitySignInTests(VaultFixture vault)
     private async Task<JsonElement> BeginPasskeySignInAsync(string username, string source)
     {
         var session = vault.CreateSession(source: IPAddress.Parse(source));
-        var login = await session.Client.GetStringAsync("/Account/Login");
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/Account/PasskeyLoginBegin")
-        {
-            Content = JsonContent.Create(new { username }),
-        };
-        request.Headers.Add("RequestVerificationToken", VaultFixture.FormTokenOf(login, "/Account/Login"));
-
-        var response = await session.Client.SendAsync(request);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        return await response.Content.ReadFromJsonAsync<JsonElement>();
+        var options = await SignInProof.PostPasskeyAsync(session.Client, "/api/ui/auth/passkey/begin", new { username });
+        return options.GetProperty("publicKey");
     }
 
     /// <summary>

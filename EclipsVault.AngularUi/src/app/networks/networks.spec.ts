@@ -284,7 +284,7 @@ describe('Networks', () => {
     stepUpRequired(`${path}/trust-current-address`, 'sign_in');
     await reload(fixture);
     button(page, 'Sign in again').click();
-    backend.expectOne('/Account/Logout').flush('');
+    backend.expectOne('/api/ui/auth/sign-out').flush('');
     await fixture.whenStable();
     expect(assign).toHaveBeenCalledWith('/Account/Login?ReturnUrl=%2FAdmin%2FNetworks');
   });

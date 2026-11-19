@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using System.Text.Json;
 using EclipsVault.Infrastructure.Security;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -98,11 +97,11 @@ public sealed class CsrfAndSignOutTests(VaultFixture vault)
         var token = XsrfCookieOf(await session.Client.GetAsync("/api/ui/me")).Value.ToString();
 
         // An anonymous caller behind the same address spends the real shared credential budget.
-        // Empty login models reach the throttle without guessing a password or tripping lockout.
+        // Guessing at a name with no account reaches the throttle without tripping any lockout.
         var guesser = vault.CreateSession(source: source.MapToIPv6()).Client;
-        var guessToken = VaultFixture.FormTokenOf(await guesser.GetStringAsync("/Account/Login"), "/Account/Login");
+        var guessToken = await SignInDocument.TokenAsync(guesser);
         await SpendCredentialAttemptsAsync(guesser, guessToken, PermitLimit);
-        Assert.Equal(HttpStatusCode.TooManyRequests, (await guesser.SendAsync(PostWithToken("/Account/Login", guessToken))).StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, await GuessAsync(guesser, guessToken));
 
         Assert.Equal(HttpStatusCode.BadRequest, (await session.Client.PostAsync("/Account/Logout", null)).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await session.Client.SendAsync(PostWithToken("/Account/Logout", "invalid"))).StatusCode);
@@ -115,7 +114,7 @@ public sealed class CsrfAndSignOutTests(VaultFixture vault)
         Assert.Null(session.SessionCookie);
         await UiApiFailureContractTests.AssertProblemAsync(
             await vault.CreateSession(copied).Client.GetAsync("/api/ui/me"), 401, "unauthenticated");
-        Assert.Equal(HttpStatusCode.TooManyRequests, (await guesser.SendAsync(PostWithToken("/Account/Login", guessToken))).StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, await GuessAsync(guesser, guessToken));
     }
 
     [Fact]
@@ -125,16 +124,16 @@ public sealed class CsrfAndSignOutTests(VaultFixture vault)
         var original = await vault.SignInNewAccountAsync("it-sign-out-budget", IPAddress.Parse("198.51.100.92"));
         var session = vault.CreateSession(Assert.IsType<Cookie>(original.SessionCookie), IPAddress.Parse("198.51.100.93"));
         var guesser = vault.CreateSession(source: IPAddress.Parse("198.51.100.93")).Client;
-        var guessToken = VaultFixture.FormTokenOf(await guesser.GetStringAsync("/Account/Login"), "/Account/Login");
+        var guessToken = await SignInDocument.TokenAsync(guesser);
         var statuses = await SpendCredentialAttemptsAsync(guesser, guessToken, PermitLimit - 1);
         Assert.Equal(PermitLimit - 1, statuses.Length);
-        Assert.All(statuses, status => Assert.Equal(HttpStatusCode.OK, status));
+        Assert.All(statuses, status => Assert.Equal(HttpStatusCode.BadRequest, status));
         var token = XsrfCookieOf(await session.Client.GetAsync("/api/ui/me")).Value.ToString();
 
         Assert.Equal(HttpStatusCode.Redirect, (await session.Client.SendAsync(PostWithToken("/Account/Logout", token))).StatusCode);
         Assert.Null(session.SessionCookie);
-        Assert.Equal(HttpStatusCode.OK, (await guesser.SendAsync(PostWithToken("/Account/Login", guessToken))).StatusCode);
-        Assert.Equal(HttpStatusCode.TooManyRequests, (await guesser.SendAsync(PostWithToken("/Account/Login", guessToken))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, await GuessAsync(guesser, guessToken));
+        Assert.Equal(HttpStatusCode.TooManyRequests, await GuessAsync(guesser, guessToken));
     }
 
     [Fact]
@@ -152,28 +151,19 @@ public sealed class CsrfAndSignOutTests(VaultFixture vault)
         var statuses = new List<HttpStatusCode>();
         for (var attempt = 0; attempt < count; attempt++)
         {
-            using var response = await client.SendAsync(PostWithToken("/Account/Login", token));
-            statuses.Add(response.StatusCode);
+            statuses.Add(await GuessAsync(client, token));
         }
         return statuses.ToArray();
     }
 
-    private int PermitLimit => vault.Services.GetRequiredService<IOptions<AuthThrottleOptions>>().Value.PermitLimit;
-
-    [Fact]
-    public async Task The_legacy_passkey_calls_still_send_the_page_token_in_the_same_header()
+    private static async Task<HttpStatusCode> GuessAsync(HttpClient client, string token)
     {
-        var admin = await vault.AdminClientAsync();
-        var token = XsrfCookieOf(await admin.GetAsync("/api/ui/me")).Value.ToString();
-
-        var refused = await admin.PostAsync("/Account/PasskeyLoginBegin", content: null);
-        var accepted = await admin.SendAsync(PostWithToken("/Account/PasskeyLoginBegin", token));
-
-        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
-        Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
-        Assert.Equal("application/json", accepted.Content.Headers.ContentType?.MediaType);
-        Assert.True((await accepted.Content.ReadFromJsonAsync<JsonElement>()).TryGetProperty("challenge", out _));
+        using var response = await UiApiRequest.SendWithTokenAsync(client, token, HttpMethod.Post, "/api/ui/auth/password",
+            JsonContent.Create(new { username = "it-csrf-no-such-account", password = "It-guess-2026!" }));
+        return response.StatusCode;
     }
+
+    private int PermitLimit => vault.Services.GetRequiredService<IOptions<AuthThrottleOptions>>().Value.PermitLimit;
 
     private static SetCookieHeaderValue XsrfCookieOf(HttpResponseMessage response)
     {

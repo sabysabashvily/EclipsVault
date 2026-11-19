@@ -2,8 +2,10 @@ import { test, expect } from '../fixtures';
 
 // Intentionally failing tests, run only by e2e:verify-guards. The driver checks that each failed
 // specifically in the shared browser-health fixture, rather than accepting any nonzero exit.
+// The inline-script probes use a Legacy page: on an Angular document, Trusted Types refuses the
+// script's text before script-src can, which is a different violation.
 test('CSP violation', async ({ page }) => {
-  await page.goto('/Account/Login');
+  await page.goto('/Account/Recover');
   await page.evaluate(
     () =>
       new Promise<void>((resolve) => {
@@ -17,7 +19,7 @@ test('CSP violation', async ({ page }) => {
 });
 
 test('an expected CSP violation excuses nothing else', async ({ browserHealth, page }) => {
-  await page.goto('/Account/Login');
+  await page.goto('/Account/Recover');
   browserHealth.expectCspViolation({
     effectiveDirective: 'script-src-elem',
     blockedURI: 'inline',

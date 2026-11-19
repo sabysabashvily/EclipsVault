@@ -212,13 +212,12 @@ describe('UsersPage', () => {
     const { fixture, dialog } = await prompted('sign_in');
     document.cookie = 'XSRF-TOKEN=step-up-sign-out; path=/';
     button(dialog, 'Sign in again').click();
-    const logout = backend.expectOne('/Account/Logout');
+    const logout = backend.expectOne('/api/ui/auth/sign-out');
     expect(logout.request.headers.get('RequestVerificationToken')).toBe('step-up-sign-out');
     expect(assign).not.toHaveBeenCalled();
     logout.flush('');
     await fixture.whenStable();
     expect(assign).toHaveBeenCalledExactlyOnceWith('/Account/Login?ReturnUrl=%2FAdmin%2FUsers');
-    expect(dialog.hasAttribute('open')).toBe(false);
     backend.expectNone(`${path}/enable`);
     document.cookie = 'XSRF-TOKEN=; path=/; max-age=0';
   });
@@ -226,7 +225,9 @@ describe('UsersPage', () => {
   it('a failed sign-out keeps sign-in step-up open with a retryable error', async () => {
     const { fixture, dialog } = await prompted('sign_in');
     button(dialog, 'Sign in again').click();
-    backend.expectOne('/Account/Logout').flush('', { status: 503, statusText: 'Unavailable' });
+    backend
+      .expectOne('/api/ui/auth/sign-out')
+      .flush('', { status: 503, statusText: 'Unavailable' });
     await fixture.whenStable();
     expect(dialog.textContent).toContain('Could not sign out. Reload the page to try again.');
     expect(dialog.hasAttribute('open')).toBe(true);
@@ -289,5 +290,18 @@ describe('UsersPage', () => {
     backend.expectOne('/api/ui/users').flush({ users: [colleague] });
     await fixture.whenStable();
     expect(page.querySelector('.flash-error')?.textContent).toBe('The server outcome.');
+  });
+  it('leaves for sign-in with the unrecorded warning after signing yourself out without a record', async () => {
+    const { fixture, page } = await loaded({ ...colleague, isYou: true });
+    button(page, 'Force logout').click();
+    await fixture.whenStable();
+    button(page, 'Continue').click();
+    backend
+      .expectOne(`${path}/sign-out`)
+      .flush(
+        { code: 'revoked_unrecorded', title: 'The server outcome.' },
+        { status: 503, statusText: 'Unavailable' },
+      );
+    expect(assign).toHaveBeenCalledExactlyOnceWith('/Account/Login?signOut=revoked_unrecorded');
   });
 });

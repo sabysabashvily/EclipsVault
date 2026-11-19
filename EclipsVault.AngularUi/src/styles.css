@@ -2240,3 +2240,188 @@ fieldset {
 #users-table .cell-actions > app-row-menu {
   margin-left: 0.4rem;
 }
+
+/* ---- Sign-in pages -------------------------------------------------------- */
+/* Copied from the Legacy site.css auth rules, so the sign-in pages keep their Legacy look. */
+.auth-body {
+  background:
+    radial-gradient(ellipse 70% 50% at 50% -10%, rgba(255, 159, 10, 0.1), transparent 70%),
+    var(--bg);
+}
+
+.auth-wrap {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  gap: 1.2rem;
+}
+
+.auth-brand {
+  font-size: 1.35rem;
+  padding: 0;
+}
+
+/* The routed page lays out as the card it holds, as the Legacy page's own section did. */
+.auth-wrap > router-outlet {
+  display: none;
+}
+.auth-page {
+  display: contents;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 2rem 2.1rem;
+  box-shadow: var(--shadow-lg);
+  animation: content-in 380ms var(--ease);
+}
+.auth-card h1 {
+  font-size: 1.3rem;
+  margin-bottom: 0.45rem;
+}
+.auth-card > .muted {
+  margin-top: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.auth-card form {
+  margin-top: 1.4rem;
+}
+
+.footnote {
+  color: var(--text-faint);
+  font-size: 0.8rem;
+  margin: 1rem 0 0;
+  line-height: 1.5;
+}
+.auth-footnote {
+  color: var(--text-faint);
+  font-size: 0.78rem;
+}
+
+.auth-wrap .flash {
+  width: 100%;
+  max-width: 440px;
+  margin-bottom: 0;
+}
+.flash-info {
+  border-left-color: var(--accent);
+}
+
+/* Step indicator for the multi-step sign-in. */
+.step-track {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 1.1rem;
+}
+.step {
+  height: 3px;
+  flex: 1;
+  border-radius: 2px;
+  background: var(--border-strong);
+  transition: background var(--dur) var(--ease);
+}
+.step.active {
+  background: var(--accent);
+}
+.step.done {
+  background: var(--accent-press);
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin: 1.3rem 0 1rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.passkey-status.status-error {
+  color: var(--danger);
+}
+
+input.code-input {
+  font-family: var(--mono);
+  font-size: 1.5rem;
+  letter-spacing: 0.5em;
+  text-align: center;
+  padding-left: 0.5em;
+}
+
+.totp-secret {
+  margin: 1.2rem 0;
+}
+.totp-qr {
+  display: block;
+  width: 216px;
+  height: 216px;
+  padding: 12px;
+  background: #fff;
+  border-radius: var(--radius);
+  margin: 0.5rem auto 1rem;
+  image-rendering: pixelated;
+  box-shadow: var(--shadow);
+}
+.secret-code {
+  display: block;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 0.9rem;
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  word-break: break-all;
+  margin: 0.4rem 0 1rem;
+}
+
+/* Shows the icon of the theme a click switches to: a sun in dark mode, a moon in light. */
+.icon-button {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 0.4rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+.icon-button svg {
+  width: 17px;
+  height: 17px;
+}
+.icon-button:hover {
+  background: var(--bg-hover);
+  color: var(--danger);
+}
+.theme-toggle .icon-moon {
+  display: none;
+}
+:root[data-theme='light'] .theme-toggle .icon-sun {
+  display: none;
+}
+:root[data-theme='light'] .theme-toggle .icon-moon {
+  display: inline;
+}
+.auth-theme-toggle {
+  position: absolute;
+  top: 1.2rem;
+  right: 1.2rem;
+}

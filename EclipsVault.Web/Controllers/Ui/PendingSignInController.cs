@@ -36,6 +36,7 @@ public sealed class PendingSignInController(
     [RequestSizeLimit(4096)]
     [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status400BadRequest, "application/problem+json")]
     [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
+    [ProducesResponseType<SignInRedirectResponse>(StatusCodes.Status200OK, "application/json")]
     public async Task<ActionResult<SignInRedirectResponse>> Totp([FromBody] AuthenticatorCodeRequest request, CancellationToken ct)
     {
         if (PendingSignIn() is not (var userId, var stamp))
@@ -71,6 +72,7 @@ public sealed class PendingSignInController(
     [RequestSizeLimit(4096)]
     [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status400BadRequest, "application/problem+json")]
     [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
+    [ProducesResponseType<RecoveryCodeSignInResponse>(StatusCodes.Status200OK, "application/json")]
     public async Task<ActionResult<RecoveryCodeSignInResponse>> RecoveryCode([FromBody] RecoveryCodeSignInRequest request, CancellationToken ct)
     {
         if (PendingSignIn() is not (var userId, var stamp))
@@ -103,6 +105,7 @@ public sealed class PendingSignInController(
 
     /// <summary>The authenticator a first sign-in enrolls. Writes no audit row.</summary>
     [HttpPost("enrollment")]
+    [ProducesResponseType<TotpEnrollmentResponse>(StatusCodes.Status200OK, "application/json")]
     public async Task<ActionResult<TotpEnrollmentResponse>> BeginEnrollment(CancellationToken ct)
     {
         if (PendingSignIn() is not (var userId, var stamp))
@@ -127,6 +130,7 @@ public sealed class PendingSignInController(
     [RequestSizeLimit(4096)]
     [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status400BadRequest, "application/problem+json")]
     [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
+    [ProducesResponseType<SignInRedirectResponse>(StatusCodes.Status200OK, "application/json")]
     public async Task<ActionResult<SignInRedirectResponse>> ConfirmEnrollment([FromBody] AuthenticatorCodeRequest request, CancellationToken ct)
     {
         if (PendingSignIn() is not (var userId, var stamp))
