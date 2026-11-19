@@ -238,6 +238,8 @@ test('an empty reason is refused in the Legacy words without filing', async ({
   page,
   browserHealth,
 }) => {
+  // The vault refuses the filing itself, which the browser logs as an error.
+  browserHealth.expectConsoleError({ text: /status of 409/, url: /\/api\/ui\/access-requests$/ });
   const refused = await fileRequest(page, browserHealth, rejected, '');
 
   await expect(refused.error).toHaveText('Add a short reason so a reviewer can decide.');
