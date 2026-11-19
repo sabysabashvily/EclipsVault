@@ -48,6 +48,7 @@ export default defineConfig({
             '**/theme-foundation.spec.ts',
             '**/overview.spec.ts',
             '**/secrets.spec.ts',
+            '**/dynamic-secrets.spec.ts',
           ],
           use: { ...devices['Desktop Chrome'] },
         },
@@ -98,6 +99,13 @@ export default defineConfig({
           use: { ...devices['Desktop Chrome'] },
         },
         {
+          // Needs the administrator session that sign-in saves and its authenticator.
+          name: 'dynamic-secrets',
+          testMatch: '**/dynamic-secrets.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
           name: 'audit',
           testMatch: '**/audit.spec.ts',
           dependencies: ['chromium'],
@@ -105,11 +113,18 @@ export default defineConfig({
         },
         {
           // Users ends with the administrator's own Force logout, which ends the saved session that
-          // Networks, Notifications, License, Encryption keys, the Audit log, the Overview and Secrets
-          // reuse, so they run first.
+          // Networks, Notifications, License, Encryption keys, the Audit log, the Overview, Secrets and
+          // Dynamic secrets reuse, so they run first.
           name: 'users',
           testMatch: '**/users.spec.ts',
-          dependencies: ['license', 'encryption', 'audit', 'overview', 'secrets'],
+          dependencies: [
+            'license',
+            'encryption',
+            'audit',
+            'overview',
+            'secrets',
+            'dynamic-secrets',
+          ],
           use: { ...devices['Desktop Chrome'] },
         },
         {

@@ -55,13 +55,13 @@ export class AuditLog {
     await this.page.goto('/');
     await this.page.getByRole('link', { name: link }).click();
   }
-  async fromSidebar(path: '/DynamicSecrets' | '/Access'): Promise<void> {
+  async fromSidebar(path: '/Account/Denied' | '/Access'): Promise<void> {
     await this.page.goto(path);
     // The Angular sidebar folds its administration pages into a group; the Legacy one lists them.
     if (path === '/Access') await new AppShell(this.page).administration.click();
     await this.page.getByRole('link', { name: 'Audit log', exact: true }).click();
   }
-  async fromPalette(path: '/DynamicSecrets' | '/Access'): Promise<void> {
+  async fromPalette(path: '/Account/Denied' | '/Access'): Promise<void> {
     await this.page.goto(path);
     await openPalette(this.page);
     await this.page.getByRole('combobox').fill('Audit log');

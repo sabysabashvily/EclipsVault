@@ -58,6 +58,10 @@ public static class AngularUiRoutes
         "/Secrets/Index",
         "/Secrets/Create",
 
+        // Dynamic secrets
+        "/DynamicSecrets",
+        "/DynamicSecrets/Index",
+
         // Shared by me
         "/Secrets/SharedByMe",
 

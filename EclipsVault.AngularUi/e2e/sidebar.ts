@@ -123,9 +123,10 @@ export async function verifySidebar(
         secure: true,
       },
     ]);
-    const legacy = await page.goto('/DynamicSecrets');
+    const legacy = await page.goto('/Account/Denied');
     expect(legacy?.headers()['content-security-policy']).not.toContain('trusted-types');
-    await expect(page.locator('.sidenav a.active')).toHaveText('Dynamic secrets');
+    // Access denied is in no sidebar entry, so the Legacy document marks none active.
+    await expect(page.locator('.sidenav a.active')).toHaveCount(0);
     // Compare the Legacy styles in the same selected state as My access. The real active states
     // of both documents are asserted separately; the deleted Razor page is no longer a reference.
     await page.locator('.sidenav').evaluate((nav) => {
@@ -227,16 +228,10 @@ export async function verifySidebar(
   await expect(page.locator('.sidenav a.active')).toHaveText('My access');
   expect(documents).toEqual([]);
 
-  // Legacy links replace the document. The return link reuses the same authenticated session.
-  const legacyDocument = page.waitForResponse((response) =>
-    response.request().isNavigationRequest(),
-  );
-  await page.getByRole('link', { name: 'Dynamic secrets', exact: true }).click();
-  expect((await legacyDocument).headers()['content-security-policy']).not.toContain(
-    'trusted-types',
-  );
-  await expect(page).toHaveURL(/\/DynamicSecrets$/);
-  await expect(page.getByRole('heading', { name: 'Dynamic secrets', exact: true })).toBeVisible();
+  // A Legacy document's sidebar link replaces the document. The return reuses the same session.
+  const legacyDocument = await page.goto('/Account/Denied');
+  expect(legacyDocument?.headers()['content-security-policy']).not.toContain('trusted-types');
+  await expect(page.getByRole('heading', { name: 'Access denied', exact: true })).toBeVisible();
   await page.getByText('Access', { exact: true }).click();
   const angularDocument = page.waitForResponse((response) =>
     response.request().isNavigationRequest(),
@@ -247,7 +242,7 @@ export async function verifySidebar(
   );
   await expect(page).toHaveURL(/\/Access$/);
   await expect(page.locator('.sidenav a.active')).toHaveText('My access');
-  expect(documents.map((url) => new URL(url).pathname)).toEqual(['/DynamicSecrets', '/Access']);
+  expect(documents.map((url) => new URL(url).pathname)).toEqual(['/Account/Denied', '/Access']);
   expect(signInRequests).toEqual([]);
   expect(
     (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')?.value,

@@ -51,7 +51,7 @@ test('the outbox shows the provisioning email this run delivered', async ({ page
 test('the Legacy sidebar opens Notifications', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const notifications = new Notifications(page);
-  await notifications.fromSidebar('/DynamicSecrets');
+  await notifications.fromSidebar('/Account/Denied');
   await expect(notifications.heading).toBeVisible();
   await expect(page).toHaveURL(/\/Notifications$/);
 });
@@ -67,7 +67,7 @@ test('the Angular sidebar opens Notifications', async ({ page }) => {
 test('the palette in the Legacy shell opens Notifications', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const notifications = new Notifications(page);
-  await notifications.fromPalette('/DynamicSecrets');
+  await notifications.fromPalette('/Account/Denied');
   await expect(notifications.heading).toBeVisible();
 });
 

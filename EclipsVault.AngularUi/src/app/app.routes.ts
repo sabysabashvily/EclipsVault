@@ -52,6 +52,8 @@ const encryption = () => import('./encryption/encryption-page').then((m) => m.En
 const audit = () => import('./audit/audit-page').then((m) => m.AuditPage);
 const overview = () => import('./overview/overview-page').then((m) => m.OverviewPage);
 const secrets = () => import('./secrets/secrets-page').then((m) => m.SecretsPage);
+const dynamicSecrets = () =>
+  import('./dynamic-secrets/dynamic-secrets-page').then((m) => m.DynamicSecretsPage);
 
 export const routes: Routes = [
   { path: '', pathMatch: 'full', loadComponent: overview, title: 'Overview — EclipsVault' },
@@ -138,6 +140,16 @@ export const routes: Routes = [
     matcher: legacyPath('Secrets/Create'),
     loadComponent: () => import('./secrets/new-secret-page').then((m) => m.NewSecretPage),
     title: 'New secret — EclipsVault',
+  },
+  {
+    matcher: legacyPath('DynamicSecrets'),
+    loadComponent: dynamicSecrets,
+    title: 'Dynamic secrets — EclipsVault',
+  },
+  {
+    matcher: legacyPath('DynamicSecrets/Index'),
+    loadComponent: dynamicSecrets,
+    title: 'Dynamic secrets — EclipsVault',
   },
   {
     matcher: legacyPath('Secrets/SharedByMe'),

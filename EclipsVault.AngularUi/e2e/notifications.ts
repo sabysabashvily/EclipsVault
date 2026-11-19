@@ -32,13 +32,13 @@ export class Notifications {
   subject(recipient: string, subject: string) {
     return this.row(recipient).getByRole('cell', { name: subject });
   }
-  async fromSidebar(path: '/DynamicSecrets' | '/Access'): Promise<void> {
+  async fromSidebar(path: '/Account/Denied' | '/Access'): Promise<void> {
     await this.page.goto(path);
     // The Angular sidebar folds its administration pages into a group; the Legacy one lists them.
     if (path === '/Access') await new AppShell(this.page).administration.click();
     await this.page.getByRole('link', { name: 'Notifications', exact: true }).click();
   }
-  async fromPalette(path: '/DynamicSecrets' | '/Access'): Promise<void> {
+  async fromPalette(path: '/Account/Denied' | '/Access'): Promise<void> {
     await this.page.goto(path);
     await openPalette(this.page);
     await this.page.getByRole('combobox').fill('Notifications');
