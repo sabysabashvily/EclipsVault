@@ -1,4 +1,4 @@
-using EclipsVault.Core.Application.DynamicSecrets;
+using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Exceptions;
 

@@ -22,11 +22,10 @@ namespace EclipsVault.Infrastructure.Security;
 /// not strictly alphanumeric. No operator-supplied text is ever interpolated.
 ///
 /// The server it talks to is the <em>managed target</em> configured in
-/// <see cref="DynamicSecretTargetOptions"/> — never the vault's own database. It used to run these
-/// statements over the vault's <c>DbContext</c>, which quietly required the vault's own login to
-/// hold <c>ALTER ANY LOGIN</c>: a privilege that can re-password any principal on that instance,
-/// including on the server storing the audit trail. That made enabling this feature silently void
-/// the least-privilege property the threat model relies on to bound an application compromise.
+/// <see cref="DynamicSecretTargetOptions"/> — never the vault's own database. Running these statements
+/// as the vault's own login would require it to hold <c>ALTER ANY LOGIN</c>, a privilege that can
+/// re-password any principal on that instance, including on the server storing the audit trail. That
+/// would void the least-privilege property the threat model relies on to bound an application compromise.
 /// </summary>
 public sealed class SqlServerBackend : IDynamicSecretBackend, IManagedSecretBackend
 {

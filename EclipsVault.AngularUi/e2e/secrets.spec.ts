@@ -134,9 +134,11 @@ test('the sidebar opens the Secrets list in place, marking the new secret as exp
   expect(documents).toEqual([new URL(page.url()).pathname]);
 });
 
-test('both palettes find the secret by name, and Enter opens its details', async ({ page }) => {
-  await page.context().addCookies(await savedAdministratorCookies());
-  for (const shell of ['/Access', '/Account/Denied']) {
+for (const shell of ['/Access', '/Account/Denied']) {
+  test(`the palette on ${shell} finds the secret by name, and Enter opens its details`, async ({
+    page,
+  }) => {
+    await page.context().addCookies(await savedAdministratorCookies());
     await page.goto(shell);
     await openPalette(page);
     expect(await searchSecrets(page, 'E2e_Secrets_Cr')).toEqual({
@@ -146,8 +148,8 @@ test('both palettes find the secret by name, and Enter opens its details', async
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(detailsUrl);
     await expect(new SecretDetails(page, created.name).heading).toBeVisible();
-  }
-});
+  });
+}
 
 const destinations = {
   Overview: {
