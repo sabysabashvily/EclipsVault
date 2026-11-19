@@ -201,23 +201,27 @@ public class DynamicSecretServiceTests
         Assert.Empty(target.Logins);
     }
 
-    public static TheoryData<string, Exception> FailedCleanups => new()
+    public static TheoryData<string, int, Exception, Exception> FailedMintsWithFailedCleanups => new()
     {
-        { "the revocation statements fail", new InvalidOperationException("Cannot drop the login.") },
-        { "the revocation statements time out", new TimeoutException("The command timed out.") },
+        { "CREATE LOGIN's acknowledgement is lost; the revocation fails", 1, new IOException("The connection was reset."), new InvalidOperationException("Cannot drop the login.") },
+        { "CREATE LOGIN's acknowledgement is lost; the revocation times out", 1, new IOException("The connection was reset."), new TimeoutException("The command timed out.") },
+        { "CREATE USER fails; the revocation fails", 1, new InvalidOperationException("Cannot create the user."), new InvalidOperationException("Cannot drop the login.") },
+        { "CREATE USER fails; the revocation times out", 1, new InvalidOperationException("Cannot create the user."), new TimeoutException("The command timed out.") },
+        { "CREATE USER's acknowledgement is lost; the revocation fails", 2, new IOException("The connection was reset."), new InvalidOperationException("Cannot drop the login.") },
+        { "CREATE USER's acknowledgement is lost; the revocation times out", 2, new IOException("The connection was reset."), new TimeoutException("The command timed out.") },
     };
 
     [Theory]
-    [MemberData(nameof(FailedCleanups))]
+    [MemberData(nameof(FailedMintsWithFailedCleanups))]
     public async Task A_failed_mint_whose_cleanup_fails_names_the_login_that_may_remain_and_never_its_password(
-        string failure, Exception cleanupError)
+        string failure, int statementsThatRun, Exception backendError, Exception cleanupError)
     {
         var role = Role();
         var repository = new FakeLeaseRepository(role);
         var target = new FakeDynamicTarget
         {
-            StatementsThatRun = 1,
-            MintFailure = new InvalidOperationException("Cannot create the user."),
+            StatementsThatRun = statementsThatRun,
+            MintFailure = backendError,
             RevokeFailure = cleanupError,
         };
 
@@ -233,6 +237,28 @@ public class DynamicSecretServiceTests
         Assert.DoesNotContain(Assert.Single(target.Passwords), incomplete.ToString());
         Assert.Empty(repository.Leases);
         Assert.False(Assert.Single(target.RevokeTokens).CanBeCanceled, failure);
+    }
+
+    [Fact]
+    public async Task A_request_cancelled_mid_mint_whose_cleanup_fails_names_the_login_that_may_remain()
+    {
+        var role = Role();
+        var repository = new FakeLeaseRepository(role);
+        var cancelled = new CancellationToken(canceled: true);
+        var target = new FakeDynamicTarget
+        {
+            StatementsThatRun = 1,
+            MintFailure = new OperationCanceledException(cancelled),
+            RevokeFailure = new TimeoutException("The command timed out."),
+        };
+
+        var incomplete = await Assert.ThrowsAsync<MintIncompleteException>(
+            () => Build(repository, target).IssueAsync(role.Id, null, cancelled));
+
+        Assert.Equal(("phoenix_db_reader", Assert.Single(target.Logins)), (incomplete.RoleName, incomplete.Login));
+        Assert.DoesNotContain(Assert.Single(target.Passwords), incomplete.ToString());
+        Assert.Empty(repository.Leases);
+        Assert.False(Assert.Single(target.RevokeTokens).CanBeCanceled);
     }
 
     [Fact]

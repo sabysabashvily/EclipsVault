@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using EclipsVault.Core.Application.DynamicSecrets;
+using EclipsVault.Core.Application.Licensing;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
@@ -135,6 +136,58 @@ internal static class DynamicSecretsApi
         var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
         await db.DynamicSecretLeases.Where(lease => lease.Id == leaseId)
             .ExecuteUpdateAsync(lease => lease.SetProperty(l => l.ExpiresAtUtc, expiresAtUtc));
+    }
+
+    /// <summary>
+    /// Opens the dynamic-secrets evaluation window at a past moment. The suite cannot wait 30 days, so it
+    /// writes the start the licence gate reads; the change bypasses the vault, so it writes no audit row.
+    /// </summary>
+    public static async Task StartEvaluationAtAsync(VaultFixture vault, DateTimeOffset startedAtUtc)
+    {
+        using var scope = vault.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+        db.FeatureEvaluations.Add(new FeatureEvaluation { FeatureKey = LicenseFeatures.DynamicSecrets, StartedAtUtc = startedAtUtc });
+        await db.SaveChangesAsync();
+    }
+
+    public static async Task RemoveEvaluationAsync(VaultFixture vault)
+    {
+        using var scope = vault.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+        await db.FeatureEvaluations.Where(evaluation => evaluation.FeatureKey == LicenseFeatures.DynamicSecrets).ExecuteDeleteAsync();
+    }
+
+    /// <summary>
+    /// Stores <paramref name="count"/> Active leases on a role, a minute apart from <paramref name="firstIssuedAtUtc"/>,
+    /// and returns their ids oldest first. Far-future dates make them the newest in the vault and keep the sweep off them.
+    /// </summary>
+    public static async Task<Guid[]> StoreLeasesAsync(VaultFixture vault, Guid roleId, string roleName, int count, DateTimeOffset firstIssuedAtUtc)
+    {
+        using var scope = vault.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+        var leases = Enumerable.Range(0, count).Select(minute => new DynamicSecretLease
+        {
+            Id = Guid.NewGuid(),
+            RoleId = roleId,
+            RoleName = roleName,
+            UserId = Guid.NewGuid(),
+            Username = "it-dyn-newest",
+            CredentialIdentity = $"ev_{roleName}_{minute:D2}",
+            IssuedAtUtc = firstIssuedAtUtc.AddMinutes(minute),
+            ExpiresAtUtc = firstIssuedAtUtc.AddMinutes(minute + 60),
+            Status = LeaseStatus.Active,
+        }).ToArray();
+        db.DynamicSecretLeases.AddRange(leases);
+        await db.SaveChangesAsync();
+        return leases.Select(lease => lease.Id).ToArray();
+    }
+
+    /// <summary>Deletes a role's leases without the vault, so they leave no audit row and no sweep work.</summary>
+    public static async Task DeleteLeasesAsync(VaultFixture vault, Guid roleId)
+    {
+        using var scope = vault.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+        await db.DynamicSecretLeases.Where(lease => lease.RoleId == roleId).ExecuteDeleteAsync();
     }
 
     /// <summary>Runs the lease sweep once, as the worker does on its timer.</summary>

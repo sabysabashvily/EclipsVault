@@ -337,6 +337,28 @@ public sealed partial class DynamicSecretIssueTests(DynamicSecretsFixture fixtur
     }
 
     [Fact]
+    public async Task An_administrator_sees_the_fifty_newest_leases_newest_first()
+    {
+        var roleId = await DynamicSecretsApi.AddRoleAsync(vault, "it_dyn_newest");
+        var admin = await vault.AdminClientAsync();
+        var stored = await DynamicSecretsApi.StoreLeasesAsync(vault, roleId, "it_dyn_newest", 51, new DateTimeOffset(2100, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        try
+        {
+            var leases = (await DynamicSecretsApi.GetAsync(admin)).GetProperty("leases");
+
+            Assert.Equal(50, leases.GetArrayLength());
+            Assert.Equal(stored[50], leases[0].GetProperty("leaseId").GetGuid());
+            Assert.Equal(stored[1], leases[49].GetProperty("leaseId").GetGuid());
+            Assert.DoesNotContain(leases.EnumerateArray(), lease => lease.GetProperty("leaseId").GetGuid() == stored[0]);
+        }
+        finally
+        {
+            // Dated 2100, they would otherwise crowd every later test's lease out of the administrator's list.
+            await DynamicSecretsApi.DeleteLeasesAsync(vault, roleId);
+        }
+    }
+
+    [Fact]
     public async Task A_two_day_lease_stored_before_the_ceiling_stays_active_past_a_day_until_it_expires()
     {
         var roleId = await DynamicSecretsApi.AddRoleAsync(vault, "it_dyn_stored", defaultTtlMinutes: 2880, maxTtlMinutes: 2880);
@@ -430,5 +452,37 @@ public sealed class DynamicSecretsProductionWindowTests(ClosedProductionWindowFi
         await DynamicSecretsApi.AssertProblemAsync(refused, 403, "access_denied");
         Assert.Contains(await AuditTrail.RowsAfterAsync(vault, before),
             row => row.Action == AuditAction.SecretAccessDenied && row.ResourceId == roleId);
+    }
+}
+
+/// <summary>
+/// An unlicensed vault refuses new credentials once the evaluation has run out. This host never otherwise
+/// reaches the licence gate for dynamic secrets, so the window start the gate keeps for the process is this test's.
+/// </summary>
+[Collection(ClosedProductionWindowCollection.Name)]
+public sealed class DynamicSecretsLapsedEvaluationTests(ClosedProductionWindowFixture fixture)
+{
+    [Fact]
+    public async Task An_unlicensed_vault_past_its_evaluation_refuses_an_issue_with_the_licence_sentence_and_mints_nothing()
+    {
+        var vault = fixture.Vault;
+        var roleId = await DynamicSecretsApi.AddRoleAsync(vault, "it_dyn_lapsed");
+        var member = await vault.SignInNewAccountAsync("it-dyn-lapsed", IPAddress.Parse("10.172.0.40"));
+        await DynamicSecretsApi.StartEvaluationAtAsync(vault, DateTimeOffset.UtcNow.AddDays(-31));
+        try
+        {
+            using var refused = await DynamicSecretsApi.IssueAsync(member.Client, roleId);
+
+            var problem = await DynamicSecretsApi.AssertProblemAsync(refused, 402, "premium_not_licensed");
+            Assert.Equal(
+                "The 30-day evaluation period for dynamic secrets has ended. Issuing new credentials needs a licence — existing leases are unaffected and can still be revoked.",
+                problem.GetProperty("title").GetString());
+            Assert.Empty(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
+        }
+        finally
+        {
+            // Other tests on this host expect no evaluation to have started.
+            await DynamicSecretsApi.RemoveEvaluationAsync(vault);
+        }
     }
 }
