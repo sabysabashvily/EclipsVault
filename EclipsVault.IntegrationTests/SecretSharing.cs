@@ -5,7 +5,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace EclipsVault.IntegrationTests;
 
-internal static class LegacySharing
+/// <summary>Secrets and shares for tests: made through New secret, or put straight into the database where no screen can.</summary>
+internal static class SecretSharing
 {
     public static async Task<string> CreateSecretAsync(
         HttpClient admin, string name, string value = "it-share-audit-value", string sensitivity = "Internal",
@@ -18,29 +19,6 @@ internal static class LegacySharing
     }
 
     public static Guid SecretIdOf(string details) => Guid.Parse(details["/Secrets/Details/".Length..]);
-
-    public static async Task<HttpResponseMessage> ShareAsync(HttpClient issuer, string details, string recipient, string ttlDays = "0")
-    {
-        var page = await issuer.GetStringAsync(details);
-        return await issuer.PostAsync("/Secrets/Grant", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(page, details),
-            ["SecretId"] = SecretIdOf(details).ToString(),
-            ["GranteeUsernameOrEmail"] = recipient,
-            ["TtlDays"] = ttlDays,
-        }));
-    }
-
-    public static async Task<HttpResponseMessage> RevokeAsync(HttpClient issuer, string details, Guid shareId)
-    {
-        var page = await issuer.GetStringAsync(details);
-        return await issuer.PostAsync("/Secrets/RevokeGrant", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(page, details),
-            ["id"] = SecretIdOf(details).ToString(),
-            ["grantId"] = shareId.ToString(),
-        }));
-    }
 
     public static async Task<SecretGrant> ShareOfAsync(VaultFixture vault, string details)
     {

@@ -218,7 +218,7 @@ public class SecretGrantServiceTests
         var grants = new FakeGrants(grant: null) { ForRecipient = active };
         var service = SharingService(grants, Carol, SecretOf(SensitivityLevel.Internal));
 
-        var refused = await Assert.ThrowsAsync<SharingException>(
+        var refused = await Assert.ThrowsAsync<ShareExistsException>(
             () => service.GrantAsync(active.SecretId, "carol", ttlDays: null, CancellationToken.None));
 
         Assert.Equal("'carol' already has a grant on this secret.", refused.Message);
@@ -245,7 +245,7 @@ public class SecretGrantServiceTests
         var grants = new FakeGrants(grant: null) { SaveSucceeds = false };
         var service = SharingService(grants, Carol, SecretOf(SensitivityLevel.Internal));
 
-        var refused = await Assert.ThrowsAsync<SharingException>(
+        var refused = await Assert.ThrowsAsync<ShareExistsException>(
             () => service.GrantAsync(Guid.NewGuid(), "carol", ttlDays: null, CancellationToken.None));
 
         Assert.Equal("They already have a share on this secret.", refused.Message);

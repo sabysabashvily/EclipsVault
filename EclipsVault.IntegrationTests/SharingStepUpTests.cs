@@ -14,8 +14,6 @@ namespace EclipsVault.IntegrationTests;
 [Collection(VaultCollection.Name)]
 public sealed class SharingStepUpTests(VaultFixture vault)
 {
-    private const string StaleShareMessage = "Sharing a secret this sensitive needs a fresh sign-in.";
-
     [Fact]
     public async Task A_stale_session_approving_a_request_for_a_Secret_secret_is_asked_to_step_up_and_shares_nothing()
     {
@@ -55,16 +53,19 @@ public sealed class SharingStepUpTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task A_stale_session_sharing_a_Secret_secret_is_told_to_sign_in_again_and_shares_nothing()
+    public async Task A_stale_session_sharing_a_Secret_secret_is_asked_to_step_up_and_shares_nothing()
     {
         var (issuer, details) = await SecretToShareAsync("it-stepup-share-stale", "Secret", "10.169.0.7", "10.169.0.8");
         var stale = vault.CreateSession(SessionApi.WithStrongAuthenticationAt(vault, issuer, DateTimeOffset.UtcNow.AddMinutes(-11)), IPAddress.Parse("10.169.0.7"));
+        var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await LegacySharing.ShareAsync(stale.Client, details, "it-stepup-share-stale-recipient");
+        var response = await SecretDetailsApi.ShareAsync(stale.Client, details, "it-stepup-share-stale-recipient");
 
-        LegacySecretActions.AssertRedirectedTo(response, details);
-        Assert.False(await LegacySharing.HasAnyShareAsync(vault, details));
-        Assert.Contains(StaleShareMessage, await stale.Client.GetStringAsync(details));
+        var problem = await SecretsApi.AssertProblemAsync(response, 403, "step_up_required");
+        Assert.Equal(("Confirm it's you before sharing this secret.", "code"),
+            (problem.GetProperty("title").GetString(), problem.GetProperty("proof").GetString()));
+        Assert.False(await SecretSharing.HasAnyShareAsync(vault, details));
+        Assert.Empty(await SecretDetailsApi.ActionsAfterAsync(vault, before, details));
     }
 
     [Fact]
@@ -72,10 +73,10 @@ public sealed class SharingStepUpTests(VaultFixture vault)
     {
         var (issuer, details) = await SecretToShareAsync("it-stepup-share-fresh", "Secret", "10.169.0.9", "10.169.0.10");
 
-        var response = await LegacySharing.ShareAsync(issuer.Client, details, "it-stepup-share-fresh-recipient");
+        var response = await SecretDetailsApi.ShareAsync(issuer.Client, details, "it-stepup-share-fresh-recipient");
 
-        LegacySecretActions.AssertRedirectedTo(response, details);
-        Assert.True(await LegacySharing.HasAnyShareAsync(vault, details));
+        SecretDetailsApi.AssertNoContent(response);
+        Assert.True(await SecretSharing.HasAnyShareAsync(vault, details));
     }
 
     [Fact]
@@ -84,10 +85,10 @@ public sealed class SharingStepUpTests(VaultFixture vault)
         var (issuer, details) = await SecretToShareAsync("it-stepup-share-internal", "Internal", "10.169.0.11", "10.169.0.12");
         var stale = vault.CreateSession(SessionApi.WithStrongAuthenticationAt(vault, issuer, DateTimeOffset.UtcNow.AddMinutes(-11)), IPAddress.Parse("10.169.0.11"));
 
-        var response = await LegacySharing.ShareAsync(stale.Client, details, "it-stepup-share-internal-recipient");
+        var response = await SecretDetailsApi.ShareAsync(stale.Client, details, "it-stepup-share-internal-recipient");
 
-        LegacySecretActions.AssertRedirectedTo(response, details);
-        Assert.True(await LegacySharing.HasAnyShareAsync(vault, details));
+        SecretDetailsApi.AssertNoContent(response);
+        Assert.True(await SecretSharing.HasAnyShareAsync(vault, details));
     }
 
     /// <summary>A reviewer and a pending request for a GLOBAL secret, filed by a Secret-cleared account of another project.</summary>
@@ -102,7 +103,7 @@ public sealed class SharingStepUpTests(VaultFixture vault)
     private async Task<(VaultSession Issuer, string Details)> SecretToShareAsync(
         string name, string sensitivity, string issuerAddress, string recipientAddress)
     {
-        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), $"{name}-secret", sensitivity: sensitivity);
+        var details = await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), $"{name}-secret", sensitivity: sensitivity);
         var issuer = await vault.SignInNewAccountAsync($"{name}-reviewer", IPAddress.Parse(issuerAddress), ClearanceLevel.Secret);
         await vault.SignInNewAccountAsync($"{name}-recipient", IPAddress.Parse(recipientAddress), ClearanceLevel.Secret, "IT-STEPUP-ELSEWHERE");
         return (issuer, details);

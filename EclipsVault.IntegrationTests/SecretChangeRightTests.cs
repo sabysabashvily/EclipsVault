@@ -22,24 +22,22 @@ public sealed class SecretChangeRightTests(VaultFixture vault)
     public async Task A_share_recipients_change_is_refused_recorded_and_changes_nothing(string change, string address)
     {
         var admin = await vault.AdminClientAsync();
-        var details = await LegacySharing.CreateSecretAsync(admin, $"it-change-shared-{change}", value: "it-change-first-value");
-        var adminToken = await LegacySecretActions.FormTokenAsync(admin, details);
-        Assert.Equal(HttpStatusCode.Redirect, (await LegacySecretActions.RotateAsync(admin, details, adminToken, "it-change-stored-value")).StatusCode);
-        await LegacySecretActions.MakeManagedAsync(vault, details, "it_change_no_target");
+        var details = await SecretSharing.CreateSecretAsync(admin, $"it-change-shared-{change}", value: "it-change-first-value");
+        SecretDetailsApi.AssertNoContent(await SecretDetailsApi.RotateAsync(admin, details, "it-change-stored-value"));
+        await SecretDetailsApi.MakeManagedAsync(vault, details, "it_change_no_target");
         var recipient = await vault.SignInNewAccountAsync($"it-change-recipient-{change}", IPAddress.Parse(address), project: "IT-CHANGE-ELSEWHERE");
-        Assert.Equal(HttpStatusCode.Redirect, (await LegacySharing.ShareAsync(admin, details, $"it-change-recipient-{change}")).StatusCode);
-        var token = await LegacySecretActions.FormTokenAsync(recipient.Client, details);
+        SecretDetailsApi.AssertNoContent(await SecretDetailsApi.ShareAsync(admin, details, $"it-change-recipient-{change}"));
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await PressAsync(change, recipient.Client, details, token);
+        var response = await PressAsync(change, recipient.Client, details);
 
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/Account/Denied", response.Headers.Location?.AbsolutePath);
-        var denial = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before), row => row.ResourceId == LegacySharing.SecretIdOf(details));
+        var problem = await SecretsApi.AssertProblemAsync(response, 403, "not_permitted");
+        Assert.Equal("Only an administrator or a member of this secret's project can change it.", problem.GetProperty("title").GetString());
+        var denial = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before), row => row.ResourceId == SecretSharing.SecretIdOf(details));
         Assert.Equal((AuditAction.SecretAccessDenied, $"it-change-recipient-{change}", false), (denial.Action, denial.Username, denial.IsCritical));
         Assert.Contains(NotPermittedReason, denial.Details);
         Assert.Equal("it-change-stored-value", await UpstreamRotationTests.StoredValueAsync(vault, details));
-        Assert.Equal(1, await LegacySecretActions.VersionCountAsync(vault, details));
+        Assert.Equal(1, await SecretDetailsApi.VersionCountAsync(vault, details));
     }
 
     [Theory]
@@ -49,12 +47,12 @@ public sealed class SecretChangeRightTests(VaultFixture vault)
     [InlineData("administrator", "restore", null, "it-change-first-value")]
     public async Task A_project_members_and_an_administrators_new_value_is_stored(string role, string change, string? address, string storedAfter)
     {
-        var (changer, details, token) = await SecretWithAVersionAsync($"it-change-{role}-{change}", address);
+        var (changer, details) = await SecretWithAVersionAsync($"it-change-{role}-{change}", address);
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await PressAsync(change, changer, details, token);
+        var response = await PressAsync(change, changer, details);
 
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        SecretDetailsApi.AssertNoContent(response);
         Assert.DoesNotContain(await AuditTrail.RowsAfterAsync(vault, before), row => row.Action == AuditAction.SecretAccessDenied);
         Assert.Equal(storedAfter, await UpstreamRotationTests.StoredValueAsync(vault, details));
     }
@@ -64,36 +62,35 @@ public sealed class SecretChangeRightTests(VaultFixture vault)
     [InlineData("administrator", null)]
     public async Task A_project_members_and_an_administrators_delete_removes_the_secret(string role, string? address)
     {
-        var (changer, details, token) = await SecretWithAVersionAsync($"it-change-{role}-delete", address);
+        var (changer, details) = await SecretWithAVersionAsync($"it-change-{role}-delete", address);
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await LegacySecretActions.DeleteAsync(changer, details, token);
+        var response = await SecretDetailsApi.DeleteAsync(changer, details);
 
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        SecretDetailsApi.AssertNoContent(response);
         Assert.DoesNotContain(await AuditTrail.RowsAfterAsync(vault, before), row => row.Action == AuditAction.SecretAccessDenied);
-        Assert.False(await LegacySecretActions.ExistsAsync(vault, details));
+        Assert.False(await SecretDetailsApi.ExistsAsync(vault, details));
     }
 
     /// <summary>
     /// A GLOBAL secret with one archived version, and the client that changes it: the administrator's when
     /// <paramref name="address"/> is null, otherwise a new GLOBAL member's signed in from that address.
     /// </summary>
-    private async Task<(HttpClient Changer, string Details, string Token)> SecretWithAVersionAsync(string name, string? address)
+    private async Task<(HttpClient Changer, string Details)> SecretWithAVersionAsync(string name, string? address)
     {
         var admin = await vault.AdminClientAsync();
-        var details = await LegacySharing.CreateSecretAsync(admin, name, value: "it-change-first-value");
-        var adminToken = await LegacySecretActions.FormTokenAsync(admin, details);
-        Assert.Equal(HttpStatusCode.Redirect, (await LegacySecretActions.RotateAsync(admin, details, adminToken, "it-change-stored-value")).StatusCode);
+        var details = await SecretSharing.CreateSecretAsync(admin, name, value: "it-change-first-value");
+        SecretDetailsApi.AssertNoContent(await SecretDetailsApi.RotateAsync(admin, details, "it-change-stored-value"));
         var changer = address is null ? admin : (await vault.SignInNewAccountAsync(name, IPAddress.Parse(address))).Client;
-        return (changer, details, await LegacySecretActions.FormTokenAsync(changer, details));
+        return (changer, details);
     }
 
-    private async Task<HttpResponseMessage> PressAsync(string change, HttpClient client, string details, string token) => change switch
+    private async Task<HttpResponseMessage> PressAsync(string change, HttpClient client, string details) => change switch
     {
-        "rotate" => await LegacySecretActions.RotateAsync(client, details, token, "it-change-new-value"),
-        "rotate-upstream" => await LegacySecretActions.RotateUpstreamAsync(client, details, token),
-        "restore" => await LegacySecretActions.RestoreAsync(client, details, token, await LegacySecretActions.NewestVersionAsync(vault, details)),
-        "delete" => await LegacySecretActions.DeleteAsync(client, details, token),
+        "rotate" => await SecretDetailsApi.RotateAsync(client, details, "it-change-new-value"),
+        "rotate-upstream" => await SecretDetailsApi.RotateUpstreamAsync(client, details),
+        "restore" => await SecretDetailsApi.RestoreAsync(client, details, await SecretDetailsApi.NewestVersionAsync(vault, details)),
+        "delete" => await SecretDetailsApi.DeleteAsync(client, details),
         _ => throw new ArgumentOutOfRangeException(nameof(change)),
     };
 }

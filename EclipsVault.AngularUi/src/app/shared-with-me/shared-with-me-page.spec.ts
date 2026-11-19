@@ -128,7 +128,7 @@ describe('SharedWithMePage', () => {
     ]);
   });
 
-  it('opens each shared secret on its Legacy details page', async () => {
+  it('opens each shared secret on its details page', async () => {
     const { fixture, page } = render();
     backend.expectOne('/api/ui/shared-with-me').flush({ shares: [share, withoutExpiry] });
     await fixture.whenStable();

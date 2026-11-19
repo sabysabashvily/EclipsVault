@@ -21,14 +21,15 @@ public sealed class SecretRecordingTests(VaultFixture vault)
     [Fact]
     public async Task A_refused_details_page_records_one_access_denial_and_no_view()
     {
-        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-recording-refused-page", sensitivity: "Secret");
+        var details = await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-recording-refused-page", sensitivity: "Secret");
         var member = await vault.SignInNewAccountAsync("it-recording-refused-page", IPAddress.Parse("10.166.0.1"));
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await member.Client.GetAsync(details);
+        var response = await SecretDetailsApi.GetAsync(member.Client, details);
 
-        LegacySecretActions.AssertRedirectedTo(response, $"/Account/Denied?secretId={LegacySharing.SecretIdOf(details)}");
-        var denial = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before), row => row.ResourceId == LegacySharing.SecretIdOf(details));
+        var problem = await SecretsApi.AssertProblemAsync(response, 403, "access_denied");
+        Assert.Equal([ClearanceReason], problem.GetProperty("reasons").EnumerateArray().Select(reason => reason.GetString()));
+        var denial = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before), row => row.ResourceId == SecretSharing.SecretIdOf(details));
         Assert.Equal(
             (AuditAction.SecretAccessDenied, "it-recording-refused-page", "it-recording-refused-page", false),
             (denial.Action, denial.Username, denial.ResourceName, denial.IsCritical));
@@ -39,16 +40,16 @@ public sealed class SecretRecordingTests(VaultFixture vault)
     public async Task A_refused_public_api_read_records_one_access_denial_and_no_view()
     {
         var admin = await vault.AdminClientAsync();
-        var details = await LegacySharing.CreateSecretAsync(admin, "it-recording-refused-api", sensitivity: "Secret");
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-recording-refused-api", sensitivity: "Secret");
         var service = vault.CreateSession(source: IPAddress.Parse("10.166.0.2")).Client;
         service.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await vault.IssueApiKeyAsync(admin, "it-recording-refused-api"));
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await service.GetAsync($"/api/v1/secrets/{LegacySharing.SecretIdOf(details)}");
+        var response = await service.GetAsync($"/api/v1/secrets/{SecretSharing.SecretIdOf(details)}");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Contains(ClearanceReason, await response.Content.ReadAsStringAsync());
-        var denial = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before), row => row.ResourceId == LegacySharing.SecretIdOf(details));
+        var denial = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before), row => row.ResourceId == SecretSharing.SecretIdOf(details));
         Assert.Equal((AuditAction.SecretAccessDenied, "it-recording-refused-api", false), (denial.Action, denial.Username, denial.IsCritical));
         Assert.Contains(ClearanceReason, denial.Details);
     }
@@ -56,9 +57,9 @@ public sealed class SecretRecordingTests(VaultFixture vault)
     [Fact]
     public async Task A_refusal_appears_in_the_refused_accounts_own_overview_without_the_secrets_name()
     {
-        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-recording-unnamed-overview-secret", sensitivity: "Secret");
+        var details = await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-recording-unnamed-overview-secret", sensitivity: "Secret");
         var member = await vault.SignInNewAccountAsync("it-recording-unnamed-overview", IPAddress.Parse("10.166.0.3"));
-        Assert.Equal(HttpStatusCode.Redirect, (await member.Client.GetAsync(details)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await SecretDetailsApi.GetAsync(member.Client, details)).StatusCode);
 
         var ownOverview = await member.Client.GetFromJsonAsync<OverviewResponse>("/api/ui/overview");
 
@@ -69,9 +70,9 @@ public sealed class SecretRecordingTests(VaultFixture vault)
     [Fact]
     public async Task A_refusal_appears_in_the_refused_accounts_own_activity_without_the_secrets_name()
     {
-        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-recording-unnamed-activity-secret", sensitivity: "Secret");
+        var details = await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-recording-unnamed-activity-secret", sensitivity: "Secret");
         var member = await vault.SignInNewAccountAsync("it-recording-unnamed-activity", IPAddress.Parse("10.166.0.6"));
-        Assert.Equal(HttpStatusCode.Redirect, (await member.Client.GetAsync(details)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await SecretDetailsApi.GetAsync(member.Client, details)).StatusCode);
 
         var myActivity = await member.Client.GetFromJsonAsync<ActivityResponse>("/api/ui/activity");
 
@@ -82,9 +83,9 @@ public sealed class SecretRecordingTests(VaultFixture vault)
     [Fact]
     public async Task A_refusal_appears_in_the_refused_accounts_data_export_without_the_secrets_name()
     {
-        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-recording-unnamed-export-secret", sensitivity: "Secret");
+        var details = await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-recording-unnamed-export-secret", sensitivity: "Secret");
         var member = await vault.SignInNewAccountAsync("it-recording-unnamed-export", IPAddress.Parse("10.166.0.7"));
-        Assert.Equal(HttpStatusCode.Redirect, (await member.Client.GetAsync(details)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await SecretDetailsApi.GetAsync(member.Client, details)).StatusCode);
 
         var export = await UiApiRequest.WriteWithAntiforgeryAsync(member, HttpMethod.Post, "/api/ui/data/export");
 
@@ -100,74 +101,70 @@ public sealed class SecretRecordingTests(VaultFixture vault)
     public async Task An_allowed_details_page_records_one_view()
     {
         var admin = await vault.AdminClientAsync();
-        var details = await LegacySharing.CreateSecretAsync(admin, "it-recording-viewed");
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-recording-viewed");
         var before = await AuditTrail.HeadAsync(vault);
 
-        Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync(details)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await SecretDetailsApi.GetAsync(admin, details)).StatusCode);
 
-        Assert.Equal([AuditAction.SecretMetadataViewed], await LegacySecretActions.ActionsAfterAsync(vault, before, details));
+        Assert.Equal([AuditAction.SecretMetadataViewed], await SecretDetailsApi.ActionsAfterAsync(vault, before, details));
     }
 
     [Fact]
     public async Task A_reveal_records_only_the_reveal()
     {
         var admin = await vault.AdminClientAsync();
-        var details = await LegacySharing.CreateSecretAsync(admin, "it-recording-revealed");
-        var token = await LegacySecretActions.FormTokenAsync(admin, details);
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-recording-revealed");
         var before = await AuditTrail.HeadAsync(vault);
 
-        Assert.Equal(HttpStatusCode.OK, (await LegacySecretActions.RevealAsync(admin, details, token)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await SecretDetailsApi.RevealAsync(admin, details)).StatusCode);
 
-        Assert.Equal([AuditAction.SecretRevealed], await LegacySecretActions.ActionsAfterAsync(vault, before, details));
+        Assert.Equal([AuditAction.SecretRevealed], await SecretDetailsApi.ActionsAfterAsync(vault, before, details));
     }
 
     [Fact]
     public async Task A_public_api_read_records_only_the_reveal()
     {
         var admin = await vault.AdminClientAsync();
-        var details = await LegacySharing.CreateSecretAsync(admin, "it-recording-api-revealed", value: "it-recording-api-value");
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-recording-api-revealed", value: "it-recording-api-value");
         var service = vault.CreateSession(source: IPAddress.Parse("10.166.0.4")).Client;
         service.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await vault.IssueApiKeyAsync(admin, "it-recording-api-revealed"));
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await service.GetAsync($"/api/v1/secrets/{LegacySharing.SecretIdOf(details)}");
+        var response = await service.GetAsync($"/api/v1/secrets/{SecretSharing.SecretIdOf(details)}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("it-recording-api-value", await response.Content.ReadAsStringAsync());
-        Assert.Equal([AuditAction.SecretRevealed], await LegacySecretActions.ActionsAfterAsync(vault, before, details));
+        Assert.Equal([AuditAction.SecretRevealed], await SecretDetailsApi.ActionsAfterAsync(vault, before, details));
     }
 
     [Fact]
     public async Task A_stale_session_asked_to_step_up_before_a_reveal_records_nothing_for_the_secret()
     {
         var admin = await vault.AdminClientAsync();
-        var details = await LegacySharing.CreateSecretAsync(admin, "it-recording-step-up", sensitivity: "Secret");
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-recording-step-up", sensitivity: "Secret");
         var member = await vault.SignInNewAccountAsync("it-recording-step-up", IPAddress.Parse("10.166.0.5"), ClearanceLevel.Secret);
         var stale = vault.CreateSession(
             SessionApi.WithStrongAuthenticationAt(vault, member, DateTimeOffset.UtcNow.AddMinutes(-11)), IPAddress.Parse("10.166.0.5"));
-        var token = await LegacySecretActions.FormTokenAsync(stale.Client, details);
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await LegacySecretActions.RevealAsync(stale.Client, details, token);
+        var response = await SecretDetailsApi.RevealAsync(stale.Client, details);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("stepup-code", await response.Content.ReadAsStringAsync());
-        Assert.Empty(await LegacySecretActions.ActionsAfterAsync(vault, before, details));
+        await SecretsApi.AssertProblemAsync(response, 403, "step_up_required");
+        Assert.Empty(await SecretDetailsApi.ActionsAfterAsync(vault, before, details));
     }
 
     [Fact]
     public async Task A_restore_records_only_the_restore()
     {
         var admin = await vault.AdminClientAsync();
-        var details = await LegacySharing.CreateSecretAsync(admin, "it-recording-restored");
-        var token = await LegacySecretActions.FormTokenAsync(admin, details);
-        Assert.Equal(HttpStatusCode.Redirect, (await LegacySecretActions.RotateAsync(admin, details, token, "it-recording-second-value")).StatusCode);
-        var version = await LegacySecretActions.NewestVersionAsync(vault, details);
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-recording-restored");
+        SecretDetailsApi.AssertNoContent(await SecretDetailsApi.RotateAsync(admin, details, "it-recording-second-value"));
+        var version = await SecretDetailsApi.NewestVersionAsync(vault, details);
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await LegacySecretActions.RestoreAsync(admin, details, token, version);
+        var response = await SecretDetailsApi.RestoreAsync(admin, details, version);
 
-        LegacySecretActions.AssertRedirectedTo(response, details);
-        Assert.Equal([AuditAction.SecretVersionRestored], await LegacySecretActions.ActionsAfterAsync(vault, before, details));
+        SecretDetailsApi.AssertNoContent(response);
+        Assert.Equal([AuditAction.SecretVersionRestored], await SecretDetailsApi.ActionsAfterAsync(vault, before, details));
     }
 }

@@ -20,15 +20,14 @@ public sealed class UpstreamRotationTests(AuditFailureFixture failure)
         var admin = await vault.AdminClientAsync();
         var password = ManagedTargetLogins.NewPassword();
         await ManagedTargetLogins.CreateAsync(vault, "it_upstream_rotated", password);
-        var details = await LegacySharing.CreateSecretAsync(admin, "it-upstream-rotated", value: password);
-        await LegacySecretActions.MakeManagedAsync(vault, details, "it_upstream_rotated");
-        var token = await LegacySecretActions.FormTokenAsync(admin, details);
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-upstream-rotated", value: password);
+        await SecretDetailsApi.MakeManagedAsync(vault, details, "it_upstream_rotated");
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await LegacySecretActions.RotateUpstreamAsync(admin, details, token);
+        var response = await SecretDetailsApi.RotateUpstreamAsync(admin, details);
 
-        LegacySecretActions.AssertRedirectedTo(response, details);
-        Assert.Equal([AuditAction.SecretUpstreamRotated], await LegacySecretActions.ActionsAfterAsync(vault, before, details));
+        SecretDetailsApi.AssertNoContent(response);
+        Assert.Equal([AuditAction.SecretUpstreamRotated], await SecretDetailsApi.ActionsAfterAsync(vault, before, details));
         var stored = await StoredValueAsync(vault, details);
         Assert.NotEqual(password, stored);
         Assert.True(await ManagedTargetLogins.OpensWithAsync(vault, "it_upstream_rotated", stored));
@@ -40,16 +39,15 @@ public sealed class UpstreamRotationTests(AuditFailureFixture failure)
     {
         var vault = failure.Vault;
         var admin = await vault.AdminClientAsync();
-        var details = await LegacySharing.CreateSecretAsync(admin, "it-upstream-refused", value: "it-upstream-refused-value");
-        await LegacySecretActions.MakeManagedAsync(vault, details, "it_upstream_no_such_login");
-        var token = await LegacySecretActions.FormTokenAsync(admin, details);
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-upstream-refused", value: "it-upstream-refused-value");
+        await SecretDetailsApi.MakeManagedAsync(vault, details, "it_upstream_no_such_login");
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await LegacySecretActions.RotateUpstreamAsync(admin, details, token);
+        var response = await SecretDetailsApi.RotateUpstreamAsync(admin, details);
 
-        LegacySecretActions.AssertRedirectedTo(response, details);
-        Assert.Empty(await LegacySecretActions.ActionsAfterAsync(vault, before, details));
-        Assert.Contains("The backend refused the rotation. The credential is unchanged.", await admin.GetStringAsync(details));
+        var problem = await SecretsApi.AssertProblemAsync(response, 502, "upstream_refused");
+        Assert.Equal("The backend refused the rotation. The credential is unchanged.", problem.GetProperty("title").GetString());
+        Assert.Empty(await SecretDetailsApi.ActionsAfterAsync(vault, before, details));
         Assert.Equal("it-upstream-refused-value", await StoredValueAsync(vault, details));
     }
 
@@ -59,20 +57,19 @@ public sealed class UpstreamRotationTests(AuditFailureFixture failure)
         var vault = failure.Vault;
         var admin = await vault.AdminClientAsync();
         await ManagedTargetLogins.CreateAsync(vault, "it_upstream_restore", ManagedTargetLogins.NewPassword());
-        var details = await LegacySharing.CreateSecretAsync(admin, "it-upstream-restore", value: "it-upstream-restore-unused");
-        await LegacySecretActions.MakeManagedAsync(vault, details, "it_upstream_restore");
-        var token = await LegacySecretActions.FormTokenAsync(admin, details);
-        LegacySecretActions.AssertRedirectedTo(await LegacySecretActions.RotateUpstreamAsync(admin, details, token), details);
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-upstream-restore", value: "it-upstream-restore-unused");
+        await SecretDetailsApi.MakeManagedAsync(vault, details, "it_upstream_restore");
+        SecretDetailsApi.AssertNoContent(await SecretDetailsApi.RotateUpstreamAsync(admin, details));
         var live = await StoredValueAsync(vault, details);
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await LegacySecretActions.RestoreAsync(admin, details, token, await LegacySecretActions.NewestVersionAsync(vault, details));
+        var response = await SecretDetailsApi.RestoreAsync(admin, details, await SecretDetailsApi.NewestVersionAsync(vault, details));
 
-        LegacySecretActions.AssertRedirectedTo(response, details);
-        Assert.Empty(await LegacySecretActions.ActionsAfterAsync(vault, before, details));
-        Assert.Contains(
-            "This secret is the live password of &#x27;it_upstream_restore&#x27;. Rotate it upstream instead; earlier versions stay readable.",
-            await admin.GetStringAsync(details));
+        var problem = await SecretsApi.AssertProblemAsync(response, 409, "restore_managed");
+        Assert.Equal(
+            "This secret is the live password of 'it_upstream_restore'. Rotate it upstream instead; earlier versions stay readable.",
+            problem.GetProperty("title").GetString());
+        Assert.Empty(await SecretDetailsApi.ActionsAfterAsync(vault, before, details));
         Assert.Equal(live, await StoredValueAsync(vault, details));
         Assert.True(await ManagedTargetLogins.OpensWithAsync(vault, "it_upstream_restore", live));
     }
@@ -83,14 +80,13 @@ public sealed class UpstreamRotationTests(AuditFailureFixture failure)
         var vault = failure.Vault;
         var password = ManagedTargetLogins.NewPassword();
         await ManagedTargetLogins.CreateAsync(vault, "it_upstream_member", password);
-        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-upstream-member", value: password);
-        await LegacySecretActions.MakeManagedAsync(vault, details, "it_upstream_member");
+        var details = await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-upstream-member", value: password);
+        await SecretDetailsApi.MakeManagedAsync(vault, details, "it_upstream_member");
         var member = await vault.SignInNewAccountAsync("it-upstream-member", IPAddress.Parse("10.167.0.10"));
-        var token = await LegacySecretActions.FormTokenAsync(member.Client, details);
 
-        var response = await LegacySecretActions.RotateUpstreamAsync(member.Client, details, token);
+        var response = await SecretDetailsApi.RotateUpstreamAsync(member.Client, details);
 
-        LegacySecretActions.AssertRedirectedTo(response, details);
+        SecretDetailsApi.AssertNoContent(response);
         var stored = await StoredValueAsync(vault, details);
         Assert.NotEqual(password, stored);
         Assert.True(await ManagedTargetLogins.OpensWithAsync(vault, "it_upstream_member", stored));
@@ -100,6 +96,6 @@ public sealed class UpstreamRotationTests(AuditFailureFixture failure)
     internal static async Task<string> StoredValueAsync(VaultFixture vault, string details)
     {
         using var scope = vault.Services.CreateScope();
-        return (await scope.ServiceProvider.GetRequiredService<ISecretService>().RevealAsync(LegacySharing.SecretIdOf(details), default)).Value;
+        return (await scope.ServiceProvider.GetRequiredService<ISecretService>().RevealAsync(SecretSharing.SecretIdOf(details), default)).Value;
     }
 }

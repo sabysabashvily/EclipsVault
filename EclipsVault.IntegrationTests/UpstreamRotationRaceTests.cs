@@ -18,7 +18,7 @@ public sealed class UpstreamRotationRaceTests(AuditFailureFixture failure)
     public async Task A_second_upstream_rotation_of_one_login_is_refused_and_the_login_ends_at_the_stored_value()
     {
         var (vault, details) = await ManagedSecretAsync("it_race_two_upstream");
-        var secretId = LegacySharing.SecretIdOf(details);
+        var secretId = SecretSharing.SecretIdOf(details);
 
         Task first;
         await using (var held = await HeldAuditChain.TakeAsync(vault))
@@ -36,7 +36,7 @@ public sealed class UpstreamRotationRaceTests(AuditFailureFixture failure)
     public async Task A_rotation_by_hand_during_an_upstream_rotation_is_refused_and_the_login_ends_at_the_stored_value()
     {
         var (vault, details) = await ManagedSecretAsync("it_race_upstream_and_hand");
-        var secretId = LegacySharing.SecretIdOf(details);
+        var secretId = SecretSharing.SecretIdOf(details);
 
         Task upstream;
         await using (var held = await HeldAuditChain.TakeAsync(vault))
@@ -59,9 +59,9 @@ public sealed class UpstreamRotationRaceTests(AuditFailureFixture failure)
         var vault = failure.Vault;
         var password = ManagedTargetLogins.NewPassword();
         await ManagedTargetLogins.CreateAsync(vault, login, password);
-        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), login.Replace('_', '-'), value: password);
-        await LegacySecretActions.MakeManagedAsync(vault, details, login);
-        await RotateUpstreamAsync(vault, LegacySharing.SecretIdOf(details));
+        var details = await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), login.Replace('_', '-'), value: password);
+        await SecretDetailsApi.MakeManagedAsync(vault, details, login);
+        await RotateUpstreamAsync(vault, SecretSharing.SecretIdOf(details));
         return (vault, details);
     }
 

@@ -27,7 +27,7 @@ function recordDocuments(page: Page): string[] {
   return documents;
 }
 
-test('New secret stores a secret and opens its details with the Legacy success message', async ({
+test('New secret stores a secret and opens its details with the success message', async ({
   page,
 }) => {
   await page.context().addCookies(await savedAdministratorCookies());

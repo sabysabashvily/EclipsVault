@@ -42,7 +42,7 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
     {
         var admin = await vault.AdminClientAsync();
         var requester = await vault.SignInNewAccountAsync("it-arapi-queue", IPAddress.Parse("198.18.101.1"), ClearanceLevel.Elevated, "IT-ARAPI");
-        var secretId = LegacySharing.SecretIdOf(await LegacySharing.CreateSecretAsync(admin, "it-arapi-queue-secret"));
+        var secretId = SecretSharing.SecretIdOf(await SecretSharing.CreateSecretAsync(admin, "it-arapi-queue-secret"));
         await LegacyAccessRequests.FileAsync(requester.Client, await LegacyAccessRequests.TokenAsync(requester.Client), secretId, "Release on Friday");
         var filed = await StoredRequestAsync(secretId);
 
@@ -69,8 +69,8 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
     {
         var admin = await vault.AdminClientAsync();
         var requester = await vault.SignInNewAccountAsync("it-arapi-mine", IPAddress.Parse("198.18.101.2"), ClearanceLevel.Elevated, "IT-ARAPI-MINE");
-        var older = await LegacyAccessRequests.PendingAsync(vault, await LegacySharing.CreateSecretAsync(admin, "it-arapi-mine-pending"), "it-arapi-mine");
-        var newer = await LegacyAccessRequests.PendingAsync(vault, await LegacySharing.CreateSecretAsync(admin, "it-arapi-mine-rejected"), "it-arapi-mine");
+        var older = await LegacyAccessRequests.PendingAsync(vault, await SecretSharing.CreateSecretAsync(admin, "it-arapi-mine-pending"), "it-arapi-mine");
+        var newer = await LegacyAccessRequests.PendingAsync(vault, await SecretSharing.CreateSecretAsync(admin, "it-arapi-mine-rejected"), "it-arapi-mine");
         var decidedAt = new DateTimeOffset(2026, 10, 30, 8, 15, 0, TimeSpan.Zero);
         using (var scope = vault.Services.CreateScope())
         {
@@ -111,7 +111,7 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
     {
         var admin = await vault.AdminClientAsync();
         await vault.SignInNewAccountAsync("it-arapi-no-reasons", IPAddress.Parse("198.18.101.3"), ClearanceLevel.Elevated, "IT-ARAPI");
-        var pending = await LegacyAccessRequests.PendingAsync(vault, await LegacySharing.CreateSecretAsync(admin, "it-arapi-no-reasons"), "it-arapi-no-reasons");
+        var pending = await LegacyAccessRequests.PendingAsync(vault, await SecretSharing.CreateSecretAsync(admin, "it-arapi-no-reasons"), "it-arapi-no-reasons");
 
         var page = await AccessRequestsApi.PageAsync(admin);
 
@@ -125,8 +125,8 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
         var admin = await vault.AdminClientAsync();
         var first = await vault.SignInNewAccountAsync("it-arapi-scope-a", IPAddress.Parse("198.18.101.4"), ClearanceLevel.Elevated, "IT-ARAPI-SCOPE");
         var second = await vault.SignInNewAccountAsync("it-arapi-scope-b", IPAddress.Parse("198.18.101.5"), ClearanceLevel.Elevated, "IT-ARAPI-SCOPE");
-        var firsts = await LegacyAccessRequests.PendingAsync(vault, await LegacySharing.CreateSecretAsync(admin, "it-arapi-scope-a"), "it-arapi-scope-a");
-        var seconds = await LegacyAccessRequests.PendingAsync(vault, await LegacySharing.CreateSecretAsync(admin, "it-arapi-scope-b"), "it-arapi-scope-b");
+        var firsts = await LegacyAccessRequests.PendingAsync(vault, await SecretSharing.CreateSecretAsync(admin, "it-arapi-scope-a"), "it-arapi-scope-a");
+        var seconds = await LegacyAccessRequests.PendingAsync(vault, await SecretSharing.CreateSecretAsync(admin, "it-arapi-scope-b"), "it-arapi-scope-b");
         var claimingSecond = $"?userId={seconds.RequesterUserId}&requesterUserId={seconds.RequesterUserId}&username=it-arapi-scope-b";
 
         var firstPage = await first.Client.GetFromJsonAsync<JsonElement>(AccessRequestsApi.Path + claimingSecond);
@@ -141,7 +141,7 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
     {
         var admin = await vault.AdminClientAsync();
         await vault.SignInNewAccountAsync("it-arapi-expiry", IPAddress.Parse("198.18.101.6"), ClearanceLevel.Elevated, "IT-ARAPI");
-        var details = await LegacySharing.CreateSecretAsync(admin, "it-arapi-expiry");
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-arapi-expiry");
         var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-arapi-expiry");
 
         var response = await AccessRequestsApi.ApproveAsync(admin, pending.Id, expiresInDays: 7);
@@ -149,7 +149,7 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         Assert.True(response.Headers.CacheControl?.NoStore);
         Assert.Empty(await response.Content.ReadAsStringAsync());
-        var share = await LegacySharing.ShareOfAsync(vault, details);
+        var share = await SecretSharing.ShareOfAsync(vault, details);
         Assert.Equal(share.CreatedAtUtc.AddDays(7), share.ExpiresAtUtc);
     }
 
@@ -158,9 +158,9 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
     {
         var admin = await vault.AdminClientAsync();
         await vault.SignInNewAccountAsync("it-arapi-decoy-queue", IPAddress.Parse("198.18.101.45"), ClearanceLevel.Elevated, "IT-ARAPI");
-        var details = await LegacySharing.CreateSecretAsync(admin, "it-arapi-decoy-queue");
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-arapi-decoy-queue");
         await LegacyAccessRequests.PendingAsync(vault, details, "it-arapi-decoy-queue");
-        await LegacySharing.MakeDecoyAsync(vault, details);
+        await SecretSharing.MakeDecoyAsync(vault, details);
 
         var toReview = await AccessRequestsApi.ToReviewAsync(admin);
 
@@ -172,14 +172,14 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
     {
         var admin = await vault.AdminClientAsync();
         await vault.SignInNewAccountAsync("it-arapi-decoy-approve", IPAddress.Parse("198.18.101.46"), ClearanceLevel.Elevated, "IT-ARAPI");
-        var details = await LegacySharing.CreateSecretAsync(admin, "it-arapi-decoy-approve");
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-arapi-decoy-approve");
         var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-arapi-decoy-approve");
-        await LegacySharing.MakeDecoyAsync(vault, details);
+        await SecretSharing.MakeDecoyAsync(vault, details);
 
         var response = await AccessRequestsApi.ApproveAsync(admin, pending.Id);
 
         await UiApiFailureContractTests.AssertProblemAsync(response, 404, "request_not_found");
-        Assert.False(await LegacySharing.HasAnyShareAsync(vault, details));
+        Assert.False(await SecretSharing.HasAnyShareAsync(vault, details));
     }
 
     // No reviewer can decide such a request any more, so withdrawing is its only way out of Pending.
@@ -188,9 +188,9 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
     {
         var admin = await vault.AdminClientAsync();
         var requester = await vault.SignInNewAccountAsync("it-arapi-decoy-withdraw", IPAddress.Parse("198.18.101.47"), ClearanceLevel.Elevated, "IT-ARAPI");
-        var details = await LegacySharing.CreateSecretAsync(admin, "it-arapi-decoy-withdraw");
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-arapi-decoy-withdraw");
         var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-arapi-decoy-withdraw");
-        await LegacySharing.MakeDecoyAsync(vault, details);
+        await SecretSharing.MakeDecoyAsync(vault, details);
         var before = await AuditTrail.HeadAsync(vault);
 
         var response = await AccessRequestsApi.WithdrawAsync(requester.Client, pending.Id);
@@ -230,7 +230,7 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
         var admin = await vault.AdminClientAsync();
         var username = $"it-arapi-decided-{decided}-{decision}".ToLowerInvariant();
         await vault.SignInNewAccountAsync(username, IPAddress.Parse(requesterAddress), ClearanceLevel.Elevated, "IT-ARAPI");
-        var pending = await LegacyAccessRequests.PendingAsync(vault, await LegacySharing.CreateSecretAsync(admin, username), username);
+        var pending = await LegacyAccessRequests.PendingAsync(vault, await SecretSharing.CreateSecretAsync(admin, username), username);
         using (var scope = vault.Services.CreateScope())
         {
             await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().AccessRequests.Where(r => r.Id == pending.Id)
@@ -252,7 +252,7 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
     {
         var admin = await vault.AdminClientAsync();
         var requester = await vault.SignInNewAccountAsync("it-arapi-decided-approved-withdraw", IPAddress.Parse("198.18.101.13"), ClearanceLevel.Elevated, "IT-ARAPI");
-        var pending = await LegacyAccessRequests.PendingAsync(vault, await LegacySharing.CreateSecretAsync(admin, "it-arapi-decided-approved-withdraw"),
+        var pending = await LegacyAccessRequests.PendingAsync(vault, await SecretSharing.CreateSecretAsync(admin, "it-arapi-decided-approved-withdraw"),
             "it-arapi-decided-approved-withdraw");
         using (var scope = vault.Services.CreateScope())
         {
@@ -277,7 +277,7 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
         var admin = await vault.AdminClientAsync();
         var username = $"it-arapi-csrf-{decision}";
         await vault.SignInNewAccountAsync(username, IPAddress.Parse(requesterAddress), ClearanceLevel.Elevated, "IT-ARAPI");
-        var pending = await LegacyAccessRequests.PendingAsync(vault, await LegacySharing.CreateSecretAsync(admin, username), username);
+        var pending = await LegacyAccessRequests.PendingAsync(vault, await SecretSharing.CreateSecretAsync(admin, username), username);
         var before = await AuditTrail.HeadAsync(vault);
 
         var response = await admin.PostAsync($"{AccessRequestsApi.Path}/{pending.Id}/{decision}", JsonContent.Create(new { expiresInDays = 0 }));
@@ -292,7 +292,7 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
     {
         var admin = await vault.AdminClientAsync();
         var requester = await vault.SignInNewAccountAsync("it-arapi-csrf-withdraw", IPAddress.Parse("198.18.101.32"), ClearanceLevel.Elevated, "IT-ARAPI");
-        var pending = await LegacyAccessRequests.PendingAsync(vault, await LegacySharing.CreateSecretAsync(admin, "it-arapi-csrf-withdraw"), "it-arapi-csrf-withdraw");
+        var pending = await LegacyAccessRequests.PendingAsync(vault, await SecretSharing.CreateSecretAsync(admin, "it-arapi-csrf-withdraw"), "it-arapi-csrf-withdraw");
         var before = await AuditTrail.HeadAsync(vault);
 
         var response = await requester.Client.PostAsync($"{AccessRequestsApi.Path}/{pending.Id}/withdraw", null);
@@ -335,7 +335,7 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
     public async Task Filing_a_request_sends_the_browser_to_the_page_saying_it_was_filed()
     {
         var requester = await vault.SignInNewAccountAsync("it-arapi-filed", IPAddress.Parse("198.18.101.42"), ClearanceLevel.Elevated, "IT-ARAPI");
-        var secretId = LegacySharing.SecretIdOf(await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-arapi-filed"));
+        var secretId = SecretSharing.SecretIdOf(await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-arapi-filed"));
 
         var response = await LegacyAccessRequests.FileAsync(requester.Client, await LegacyAccessRequests.TokenAsync(requester.Client), secretId);
 
@@ -348,7 +348,7 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
     public async Task Filing_without_a_reason_sends_the_browser_to_the_page_saying_why()
     {
         var requester = await vault.SignInNewAccountAsync("it-arapi-reasonless", IPAddress.Parse("198.18.101.43"), ClearanceLevel.Elevated, "IT-ARAPI");
-        var secretId = LegacySharing.SecretIdOf(await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-arapi-reasonless"));
+        var secretId = SecretSharing.SecretIdOf(await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-arapi-reasonless"));
         var before = await AuditTrail.HeadAsync(vault);
 
         var response = await LegacyAccessRequests.FileAsync(requester.Client, await LegacyAccessRequests.TokenAsync(requester.Client), secretId, reason: " ab ");
@@ -362,7 +362,7 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
     public async Task Filing_for_a_secret_that_no_longer_exists_sends_the_browser_to_the_page_saying_so()
     {
         var requester = await vault.SignInNewAccountAsync("it-arapi-gone", IPAddress.Parse("198.18.101.44"), ClearanceLevel.Elevated, "IT-ARAPI");
-        var secretId = LegacySharing.SecretIdOf(await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-arapi-gone"));
+        var secretId = SecretSharing.SecretIdOf(await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-arapi-gone"));
         using (var scope = vault.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();

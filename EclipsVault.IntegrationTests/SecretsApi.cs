@@ -39,5 +39,5 @@ internal static class SecretsApi
         return problem;
     }
 
-    private static readonly string[] ProblemMembers = ["code", "detail", "errors", "reasons", "status", "title", "type"];
+    private static readonly string[] ProblemMembers = ["code", "detail", "errors", "proof", "reasons", "status", "title", "type"];
 }

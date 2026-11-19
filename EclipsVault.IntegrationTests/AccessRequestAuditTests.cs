@@ -28,7 +28,7 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
         var username = $"it-request-{addressSuffix}";
         await vault.SignInNewAccountAsync(username, IPAddress.Parse($"198.51.100.{addressSuffix}"), project: "IT-REQUESTERS");
         var name = $"it-request-secret-{addressSuffix}";
-        var details = await LegacySharing.CreateSecretAsync(reviewer, name);
+        var details = await SecretSharing.CreateSecretAsync(reviewer, name);
         var pending = await LegacyAccessRequests.PendingAsync(vault, details, username);
         var token = await UiApiRequest.AntiforgeryTokenAsync(reviewer);
         var before = await AuditTrail.HeadAsync(vault);
@@ -57,7 +57,7 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
     {
         var reviewer = await vault.AdminClientAsync();
         var requester = await vault.SignInNewAccountAsync("it-request-163", IPAddress.Parse("198.51.100.163"));
-        var details = await LegacySharing.CreateSecretAsync(reviewer, "it-request-secret-163");
+        var details = await SecretSharing.CreateSecretAsync(reviewer, "it-request-secret-163");
         var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-request-163");
         var token = await UiApiRequest.AntiforgeryTokenAsync(requester.Client);
         var before = await AuditTrail.HeadAsync(vault);
@@ -117,17 +117,17 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
     {
         var reviewer = await vault.AdminClientAsync();
         var requester = await vault.SignInNewAccountAsync("it-request-file", IPAddress.Parse("198.51.100.164"), project: "IT-REQUESTERS");
-        var details = await LegacySharing.CreateSecretAsync(reviewer, "it-request-file-secret");
+        var details = await SecretSharing.CreateSecretAsync(reviewer, "it-request-file-secret");
         var token = await LegacyAccessRequests.TokenAsync(requester.Client);
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await LegacyAccessRequests.FileAsync(requester.Client, token, LegacySharing.SecretIdOf(details));
+        var response = await LegacyAccessRequests.FileAsync(requester.Client, token, SecretSharing.SecretIdOf(details));
 
         Assert.Equal("/AccessRequests?filed=1", response.Headers.Location?.OriginalString);
         var row = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before));
         Assert.Equal(AuditAction.AccessRequested, row.Action);
         Assert.Equal("Secret", row.ResourceType);
-        Assert.Equal(LegacySharing.SecretIdOf(details), row.ResourceId);
+        Assert.Equal(SecretSharing.SecretIdOf(details), row.ResourceId);
         Assert.Equal("it-request-file-secret", row.ResourceName);
         Assert.Equal("Access to 'it-request-file-secret' requested", row.Details);
         Assert.Equal("it-request-file", row.Username);
@@ -139,7 +139,7 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
         var admin = await vault.AdminClientAsync();
         var reviewer = await vault.SignInNewAccountAsync("it-request-issuer", IPAddress.Parse("198.51.100.165"));
         await vault.SignInNewAccountAsync("it-request-original", IPAddress.Parse("198.51.100.166"), project: "IT-REQUESTERS");
-        var details = await LegacySharing.CreateSecretAsync(admin, "it-request-account-identity");
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-request-account-identity");
         var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-request-original");
         using (var scope = vault.Services.CreateScope())
         {
@@ -155,7 +155,7 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.NoContent, (await AccessRequestsApi.DecideAsync(
             reviewer.Client, token, pending.Id, "approve", JsonContent.Create(new { expiresInDays = 0 }))).StatusCode);
 
-        var share = await LegacySharing.ShareOfAsync(vault, details);
+        var share = await SecretSharing.ShareOfAsync(vault, details);
         Assert.Equal(pending.RequesterUserId, share.GranteeUserId);
         Assert.Equal("it-request-renamed", share.GranteeUsername);
         var issuer = await ProfileHttp.AccountAsync(vault, "it-request-issuer");
@@ -178,9 +178,9 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
     {
         var reviewer = await vault.AdminClientAsync();
         await vault.SignInNewAccountAsync("it-request-existing-168", IPAddress.Parse("198.51.100.168"), project: "IT-REQUESTERS");
-        var details = await LegacySharing.CreateSecretAsync(reviewer, "it-request-existing-168");
+        var details = await SecretSharing.CreateSecretAsync(reviewer, "it-request-existing-168");
         var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-request-existing-168");
-        await LegacySharing.ShareAsync(reviewer, details, "it-request-existing-168");
+        await SecretDetailsApi.ShareAsync(reviewer, details, "it-request-existing-168");
         var token = await UiApiRequest.AntiforgeryTokenAsync(reviewer);
         var before = await AuditTrail.HeadAsync(vault);
 
@@ -199,9 +199,9 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
     {
         var reviewer = await vault.AdminClientAsync();
         await vault.SignInNewAccountAsync("it-request-existing-241", IPAddress.Parse("198.51.100.241"), project: "IT-REQUESTERS");
-        var details = await LegacySharing.CreateSecretAsync(reviewer, "it-request-existing-241");
+        var details = await SecretSharing.CreateSecretAsync(reviewer, "it-request-existing-241");
         var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-request-existing-241");
-        await LegacySharing.ShareAsync(reviewer, details, "it-request-existing-241");
+        await SecretDetailsApi.ShareAsync(reviewer, details, "it-request-existing-241");
         var token = await UiApiRequest.AntiforgeryTokenAsync(reviewer);
         var before = await AuditTrail.HeadAsync(vault);
 
@@ -217,7 +217,7 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
     {
         var reviewer = await vault.AdminClientAsync();
         await vault.SignInNewAccountAsync("it-request-expired-secret", IPAddress.Parse("198.51.100.242"), project: "IT-REQUESTERS");
-        var details = await LegacySharing.CreateSecretAsync(reviewer, "it-request-expired-secret");
+        var details = await SecretSharing.CreateSecretAsync(reviewer, "it-request-expired-secret");
         var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-request-expired-secret");
         using (var scope = vault.Services.CreateScope())
         {
@@ -231,7 +231,7 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
 
         var problem = await ProfileApi.AssertProblemAsync(response, 409, "request_ineligible");
         Assert.Equal("That secret no longer exists.", problem.GetProperty("title").GetString());
-        Assert.False(await LegacySharing.HasAnyShareAsync(vault, details));
+        Assert.False(await SecretSharing.HasAnyShareAsync(vault, details));
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         Assert.Equal(AccessRequestStatus.Pending, await StatusOfAsync(pending.Id));
     }
@@ -241,18 +241,18 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
     {
         var reviewer = await vault.AdminClientAsync();
         await vault.SignInNewAccountAsync("it-request-existing-169", IPAddress.Parse("198.51.100.169"), project: "IT-REQUESTERS");
-        var details = await LegacySharing.CreateSecretAsync(reviewer, "it-request-existing-169");
+        var details = await SecretSharing.CreateSecretAsync(reviewer, "it-request-existing-169");
         var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-request-existing-169");
-        await LegacySharing.ShareAsync(reviewer, details, "it-request-existing-169");
-        var existing = await LegacySharing.ShareOfAsync(vault, details);
-        await LegacySharing.ExpireShareAsync(vault, existing.Id);
+        await SecretDetailsApi.ShareAsync(reviewer, details, "it-request-existing-169");
+        var existing = await SecretSharing.ShareOfAsync(vault, details);
+        await SecretSharing.ExpireShareAsync(vault, existing.Id);
         var token = await UiApiRequest.AntiforgeryTokenAsync(reviewer);
         var before = await AuditTrail.HeadAsync(vault);
 
         Assert.Equal(HttpStatusCode.NoContent, (await AccessRequestsApi.DecideAsync(
             reviewer, token, pending.Id, "approve", JsonContent.Create(new { expiresInDays = 0 }))).StatusCode);
 
-        Assert.NotEqual(existing.Id, (await LegacySharing.ShareOfAsync(vault, details)).Id);
+        Assert.NotEqual(existing.Id, (await SecretSharing.ShareOfAsync(vault, details)).Id);
         var rows = await AuditTrail.RowsAfterAsync(vault, before);
         Assert.Equal([AuditAction.AccessRequestApproved, AuditAction.SecretShared], rows.Select(row => row.Action));
         Assert.Equal("Shared with 'it-request-existing-169', replacing an expired share", rows[1].Details);
@@ -270,7 +270,7 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
         var reviewer = await vault.AdminClientAsync();
         var username = $"it-request-invalid-{addressSuffix}";
         await vault.SignInNewAccountAsync(username, IPAddress.Parse($"198.51.100.{addressSuffix}"), project: "IT-REQUESTERS");
-        var details = await LegacySharing.CreateSecretAsync(reviewer, $"it-request-invalid-{addressSuffix}");
+        var details = await SecretSharing.CreateSecretAsync(reviewer, $"it-request-invalid-{addressSuffix}");
         var pending = await LegacyAccessRequests.PendingAsync(vault, details, username);
         var token = await UiApiRequest.AntiforgeryTokenAsync(reviewer);
         var before = await AuditTrail.HeadAsync(vault);
@@ -280,14 +280,14 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
 
         var problem = await ProfileApi.AssertProblemAsync(response, 400, "validation_failed");
         Assert.Equal(title, problem.GetProperty("title").GetString());
-        Assert.False(await LegacySharing.HasAnyShareAsync(vault, details));
+        Assert.False(await SecretSharing.HasAnyShareAsync(vault, details));
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         Assert.Equal(AccessRequestStatus.Pending, await StatusOfAsync(pending.Id));
     }
 
     private async Task<AccessRequest> PendingWithStoredNoteAsync(HttpClient admin, string requester, string secretName)
     {
-        var details = await LegacySharing.CreateSecretAsync(admin, secretName);
+        var details = await SecretSharing.CreateSecretAsync(admin, secretName);
         var pending = await LegacyAccessRequests.PendingAsync(vault, details, requester);
         using var scope = vault.Services.CreateScope();
         await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().AccessRequests.Where(r => r.Id == pending.Id)

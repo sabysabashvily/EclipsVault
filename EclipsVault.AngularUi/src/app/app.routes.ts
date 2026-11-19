@@ -140,6 +140,10 @@ export const routes: Routes = [
     title: 'New secret — EclipsVault',
   },
   {
+    matcher: detailsPath('Secrets', 'Details'),
+    loadComponent: () => import('./secrets/secret-details-page').then((m) => m.SecretDetailsPage),
+  },
+  {
     matcher: legacyPath('Secrets/SharedByMe'),
     loadComponent: sharedByMe,
     title: 'Shared by me — EclipsVault',

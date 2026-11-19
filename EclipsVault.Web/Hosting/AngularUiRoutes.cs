@@ -53,10 +53,11 @@ public static class AngularUiRoutes
         "/Profile/ChangePassword",
         "/Profile/RecoveryCodes",
 
-        // Secrets and New secret
+        // Secrets, New secret and a secret's details
         "/Secrets",
         "/Secrets/Index",
         "/Secrets/Create",
+        "/Secrets/Details/{id:guid}",
 
         // Shared by me
         "/Secrets/SharedByMe",

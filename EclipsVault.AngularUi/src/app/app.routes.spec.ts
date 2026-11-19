@@ -25,6 +25,7 @@ import { SecurityPage } from './security/security-page';
 import { SessionsPage } from './sessions/sessions-page';
 import { DataPage } from './data/data-page';
 import { NewSecretPage } from './secrets/new-secret-page';
+import { SecretDetailsPage } from './secrets/secret-details-page';
 import { SecretsPage } from './secrets/secrets-page';
 import { SharedByMePage } from './shared-by-me/shared-by-me-page';
 import { SharedWithMePage } from './shared-with-me/shared-with-me-page';
@@ -73,6 +74,18 @@ describe('routes', () => {
   });
   it.each(['/ServiceAccounts/Details/new', '/ServiceAccounts/Create/extra'])(
     'leaves %s unmatched',
+    (url) => {
+      expect(routeFor(url)).toBeUndefined();
+    },
+  );
+  it.each([
+    '/Secrets/Details/11111111-1111-1111-1111-111111111111',
+    '/sEcReTs/dEtAiLs/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA',
+  ])('opens a secret at %s', async (url) => {
+    expect(await routeFor(url)?.loadComponent?.()).toBe(SecretDetailsPage);
+  });
+  it.each(['/Secrets/Details/new', '/Secrets/Details/11111111-1111-1111-1111-111111111111/extra'])(
+    'leaves an invalid Secret details path %s unmatched',
     (url) => {
       expect(routeFor(url)).toBeUndefined();
     },

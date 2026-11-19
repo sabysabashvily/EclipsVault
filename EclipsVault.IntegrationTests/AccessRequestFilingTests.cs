@@ -65,15 +65,15 @@ public sealed class AccessRequestFilingTests(VaultFixture vault)
         var issuer = await vault.SignInNewAccountAsync("it-filing-issuer", IPAddress.Parse("10.99.0.7"), ClearanceLevel.TopSecret);
         var requester = await vault.SignInNewAccountAsync(
             "it-filing-share-holder", IPAddress.Parse("203.0.113.214"), ClearanceLevel.Elevated, "IT-FILING");
-        var details = await LegacySharing.CreateSecretAsync(issuer.Client, "it-filing-shared-secret", sensitivity: "Confidential");
-        await LegacySharing.ShareAsync(issuer.Client, details, "it-filing-share-holder");
+        var details = await SecretSharing.CreateSecretAsync(issuer.Client, "it-filing-shared-secret", sensitivity: "Confidential");
+        await SecretDetailsApi.ShareAsync(issuer.Client, details, "it-filing-share-holder");
         var before = await AuditTrail.HeadAsync(vault);
 
         var response = await LegacyAccessRequests.FileAsync(
-            requester.Client, await LegacyAccessRequests.TokenAsync(requester.Client), LegacySharing.SecretIdOf(details));
+            requester.Client, await LegacyAccessRequests.TokenAsync(requester.Client), SecretSharing.SecretIdOf(details));
 
         Assert.Equal("/AccessRequests?refused=already_able_to_open", response.Headers.Location?.OriginalString);
-        Assert.False(await HasRequestAsync(LegacySharing.SecretIdOf(details)));
+        Assert.False(await HasRequestAsync(SecretSharing.SecretIdOf(details)));
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
@@ -82,12 +82,12 @@ public sealed class AccessRequestFilingTests(VaultFixture vault)
     {
         var requester = await vault.SignInNewAccountAsync(
             "it-filing-pending", IPAddress.Parse("203.0.113.215"), ClearanceLevel.Elevated, "IT-FILING");
-        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-filing-pending-secret", sensitivity: "Confidential");
+        var details = await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-filing-pending-secret", sensitivity: "Confidential");
         await LegacyAccessRequests.PendingAsync(vault, details, "it-filing-pending");
         var before = await AuditTrail.HeadAsync(vault);
 
         var response = await LegacyAccessRequests.FileAsync(
-            requester.Client, await LegacyAccessRequests.TokenAsync(requester.Client), LegacySharing.SecretIdOf(details));
+            requester.Client, await LegacyAccessRequests.TokenAsync(requester.Client), SecretSharing.SecretIdOf(details));
 
         Assert.Equal("/AccessRequests?refused=already_pending", response.Headers.Location?.OriginalString);
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
@@ -185,17 +185,17 @@ public sealed class AccessRequestFilingTests(VaultFixture vault)
     {
         var requester = await vault.SignInNewAccountAsync(
             "it-denied-pending", IPAddress.Parse("203.0.113.219"), ClearanceLevel.Elevated, "IT-FILING");
-        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-denied-pending-secret", sensitivity: "Confidential");
+        var details = await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-denied-pending-secret", sensitivity: "Confidential");
         await LegacyAccessRequests.PendingAsync(vault, details, "it-denied-pending");
 
-        var page = await requester.Client.GetStringAsync($"/Account/Denied?secretId={LegacySharing.SecretIdOf(details)}");
+        var page = await requester.Client.GetStringAsync($"/Account/Denied?secretId={SecretSharing.SecretIdOf(details)}");
 
         Assert.Contains("You already have a pending request for this secret.", page);
         Assert.DoesNotContain("Submit request", page);
     }
 
     private async Task<Guid> ConfidentialSecretAsync(string name)
-        => LegacySharing.SecretIdOf(await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), name, sensitivity: "Confidential"));
+        => SecretSharing.SecretIdOf(await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), name, sensitivity: "Confidential"));
 
     private async Task<bool> HasRequestAsync(Guid secretId)
     {

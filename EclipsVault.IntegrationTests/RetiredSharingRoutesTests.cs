@@ -37,7 +37,7 @@ public sealed class RetiredSharingRoutesTests(VaultFixture vault)
         var admin = await vault.AdminClientAsync();
         var username = "it-retired-share-" + Guid.NewGuid().ToString("N");
         var requester = await vault.SignInNewAccountAsync(username, IPAddress.Parse(source), ClearanceLevel.Elevated, "IT-RETIRED-SHARE");
-        var details = await LegacySharing.CreateSecretAsync(admin, $"{username}-secret");
+        var details = await SecretSharing.CreateSecretAsync(admin, $"{username}-secret");
         var pending = await LegacyAccessRequests.PendingAsync(vault, details, username);
         var before = await AuditTrail.HeadAsync(vault);
 
@@ -47,7 +47,7 @@ public sealed class RetiredSharingRoutesTests(VaultFixture vault)
         Assert.Equal(expected, asReviewer.StatusCode);
         Assert.Equal(expected, asRequester.StatusCode);
         Assert.Equal(AccessRequestStatus.Pending, await AccessRequestsApi.StatusOfAsync(vault, pending.Id));
-        Assert.False(await LegacySharing.HasAnyShareAsync(vault, details));
+        Assert.False(await SecretSharing.HasAnyShareAsync(vault, details));
         Assert.DoesNotContain(await AuditTrail.RowsAfterAsync(vault, before), row => row.ResourceId == pending.SecretId);
     }
 

@@ -33,7 +33,7 @@ internal static class LegacyAccessRequests
         using var scope = vault.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
         var user = await db.Users.SingleAsync(user => user.Username == username);
-        var secretId = LegacySharing.SecretIdOf(details);
+        var secretId = SecretSharing.SecretIdOf(details);
         var secret = await db.Secrets.SingleAsync(secret => secret.Id == secretId);
         var request = new AccessRequest
         {

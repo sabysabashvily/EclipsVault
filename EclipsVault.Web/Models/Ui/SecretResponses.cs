@@ -84,4 +84,8 @@ public sealed class SecretProblemResponse : ProblemDetails
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? Reasons { get; init; }
+
+    /// <summary>For <c>step_up_required</c>: <c>code</c> or <c>sign_in</c>, the proof the caller can give.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Proof { get; init; }
 }

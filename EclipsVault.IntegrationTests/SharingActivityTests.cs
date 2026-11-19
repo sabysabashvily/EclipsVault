@@ -57,7 +57,7 @@ public sealed class SharingActivityTests(VaultFixture vault)
     /// <summary>Files a request from the Denied page's form for a new secret outside the requester's project.</summary>
     private async Task<Guid> FileAsync(HttpClient requester, string secretName)
     {
-        var secretId = LegacySharing.SecretIdOf(await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), secretName));
+        var secretId = SecretSharing.SecretIdOf(await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), secretName));
         var filed = await LegacyAccessRequests.FileAsync(requester, await LegacyAccessRequests.TokenAsync(requester), secretId);
         Assert.Equal("/AccessRequests?filed=1", filed.Headers.Location?.OriginalString);
 

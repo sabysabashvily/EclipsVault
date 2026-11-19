@@ -44,7 +44,7 @@ public sealed class AccessRequestReviewerTests(VaultFixture vault)
     public async Task The_requester_neither_sees_nor_decides_their_own_request_even_as_a_qualified_administrator()
     {
         var requester = await vault.SignInNewAccountAsync("it-review-own", IPAddress.Parse("10.99.0.3"), ClearanceLevel.TopSecret);
-        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-review-secret-own", sensitivity: "Confidential");
+        var details = await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-review-secret-own", sensitivity: "Confidential");
         // Inserted directly: filing refuses an account that can already open the secret, but such a request can exist.
         var pending = await LegacyAccessRequests.PendingAsync(vault, details, "it-review-own");
         var before = await AuditTrail.HeadAsync(vault);
@@ -119,7 +119,7 @@ public sealed class AccessRequestReviewerTests(VaultFixture vault)
     private async Task<AccessRequest> PendingRequestAsync(string secretName, string requester, string requesterAddress)
     {
         await vault.SignInNewAccountAsync(requester, IPAddress.Parse(requesterAddress), ClearanceLevel.Elevated, "IT-REVIEW-REQUESTERS");
-        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), secretName, sensitivity: "Confidential");
+        var details = await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), secretName, sensitivity: "Confidential");
         return await LegacyAccessRequests.PendingAsync(vault, details, requester);
     }
 

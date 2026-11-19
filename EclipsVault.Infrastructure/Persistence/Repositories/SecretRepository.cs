@@ -86,7 +86,15 @@ public sealed class SecretRepository : ISecretRepository
     public async Task DeleteAsync(Secret secret, CancellationToken ct)
     {
         _context.Secrets.Remove(secret); // archived versions cascade-delete via the FK
-        await _context.SaveChangesAsync(ct);
+        // The interceptor saves the audit row in the same transaction, so a failed save is the fail-closed audit failure.
+        try
+        {
+            await _context.SaveChangesAsync(ct);
+        }
+        catch (Exception failure) when (failure is not OperationCanceledException)
+        {
+            throw new AuditWriteFailedException("The secret's deletion and its audit row could not be stored.", failure);
+        }
     }
 
     public async Task RotateAsync(
