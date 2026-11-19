@@ -8,8 +8,26 @@
     </p>
   </div>
   @if (hasOthers()) {
-    <button type="button" class="button" [disabled]="busy()" (click)="ask('others')">
-      Sign out all other sessions
+    <button
+      *appPagePrimary
+      type="button"
+      class="button"
+      [disabled]="busy()"
+      (click)="ask('others')"
+      aria-label="Sign out all other sessions"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M15 3h4v18h-4M3 12h12m-4-4 4 4-4 4" />
+      </svg>
+      <span class="action-label">Sign out all other sessions</span>
     </button>
   }
 </div>

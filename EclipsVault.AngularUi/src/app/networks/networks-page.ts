@@ -1,3 +1,4 @@
+import { ScrollRegion } from '../shared/scroll-region';
 import { DatePipe } from '@angular/common';
 import { HttpClient, httpResource } from '@angular/common/http';
 import { Component, computed, inject, signal, viewChild } from '@angular/core';
@@ -17,7 +18,7 @@ const path = '/api/ui/networks';
 
 @Component({
   selector: 'app-networks-page',
-  imports: [DatePipe, StatusLine, StepUpDialog, ConfirmationDialog],
+  imports: [ScrollRegion, DatePipe, StatusLine, StepUpDialog, ConfirmationDialog],
   providers: [AdministratorWrites],
   templateUrl: './networks-page.html',
 })

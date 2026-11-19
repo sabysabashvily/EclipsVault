@@ -57,7 +57,14 @@
 
     @if (summary.needsAttention) {
       <section class="panel callout-warn">
-        <div class="panel-header"><h2>Don't recognise these attempts?</h2></div>
+        <div class="panel-header">
+          <span class="callout-icon" aria-hidden="true"
+            ><svg viewBox="0 0 24 24">
+              <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+              <path d="M12 9v4M12 17h.01" /></svg
+          ></span>
+          <h2>Don't recognise these attempts?</h2>
+        </div>
         <p class="muted">
           Someone tried to sign in from a place you've never signed in from. Your account wasn't
           opened from there — every attempt failed — but it's worth locking things down: change your

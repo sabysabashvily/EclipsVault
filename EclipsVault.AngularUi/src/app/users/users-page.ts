@@ -1,3 +1,4 @@
+import { ScrollRegion } from '../shared/scroll-region';
 import { RouterLink } from '@angular/router';
 import { HttpClient, httpResource } from '@angular/common/http';
 import {
@@ -16,6 +17,7 @@ import { RowMenu } from '../shared/row-menu';
 import { StatusLine } from '../shared/status-line';
 import { StepUpDialog } from '../shared/step-up-dialog';
 import { TableFilter } from '../shared/table-filter';
+import { PagePrimary } from '../shell/page-primary';
 import type { components } from '../ui-api/schema.generated';
 import { UiApiError } from '../ui-api/ui-api-errors';
 
@@ -42,7 +44,16 @@ const statuses: Record<User['status'], { label: string; tone: string }> = {
 
 @Component({
   selector: 'app-users-page',
-  imports: [RouterLink, ConfirmationDialog, RowMenu, StatusLine, StepUpDialog, TableFilter],
+  imports: [
+    PagePrimary,
+    ScrollRegion,
+    RouterLink,
+    ConfirmationDialog,
+    RowMenu,
+    StatusLine,
+    StepUpDialog,
+    TableFilter,
+  ],
   templateUrl: './users-page.html',
 })
 export class UsersPage {

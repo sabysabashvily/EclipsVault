@@ -8,8 +8,26 @@
       </p>
     }
   </div>
-  <button type="button" class="button" [disabled]="closed" (click)="verify()">
-    Verify integrity
+  <button
+    *appPagePrimary
+    type="button"
+    class="button"
+    [disabled]="writes.busy() || writes.awaitingProof() || writes.blocked()"
+    (click)="verify()"
+    aria-label="Verify integrity"
+  >
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m9 12 2 2 4-4M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6z" />
+    </svg>
+    <span class="action-label">Verify integrity</span>
   </button>
 </div>
 <app-status-line [message]="writes.status().message" [error]="writes.status().error" />
@@ -91,7 +109,8 @@
         [(query)]="query"
       />
     </div>
-    <div class="table-scroll">
+    <div class="table-scroll" appScrollRegion role="region" aria-label="Audit entries">
+      <p class="table-scroll-hint">Scroll horizontally to see all columns.</p>
       <table class="data-table" id="audit-table">
         <thead>
           <tr>

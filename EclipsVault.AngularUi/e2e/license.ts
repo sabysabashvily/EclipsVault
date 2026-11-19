@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { openPalette } from './palette';
+import { AppShell } from './app-shell';
 
 export class License {
   readonly heading;
@@ -24,6 +25,8 @@ export class License {
   }
   async fromSidebar(path: '/DynamicSecrets' | '/Access'): Promise<void> {
     await this.page.goto(path);
+    // The Angular sidebar folds its administration pages into a group; the Legacy one lists them.
+    if (path === '/Access') await new AppShell(this.page).administration.click();
     await this.page.getByRole('link', { name: 'License', exact: true }).click();
   }
   async fromPalette(path: '/DynamicSecrets' | '/Access'): Promise<void> {

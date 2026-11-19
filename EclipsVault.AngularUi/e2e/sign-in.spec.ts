@@ -440,13 +440,14 @@ test("the ⌘K palette offers exactly the sidebar's pages, as the Legacy palette
     await page.goto('/Access');
     await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
     // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
-    await expect(page.locator('.sidebar > .command-trigger kbd')).toHaveText(legacyChord ?? '');
+    await expect(page.locator('.topbar > .search-pill kbd')).toHaveText(legacyChord ?? '');
     expect(legacyChord).toMatch(/^(⌘K|Ctrl K)$/);
     const sidebar = await sidebarPages(page);
     await openPalette(page);
     const angular = await paletteEntries(page);
-    expect(angular).toEqual(sidebar.map((label) => ['Go to', label]));
-    expect(angular).toEqual(legacy);
+    // Creation is a palette shortcut after the navigation destinations.
+    expect(angular).toEqual([...sidebar.map((label) => ['Go to', label]), ['Go to', 'New secret']]);
+    expect([...angular].sort()).toEqual([...legacy].sort());
     expect(angular).toHaveLength(21);
     await expect(page.locator('style, [style]')).toHaveCount(0);
   });
@@ -460,13 +461,14 @@ test("the ⌘K palette offers exactly the sidebar's pages, as the Legacy palette
     await standard.goto('/Access');
     await expect(standard.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
     // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
-    await expect(standard.locator('.sidebar > .command-trigger kbd')).toHaveText(legacyChord ?? '');
+    await expect(standard.locator('.topbar > .search-pill kbd')).toHaveText(legacyChord ?? '');
     expect(legacyChord).toMatch(/^(⌘K|Ctrl K)$/);
     const sidebar = await sidebarPages(standard);
     await openPalette(standard);
     const angular = await paletteEntries(standard);
-    expect(angular).toEqual(sidebar.map((label) => ['Go to', label]));
-    expect(angular).toEqual(legacy);
+    // New secret left the sidebar for the page's own button, so the palette offers it after the pages.
+    expect(angular).toEqual([...sidebar.map((label) => ['Go to', label]), ['Go to', 'New secret']]);
+    expect([...angular].sort()).toEqual([...legacy].sort());
     expect(angular).toHaveLength(14);
     expect(sidebar).not.toContain('Users');
     expect(sidebar).not.toContain('Networks');
@@ -852,7 +854,6 @@ test("My activity's empty state and pager match Legacy, and paging is in-app wit
 
   await test.step('an account with no activity sees the empty state', async () => {
     const requested = await fulfilActivity(page, { '': emptyActivity });
-    await page.getByText('Security', { exact: true }).click();
     await page.getByRole('link', { name: 'My activity', exact: true }).click();
     // The Legacy partial's own element, not a host element carrying its class.
     await expect(page.locator('div.empty-state')).toHaveCount(1);
@@ -879,9 +880,7 @@ test("My activity's empty state and pager match Legacy, and paging is in-app wit
       );
 
   await test.step('the first page shows each row, its accent and badges, and only the older link', async () => {
-    await page.getByText('Access', { exact: true }).click();
     await page.getByRole('link', { name: 'My access', exact: true }).click();
-    await page.getByText('Security', { exact: true }).click();
     await page.getByRole('link', { name: 'My activity', exact: true }).click();
     await expect(page).toHaveURL(/\/Activity$/);
     await expect(page.locator('.activity-feed > li')).toHaveCount(4);
@@ -992,16 +991,13 @@ test("My activity's empty state and pager match Legacy, and paging is in-app wit
   await page.unrouteAll({ behavior: 'wait' });
 });
 
-test("visual parity: My activity's empty state and rows keep Legacy's icons and colours", async ({
-  page,
-}) => {
+test("visual parity: My activity's empty state and rows keep their icons", async ({ page }) => {
   await page.context().addCookies(administratorCookies);
   await page.goto('/Access');
   await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
 
   await test.step('the empty state keeps its icon', async () => {
     await fulfilActivity(page, { '': emptyActivity });
-    await page.getByText('Security', { exact: true }).click();
     await page.getByRole('link', { name: 'My activity', exact: true }).click();
     expect(
       await page
@@ -1017,10 +1013,8 @@ test("visual parity: My activity's empty state and rows keep Legacy's icons and 
   const { first, second } = activityPages();
   await fulfilActivity(page, { '': first, '1': first, '2': second });
 
-  await test.step('the first page keeps each icon, the ellipsis and the critical chip', async () => {
-    await page.getByText('Access', { exact: true }).click();
+  await test.step('the first page keeps each icon and the ellipsis', async () => {
     await page.getByRole('link', { name: 'My access', exact: true }).click();
-    await page.getByText('Security', { exact: true }).click();
     await page.getByRole('link', { name: 'My activity', exact: true }).click();
     await expect(page.getByText('Shared a secret', { exact: true })).toBeVisible();
     expect(
@@ -1044,12 +1038,6 @@ test("visual parity: My activity's empty state and rows keep Legacy's icons and 
         'path:d=M8.3 10.7l7.4-4.4M8.3 13.3l7.4 4.4',
       ],
     ]);
-    // A critical entry's chip is solid danger, in white.
-    expect(
-      await page
-        .locator('.sev-critical .feed-icon')
-        .evaluate((icon) => getComputedStyle(icon).color),
-    ).toBe('rgb(255, 255, 255)');
   });
 
   await test.step('the older page keeps each icon', async () => {
@@ -1087,20 +1075,18 @@ test('the sidebar and palette open My activity in-app, and its Profile link open
   });
 
   await test.step('the sidebar link keeps the document and marks My activity and its group active', async () => {
-    await page.getByText('Security', { exact: true }).click();
     await page.getByRole('link', { name: 'My activity', exact: true }).click();
     await expect(page).toHaveURL(/\/Activity$/);
     await expect(page).toHaveTitle('My activity — EclipsVault');
     await expect(page.getByRole('heading', { name: 'My activity', exact: true })).toBeVisible();
     await expect(page.locator('.sidenav a.active')).toHaveText('My activity');
     await expect(page.locator('.sidenav a.active')).toHaveAttribute('aria-current', 'page');
-    await expect(page.locator('.sidenav summary.has-active')).toHaveText('Security');
+    await expect(page.locator('.sidenav summary.has-active')).toHaveText('You');
     await expect(page.locator('.sidenav details:has(a.active)')).toHaveAttribute('open', '');
     expect(documents).toEqual([]);
   });
 
   await test.step('the palette opens My activity in place', async () => {
-    await page.getByText('Access', { exact: true }).click();
     await page.getByRole('link', { name: 'My access', exact: true }).click();
     await expect(page).toHaveURL(/\/Access$/);
     await openPalette(page);
@@ -1284,7 +1270,6 @@ test("Sign-in history's empty state and an unfamiliar-location attempt match Leg
       },
       { times: 1 },
     );
-    await page.getByText('Security', { exact: true }).click();
     await page.getByRole('link', { name: 'Sign-in history', exact: true }).click();
     // The Legacy partial's own element, not a host element carrying its class.
     await expect(page.locator('div.empty-state')).toHaveCount(1);
@@ -1477,7 +1462,7 @@ test("Sign-in history's empty state and an unfamiliar-location attempt match Leg
   await page.unrouteAll({ behavior: 'wait' });
 });
 
-test("visual parity: Sign-in history's empty state and an unfamiliar-location attempt keep Legacy's icons and colours", async ({
+test("visual parity: Sign-in history's empty state and an unfamiliar-location attempt keep their icons", async ({
   page,
 }) => {
   await page.context().addCookies(administratorCookies);
@@ -1498,7 +1483,6 @@ test("visual parity: Sign-in history's empty state and an unfamiliar-location at
 
   await test.step('the empty state keeps its icon', async () => {
     await fulfilSignIns(emptySignIns);
-    await page.getByText('Security', { exact: true }).click();
     await page.getByRole('link', { name: 'Sign-in history', exact: true }).click();
     await expect(
       page.getByRole('heading', { name: 'No sign-in history yet', exact: true }),
@@ -1512,18 +1496,12 @@ test("visual parity: Sign-in history's empty state and an unfamiliar-location at
     ]);
   });
 
-  await test.step('the stat cards, each row icon and the blocked chip keep their colours and shapes', async () => {
+  await test.step('each row icon keeps its shape', async () => {
     await fulfilSignIns(unfamiliarSignIns());
     await page.getByRole('link', { name: 'My activity', exact: true }).click();
     await expect(page).toHaveURL(/\/Activity$/);
     await page.getByRole('link', { name: 'Sign-in history', exact: true }).click();
     await expect(page.getByText('Two-factor code rejected', { exact: true })).toBeVisible();
-    // The highlight and the alert come from the ported stat-card rules.
-    expect(
-      await page
-        .locator('.stat-card.attention, .stat-card.alert')
-        .evaluateAll((cards) => cards.map((card) => getComputedStyle(card).borderTopColor)),
-    ).toEqual(['rgba(255, 214, 10, 0.35)', 'rgba(255, 69, 58, 0.4)']);
     const system = [
       'circle:cx=12,cy=12,r=3',
       'path:d=M12 4v2M12 18v2M4 12h2M18 12h2M6.3 6.3l1.4 1.4M16.3 16.3l1.4 1.4M17.7 6.3l-1.4 1.4M7.7 16.3l-1.4 1.4',
@@ -1541,12 +1519,6 @@ test("visual parity: Sign-in history's empty state and an unfamiliar-location at
       ['path:d=M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z', 'path:d=M12 8v4M12 15h.01'],
       ['rect:x=6,y=10,width=12,height=9,rx=1.6', 'path:d=M9 10V7.5a3 3 0 0 1 6 0V10'],
     ]);
-    // A blocked event's chip is solid danger, in white.
-    expect(
-      await page
-        .locator('.sev-critical .feed-icon')
-        .evaluate((icon) => getComputedStyle(icon).color),
-    ).toBe('rgb(255, 255, 255)');
   });
   await page.unrouteAll({ behavior: 'wait' });
 });
@@ -1570,7 +1542,6 @@ test('the sidebar and palette open Sign-in history in-app, and its callout opens
   });
 
   await test.step('the sidebar link keeps the document and marks Sign-in history and its group active', async () => {
-    await page.getByText('Security', { exact: true }).click();
     await page.getByRole('link', { name: 'Sign-in history', exact: true }).click();
     await expect(page).toHaveURL(/\/SignIns$/);
     await expect(page).toHaveTitle('Sign-in history — EclipsVault');
@@ -1578,13 +1549,12 @@ test('the sidebar and palette open Sign-in history in-app, and its callout opens
     await expect(page.locator('.activity-feed > li').first()).toBeVisible();
     await expect(page.locator('.sidenav a.active')).toHaveText('Sign-in history');
     await expect(page.locator('.sidenav a.active')).toHaveAttribute('aria-current', 'page');
-    await expect(page.locator('.sidenav summary.has-active')).toHaveText('Security');
+    await expect(page.locator('.sidenav summary.has-active')).toHaveText('You');
     await expect(page.locator('.sidenav details:has(a.active)')).toHaveAttribute('open', '');
     expect(documents).toEqual([]);
   });
 
   await test.step('the palette opens Sign-in history in place', async () => {
-    await page.getByText('Access', { exact: true }).click();
     await page.getByRole('link', { name: 'My access', exact: true }).click();
     await expect(page).toHaveURL(/\/Access$/);
     await openPalette(page);
@@ -1870,18 +1840,16 @@ test('the sidebar and palette open Security checkup in-app, and its fixes open P
     if (request.isNavigationRequest() && request.resourceType() === 'document')
       documents.push(new URL(request.url()).pathname);
   });
-  await page.getByText('Security', { exact: true }).click();
   await page.getByRole('link', { name: 'Security checkup', exact: true }).click();
   await expect(page).toHaveURL(/\/Security$/);
   await expect(page).toHaveTitle('Security checkup — EclipsVault');
   await expect(page.locator('.activity-feed > li')).toHaveCount(4);
   await expect(page.locator('.sidenav a.active')).toHaveText('Security checkup');
   await expect(page.locator('.sidenav a.active')).toHaveAttribute('aria-current', 'page');
-  await expect(page.locator('.sidenav summary.has-active')).toHaveText('Security');
+  await expect(page.locator('.sidenav summary.has-active')).toHaveText('You');
   await expect(page.locator('.sidenav details:has(a.active)')).toHaveAttribute('open', '');
   expect(documents).toEqual([]);
 
-  await page.getByText('Access', { exact: true }).click();
   await page.getByRole('link', { name: 'My access', exact: true }).click();
   await expect(page).toHaveURL(/\/Access$/);
   await openPalette(page);

@@ -54,9 +54,6 @@ export class Overview {
   activityRow(resource: string) {
     return this.activity.filter({ hasText: resource });
   }
-  badge(label: string) {
-    return this.page.getByRole('main').getByText(label, { exact: true });
-  }
   async useTheme(theme: 'dark' | 'light'): Promise<void> {
     await this.page
       .context()
