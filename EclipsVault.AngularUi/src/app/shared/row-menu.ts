@@ -107,10 +107,10 @@ export class RowMenu {
     this.menu().nativeElement.open = false;
   }
 
-  private items(): HTMLButtonElement[] {
+  private items(): HTMLElement[] {
     return [
-      ...this.panel().nativeElement.querySelectorAll<HTMLButtonElement>(
-        'button[role="menuitem"]:not([disabled])',
+      ...this.panel().nativeElement.querySelectorAll<HTMLElement>(
+        'a[role="menuitem"], button[role="menuitem"]:not([disabled])',
       ),
     ];
   }

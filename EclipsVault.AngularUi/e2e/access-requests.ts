@@ -2,9 +2,9 @@ import type { Locator, Page } from '@playwright/test';
 
 export class AccessRequests {
   readonly heading;
-  readonly introduction;
+  readonly context;
+  readonly verdict;
   readonly toReview;
-  readonly reviewRegion;
   readonly mine;
   readonly reviewScope;
   readonly nothingToReview;
@@ -12,22 +12,17 @@ export class AccessRequests {
   readonly browseSecrets;
   readonly error;
   readonly retry;
+  readonly approval;
+  readonly expiry;
+  readonly approveAndGrant;
 
   constructor(readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Access requests', exact: true });
-    this.introduction = page.getByText(
-      'Request access to a secret you were denied, and review requests you can approve.',
-      { exact: true },
-    );
-    // Each panel's table is told apart by a column only it has.
-    this.toReview = page
-      .getByRole('table')
-      .filter({ has: page.getByRole('columnheader', { name: 'Requester', exact: true }) });
-    this.reviewRegion = page.getByRole('region', { name: 'Requests to review', exact: true });
-    this.mine = page
-      .getByRole('table')
-      .filter({ has: page.getByRole('columnheader', { name: 'Decision', exact: true }) });
-    this.reviewScope = page.getByText(/^(All projects|Your project)$/);
+    this.context = page.getByText(/^(Nothing waits on you|\d+ requests? waits? on you) · /);
+    this.verdict = page.getByText(/^(Waiting on you|Nothing to review)$/);
+    this.toReview = page.getByRole('list', { name: 'Requests to review', exact: true });
+    this.mine = page.getByRole('table');
+    this.reviewScope = page.getByText(/^(All projects|Your project) · Newest first$/);
     this.nothingToReview = page.getByRole('heading', {
       name: 'Nothing waiting on you',
       exact: true,
@@ -40,15 +35,21 @@ export class AccessRequests {
     // The status line keeps an empty alert region for announcements; only one with text counts.
     this.error = page.getByRole('main').getByRole('alert').filter({ hasText: /\S/ });
     this.retry = page.getByRole('button', { name: 'Try again', exact: true });
+    this.approval = page.getByRole('alertdialog', { name: /^Approve .+'s request\?$/ });
+    this.expiry = this.approval.getByLabel('Access ends after (days)');
+    this.approveAndGrant = this.approval.getByRole('button', {
+      name: 'Approve and grant access',
+      exact: true,
+    });
   }
 
   async open(path = '/AccessRequests'): Promise<void> {
     await this.page.goto(path);
   }
 
-  // The Secret cell holds the name and its project badge; every secret these specs create is in GLOBAL.
+  // A request's title holds the name and its project code; every secret these specs create is in GLOBAL.
   requestToReview(secret: string): Locator {
-    return this.toReview.getByRole('row').filter({ hasText: `${secret} GLOBAL` });
+    return this.toReview.getByRole('listitem').filter({ hasText: `${secret} GLOBAL` });
   }
 
   myRequest(secret: string): Locator {
@@ -62,10 +63,6 @@ export class AccessRequests {
 
   statusOf(row: Locator): Locator {
     return row.getByRole('cell').nth(1);
-  }
-
-  expiryOf(row: Locator): Locator {
-    return row.getByLabel('Grant expiry in days');
   }
 
   approveOf(row: Locator): Locator {

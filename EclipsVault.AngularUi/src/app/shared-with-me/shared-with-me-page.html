@@ -1,13 +1,24 @@
 <div class="page-header">
   <div>
     <h1>Shared with me</h1>
-    <p class="page-sub">Secrets outside your project that someone has granted you access to.</p>
+    @if (sorted().length > 0) {
+      <p class="page-sub">{{ context() }}</p>
+      <p class="trust-line">
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <rect x="3" y="11" width="18" height="11" rx="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+        Every reveal is logged
+      </p>
+    } @else {
+      <p class="page-sub">Secrets outside your project that someone has granted you access to.</p>
+    }
   </div>
 </div>
 
 @if (shares.hasValue()) {
   <section class="panel">
-    @if (shares.value().shares.length === 0) {
+    @if (sorted().length === 0) {
       <app-empty-state
         icon="share"
         heading="Nothing shared with you yet"
@@ -16,39 +27,55 @@
         <a class="button primary" routerLink="/Secrets">Go to your secrets</a>
       </app-empty-state>
     } @else {
-      <div class="table-scroll" appScrollRegion role="region" aria-label="Secrets shared with me">
-        <p class="table-scroll-hint">Scroll horizontally to see all columns.</p>
-        <table class="data-table">
+      <div class="panel-header">
+        <h2>Secrets shared with you</h2>
+        <span class="sort-note">Sorted by end date, soonest first</span>
+      </div>
+      <div class="table-card">
+        <table class="data-table row-cards">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Project</th>
+              <th>Secret</th>
               <th>Environment</th>
               <th>Sensitivity</th>
               <th>Shared by</th>
               <th>Access until</th>
-              <th></th>
             </tr>
           </thead>
           <tbody>
-            @for (share of shares.value().shares; track share.secretId) {
+            @for (share of sorted(); track share.secretId) {
+              @let ends = expiry(share.accessUntilUtc);
               <tr>
-                <td class="mono cell-strong">{{ share.name }}</td>
-                <td>{{ share.project }}</td>
-                <td>
+                <td class="cell-main">
+                  <a
+                    class="row-link mono cell-strong"
+                    [href]="'/Secrets/Details/' + share.secretId"
+                    >{{ share.name }}</a
+                  >
+                  <span class="row-code mono muted">{{ share.project }}</span>
+                </td>
+                <td class="cell-pill">
                   <span class="badge env-{{ share.environment.toLowerCase() }}">{{
                     share.environment
                   }}</span>
                 </td>
-                <td>
+                <td class="cell-pill">
                   <span class="badge sens-{{ share.sensitivity }}">{{
                     share.sensitivityLabel
                   }}</span>
                 </td>
-                <td class="muted">{{ share.sharedBy }}</td>
-                <td class="muted">{{ accessUntil(share) }}</td>
-                <td class="cell-actions">
-                  <a class="button small" [href]="'/Secrets/Details/' + share.secretId">Open</a>
+                <td class="cell-meta muted" data-label="Shared by">{{ share.sharedBy }}</td>
+                <td
+                  class="cell-pill"
+                  [attr.data-label]="share.accessUntilUtc && !ends.tone ? 'Access until' : null"
+                >
+                  @if (ends.tone) {
+                    <span class="badge tone-{{ ends.tone }}" [title]="ends.title">{{
+                      ends.text
+                    }}</span>
+                  } @else {
+                    <span class="muted">{{ ends.text }}</span>
+                  }
                 </td>
               </tr>
             }

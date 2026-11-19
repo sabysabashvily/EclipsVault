@@ -8,7 +8,7 @@ export class SharedByMe {
   readonly goToSecrets;
   readonly confirmation;
   readonly cancel;
-  readonly continue;
+  readonly revokeAccess;
   readonly status;
   readonly error;
   readonly retry;
@@ -28,11 +28,14 @@ export class SharedByMe {
     this.goToSecrets = page.getByRole('link', { name: 'Go to your secrets', exact: true });
     this.confirmation = page.getByRole('alertdialog');
     this.cancel = this.confirmation.getByRole('button', { name: 'Cancel', exact: true });
-    this.continue = this.confirmation.getByRole('button', { name: 'Continue', exact: true });
+    this.revokeAccess = this.confirmation.getByRole('button', {
+      name: 'Revoke access',
+      exact: true,
+    });
     this.status = page.getByRole('main').getByRole('status');
     this.error = page.getByRole('main').getByRole('alert');
     this.retry = page.getByRole('button', { name: 'Try again', exact: true });
-    this.introduction = page.getByText("Everyone you've granted access to one of your secrets.", {
+    this.introduction = page.getByText('Revoking takes effect on their next request.', {
       exact: false,
     });
     this.emptyMessage = page.getByText(

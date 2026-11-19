@@ -1,5 +1,15 @@
+import { Component, viewChild } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ConfirmationDialog } from './confirmation-dialog';
+
+@Component({
+  imports: [ConfirmationDialog],
+  template:
+    '<app-confirmation-dialog><label>Days <input name="days" /></label></app-confirmation-dialog>',
+})
+class WithField {
+  readonly dialog = viewChild.required(ConfirmationDialog);
+}
 
 describe('ConfirmationDialog', () => {
   async function render() {
@@ -81,5 +91,72 @@ describe('ConfirmationDialog', () => {
     expect(dialog.open).toBe(false);
     expect(document.activeElement).toBe(opener);
     expect(decision).toHaveBeenCalledExactlyOnceWith(true);
+  });
+
+  it('a titled decision is named by its title, described by its message and lists its facts', async () => {
+    const fixture = TestBed.createComponent(ConfirmationDialog);
+    await fixture.whenStable();
+    const dialog = (fixture.nativeElement as HTMLElement).querySelector('dialog')!;
+    dialog.showModal = () => dialog.setAttribute('open', '');
+    fixture.componentInstance.open('They lose access on their next request.', {
+      title: "Revoke Lena's access?",
+      confirm: 'Revoke access',
+      facts: [
+        ['Secret', 'payments/stripe-key'],
+        ['Recipient', 'Lena'],
+      ],
+      note: 'Saved to the audit log',
+    });
+    await fixture.whenStable();
+
+    const name = document.getElementById(dialog.getAttribute('aria-labelledby')!);
+    const description = document.getElementById(dialog.getAttribute('aria-describedby')!);
+    expect(name?.textContent).toBe("Revoke Lena's access?");
+    expect(description?.textContent).toBe('They lose access on their next request.');
+    expect(
+      [...dialog.querySelectorAll('.facts div')].map((row) => row.textContent?.trim()),
+    ).toEqual(['Secretpayments/stripe-key', 'RecipientLena']);
+    expect(dialog.querySelector('.dialog-note')?.textContent).toBe('Saved to the audit log');
+    expect(dialog.querySelector('button.danger')?.textContent?.trim()).toBe('Revoke access');
+  });
+
+  it('a primary decision takes the primary button instead of the danger one', async () => {
+    const fixture = TestBed.createComponent(ConfirmationDialog);
+    await fixture.whenStable();
+    const dialog = (fixture.nativeElement as HTMLElement).querySelector('dialog')!;
+    dialog.showModal = () => dialog.setAttribute('open', '');
+    fixture.componentInstance.open('Lena gets the secret as a share.', {
+      confirm: 'Approve and grant access',
+      tone: 'primary',
+    });
+    await fixture.whenStable();
+
+    expect(dialog.querySelector('button.danger')).toBeNull();
+    expect(dialog.querySelector('button.primary')?.textContent?.trim()).toBe(
+      'Approve and grant access',
+    );
+  });
+
+  it('focuses a projected field first and keeps Tab cycling through every control', async () => {
+    const fixture = TestBed.createComponent(WithField);
+    await fixture.whenStable();
+    const dialog = (fixture.nativeElement as HTMLElement).querySelector('dialog')!;
+    dialog.showModal = () => dialog.setAttribute('open', '');
+    fixture.componentInstance.dialog().open('Approve this request?');
+    await fixture.whenStable();
+    const tab = (shiftKey = false) =>
+      dialog.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Tab', shiftKey, bubbles: true, cancelable: true }),
+      );
+
+    expect(document.activeElement?.getAttribute('name')).toBe('days');
+    tab();
+    expect(document.activeElement?.textContent).toBe('Cancel');
+    tab();
+    expect(document.activeElement?.textContent?.trim()).toBe('Continue');
+    tab();
+    expect(document.activeElement?.getAttribute('name')).toBe('days');
+    tab(true);
+    expect(document.activeElement?.textContent?.trim()).toBe('Continue');
   });
 });

@@ -144,7 +144,9 @@ test('Shared by me is served as the titled Angular document', async ({ page }) =
   );
 });
 
-test('Shared by me lists shares newest first under the Legacy columns', async ({ page }) => {
+test('Shared by me lists shares soonest-ending first, the close one as a yellow pill', async ({
+  page,
+}) => {
   const shares = await openAsIssuer(page);
   await expect(shares.columns).toHaveText([
     'Secret',
@@ -160,14 +162,19 @@ test('Shared by me lists shares newest first under the Legacy columns', async ({
   await expect(shares.sharedOnOf(shares.rows.first())).toHaveText(
     /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
   );
-  await expect(shares.accessUntilOf(shares.rows.first())).toHaveText(
-    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
-  );
+  // Shared for 7 days a moment ago, so it ends within the week: yellow, not yet red.
+  // eslint-disable-next-line playwright/no-raw-locators -- The pill's tone is a class; it has no role of its own.
+  const pill = shares.accessUntilOf(shares.rows.first()).locator('.badge');
+  await expect(pill).toHaveText(/^In 6 days · \d{1,2} [A-Z][a-z]{2}( \d{4})?$/);
+  await expect(pill).toHaveClass(/\btone-warn\b/);
+  await expect(
+    page.getByText(/^2 shares you gave · soonest ends \d{1,2} [A-Z][a-z]{2}/),
+  ).toBeVisible();
 });
 
-test('Shared by me shows "no expiry" for a share without an expiry', async ({ page }) => {
+test('Shared by me shows "No expiry" for a share without an expiry', async ({ page }) => {
   const shares = await openAsIssuer(page);
-  await expect(shares.accessUntilOf(shares.share('E2e_Shared_No_Expiry'))).toHaveText('no expiry');
+  await expect(shares.accessUntilOf(shares.share('E2e_Shared_No_Expiry'))).toHaveText('No expiry');
 });
 
 test('the sidebar opens Shared by me in-app with its Sharing group active', async ({ page }) => {
@@ -285,7 +292,8 @@ test('Cancel and Escape keep access while confirmation names the recipient and s
     if (request.method() === 'DELETE') writes.push(request.url());
   });
   await revoke.click();
-  await expect(shares.confirmation).toHaveAccessibleName(
+  await expect(shares.confirmation).toHaveAccessibleName("Revoke e2e-share-recipient's access?");
+  await expect(shares.confirmation).toHaveAccessibleDescription(
     "Revoke e2e-share-recipient's access to 'E2e_Shared_No_Expiry'? They lose access on their next request.",
   );
   await expect(shares.cancel).toBeFocused();
@@ -295,7 +303,7 @@ test('Cancel and Escape keep access while confirmation names the recipient and s
   await revoke.click();
   await expect(shares.cancel).toBeFocused();
   await page.keyboard.press('Shift+Tab');
-  await expect(shares.continue).toBeFocused();
+  await expect(shares.revokeAccess).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(shares.cancel).toBeFocused();
   await page.keyboard.press('Escape');
@@ -303,6 +311,35 @@ test('Cancel and Escape keep access while confirmation names the recipient and s
   await expect(revoke).toBeFocused();
   expect(writes).toEqual([]);
 });
+
+test('on a phone each share is a card and Revoke opens a bottom sheet', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  const shares = await openAsIssuer(page);
+  const revoke = page.getByRole('button', { name: 'Revoke', exact: true });
+  await expect(revoke).toHaveCount(2);
+  await expect(revoke.first()).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
+  await revoke.first().click();
+  await expect(shares.revokeAccess).toBeVisible();
+  // The sheet slides up; once it settles it spans the width and sits on the bottom edge.
+  await expect
+    .poll(async () => {
+      const box = await shares.confirmation.boundingBox();
+      return box && [Math.round(box.x), Math.round(box.width), Math.round(box.y + box.height)];
+    })
+    .toEqual([0, 375, 800]);
+  await page.keyboard.press('Escape');
+  await expect(shares.confirmation).not.toBeVisible();
+});
+
+for (const width of [300, 2000]) {
+  test(`Shared by me has no sideways scroll at ${width}px with shares listed`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openAsIssuer(page);
+    await expect(page.getByRole('button', { name: 'Revoke', exact: true })).toHaveCount(2);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  });
+}
 
 test('a refused revocation announces the audit failure and keeps the share', async ({
   page,
@@ -322,7 +359,7 @@ test('a refused revocation announces the audit failure and keeps the share', asy
     .share('E2e_Shared_No_Expiry')
     .getByRole('button', { name: 'Revoke', exact: true })
     .click();
-  await shares.continue.click();
+  await shares.revokeAccess.click();
   await expect(shares.error).toHaveText(title);
   await expect(shares.rows).toHaveCount(2);
 });
@@ -343,7 +380,7 @@ test('revoking a real share ends the recipient browser access on its next reques
     .getByRole('button', { name: 'Revoke', exact: true })
     .click();
   const deleted = page.waitForRequest((request) => request.method() === 'DELETE');
-  await shares.continue.click();
+  await shares.revokeAccess.click();
   expect((await deleted).headers()['requestverificationtoken']).toBeTruthy();
   await expect(shares.status).toHaveText('Access revoked.');
   await expect(shares.rows).toHaveCount(1);
