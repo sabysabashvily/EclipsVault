@@ -1,101 +1,215 @@
+@let model = view();
 <div class="page-header">
   <div>
-    <h1>Encryption keys</h1>
-    <p class="page-sub">
-      Each secret's data key is wrapped by a master KEK. Rotation re-wraps secrets and their
-      versions under the current KEK; the payload itself is never re-encrypted. The Data Protection
-      key ring still needs its existing keys.
+    <div class="title-row">
+      <h1>Encryption keys</h1>
+      @if (model) {
+        <span class="badge tone-{{ model.verdict.tone }}">{{ model.verdict.label }}</span>
+      }
+    </div>
+    @if (model) {
+      <p class="page-sub">{{ model.context }}</p>
+    }
+    <p class="trust-line">
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <rect x="3" y="11" width="18" height="11" rx="2" />
+        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+      </svg>
+      Only key ids are shown, never key material · every re-wrap is saved to the audit log
     </p>
   </div>
 </div>
-<app-status-line [message]="writes.status().message" [error]="writes.status().error" />
+<!-- The page words a stopped or already-running re-wrap itself, in a notice below. -->
+<app-status-line
+  [message]="refusal() ? '' : writes.status().message"
+  [error]="writes.status().error"
+/>
 @if (encryption.isLoading() && !encryption.hasValue()) {
   <p role="status">Loading encryption keys…</p>
 } @else if (encryption.error() && !encryption.hasValue()) {
   <p role="alert">Could not load encryption keys. Try again.</p>
   <button type="button" class="button" (click)="encryption.reload()">Try again</button>
-} @else if (encryption.hasValue()) {
-  @if (someKeyIsNotLoaded()) {
-    <div class="notice notice-critical">
-      <strong>⚠ Some secrets reference a KEK that is not loaded.</strong>
-      <span
-        >Provide the missing key as a retired KEK (<code>ECLIPSVAULT_KEK_RETIRED</code>) so it can
-        be decrypted and rotated, or those secrets cannot be read.</span
-      >
-    </div>
-  } @else if (awaitingRotation() > 0) {
-    <div class="notice notice-warn">
-      <strong>{{ awaitingRotation() }} item(s) are still on a retired KEK.</strong>
-      <span
-        >Run a rotation to re-wrap them under the current key. Keep retired keys loaded while the
-        Data Protection key ring needs them.</span
-      >
-    </div>
-  } @else {
-    <div class="notice notice-ok">
-      <strong>✓ All secrets are wrapped under the current KEK.</strong>
-      <span>Nothing to rotate.</span>
-    </div>
-  }
-
-  <div class="two-col">
-    <section class="panel">
-      <div class="panel-header"><h2>Keys in use</h2></div>
-      <div class="table-scroll" appScrollRegion role="region" aria-label="Keys in use">
-        <p class="table-scroll-hint">Scroll horizontally to see all columns.</p>
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>KEK id</th>
-              <th>Status</th>
-              <th>Secrets</th>
-              <th>Versions</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (key of encryption.value().keys; track key.kekId) {
-              <tr>
-                <td class="mono cell-strong">{{ key.kekId }}</td>
-                <td>
-                  <span [class]="'badge tone-' + badges[key.status].tone">{{
-                    badges[key.status].label
-                  }}</span>
-                </td>
-                <td>{{ key.secrets }}</td>
-                <td>{{ key.versions }}</td>
-              </tr>
-            }
-          </tbody>
-        </table>
+} @else if (model) {
+  @for (key of model.missingKeys; track key.kekId) {
+    <section class="notice notice-critical" [attr.aria-labelledby]="'missing-' + key.kekId">
+      <span class="notice-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+          <path d="M12 9v4M12 17h.01" />
+        </svg>
+      </span>
+      <div class="notice-body">
+        <!-- prettier-ignore -->
+        <h2 [id]="'missing-' + key.kekId">Load <code class="code-chip">{{ key.kekId }}</code> on this server</h2>
+        <p>Until it is loaded, the items it wraps can't be read or re-wrapped.</p>
+        <ol class="steps">
+          <li>Add it to <code class="code-chip">ECLIPSVAULT_KEK_RETIRED</code> and restart.</li>
+          <li>Re-wrap here, which moves its items to the current key.</li>
+          <li>Keep it loaded while the Data Protection key ring needs it.</li>
+        </ol>
       </div>
     </section>
-
-    <section class="panel">
-      <div class="panel-header"><h2>Rotate</h2></div>
-      <dl class="detail-grid">
-        <dt>Current KEK</dt>
-        <dd class="mono">{{ encryption.value().currentKekId }}</dd>
-        <dt>Keys loaded</dt>
-        <dd class="mono">{{ encryption.value().loadedKekIds.join(', ') }}</dd>
-        <dt>Awaiting rotation</dt>
-        <dd>{{ awaitingRotation() }} item(s)</dd>
-      </dl>
-      <p class="hint muted">
-        To rotate: generate a new key, set it as <code>ECLIPSVAULT_KEK</code>, move the previous key
-        to <code>ECLIPSVAULT_KEK_RETIRED</code>, restart, then run the rotation below. Rotation
-        re-wraps secrets and their archived versions. It does not re-wrap the Data Protection key
-        ring. Keep retired master keys loaded while the ring needs them; a zero pending count does
-        not mean a retired key can be removed.
-      </p>
-      <button
-        type="button"
-        class="button primary"
-        [disabled]="awaitingRotation() === 0 || writes.busy() || writes.blocked()"
-        (click)="askToRotate()"
-      >
-        Re-wrap under current KEK
-      </button>
+  }
+  @if (refusal() === 'audit_unavailable') {
+    <section class="notice notice-critical" role="alert" aria-labelledby="rewrap-stopped">
+      <span class="notice-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+          <path d="M12 9v4M12 17h.01" />
+        </svg>
+      </span>
+      <div class="notice-body">
+        <h2 id="rewrap-stopped">Re-wrap stopped: the audit log could not record it</h2>
+        <p>{{ writes.status().message }}</p>
+      </div>
     </section>
-  </div>
+  }
+  @if (refusal() === 'rotation_running') {
+    <section class="notice notice-info" role="status" aria-labelledby="rewrap-running">
+      <span class="notice-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 11v5M12 8h.01" />
+        </svg>
+      </span>
+      <div class="notice-body">
+        <h2 id="rewrap-running">Another re-wrap is already running</h2>
+        <p>Nothing was changed by this attempt. Try again when the other run finishes.</p>
+      </div>
+    </section>
+  }
+  @if (lastRotation(); as rotation) {
+    <section class="notice notice-ok" role="status" aria-labelledby="rewrap-done">
+      <span class="notice-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7" /></svg>
+      </span>
+      <div class="notice-body">
+        <h2 id="rewrap-done">
+          Re-wrapped {{ count(+rotation.secretsRewrapped, 'secret', 'secrets') }} and
+          {{ count(+rotation.versionsRewrapped, 'version', 'versions') }} under the current key
+        </h2>
+        @if (+rotation.secretsRewrapped + +rotation.versionsRewrapped === 0) {
+          <p>Nothing needed re-wrapping.</p>
+        }
+        @if (+rotation.onMissingKeys > 0) {
+          <p>{{ count(+rotation.onMissingKeys) }} remain on keys that are not loaded.</p>
+        }
+      </div>
+    </section>
+  }
+
+  @if (model.waiting > 0 || model.missing > 0) {
+    <section class="panel action-strip" aria-label="Re-wrap">
+      <div class="stat-grid figures">
+        @if (model.missing > 0) {
+          <div class="stat-card alert">
+            <span class="stat-value">{{ model.missing }}</span>
+            <span class="stat-label">Can't be read</span>
+            <span class="stat-detail">until its master key is loaded here</span>
+          </div>
+        }
+        <div class="stat-card" [class.attention]="model.waiting > 0">
+          <span class="stat-value">{{ model.waiting }}</span>
+          <span class="stat-label">Waiting to re-wrap</span>
+          <span class="stat-detail"
+            >{{ count(model.retired.secrets, 'secret', 'secrets') }} and
+            {{ count(model.retired.versions, 'version', 'versions') }}</span
+          >
+        </div>
+        @if (model.missing === 0) {
+          <div class="stat-card">
+            <span class="stat-value">{{ model.onCurrent }}</span>
+            <span class="stat-label">On the current key</span>
+            <span class="stat-detail"
+              >of {{ count(model.onCurrent + model.waiting) }} in the vault</span
+            >
+          </div>
+        }
+      </div>
+      <div class="action-tile">
+        <h2>Re-wrap under the current key</h2>
+        @if (writes.busy()) {
+          <p class="muted">
+            Keep this page open until it finishes; anything already re-wrapped stays re-wrapped.
+          </p>
+          <div class="busy-bar" aria-hidden="true"><span></span></div>
+          <button type="button" class="button primary" disabled>Re-wrapping…</button>
+        } @else {
+          <p class="muted">
+            Nothing changes until you confirm.
+            @if (model.missing > 0) {
+              The {{ count(model.missing) }} on the missing key are skipped.
+            }
+          </p>
+          @if (model.waiting > 0) {
+            <button
+              type="button"
+              class="button primary"
+              [disabled]="writes.blocked()"
+              (click)="askToRotate()"
+            >
+              Re-wrap {{ count(model.waiting) }}
+            </button>
+            <span class="action-fine">Saved to the audit log</span>
+          }
+        }
+      </div>
+    </section>
+  } @else if (!lastRotation()) {
+    <section class="panel step-card" aria-labelledby="next-key">
+      <h2 id="next-key">Moving to a new master key</h2>
+      <p class="muted">
+        Master keys live outside the vault, so the first two steps happen where you deploy it.
+      </p>
+      <ol class="steps">
+        <li>Set the new key as <code class="code-chip">ECLIPSVAULT_KEK</code>.</li>
+        <li>
+          Move the current one to <code class="code-chip">ECLIPSVAULT_KEK_RETIRED</code> and
+          restart.
+        </li>
+        <li>
+          Re-wrap here. Keep the retired key loaded while the Data Protection key ring needs it.
+        </li>
+      </ol>
+    </section>
+  }
+
+  <section class="panel" aria-labelledby="master-keys">
+    <div class="panel-header">
+      <h2 id="master-keys">Master keys</h2>
+      <span class="sort-note">Current key first, then by items wrapped, most first</span>
+    </div>
+    <div class="table-card">
+      <table class="data-table row-cards">
+        <thead>
+          <tr>
+            <th>Key</th>
+            <th>Status</th>
+            <th class="num">Secrets</th>
+            <th class="num">Versions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (key of model.keys; track key.kekId) {
+            @let role = roleOf(key);
+            <tr>
+              <td class="cell-main">
+                <span class="mono cell-strong">{{ key.kekId }}</span>
+                <span class="key-role muted">{{ role.role }}</span>
+              </td>
+              <td class="cell-pill">
+                <span class="badge tone-{{ role.tone }}">{{ role.label }}</span>
+              </td>
+              <td class="cell-meta num" data-label="Secrets">{{ key.secrets }}</td>
+              <td class="cell-meta num" data-label="· Versions">{{ key.versions }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <a class="card-link" routerLink="/Audit"
+      >Past re-wraps, with who ran them, are in the audit log</a
+    >
+  </section>
 }
 <app-confirmation-dialog (decision)="confirmed($event)" />

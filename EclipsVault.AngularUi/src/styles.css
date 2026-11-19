@@ -781,6 +781,13 @@ body:has(.mobile-navigation[open]) {
 .notice-critical svg {
   color: var(--danger);
 }
+.notice-info {
+  border-color: transparent;
+  background: var(--info-wash);
+}
+.notice-info svg {
+  color: var(--info);
+}
 .notice strong {
   margin-right: 0.15rem;
   font-weight: 500;
@@ -1850,6 +1857,9 @@ button.matrix-cell:hover .matrix-word {
   .row-cards tbody td:empty {
     display: none;
   }
+  .row-cards .num {
+    text-align: left;
+  }
   .row-cards .cell-pills {
     order: 3;
     flex-basis: 100%;
@@ -2121,6 +2131,10 @@ tr:has(.row-link) [title] {
 .badge.tone-muted {
   color: var(--text-muted);
 }
+.badge.tone-info {
+  color: var(--info);
+  background: var(--info-soft);
+}
 
 .empty-state {
   text-align: center;
@@ -2331,6 +2345,126 @@ tr:has(.row-link) [title] {
 .feed-action {
   flex-shrink: 0;
   align-self: center;
+}
+
+/* ---- Encryption keys -------------------------------------------------- */
+/* Figures and the one action in one card; the action drops below them in a narrow card. */
+.action-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 20rem);
+  gap: 1.2rem;
+  align-items: stretch;
+  container: strip / inline-size;
+}
+.action-strip .stat-grid.figures {
+  margin-bottom: 0;
+}
+@media (max-width: 1100px) {
+  .action-strip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.action-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+.action-tile h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+.action-tile p {
+  margin: 0;
+}
+.action-fine {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+@media (max-width: 767px) {
+  .action-tile .button {
+    align-self: stretch;
+  }
+}
+/* Indeterminate progress: one segment slides across; still at 40% when motion is reduced. */
+.busy-bar {
+  position: relative;
+  align-self: stretch;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--border);
+}
+.busy-bar span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  border-radius: 2px;
+  background: var(--accent);
+  animation: busy-slide 1.2s var(--ease) infinite;
+}
+@keyframes busy-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .busy-bar span {
+    animation: none;
+  }
+}
+/* Numbered steps, each number in a small circle. */
+ol.steps {
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+ol.steps > li {
+  position: relative;
+  min-height: 1.6rem;
+  padding: 0.15rem 0 0.15rem 2.2rem;
+  counter-increment: step;
+}
+ol.steps > li + li {
+  margin-top: 0.55rem;
+}
+ol.steps > li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  background: var(--bg-raised-2);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+.step-card h2 {
+  margin: 0 0 0.3rem;
+}
+.step-card p {
+  margin: 0;
+}
+.key-role {
+  display: block;
+  font-size: 0.8rem;
+}
+.data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.card-link {
+  display: inline-block;
+  margin-top: 0.9rem;
+  font-size: 0.86rem;
 }
 
 /* ---- Security checkup -------------------------------------------------- */
