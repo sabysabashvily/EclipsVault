@@ -1,3 +1,4 @@
+import { ScrollRegion } from '../shared/scroll-region';
 import { HttpClient, httpResource } from '@angular/common/http';
 import { Component, DOCUMENT, computed, inject, signal, viewChild } from '@angular/core';
 import { AdministratorWrites } from '../shared/administrator-writes';
@@ -6,6 +7,7 @@ import { relativeTime, utcTimestamp } from '../shared/relative-time';
 import { StatusLine } from '../shared/status-line';
 import { StepUpDialog } from '../shared/step-up-dialog';
 import { TableFilter } from '../shared/table-filter';
+import { PagePrimary } from '../shell/page-primary';
 import type { components } from '../ui-api/schema.generated';
 import { UiApiError } from '../ui-api/ui-api-errors';
 
@@ -17,7 +19,7 @@ const path = '/api/ui/audit';
 /** Opening the page records a view; Verify and Checkpoint answer in place, so they record none. */
 @Component({
   selector: 'app-audit-page',
-  imports: [StatusLine, StepUpDialog, TableFilter],
+  imports: [PagePrimary, ScrollRegion, StatusLine, StepUpDialog, TableFilter],
   providers: [AdministratorWrites],
   templateUrl: './audit-page.html',
 })

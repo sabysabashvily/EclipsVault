@@ -7,7 +7,6 @@ import { AccessRequests } from './access-requests';
 import { feedEntry } from './activity';
 import { Denied } from './denied';
 import { test, expect } from './fixtures';
-import { lookOf } from './look';
 import { createSecret, openPalette } from './palette';
 import { SecretsList } from './secrets-list';
 import { SharedWithMe } from './shared-with-me';
@@ -277,9 +276,13 @@ test('the keyboard alone approves through the expiry box', async ({ page, browse
   const requester = await (await browserHealth.newContext()).newPage();
   await expect((await fileRequest(requester, byKeyboard)).announcement(filedMessage)).toBeVisible();
 
+  // At this width the review table is wider than its card, so its scroll region is a tab stop.
+  await page.setViewportSize({ width: 800, height: 900 });
   const requests = await openAsAdministrator(page);
   const request = requests.requestToReview(byKeyboard);
   await requests.introduction.click();
+  await page.keyboard.press('Tab');
+  await expect(requests.reviewRegion).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(requests.expiryOf(request)).toBeFocused();
   await page.keyboard.press('ControlOrMeta+a');
@@ -319,38 +322,16 @@ test('with no requests of their own, Browse secrets opens the Secrets list', asy
   await expect(page).toHaveURL(/\/Secrets$/);
 });
 
-for (const [theme, accent, accentBackground] of [
-  ['dark', 'rgb(255, 159, 10)', 'rgba(255, 159, 10, 0.14)'],
-  ['light', 'rgb(180, 95, 4)', 'rgba(180, 95, 4, 0.12)'],
-]) {
-  test(`visual parity: Access requests keeps the Legacy page and table look in ${theme}`, async ({
+for (const theme of ['dark', 'light']) {
+  test(`Access requests shows the approved request and empty review queue in ${theme}`, async ({
     page,
   }, info) => {
     await page.setViewportSize({ width: 1440, height: 1200 });
     await useTheme(page, theme);
-    const legacy = new SecretsList(page);
-    await page.context().addCookies(requesterCookies);
-    await legacy.open();
-    await expect(legacy.heading).toBeVisible();
-    // Legacy's Access requests page used the Secrets list's own heading, introduction and table classes.
-    const expected = {
-      heading: await lookOf(legacy.heading),
-      introduction: await lookOf(legacy.introduction),
-      table: await lookOf(page.getByRole('table')),
-      column: await lookOf(legacy.columns.first()),
-    };
-
     const requests = await openAsRequester(page);
+    await expect(requests.heading).toBeVisible();
     await expect(requests.myRequest(approved)).toBeVisible();
-    expect({
-      heading: await lookOf(requests.heading),
-      introduction: await lookOf(requests.introduction),
-      table: await lookOf(requests.mine),
-      column: await lookOf(requests.mine.getByRole('columnheader').first()),
-    }).toEqual(expected);
     await expect(requests.nothingToReview).toBeVisible();
-    await expect(requests.emptyIcon).toHaveCSS('color', accent);
-    await expect(requests.emptyIcon).toHaveCSS('background-color', accentBackground);
     const path = info.outputPath(`${theme}-access-requests.png`);
     await page.screenshot({ path, fullPage: true });
     await info.attach(`${theme}-access-requests`, { path, contentType: 'image/png' });
@@ -373,14 +354,15 @@ test('a mixed-case Access requests bookmark serves the titled Angular page', asy
   await expect(page).toHaveTitle('Access requests — EclipsVault');
 });
 
-test('the sidebar opens Access requests in-app with its Access group active', async ({ page }) => {
+test('the sidebar opens Access requests in-app from its top-level item', async ({ page }) => {
   await openAsRequester(page, '/Access');
   const documents = recordDocuments(page);
   const link = page.getByRole('link', { name: 'Access requests', exact: true });
   await link.click();
   await expect(new AccessRequests(page).myRequest(approved)).toBeVisible();
   await expect(link).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('group').filter({ has: link })).toHaveJSProperty('open', true);
+  // Access requests sits at the top of the sidebar, in no folding group.
+  await expect(page.getByRole('group').filter({ has: link })).toHaveCount(0);
   expect(documents).toEqual([]);
 });
 

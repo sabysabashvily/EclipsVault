@@ -1,3 +1,4 @@
+import { ScrollRegion } from '../shared/scroll-region';
 import { formatDate } from '@angular/common';
 import { httpResource } from '@angular/common/http';
 import { Component, inject, LOCALE_ID } from '@angular/core';
@@ -11,7 +12,7 @@ type ReceivedShare = components['schemas']['ReceivedShareResponse'];
 
 @Component({
   selector: 'app-shared-with-me-page',
-  imports: [EmptyState, RouterLink],
+  imports: [ScrollRegion, EmptyState, RouterLink],
   templateUrl: './shared-with-me-page.html',
 })
 export class SharedWithMePage {

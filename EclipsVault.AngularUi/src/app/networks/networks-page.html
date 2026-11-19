@@ -74,37 +74,40 @@
           No runtime-trusted networks yet. Entries added here apply immediately and are audited.
         </p>
       } @else {
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Range</th>
-              <th>Label</th>
-              <th>Added by</th>
-              <th>Added (UTC)</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (network of networks.value().trustedNetworks; track network.networkId) {
+        <div class="table-scroll" appScrollRegion role="region" aria-label="Trusted networks">
+          <p class="table-scroll-hint">Scroll horizontally to see all columns.</p>
+          <table class="data-table">
+            <thead>
               <tr>
-                <td class="mono cell-strong">{{ network.range }}</td>
-                <td>{{ network.label }}</td>
-                <td class="muted">{{ network.addedBy }}</td>
-                <td class="muted">{{ network.addedAtUtc | date: 'yyyy-MM-dd HH:mm' : 'UTC' }}</td>
-                <td class="cell-actions">
-                  <button
-                    type="button"
-                    class="button small danger"
-                    [disabled]="writesClosed()"
-                    (click)="askRemove(network)"
-                  >
-                    Remove
-                  </button>
-                </td>
+                <th>Range</th>
+                <th>Label</th>
+                <th>Added by</th>
+                <th>Added (UTC)</th>
+                <th></th>
               </tr>
-            }
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              @for (network of networks.value().trustedNetworks; track network.networkId) {
+                <tr>
+                  <td class="mono cell-strong">{{ network.range }}</td>
+                  <td>{{ network.label }}</td>
+                  <td class="muted">{{ network.addedBy }}</td>
+                  <td class="muted">{{ network.addedAtUtc | date: 'yyyy-MM-dd HH:mm' : 'UTC' }}</td>
+                  <td class="cell-actions">
+                    <button
+                      type="button"
+                      class="button small danger"
+                      [disabled]="writesClosed()"
+                      (click)="askRemove(network)"
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
       }
     </section>
 
@@ -126,36 +129,44 @@
         @if (!networks.value().blocks.length) {
           <p class="muted">No ranges are currently blocked.</p>
         } @else {
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Range</th>
-                <th>Reason</th>
-                <th>Since (UTC)</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (block of networks.value().blocks; track block.range) {
+          <div
+            class="table-scroll"
+            appScrollRegion
+            role="region"
+            aria-label="Intrusion-defence blocks"
+          >
+            <p class="table-scroll-hint">Scroll horizontally to see all columns.</p>
+            <table class="data-table">
+              <thead>
                 <tr>
-                  <td class="mono cell-strong">{{ block.range }}</td>
-                  <td class="muted">{{ block.reason }}</td>
-                  <td class="muted">{{ block.blockedAtUtc | date: 'MM-dd HH:mm' : 'UTC' }}</td>
-                  <td class="cell-actions">
-                    <button
-                      #unblockButton
-                      type="button"
-                      class="button small"
-                      [disabled]="writesClosed()"
-                      (click)="askUnblock(block, unblockButton)"
-                    >
-                      Unblock
-                    </button>
-                  </td>
+                  <th>Range</th>
+                  <th>Reason</th>
+                  <th>Since (UTC)</th>
+                  <th></th>
                 </tr>
-              }
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                @for (block of networks.value().blocks; track block.range) {
+                  <tr>
+                    <td class="mono cell-strong">{{ block.range }}</td>
+                    <td class="muted">{{ block.reason }}</td>
+                    <td class="muted">{{ block.blockedAtUtc | date: 'MM-dd HH:mm' : 'UTC' }}</td>
+                    <td class="cell-actions">
+                      <button
+                        #unblockButton
+                        type="button"
+                        class="button small"
+                        [disabled]="writesClosed()"
+                        (click)="askUnblock(block, unblockButton)"
+                      >
+                        Unblock
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
         }
       </section>
     </div>

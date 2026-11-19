@@ -89,7 +89,10 @@ test('the sidebar on Encryption keys opens Your data in the Angular UI', async (
   const encryption = new EncryptionKeys(page);
   await encryption.open();
   await expect(encryption.heading).toBeVisible();
-  await new AppShell(page).yourData.click();
+  // Your data is in the You group, which an administration page leaves folded.
+  const shell = new AppShell(page);
+  await shell.you.click();
+  await shell.yourData.click();
   await expect(new YourData(page).heading).toBeVisible();
   await expect(page).toHaveURL(/\/Data$/);
 });

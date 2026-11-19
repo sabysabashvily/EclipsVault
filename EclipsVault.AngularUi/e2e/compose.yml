@@ -56,6 +56,9 @@ services:
       Email__Smtp__Host: smtp
       Email__Smtp__Port: '1025'
       WebAuthn__Origins__0: ${E2E_BASE_URL:-https://localhost}
+      # The access grid must have the same expected result at every hour of the day.
+      Abac__ProductionWindowStartUtcHour: '0'
+      Abac__ProductionWindowEndUtcHour: '24'
     depends_on:
       redis:
         condition: service_healthy
