@@ -75,10 +75,14 @@ public static class DependencyInjection
                 "Database connection string 'DefaultConnection' is not configured. Set the " +
                 "ConnectionStrings__DefaultConnection environment variable (or a secret store).");
 
-        // Which database to run on. SQL Server stays the default so existing deployments are
-        // unaffected; PostgreSQL exists because a paid database is a line item on every self-hosted
-        // deployment, and the vault should not be the reason for one.
-        var provider = configuration.GetValue<string?>("Database:Provider") ?? DatabaseProvider.SqlServer;
+        // No default. Choosing PostgreSQL for an unset value would make an upgraded SQL Server
+        // install read its connection string as PostgreSQL.
+        var provider = configuration.GetValue<string?>("Database:Provider");
+        if (string.IsNullOrEmpty(provider))
+        {
+            throw new InvalidOperationException(
+                "Database:Provider is not set. Set it to 'SqlServer' or 'Postgres' (environment variable Database__Provider).");
+        }
 
         services.AddDbContext<EclipsVaultDbContext>((sp, options) => options
             .UseVaultDatabase(provider, connectionString)
