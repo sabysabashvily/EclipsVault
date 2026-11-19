@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { savedAdministratorCookies } from './administrator-cookies';
+import { AppShell } from './app-shell';
 import { DynamicSecretsPage } from './dynamic-secrets';
 import { dynamicRoles, loginExists, provisionDynamicTarget } from './dynamic-target';
 import { test as browserTest, expect } from './fixtures';
@@ -79,9 +80,9 @@ test('a real code issues the Secret role once, starts the evaluation and leaves 
   await expect(dynamicSecrets.revoke(username)).toBeVisible();
 
   // Leaving within the app and coming back finds the lease, never the password.
-  await page.getByRole('link', { name: 'Secrets', exact: true }).click();
+  await new AppShell(page).secrets.click();
   await expect(page).toHaveURL(/\/Secrets$/);
-  await page.getByRole('link', { name: 'Dynamic secrets', exact: true }).click();
+  await dynamicSecrets.sidebarLink.click();
   await expect(dynamicSecrets.revoke(username)).toBeVisible();
   await expect(dynamicSecrets.credential).toHaveCount(0);
   await expect(page.getByText(password)).toHaveCount(0);
@@ -123,9 +124,9 @@ test('Revoke by keyboard asks with the Legacy confirmation and removes the login
   await expect(dynamicSecrets.confirmation).toContainText(
     `Hand back '${secretLogin}'? It stops working immediately.`,
   );
-  await expect(dynamicSecrets.confirmation.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await expect(dynamicSecrets.confirmationCancel).toBeFocused();
   await page.keyboard.press('Tab');
-  await expect(dynamicSecrets.confirmation.getByRole('button', { name: 'Continue' })).toBeFocused();
+  await expect(dynamicSecrets.confirmationContinue).toBeFocused();
   await page.keyboard.press('Enter');
 
   await expect(dynamicSecrets.status).toHaveText('Credential handed back — it no longer works.');
@@ -138,12 +139,12 @@ test('cancelling Revoke keeps the login, and Continue removes it', async ({ page
   const dynamicSecrets = new DynamicSecretsPage(page);
   await dynamicSecrets.open();
   await dynamicSecrets.revoke(internalLogin).click();
-  await dynamicSecrets.confirmation.getByRole('button', { name: 'Cancel' }).click();
+  await dynamicSecrets.confirmationCancel.click();
   await expect(dynamicSecrets.confirmation).toBeHidden();
   expect(loginExists(internalLogin)).toBe(true);
 
   await dynamicSecrets.revoke(internalLogin).click();
-  await dynamicSecrets.confirmation.getByRole('button', { name: 'Continue' }).click();
+  await dynamicSecrets.confirmationContinue.click();
 
   await expect(dynamicSecrets.status).toHaveText('Credential handed back — it no longer works.');
   expect(loginExists(internalLogin)).toBe(false);

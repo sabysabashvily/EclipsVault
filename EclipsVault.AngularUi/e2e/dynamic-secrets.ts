@@ -4,6 +4,7 @@ import { openPalette } from './palette';
 /** Dynamic secrets: roles to issue from, the one-time credential, leases and their dialogs. */
 export class DynamicSecretsPage {
   readonly heading;
+  readonly sidebarLink;
   readonly credential;
   readonly issuedUsername;
   readonly issuedPassword;
@@ -11,9 +12,12 @@ export class DynamicSecretsPage {
   readonly alert;
   readonly stepUp;
   readonly confirmation;
+  readonly confirmationCancel;
+  readonly confirmationContinue;
 
   constructor(private readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Dynamic secrets', exact: true });
+    this.sidebarLink = page.getByRole('link', { name: 'Dynamic secrets', exact: true });
     this.credential = page.getByRole('region', { name: 'Your new credential — shown once' });
     this.issuedUsername = this.credential
       .getByRole('row', { name: /^Username / })
@@ -25,6 +29,8 @@ export class DynamicSecretsPage {
     this.alert = page.getByRole('alert').filter({ hasText: /\S/ });
     this.stepUp = page.getByRole('dialog', { name: "Confirm it's you" });
     this.confirmation = page.getByRole('alertdialog');
+    this.confirmationCancel = this.confirmation.getByRole('button', { name: 'Cancel' });
+    this.confirmationContinue = this.confirmation.getByRole('button', { name: 'Continue' });
   }
 
   async open(): Promise<void> {
@@ -34,7 +40,7 @@ export class DynamicSecretsPage {
 
   async fromSidebar(path: '/Account/Denied' | '/Access'): Promise<void> {
     await this.page.goto(path);
-    await this.page.getByRole('link', { name: 'Dynamic secrets', exact: true }).click();
+    await this.sidebarLink.click();
   }
 
   async fromPalette(path: '/Account/Denied' | '/Access'): Promise<void> {

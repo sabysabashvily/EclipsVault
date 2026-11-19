@@ -448,22 +448,29 @@ describe('Dynamic secrets', () => {
     expect(credential(page)).toEqual([]);
   });
 
-  it.each(['pagehide', 'vault-session-ended'])(
-    'forgets the credential on %s and refuses another write',
-    async (event) => {
-      const { page, fixture } = await loaded();
-      await issueInternal(page, fixture);
-      (event === 'pagehide' ? window : document).dispatchEvent(new Event(event));
-      fixture.detectChanges();
-      await fixture.whenStable();
-      expect(credential(page)).toEqual([]);
-      expect(page.textContent).not.toContain(issued.password);
-      expect(status(page, 'alert')).toBe(
-        'Reload the page or sign in before making another change.',
-      );
-      expect(button(rowOf(page, 'reporting_reader'), 'Generate').disabled).toBe(true);
-    },
-  );
+  it('forgets the credential on pagehide and refuses another write', async () => {
+    const { page, fixture } = await loaded();
+    await issueInternal(page, fixture);
+    window.dispatchEvent(new Event('pagehide'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(credential(page)).toEqual([]);
+    expect(page.textContent).not.toContain(issued.password);
+    expect(status(page, 'alert')).toBe('Reload the page or sign in before making another change.');
+    expect(button(rowOf(page, 'reporting_reader'), 'Generate').disabled).toBe(true);
+  });
+
+  it('forgets the credential when the session ends and refuses another write', async () => {
+    const { page, fixture } = await loaded();
+    await issueInternal(page, fixture);
+    document.dispatchEvent(new Event('vault-session-ended'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(credential(page)).toEqual([]);
+    expect(page.textContent).not.toContain(issued.password);
+    expect(status(page, 'alert')).toBe('Reload the page or sign in before making another change.');
+    expect(button(rowOf(page, 'reporting_reader'), 'Generate').disabled).toBe(true);
+  });
 
   it('forgets the credential when the page is left and opened again', async () => {
     const { page, fixture } = await loaded();
