@@ -74,14 +74,15 @@ public sealed class AuthApiTests(VaultFixture vault)
     }
 
     [Theory]
-    [InlineData("it-auth-land-default", null, "/Secrets")]
-    [InlineData("it-auth-land-outside", "https://outside.example/", "/Secrets")]
-    [InlineData("it-auth-land-account", "/Account/Totp", "/Secrets")]
-    [InlineData("it-auth-land-local", "/Access", "/Access")]
-    [InlineData("it-auth-land-app-relative", "~/Access", "/Access")]
-    public async Task A_finished_sign_in_lands_where_the_server_judges(string username, string? returnUrl, string expected)
+    [InlineData("it-auth-land-default", null, "/Secrets", "100.74.174.4")]
+    [InlineData("it-auth-land-outside", "https://outside.example/", "/Secrets", "100.74.174.40")]
+    [InlineData("it-auth-land-account", "/Account/Totp", "/Secrets", "100.74.174.41")]
+    [InlineData("it-auth-land-local", "/Access", "/Access", "100.74.174.42")]
+    [InlineData("it-auth-land-app-relative", "~/Access", "/Access", "100.74.174.43")]
+    public async Task A_finished_sign_in_lands_where_the_server_judges(string username, string? returnUrl, string expected, string source)
     {
-        await vault.SignInNewAccountAsync(username, IPAddress.Parse("100.74.174.4"), password: Password);
+        // A first sign-in spends three requests of its source's budget, so each case has its own source.
+        await vault.SignInNewAccountAsync(username, IPAddress.Parse(source), password: Password);
         var browser = vault.CreateSession(source: IPAddress.Parse("100.74.174.5"));
         var token = await AuthApi.PendingAsync(browser, username, Password);
 

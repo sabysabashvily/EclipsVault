@@ -96,13 +96,14 @@ public sealed class SignInPagesTests(VaultFixture vault)
         // The token names the pending sign-in, so the page's own calls are accepted.
         var token = SignInDocument.TokenOf(response);
         // A malformed code reaches validation only once antiforgery has accepted the token.
-        await UiApiFailureContractTests.AssertProblemAsync(
+        await ProfileApi.AssertProblemAsync(
             await AuthApi.PostAsync(browser, "/api/ui/auth/totp", token, new { code = "12" }), 400, "validation_failed");
     }
 
     /// <summary>
     /// The Legacy form actions behind the sign-in pages are gone. Their paths answer as every other
-    /// retired route does, and a complete, valid submission changes nothing.
+    /// retired route does: a signed-in caller gets 405 or 404, and anyone else, a pending sign-in too,
+    /// gets the default-deny redirect to sign in. A complete, valid submission changes nothing.
     /// </summary>
     [Theory]
     [InlineData("/Account/Login", HttpStatusCode.MethodNotAllowed)]
@@ -115,7 +116,8 @@ public sealed class SignInPagesTests(VaultFixture vault)
     public async Task A_retired_sign_in_action_neither_signs_in_nor_records_anything(string path, HttpStatusCode expected)
     {
         var username = "it-pages-retired-" + Guid.NewGuid().ToString("N")[..8];
-        await vault.SignInNewAccountAsync(username, NextSource(), password: Password);
+        var signedIn = await vault.SignInNewAccountAsync(username, NextSource(), password: Password);
+        var signedInToken = await UiApiRequest.AntiforgeryTokenAsync(signedIn.Client);
         var account = await ProfileHttp.AccountAsync(vault, username);
         var anonymous = vault.CreateSession(source: NextSource());
         var pending = vault.CreateSession(source: NextSource());
@@ -125,9 +127,14 @@ public sealed class SignInPagesTests(VaultFixture vault)
 
         using var fromAnonymous = await PostFormAsync(anonymous.Client, path, anonymousToken, username, account.TotpSecret!);
         using var fromPending = await PostFormAsync(pending.Client, path, pendingToken, username, account.TotpSecret!);
+        using var fromSignedIn = await PostFormAsync(signedIn.Client, path, signedInToken, username, account.TotpSecret!);
 
-        Assert.Equal(expected, fromAnonymous.StatusCode);
-        Assert.Equal(expected, fromPending.StatusCode);
+        Assert.Equal(expected, fromSignedIn.StatusCode);
+        foreach (var response in new[] { fromAnonymous, fromPending })
+        {
+            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+            Assert.Equal("/Account/Login", response.Headers.Location?.AbsolutePath);
+        }
         Assert.Null(anonymous.SessionCookie);
         Assert.Null(anonymous.Cookies.GetCookies(anonymous.Client.BaseAddress!)[PendingCookie]);
         Assert.Null(pending.SessionCookie);

@@ -48,7 +48,7 @@ public sealed class SignInReturnUrlTests(VaultFixture vault)
 
         Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync(WithReturnUrl("/Account/EnrollTotp", returnUrl))).StatusCode);
         var secret = await EnrollmentSecretAsync(browser, token);
-        await UiApiFailureContractTests.AssertProblemAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/enrollment/confirm", token,
+        await ProfileApi.AssertProblemAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/enrollment/confirm", token,
             new { code = "bad", returnUrl }), 400, "validation_failed");
         Assert.Equal(HttpStatusCode.Unauthorized, (await browser.Client.GetAsync("/api/ui/me")).StatusCode);
         await UiApiFailureContractTests.AssertProblemAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/enrollment/confirm", token,
@@ -71,7 +71,7 @@ public sealed class SignInReturnUrlTests(VaultFixture vault)
         enrolled.Dispose();
         var browser = NewSession();
         Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync(WithReturnUrl("/Account/Login", returnUrl))).StatusCode);
-        await UiApiFailureContractTests.AssertProblemAsync(await AuthApi.PasswordAsync(browser, username, "", returnUrl), 400, "validation_failed");
+        await ProfileApi.AssertProblemAsync(await AuthApi.PasswordAsync(browser, username, "", returnUrl), 400, "validation_failed");
         await UiApiFailureContractTests.AssertProblemAsync(
             await AuthApi.PasswordAsync(browser, username, "incorrect-password", returnUrl), 400, "sign_in_failed");
 
@@ -80,7 +80,7 @@ public sealed class SignInReturnUrlTests(VaultFixture vault)
         var token = AuthApi.ReissuedToken(browser);
         Assert.Equal(HttpStatusCode.Unauthorized, (await browser.Client.GetAsync("/api/ui/me")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync(WithReturnUrl("/Account/Totp", returnUrl))).StatusCode);
-        await UiApiFailureContractTests.AssertProblemAsync(
+        await ProfileApi.AssertProblemAsync(
             await AuthApi.PostAsync(browser, "/api/ui/auth/totp", token, new { code = "bad", returnUrl }), 400, "validation_failed");
         await UiApiFailureContractTests.AssertProblemAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/totp", token,
             new { code = Totp.Code(secret, Totp.CurrentStep() - 10), returnUrl }), 400, "code_invalid");
@@ -112,7 +112,7 @@ public sealed class SignInReturnUrlTests(VaultFixture vault)
             Assert.Equal("totp", (await AuthApi.JsonAsync(await AuthApi.PasswordAsync(browser, username, password, returnUrl))).GetProperty("next").GetString());
             var token = AuthApi.ReissuedToken(browser);
             Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync(WithReturnUrl("/Account/RecoveryCode", returnUrl))).StatusCode);
-            await UiApiFailureContractTests.AssertProblemAsync(
+            await ProfileApi.AssertProblemAsync(
                 await AuthApi.PostAsync(browser, "/api/ui/auth/recovery-code", token, new { code = "bad", returnUrl }), 400, "validation_failed");
             Assert.Equal(HttpStatusCode.Unauthorized, (await browser.Client.GetAsync("/api/ui/me")).StatusCode);
             await UiApiFailureContractTests.AssertProblemAsync(

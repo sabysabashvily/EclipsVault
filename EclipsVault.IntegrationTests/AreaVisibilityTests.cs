@@ -25,7 +25,7 @@ public sealed class AreaVisibilityTests(VaultFixture vault)
     [Fact]
     public async Task A_standard_account_is_offered_only_session_areas()
     {
-        var session = await vault.SignInNewAccountAsync("it-standard-areas");
+        var session = await vault.SignInNewAccountAsync("it-standard-areas", IPAddress.Parse("2001:db8:175:1::1"));
         var response = await session.Client.GetAsync("/api/ui/me");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);

@@ -45,12 +45,13 @@ test('Profile opens through production routes after real enrollment', async ({
   ) as { cookies: typeof ownerCookies };
   await page.context().addCookies(administrator.cookies);
   const creation = new AccountCreation(page);
+  const profile = new ProfilePage(page);
+  // The proof and the first sign-in both spend the proxy's one shared credential budget.
+  profile.releaseSignInBudget();
   await refreshAdministratorProof(page);
   await creation.open();
   await creation.createMailboxOwner('e2e-profile-owner', password);
   await expect(page).toHaveURL(/\/Admin\/Users$/);
-  const profile = new ProfilePage(page);
-  profile.releaseSignInBudget();
   const owner = await (await browserHealth.newContext()).newPage();
   const signIn = new AccountSignIn(owner);
   await signIn.open();
