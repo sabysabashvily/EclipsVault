@@ -785,6 +785,43 @@ body:has(.mobile-navigation[open]) {
   margin-right: 0.15rem;
   font-weight: 500;
 }
+/* A notice with a title and actions: the colour sits in an icon tile beside them. */
+.notice:has(.notice-body) {
+  align-items: flex-start;
+}
+.notice-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+}
+.notice-icon svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.notice-body {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.notice-body h2 {
+  margin: 0 0 0.3rem;
+  font-size: 1rem;
+  font-weight: 500;
+}
+.notice-body p {
+  margin: 0 0 0.9rem;
+}
+@media (max-width: 767px) {
+  .notice-body .button-row > .button {
+    flex: 1 1 100%;
+  }
+}
 
 /* ---- Page header ------------------------------------------------ */
 .page-header {
@@ -932,6 +969,48 @@ a.stat-card:active {
 .stat-detail {
   font-size: 0.8rem;
   color: var(--text-muted);
+}
+
+/* Figures: one card whose tiles are divided by hairlines (the grid's gap shows its border colour).
+   Label on top, the number, then its context; two columns on a phone, one below 380px. */
+.stat-grid.figures {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--border);
+  box-shadow: var(--shadow-card);
+}
+.figures .stat-card {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 1.1rem 1.3rem;
+}
+.figures .stat-card.attention {
+  background: linear-gradient(var(--warn-soft), var(--warn-soft)), var(--bg-raised);
+}
+.figures .stat-card.alert {
+  background: linear-gradient(var(--danger-wash), var(--danger-wash)), var(--bg-raised);
+}
+.figures .stat-label {
+  order: -1;
+  font-size: 0.8125rem;
+}
+.figures .stat-value {
+  font-size: 3rem;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 767px) {
+  .stat-grid.figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 379px) {
+  .stat-grid.figures {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* ---- Buttons ----------------------------------------------------- */
@@ -1648,12 +1727,16 @@ app-command-palette {
   .row-cards tbody tr:not(:has(.cell-verb)) .cell-main {
     flex-basis: 100%;
   }
-  /* Pills in cells of their own share the second line; the meta cells after them follow on. */
+  /* Pills in cells of their own share the second line; the row's meta cells follow on. */
   .row-cards .cell-pill {
     order: 2;
   }
-  .row-cards .cell-pill ~ .cell-meta {
+  .row-cards tr:has(.cell-pill) .cell-meta {
     order: 3;
+  }
+  /* A cell with nothing to show, such as a known location, leaves no gap in the card. */
+  .row-cards tbody td:empty {
+    display: none;
   }
   .row-cards .cell-pills {
     order: 3;

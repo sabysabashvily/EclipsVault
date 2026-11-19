@@ -20,7 +20,15 @@ import {
   searchSecrets,
   sidebarPages,
 } from './palette';
-import { type SignIns, passwordIcon, signInRows, statCards, verifySignInHistory } from './sign-ins';
+import {
+  type SignIns,
+  signInEvents,
+  signInNotice,
+  signInRows,
+  signInVerdict,
+  statCards,
+  verifySignInHistory,
+} from './sign-ins';
 import { verifySidebar } from './sidebar';
 import {
   allClear,
@@ -297,7 +305,7 @@ test("visual parity: My activity shows the administrator's own rows in both them
   });
 });
 
-test("visual parity: Sign-in history shows the administrator's real sign-ins in both themes", async ({
+test("Sign-in history shows the administrator's real sign-ins in both themes", async ({
   page,
 }, info) => {
   await page.context().addCookies(administratorCookies);
@@ -1246,7 +1254,7 @@ function unfamiliarSignIns(): SignIns {
   };
 }
 
-test("Sign-in history's empty state and an unfamiliar-location attempt match Legacy", async ({
+test('Sign-in history shows its empty state, and an unfamiliar-location attempt leads with the notice', async ({
   page,
 }) => {
   await page.context().addCookies(administratorCookies);
@@ -1258,7 +1266,7 @@ test("Sign-in history's empty state and an unfamiliar-location attempt match Leg
       documents.push(new URL(request.url()).pathname);
   });
 
-  await test.step('an account with no sign-in events sees the empty state, without summary or callout', async () => {
+  await test.step('an account with no sign-in events sees the empty state, without figures or notice', async () => {
     await page.route(
       '**/api/ui/sign-ins',
       async (route) => {
@@ -1279,15 +1287,16 @@ test("Sign-in history's empty state and an unfamiliar-location attempt match Leg
       'As you sign in — with your password, a passkey, or a recovery code — each attempt is recorded here ' +
         'so you can review it later and spot anything unfamiliar.',
     );
-    await expect(
-      page.locator('.stat-grid, .callout-warn, .activity-feed, .page-header > .badge'),
-    ).toHaveCount(0);
+    await expect(page.locator('.stat-grid')).toHaveCount(0);
+    await expect(signInNotice(page)).toHaveCount(0);
+    await expect(page.getByRole('table')).toHaveCount(0);
+    await expect(signInVerdict(page)).toHaveCount(0);
     await expect(page.locator('style, [style]')).toHaveCount(0);
   });
 
   const unfamiliar = unfamiliarSignIns();
 
-  await test.step('an unfamiliar-location attempt raises the badge, the alert card, the header badge and the callout', async () => {
+  await test.step('an unfamiliar-location attempt raises the verdict, the alert figure and the notice', async () => {
     await page.route(
       '**/api/ui/sign-ins',
       async (route) => {
@@ -1303,15 +1312,15 @@ test("Sign-in history's empty state and an unfamiliar-location attempt match Leg
     await expect(page).toHaveURL(/\/Activity$/);
     await page.getByRole('link', { name: 'Sign-in history', exact: true }).click();
     await expect(page).toHaveURL(/\/SignIns$/);
-    await expect(page.locator('.activity-feed > li')).toHaveCount(7);
+    await expect(signInEvents(page)).toHaveCount(7);
 
-    const header = page.locator('.page-header > .badge');
-    await expect(header).toHaveText('2 to review');
-    await expect(header).toHaveClass('badge tone-critical');
-    await expect(header).toHaveAttribute(
-      'title',
-      "Failed attempts from a location you've never signed in from",
-    );
+    await expect(signInVerdict(page)).toHaveText('Needs a look');
+    await expect(
+      page.getByText(
+        "2 failed attempts came from places you've never signed in from · only your own sign-ins appear here.",
+        { exact: true },
+      ),
+    ).toBeVisible();
     const utcTooltip = expect.stringMatching(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC$/);
     expect(await statCards(page)).toEqual([
       {
@@ -1343,118 +1352,99 @@ test("Sign-in history's empty state and an unfamiliar-location attempt match Leg
         tooltip: null,
       },
     ]);
-    // The summary, then the callout, then the timeline, as on the Legacy page.
-    expect(
-      await page
-        .locator('section.panel')
-        .evaluateAll((panels) =>
-          panels.map((panel) => `${panel.className} > ${panel.firstElementChild!.className}`),
-        ),
-    ).toEqual(['panel > stat-grid', 'panel callout-warn > panel-header', 'panel > activity-feed']);
-    const callout = page.locator('section.callout-warn');
-    await expect(callout.getByRole('heading', { level: 2 })).toHaveText(
+    // The notice leads, then the figures, then the events.
+    const notice = signInNotice(page);
+    const top = async (box: Promise<{ y: number } | null>) => (await box)!.y;
+    const order = [
+      await top(notice.boundingBox()),
+      // eslint-disable-next-line playwright/no-raw-locators -- The figures strip has no role or name of its own.
+      await top(page.locator('.stat-grid').boundingBox()),
+      await top(page.getByRole('table').boundingBox()),
+    ];
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    await expect(notice.getByRole('heading', { level: 2 })).toHaveText(
       "Don't recognise these attempts?",
     );
-    await expect(callout.locator('p.muted')).toHaveText(
-      "Someone tried to sign in from a place you've never signed in from. Your account wasn't opened from there " +
-        "— every attempt failed — but it's worth locking things down: change your password and sign out of every device.",
-    );
+    await expect(
+      notice.getByText(
+        "Someone tried to sign in from a place you've never signed in from. Your account wasn't opened from there " +
+          "— every attempt failed — but it's worth locking things down: change your password and sign out of every device.",
+        { exact: true },
+      ),
+    ).toBeVisible();
     expect(
-      await callout
-        .locator('.button-row > a')
+      await notice
+        .getByRole('link')
         .evaluateAll((links) =>
-          links.map((link) => [
-            link.textContent!.trim(),
-            link.getAttribute('href'),
-            link.className,
-          ]),
+          links.map((link) => [link.textContent!.trim(), link.getAttribute('href')]),
         ),
     ).toEqual([
-      ['Review signed-in devices', '/Sessions', 'button primary'],
-      ['Change password', '/Profile', 'button'],
+      ['Review signed-in devices', '/Sessions'],
+      ['Change password', '/Profile'],
     ]);
 
+    const row = (
+      when: string,
+      title: string,
+      method: string,
+      outcome: string,
+      address: string,
+      location = '',
+      tooltip: unknown = utcTooltip,
+    ) => ({ when, tooltip, title, method, outcome, address, location });
     expect(await signInRows(page)).toEqual([
-      {
-        title: 'Sign-in attempt failed',
-        badges: [
-          ['Failed', 'tone-warn'],
-          ['Password + 2FA', 'tone-muted'],
-          ['Unfamiliar location', 'tone-danger'],
-        ],
-        meta: 'from 203.0.113.50',
-        time: 'just now',
-        tooltip: utcTooltip,
-        accent: 'sev-warn',
-      },
-      {
-        title: 'Account locked after repeated failures',
-        badges: [
-          ['Blocked', 'tone-danger'],
-          ['System', 'tone-muted'],
-          ['Unfamiliar location', 'tone-danger'],
-        ],
-        meta: 'from 203.0.113.50',
-        time: '5m ago',
-        tooltip: utcTooltip,
-        accent: 'sev-critical',
-      },
-      {
-        title: 'Account unlocked',
-        badges: [
-          ['Info', 'tone-muted'],
-          ['System', 'tone-muted'],
-        ],
-        meta: 'from internal',
-        time: '3h ago',
-        tooltip: utcTooltip,
-        accent: '',
-      },
-      {
-        title: 'Signed in with a passkey',
-        badges: [
-          ['Success', 'tone-ok'],
-          ['Passkey', 'tone-muted'],
-          ['New location', 'tone-muted'],
-        ],
-        meta: 'from 2001:db8::7',
-        time: '2d ago',
-        tooltip: utcTooltip,
-        accent: '',
-      },
-      {
-        title: 'Signed in with a recovery code',
-        badges: [
-          ['Success', 'tone-ok'],
-          ['Recovery code', 'tone-muted'],
-        ],
-        meta: 'from 2001:db8::7',
-        time: '2026-01-02',
-        tooltip: '2026-01-02 03:04:05 UTC',
-        accent: '',
-      },
-      {
-        title: 'Re-authenticated for a sensitive action',
-        badges: [
-          ['Success', 'tone-ok'],
-          ['Step-up', 'tone-muted'],
-        ],
-        meta: 'from 2001:db8::7',
-        time: '2025-12-31',
-        tooltip: '2025-12-31 23:59:59 UTC',
-        accent: '',
-      },
-      {
-        title: 'Two-factor code rejected',
-        badges: [
-          ['Failed', 'tone-warn'],
-          ['Two-factor', 'tone-muted'],
-        ],
-        meta: 'from 2001:db8::7',
-        time: '2025-12-30',
-        tooltip: '2025-12-30 08:00:00 UTC',
-        accent: 'sev-warn',
-      },
+      row(
+        'just now',
+        'Sign-in attempt failed',
+        'Password + 2FA',
+        'Failed',
+        '203.0.113.50',
+        'Unfamiliar location',
+      ),
+      row(
+        '5m ago',
+        'Account locked after repeated failures',
+        'System',
+        'Blocked',
+        '203.0.113.50',
+        'Unfamiliar location',
+      ),
+      row('3h ago', 'Account unlocked', 'System', 'Info', 'internal'),
+      row(
+        '2d ago',
+        'Signed in with a passkey',
+        'Passkey',
+        'Success',
+        '2001:db8::7',
+        'New location',
+      ),
+      row(
+        '2026-01-02',
+        'Signed in with a recovery code',
+        'Recovery code',
+        'Success',
+        '2001:db8::7',
+        '',
+        '2026-01-02 03:04:05 UTC',
+      ),
+      row(
+        '2025-12-31',
+        'Re-authenticated for a sensitive action',
+        'Step-up',
+        'Success',
+        '2001:db8::7',
+        '',
+        '2025-12-31 23:59:59 UTC',
+      ),
+      row(
+        '2025-12-30',
+        'Two-factor code rejected',
+        'Two-factor',
+        'Failed',
+        '2001:db8::7',
+        '',
+        '2025-12-30 08:00:00 UTC',
+      ),
     ]);
     await expect(page.locator('style, [style]')).toHaveCount(0);
     expect(documents).toEqual([]);
@@ -1462,9 +1452,35 @@ test("Sign-in history's empty state and an unfamiliar-location attempt match Leg
   await page.unrouteAll({ behavior: 'wait' });
 });
 
-test("visual parity: Sign-in history's empty state and an unfamiliar-location attempt keep their icons", async ({
+test('on a phone Sign-in history events are cards, and nothing scrolls sideways at 300 or 2000px', async ({
   page,
 }) => {
+  await page.context().addCookies(administratorCookies);
+  for (const width of [375, 300, 2000]) {
+    await test.step(`${width}px`, async () => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.route(
+        '**/api/ui/sign-ins',
+        (route) => route.fulfill({ status: 200, json: unfamiliarSignIns() }),
+        { times: 1 },
+      );
+      await page.goto('/SignIns');
+      await expect(signInEvents(page)).toHaveCount(7);
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+        .toBe(width);
+    });
+  }
+  // Back at 375px the rows reflow into cards: the outcome pill sits under the title.
+  await page.setViewportSize({ width: 375, height: 900 });
+  const first = signInEvents(page).first();
+  const title = (await first.getByText('Sign-in attempt failed', { exact: true }).boundingBox())!;
+  const outcome = (await first.getByText('Failed', { exact: true }).boundingBox())!;
+  expect(outcome.y).toBeGreaterThan(title.y + title.height);
+  await page.unrouteAll({ behavior: 'wait' });
+});
+
+test("visual parity: Sign-in history's empty state keeps its icon", async ({ page }) => {
   await page.context().addCookies(administratorCookies);
   await page.goto('/Access');
   await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
@@ -1495,35 +1511,10 @@ test("visual parity: Sign-in history's empty state and an unfamiliar-location at
       ],
     ]);
   });
-
-  await test.step('each row icon keeps its shape', async () => {
-    await fulfilSignIns(unfamiliarSignIns());
-    await page.getByRole('link', { name: 'My activity', exact: true }).click();
-    await expect(page).toHaveURL(/\/Activity$/);
-    await page.getByRole('link', { name: 'Sign-in history', exact: true }).click();
-    await expect(page.getByText('Two-factor code rejected', { exact: true })).toBeVisible();
-    const system = [
-      'circle:cx=12,cy=12,r=3',
-      'path:d=M12 4v2M12 18v2M4 12h2M18 12h2M6.3 6.3l1.4 1.4M16.3 16.3l1.4 1.4M17.7 6.3l-1.4 1.4M7.7 16.3l-1.4 1.4',
-    ];
-    expect(await feedIcons(page)).toEqual([
-      passwordIcon,
-      system,
-      system,
-      [
-        'rect:x=3,y=11,width=18,height=10,rx=2',
-        'path:d=M7 11V8a5 5 0 0 1 9-3',
-        'circle:cx=12,cy=16,r=1.4',
-      ],
-      ['rect:x=3,y=5,width=18,height=14,rx=2', 'path:d=M7 9h4M7 13h6M15 9h2'],
-      ['path:d=M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z', 'path:d=M12 8v4M12 15h.01'],
-      ['rect:x=6,y=10,width=12,height=9,rx=1.6', 'path:d=M9 10V7.5a3 3 0 0 1 6 0V10'],
-    ]);
-  });
   await page.unrouteAll({ behavior: 'wait' });
 });
 
-test('the sidebar and palette open Sign-in history in-app, and its callout opens Profile on the same session', async ({
+test('the sidebar and palette open Sign-in history in-app, and its notice opens Profile on the same session', async ({
   page,
 }) => {
   await page.context().addCookies(administratorCookies);
@@ -1546,7 +1537,7 @@ test('the sidebar and palette open Sign-in history in-app, and its callout opens
     await expect(page).toHaveURL(/\/SignIns$/);
     await expect(page).toHaveTitle('Sign-in history — EclipsVault');
     await expect(page.getByRole('heading', { name: 'Sign-in history', exact: true })).toBeVisible();
-    await expect(page.locator('.activity-feed > li').first()).toBeVisible();
+    await expect(signInEvents(page).first()).toBeVisible();
     await expect(page.locator('.sidenav a.active')).toHaveText('Sign-in history');
     await expect(page.locator('.sidenav a.active')).toHaveAttribute('aria-current', 'page');
     await expect(page.locator('.sidenav summary.has-active')).toHaveText('You');
@@ -1563,11 +1554,11 @@ test('the sidebar and palette open Sign-in history in-app, and its callout opens
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/\/SignIns$/);
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await expect(page.locator('.activity-feed > li').first()).toBeVisible();
+    await expect(signInEvents(page).first()).toBeVisible();
     expect(documents).toEqual([]);
   });
 
-  // The callout needs an unfamiliar-location attempt, which no real sign-in in this stack can make.
+  // The notice needs an unfamiliar-location attempt, which no real sign-in in this stack can make.
   const now = new Date().toISOString();
   const unfamiliar: SignIns = {
     summary: {
@@ -1603,12 +1594,9 @@ test('the sidebar and palette open Sign-in history in-app, and its callout opens
       { times: 1 },
     );
     await page.goto('/SignIns');
-    await expect(page.locator('.callout-warn')).toBeVisible();
+    await expect(signInNotice(page)).toBeVisible();
     documents.length = 0;
-    await page
-      .locator('.callout-warn')
-      .getByRole('link', { name: 'Change password', exact: true })
-      .click();
+    await signInNotice(page).getByRole('link', { name: 'Change password', exact: true }).click();
     await expect(page).toHaveURL(/\/Profile$/);
     await expect(page.getByRole('heading', { name: 'Profile', exact: true })).toBeVisible();
     expect(documents).toEqual([]);
@@ -1641,9 +1629,10 @@ test('a sign-in history failure shows a retry and the next request restores the 
   await expect(page.getByRole('alert')).toHaveText(
     'Could not load your sign-in history. Reload the page to try again.',
   );
-  await expect(page.locator('.activity-feed, .stat-grid')).toHaveCount(0);
+  await expect(page.getByRole('table')).toHaveCount(0);
+  await expect(page.locator('.stat-grid')).toHaveCount(0);
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
-  await expect(page.locator('.activity-feed > li').first()).toBeVisible();
+  await expect(signInEvents(page).first()).toBeVisible();
   await expect(page.locator('.stat-grid')).toBeVisible();
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(page.locator('style, [style]')).toHaveCount(0);
