@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { AccessRequests } from './access-requests';
 import { feedEntry } from './activity';
 import { Denied } from './denied';
-import { test, expect } from './fixtures';
+import { test, expect, type BrowserHealth } from './fixtures';
 import { lookOf } from './look';
 import { createSecret, openPalette } from './palette';
 import { SecretsList } from './secrets-list';
@@ -49,8 +49,22 @@ async function openAsRequester(page: Page, path = '/AccessRequests'): Promise<Ac
   return new AccessRequests(page);
 }
 
+/** The details page's own request for a refused secret, which the browser logs as an error. */
+function expectRefusal(browserHealth: BrowserHealth): void {
+  browserHealth.expectConsoleError({
+    text: /status of 403/,
+    url: /\/api\/ui\/secrets\/[0-9a-f-]{36}$/,
+  });
+}
+
 /** Opens the secret as the requester, is denied, and files from the Legacy Denied page. */
-async function fileRequest(page: Page, secret: string, why = reason): Promise<AccessRequests> {
+async function fileRequest(
+  page: Page,
+  browserHealth: BrowserHealth,
+  secret: string,
+  why = reason,
+): Promise<AccessRequests> {
+  expectRefusal(browserHealth);
   await page.context().addCookies(requesterCookies);
   await page.goto(detailsPaths.get(secret)!);
   await expect(page).toHaveURL(/\/Account\/Denied\?secretId=[0-9a-f-]{36}$/);
@@ -125,7 +139,7 @@ test('a requester denied in another project sees the request they filed from the
   const before = await openAsRequester(requester);
   await expect(before.noRequests).toBeVisible();
 
-  const requests = await fileRequest(requester, approved);
+  const requests = await fileRequest(requester, browserHealth, approved);
   await expect(requests.announcement(filedMessage)).toBeVisible();
   await expect(requests.reviewScope).toHaveText('Your project');
   await expect(requests.nothingToReview).toBeVisible();
@@ -146,7 +160,9 @@ test('a requester denied in another project sees the request they filed from the
 
 test('an under-cleared requester is told a share would not help and offered no form', async ({
   page,
+  browserHealth,
 }) => {
+  expectRefusal(browserHealth);
   await page.context().addCookies(requesterCookies);
   await page.goto(detailsPaths.get(aboveClearance)!);
   const denied = new Denied(page);
@@ -158,8 +174,11 @@ test('an under-cleared requester is told a share would not help and offered no f
   await expect(denied.submit).toHaveCount(0);
 });
 
-test('an empty reason is refused in the Legacy words without filing', async ({ page }) => {
-  const refused = await fileRequest(page, rejected, '');
+test('an empty reason is refused in the Legacy words without filing', async ({
+  page,
+  browserHealth,
+}) => {
+  const refused = await fileRequest(page, browserHealth, rejected, '');
 
   await expect(refused.error).toHaveText('Add a short reason so a reviewer can decide.');
   await expect(refused.myRequest(approved)).toBeVisible();
@@ -232,7 +251,9 @@ test('a reviewer rejects through the confirmation dialog, after cancelling once'
   browserHealth,
 }) => {
   const requester = await (await browserHealth.newContext()).newPage();
-  await expect((await fileRequest(requester, rejected)).announcement(filedMessage)).toBeVisible();
+  await expect(
+    (await fileRequest(requester, browserHealth, rejected)).announcement(filedMessage),
+  ).toBeVisible();
 
   const requests = await openAsAdministrator(page);
   const request = requests.requestToReview(rejected);
@@ -256,8 +277,9 @@ test('a reviewer rejects through the confirmation dialog, after cancelling once'
 
 test('the requester withdraws a pending request through the confirmation dialog', async ({
   page,
+  browserHealth,
 }) => {
-  const requests = await fileRequest(page, withdrawn);
+  const requests = await fileRequest(page, browserHealth, withdrawn);
   const request = requests.myRequest(withdrawn);
   const question = `Withdraw your request for ${withdrawn}?`;
   await requests.withdrawOf(request).click();
@@ -275,7 +297,9 @@ test('the requester withdraws a pending request through the confirmation dialog'
 
 test('the keyboard alone approves through the expiry box', async ({ page, browserHealth }) => {
   const requester = await (await browserHealth.newContext()).newPage();
-  await expect((await fileRequest(requester, byKeyboard)).announcement(filedMessage)).toBeVisible();
+  await expect(
+    (await fileRequest(requester, browserHealth, byKeyboard)).announcement(filedMessage),
+  ).toBeVisible();
 
   const requests = await openAsAdministrator(page);
   const request = requests.requestToReview(byKeyboard);

@@ -67,6 +67,11 @@ test('an issuer shares two real secrets with a colleague outside their project',
 
   await createSecret(page, 'E2e_Shared_No_Expiry', 'Internal');
   secretDetails = new URL(page.url()).pathname;
+  // The page's own request for the secret is refused before the recipient lands on Denied.
+  browserHealth.expectConsoleError({
+    text: /status of 403/,
+    url: /\/api\/ui\/secrets\/[0-9a-f-]{36}$/,
+  });
   await recipient.goto(secretDetails);
   await expect(recipient).toHaveURL(/\/Account\/Denied\?/);
   await page.getByLabel('User to share with').fill(recipientUsername);
