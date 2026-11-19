@@ -1704,6 +1704,32 @@ tr:has(.row-link) [title] {
   margin: 0;
 }
 
+/* Back to the list a form came from: a circle left of the title. */
+.back-button {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--bg-raised);
+  color: var(--text);
+}
+.back-button:hover {
+  background: var(--bg-raised-2);
+  color: var(--text);
+}
+.back-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 /* A short code beside a name, such as a project key. */
 .code-chip {
   display: inline-block;
@@ -2831,7 +2857,6 @@ fieldset {
   text-align: left;
 }
 
-#users-table .cell-actions > .button + .button,
 #users-table .cell-actions > app-row-menu {
   margin-left: 0.4rem;
 }
