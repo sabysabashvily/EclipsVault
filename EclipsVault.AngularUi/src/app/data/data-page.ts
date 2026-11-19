@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize } from 'rxjs';
 import { attachmentName, saveAttachment } from '../shared/attachment';
 import { StatusLine } from '../shared/status-line';
+import { PagePrimary } from '../shell/page-primary';
 import type { paths } from '../ui-api/schema.generated';
 import { UiApiError } from '../ui-api/ui-api-errors';
 
@@ -11,7 +12,7 @@ type YourData = paths['/api/ui/data']['get']['responses'][200]['content']['appli
 
 @Component({
   selector: 'app-data-page',
-  imports: [StatusLine],
+  imports: [PagePrimary, StatusLine],
   templateUrl: './data-page.html',
 })
 export class DataPage {

@@ -1,3 +1,4 @@
+import { ScrollRegion } from '../shared/scroll-region';
 import { DatePipe } from '@angular/common';
 import { HttpClient, httpResource } from '@angular/common/http';
 import {
@@ -31,7 +32,7 @@ const keyStatuses: Record<Key['status'], { label: string; tone: string }> = {
 
 @Component({
   selector: 'app-service-account-page',
-  imports: [DatePipe, RouterLink, StatusLine, StepUpDialog, ConfirmationDialog],
+  imports: [ScrollRegion, DatePipe, RouterLink, StatusLine, StepUpDialog, ConfirmationDialog],
   providers: [AdministratorWrites],
   templateUrl: './service-account-page.html',
 })

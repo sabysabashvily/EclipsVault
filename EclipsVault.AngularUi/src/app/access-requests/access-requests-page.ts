@@ -1,3 +1,4 @@
+import { ScrollRegion } from '../shared/scroll-region';
 import { formatDate } from '@angular/common';
 import { HttpClient, httpResource } from '@angular/common/http';
 import { Component, DestroyRef, inject, LOCALE_ID, signal, viewChild } from '@angular/core';
@@ -47,7 +48,7 @@ const badges: Record<FiledRequest['status'], { tone: string; label: string }> = 
 
 @Component({
   selector: 'app-access-requests-page',
-  imports: [ConfirmationDialog, EmptyState, RouterLink, StatusLine, StepUpDialog],
+  imports: [ScrollRegion, ConfirmationDialog, EmptyState, RouterLink, StatusLine, StepUpDialog],
   templateUrl: './access-requests-page.html',
 })
 export class AccessRequestsPage {

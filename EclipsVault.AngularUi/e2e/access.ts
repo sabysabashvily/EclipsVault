@@ -34,10 +34,7 @@ export async function verifyMyAccess(
   // Docker allocates the proxy's forwarded source address; it is not necessarily loopback.
   expect(access.isTrustedNetwork).toBe(true);
   await expect(now.locator('dd').nth(0)).toHaveText(`${access.sourceIp} Trusted`);
-  await expect(now.locator('dd').nth(1)).toHaveText(/^\s*(Open now|Closed)\s+06:00–22:00 UTC\s*$/);
-  const production = (await now.locator('dd').nth(1).innerText()).includes('Open now')
-    ? 'Can open'
-    : 'Outside access hours';
+  await expect(now.locator('dd').nth(1)).toHaveText('Open now 00:00–24:00 UTC');
   const rows = page.locator('.access-matrix tbody tr');
   await expect(page.locator('.access-matrix thead th')).toHaveText([
     'Sensitivity',
@@ -46,32 +43,26 @@ export async function verifyMyAccess(
     'Production',
   ]);
   await expect(rows.locator('th')).toHaveText(['Top Secret', 'Secret', 'Confidential', 'Internal']);
-  for (let row = 0; row < 4; row++) {
-    const values =
-      account === 'standard' && row < 3
-        ? ['Clearance too low', 'Clearance too low', 'Clearance too low']
-        : ['Can open', 'Can open', production];
-    await expect(rows.nth(row).locator('td')).toHaveText(values);
-  }
+  // One row per sensitivity, Top Secret first; each row lists Development, Staging, Production.
+  const grids = {
+    administrator: [
+      ['Can open', 'Can open', 'Can open'],
+      ['Can open', 'Can open', 'Can open'],
+      ['Can open', 'Can open', 'Can open'],
+      ['Can open', 'Can open', 'Can open'],
+    ],
+    standard: [
+      ['Clearance too low', 'Clearance too low', 'Clearance too low'],
+      ['Clearance too low', 'Clearance too low', 'Clearance too low'],
+      ['Clearance too low', 'Clearance too low', 'Clearance too low'],
+      ['Can open', 'Can open', 'Can open'],
+    ],
+  };
+  await expect(rows.locator('td')).toHaveText(grids[account].flat());
   await expect(page.locator('.callout-warn')).toContainText(
     'opening a decoy always trips the trap',
   );
   await expect(page.locator('style, [style]')).toHaveCount(0);
-  // The allow/deny colors must resolve through the shared theme tokens, including the green fill.
-  const colors = await page.locator('.access-matrix').evaluate((grid) => {
-    const cell = grid.querySelector('.cell-allow')!;
-    const tokens = getComputedStyle(document.documentElement);
-    return [
-      getComputedStyle(cell).color,
-      tokens.getPropertyValue('--ok').trim(),
-      getComputedStyle(cell).backgroundColor,
-    ];
-  });
-  expect(colors).toEqual(
-    theme === 'dark'
-      ? ['rgb(48, 209, 88)', '#30d158', 'rgba(48, 209, 88, 0.14)']
-      : ['rgb(26, 127, 55)', '#1a7f37', 'rgba(26, 127, 55, 0.13)'],
-  );
   await page.evaluate(() => document.fonts.ready);
   const path = info.outputPath(`${account}-${theme}-access.png`);
   await page.screenshot({ path, fullPage: true });

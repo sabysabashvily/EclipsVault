@@ -167,25 +167,6 @@ export async function verifyMyActivity(
   await expect(page.locator('.pager')).toHaveCount(0);
   await expect(page.locator('style, [style]')).toHaveCount(0);
 
-  // The accents resolve through the shared theme tokens.
-  const accents = await page
-    .locator('.activity-feed')
-    .evaluate((feed) =>
-      [...feed.querySelectorAll('.feed-icon')].map((icon) => [
-        getComputedStyle(icon).color,
-        getComputedStyle(icon).backgroundColor,
-      ]),
-    );
-  const routine =
-    theme === 'dark'
-      ? ['rgb(182, 188, 202)', 'rgb(13, 14, 19)']
-      : ['rgb(74, 78, 88)', 'rgb(236, 238, 242)'];
-  const warn =
-    theme === 'dark'
-      ? ['rgb(255, 214, 10)', 'rgba(255, 214, 10, 0.12)']
-      : ['rgb(138, 106, 0)', 'rgba(180, 140, 0, 0.15)'];
-  expect(accents).toEqual(rows.map(({ accent }) => (accent === 'sev-warn' ? warn : routine)));
-
   await page.evaluate(() => document.fonts.ready);
   const path = info.outputPath(`administrator-${theme}-activity.png`);
   await page.screenshot({ path, fullPage: true });

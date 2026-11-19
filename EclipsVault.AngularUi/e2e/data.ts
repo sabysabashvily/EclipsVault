@@ -13,10 +13,6 @@ export class YourData {
   readonly downloadCopy;
   readonly error;
   readonly retry;
-  readonly pageHeader;
-  readonly accountGrid;
-  readonly cardGrid;
-  readonly firstCard;
 
   constructor(readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Your data', exact: true });
@@ -35,15 +31,6 @@ export class YourData {
     });
     this.error = page.getByRole('main').getByRole('alert');
     this.retry = page.getByRole('button', { name: 'Try again', exact: true });
-    // These unlabelled layout containers are read only by visual parity tests.
-    // eslint-disable-next-line playwright/no-raw-locators
-    this.pageHeader = page.locator('.page-header');
-    // eslint-disable-next-line playwright/no-raw-locators
-    this.accountGrid = page.locator('.detail-grid');
-    // eslint-disable-next-line playwright/no-raw-locators
-    this.cardGrid = page.locator('.stat-grid');
-    // eslint-disable-next-line playwright/no-raw-locators
-    this.firstCard = page.locator('.stat-card').first();
   }
 
   /** Each card's value and label, which have no accessible structure of their own. */

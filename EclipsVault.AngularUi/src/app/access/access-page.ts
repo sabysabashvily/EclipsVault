@@ -1,3 +1,4 @@
+import { ScrollRegion } from '../shared/scroll-region';
 import { httpResource } from '@angular/common/http';
 import { Component } from '@angular/core';
 import type { paths } from '../ui-api/schema.generated';
@@ -7,6 +8,7 @@ type Access = paths['/api/ui/access']['get']['responses'][200]['content']['appli
 /** A live, self-scoped explanation. The server makes every access decision. */
 @Component({
   selector: 'app-access-page',
+  imports: [ScrollRegion],
   templateUrl: './access-page.html',
   // Keep the Legacy page's spaces between inline badges, network address and window hours.
   preserveWhitespaces: true,

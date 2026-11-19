@@ -26,7 +26,8 @@
         message="When someone requests access to a secret you can share, it lands here for you to approve or reject."
       />
     } @else {
-      <div class="table-scroll">
+      <div class="table-scroll" appScrollRegion role="region" aria-label="Requests to review">
+        <p class="table-scroll-hint">Scroll horizontally to see all columns.</p>
         <table class="data-table">
           <thead>
             <tr>
@@ -96,7 +97,8 @@
         <a class="button primary" routerLink="/Secrets">Browse secrets</a>
       </app-empty-state>
     } @else {
-      <div class="table-scroll">
+      <div class="table-scroll" appScrollRegion role="region" aria-label="My requests">
+        <p class="table-scroll-hint">Scroll horizontally to see all columns.</p>
         <table class="data-table">
           <thead>
             <tr>

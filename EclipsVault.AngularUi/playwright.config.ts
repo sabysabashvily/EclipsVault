@@ -45,10 +45,17 @@ export default defineConfig({
             '**/license.spec.ts',
             '**/encryption.spec.ts',
             '**/audit.spec.ts',
+            '**/theme-foundation.spec.ts',
             '**/overview.spec.ts',
             '**/secrets.spec.ts',
             '**/secret-details.spec.ts',
           ],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          name: 'theme-foundation',
+          testMatch: '**/theme-foundation.spec.ts',
+          dependencies: ['chromium'],
           use: { ...devices['Desktop Chrome'] },
         },
         {

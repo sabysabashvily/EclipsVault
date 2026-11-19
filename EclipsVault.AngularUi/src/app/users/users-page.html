@@ -4,7 +4,19 @@
     <p class="page-sub">Staff accounts. New users set up their authenticator at first sign-in.</p>
   </div>
   <div class="page-actions">
-    <a class="button primary" routerLink="/Admin/CreateUser">New user</a>
+    <a *appPagePrimary class="button primary" routerLink="/Admin/CreateUser" aria-label="New user">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        aria-hidden="true"
+      >
+        <path d="M12 5v14M5 12h14" />
+      </svg>
+      <span class="action-label">New user</span>
+    </a>
   </div>
 </div>
 <app-status-line [message]="status().message" [error]="status().error" />
@@ -22,121 +34,124 @@
         [(query)]="query"
       />
     </div>
-    <table class="data-table" id="users-table">
-      <thead>
-        <tr>
-          <th>User</th>
-          <th>Clearance</th>
-          <th>Project</th>
-          <th>MFA</th>
-          <th>Status</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        @for (user of filtered(); track user.userId) {
-          <tr [class.row-muted]="user.status === 'disabled'">
-            <td>
-              <div class="user-cell">
-                <img class="avatar-sm" [src]="user.avatarUrl" alt="" width="30" height="30" />
-                <div class="user-cell-text">
-                  <span class="cell-strong"
-                    >{{ user.displayName }}
-                    @if (user.isYou) {
-                      <span class="badge">you</span>
-                    }
-                  </span>
-                  <span class="mono muted user-cell-sub"
-                    >{{ user.username }} · {{ user.email }}</span
-                  >
+    <div class="table-scroll" appScrollRegion role="region" aria-label="Users">
+      <p class="table-scroll-hint">Scroll horizontally to see all columns.</p>
+      <table class="data-table" id="users-table">
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Clearance</th>
+            <th>Project</th>
+            <th>MFA</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (user of filtered(); track user.userId) {
+            <tr [class.row-muted]="user.status === 'disabled'">
+              <td>
+                <div class="user-cell">
+                  <img class="avatar-sm" [src]="user.avatarUrl" alt="" width="30" height="30" />
+                  <div class="user-cell-text">
+                    <span class="cell-strong"
+                      >{{ user.displayName }}
+                      @if (user.isYou) {
+                        <span class="badge">you</span>
+                      }
+                    </span>
+                    <span class="mono muted user-cell-sub"
+                      >{{ user.username }} · {{ user.email }}</span
+                    >
+                  </div>
                 </div>
-              </div>
-            </td>
-            <td>
-              <span [class]="'badge sens-' + user.clearance">{{ user.clearanceLabel }}</span>
-            </td>
-            <td>{{ user.project }}</td>
-            <td>
-              @if (user.mfaEnrolled) {
-                <span class="badge tone-ok">Enrolled</span>
-              } @else {
-                <span class="badge tone-warn">Pending</span>
-              }
-            </td>
-            <td>
-              <span [class]="'badge ' + statuses[user.status].tone">{{
-                statuses[user.status].label
-              }}</span>
-            </td>
-            <td class="cell-actions">
-              <a class="button small" [routerLink]="['/Admin/EditUser', user.userId]">Edit</a>
-              @if (!user.isYou) {
-                @if (user.status === 'locked') {
-                  <button
-                    type="button"
-                    class="button small"
-                    [disabled]="busy()"
-                    (click)="act('unlock', user)"
-                  >
-                    Unlock
-                  </button>
-                }
-                @if (user.status === 'disabled') {
-                  <button
-                    type="button"
-                    class="button small"
-                    [disabled]="busy()"
-                    (click)="act('enable', user)"
-                  >
-                    Enable
-                  </button>
+              </td>
+              <td>
+                <span [class]="'badge sens-' + user.clearance">{{ user.clearanceLabel }}</span>
+              </td>
+              <td>{{ user.project }}</td>
+              <td>
+                @if (user.mfaEnrolled) {
+                  <span class="badge tone-ok">Enrolled</span>
                 } @else {
-                  <button
-                    type="button"
-                    class="button small"
-                    [disabled]="busy()"
-                    (click)="act('disable', user)"
-                  >
-                    Disable
-                  </button>
+                  <span class="badge tone-warn">Pending</span>
                 }
-              }
-              <app-row-menu>
-                <button
-                  type="button"
-                  role="menuitem"
-                  class="menu-item"
-                  [disabled]="busy()"
-                  (click)="act('sign-out', user)"
-                >
-                  Force logout
-                </button>
+              </td>
+              <td>
+                <span [class]="'badge ' + statuses[user.status].tone">{{
+                  statuses[user.status].label
+                }}</span>
+              </td>
+              <td class="cell-actions">
+                <a class="button small" [routerLink]="['/Admin/EditUser', user.userId]">Edit</a>
                 @if (!user.isYou) {
+                  @if (user.status === 'locked') {
+                    <button
+                      type="button"
+                      class="button small"
+                      [disabled]="busy()"
+                      (click)="act('unlock', user)"
+                    >
+                      Unlock
+                    </button>
+                  }
+                  @if (user.status === 'disabled') {
+                    <button
+                      type="button"
+                      class="button small"
+                      [disabled]="busy()"
+                      (click)="act('enable', user)"
+                    >
+                      Enable
+                    </button>
+                  } @else {
+                    <button
+                      type="button"
+                      class="button small"
+                      [disabled]="busy()"
+                      (click)="act('disable', user)"
+                    >
+                      Disable
+                    </button>
+                  }
+                }
+                <app-row-menu>
                   <button
                     type="button"
                     role="menuitem"
                     class="menu-item"
                     [disabled]="busy()"
-                    (click)="act('reset-mfa', user)"
+                    (click)="act('sign-out', user)"
                   >
-                    Reset MFA
+                    Force logout
                   </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    class="menu-item danger"
-                    [disabled]="busy()"
-                    (click)="act('delete', user)"
-                  >
-                    Delete user
-                  </button>
-                }
-              </app-row-menu>
-            </td>
-          </tr>
-        }
-      </tbody>
-    </table>
+                  @if (!user.isYou) {
+                    <button
+                      type="button"
+                      role="menuitem"
+                      class="menu-item"
+                      [disabled]="busy()"
+                      (click)="act('reset-mfa', user)"
+                    >
+                      Reset MFA
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      class="menu-item danger"
+                      [disabled]="busy()"
+                      (click)="act('delete', user)"
+                    >
+                      Delete user
+                    </button>
+                  }
+                </app-row-menu>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
   </section>
 }
 <app-confirmation-dialog (decision)="confirmed($event)" />

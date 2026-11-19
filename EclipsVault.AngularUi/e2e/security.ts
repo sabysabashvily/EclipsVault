@@ -221,21 +221,6 @@ export async function verifySecurityCheckup(page: Page, info: TestInfo, theme: s
   ]);
   expect(await feedIcons(page)).toEqual([backupIcon, passkeyIcon, twoStepIcon, devicesIcon]);
   await expect(page.locator('style, [style]')).toHaveCount(0);
-  const look = await page.locator('.checkup-hero').evaluate((hero) => {
-    const ring = hero.querySelector('.ring-value')!;
-    return [
-      getComputedStyle(hero).display,
-      getComputedStyle(ring).stroke,
-      getComputedStyle(hero.querySelector('.grade-label')!).color,
-      getComputedStyle(document.querySelector('.feed-action')!).alignSelf,
-    ];
-  });
-  expect(look).toEqual([
-    'flex',
-    theme === 'dark' ? 'rgb(255, 214, 10)' : 'rgb(138, 106, 0)',
-    theme === 'dark' ? 'rgb(255, 214, 10)' : 'rgb(138, 106, 0)',
-    'center',
-  ]);
   await page.evaluate(() => document.fonts.ready);
   const path = info.outputPath(`administrator-${theme}-security.png`);
   await page.screenshot({ path, fullPage: true });

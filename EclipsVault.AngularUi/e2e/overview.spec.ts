@@ -238,48 +238,27 @@ const highlighted = {
     },
   ],
 };
-const palettes = {
-  dark: {
-    danger: 'rgb(255, 69, 58)',
-    dangerSoft: 'rgba(255, 69, 58, 0.14)',
-    warn: 'rgb(255, 214, 10)',
-    warnSoft: 'rgba(255, 214, 10, 0.12)',
-  },
-  light: {
-    danger: 'rgb(215, 0, 21)',
-    dangerSoft: 'rgba(215, 0, 21, 0.1)',
-    warn: 'rgb(138, 106, 0)',
-    warnSoft: 'rgba(180, 140, 0, 0.15)',
-  },
-} as const;
+test('the Overview counts the expiring secrets and the critical alert, and labels each event and expiry', async ({
+  page,
+}) => {
+  await page.route('**/api/ui/overview', (route) => route.fulfill({ json: highlighted }));
+  await page.context().addCookies(await savedAdministratorCookies());
+  const overview = new Overview(page);
+  await overview.open();
 
-for (const theme of ['dark', 'light'] as const) {
-  test(`visual parity: the Overview highlights expiring and critical items as Legacy did in ${theme}`, async ({
-    page,
-  }) => {
-    const colours = palettes[theme];
-    await page.route('**/api/ui/overview', (route) => route.fulfill({ json: highlighted }));
-    await page.context().addCookies(await savedAdministratorCookies());
-    const overview = new Overview(page);
-    await overview.open();
-    await overview.useTheme(theme);
-    await expect(overview.expiringCard).toHaveCSS('border-top-color', 'rgba(255, 214, 10, 0.35)');
-    await expect(overview.criticalAlertsLink).toHaveCSS(
-      'border-top-color',
-      'rgba(255, 69, 58, 0.4)',
-    );
-    await expect(overview.activityRow('E2E_DECOY_KEY')).toHaveCSS(
-      'background-color',
-      colours.dangerSoft,
-    );
-    await expect(overview.badge('Honey token')).toHaveCSS('color', 'rgb(255, 255, 255)');
-    await expect(overview.badge('Honey token')).toHaveCSS('background-color', colours.danger);
-    await expect(overview.badge('Access denied')).toHaveCSS('color', colours.warn);
-    await expect(overview.badge('Access denied')).toHaveCSS('background-color', colours.warnSoft);
-    await expect(overview.badge('in 2h')).toHaveCSS('color', colours.danger);
-    await expect(overview.badge('in 2h')).toHaveCSS('background-color', colours.dangerSoft);
-    await expect(overview.badge('in 3d')).toHaveCSS('color', colours.warn);
-    await expect(overview.badge('in 3d')).toHaveCSS('background-color', colours.warnSoft);
-    await expect(overview.badge('Production').first()).toHaveCSS('color', colours.danger);
-  });
-}
+  await expect(overview.expiringCard.getByText('2', { exact: true })).toBeVisible();
+  await expect(overview.criticalAlertsLink.getByText('1', { exact: true })).toBeVisible();
+  await expect(
+    overview.criticalAlertsLink.getByText('Review the audit log →', { exact: true }),
+  ).toBeVisible();
+  const decoy = overview.activityRow('E2E_DECOY_KEY');
+  await expect(decoy.getByText('Honey token', { exact: true })).toBeVisible();
+  const denied = overview.activityRow('E2E_DENIED_SECRET');
+  await expect(denied.getByText('Access denied', { exact: true })).toBeVisible();
+  const today = overview.expiringRow('E2E_EXPIRING_TODAY');
+  await expect(today.getByText('in 2h', { exact: true })).toBeVisible();
+  await expect(today.getByText('Production', { exact: true })).toBeVisible();
+  const later = overview.expiringRow('E2E_EXPIRING_LATER');
+  await expect(later.getByText('in 3d', { exact: true })).toBeVisible();
+  await expect(later.getByText('Production', { exact: true })).toBeVisible();
+});

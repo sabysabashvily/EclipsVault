@@ -16,6 +16,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { catchError, debounce, map, of, Subject, switchMap, timer } from 'rxjs';
+import type { SidebarLink } from './sidebar';
 
 /** Where a chosen Legacy UI page is opened: the browser's own location, replaceable in tests. */
 export const PAGE_LOCATION = new InjectionToken<Pick<Location, 'assign'>>('PAGE_LOCATION', {
@@ -39,9 +40,13 @@ const DEBOUNCE_MS = 160;
 
 /**
  * Read the rendered navigation and account-menu links in document order, as the Legacy palette
- * does. The sidebar has already applied the server-authorized Areas (ADR-0012).
+ * does, then the shortcuts that have no sidebar row of their own. Both have already been limited to
+ * the server-authorized Areas (ADR-0012).
  */
-export function paletteCommands(sidebar: ParentNode): PaletteCommand[] {
+export function paletteCommands(
+  sidebar: ParentNode,
+  shortcuts: readonly SidebarLink[] = [],
+): PaletteCommand[] {
   const links = sidebar.querySelectorAll<HTMLAnchorElement>(
     '.sidenav a[href], .account-menu-panel a[href]',
   );
@@ -51,7 +56,15 @@ export function paletteCommands(sidebar: ParentNode): PaletteCommand[] {
     url: link.getAttribute('href')!,
     angular: link.hasAttribute('data-command-angular'),
   }));
-  return pages;
+  return [
+    ...pages,
+    ...shortcuts.map(({ label, url, angular }): PaletteCommand => ({
+      kind: 'Go to',
+      label,
+      url,
+      angular,
+    })),
+  ];
 }
 
 /** The chord as this keyboard spells it: ⌘ is a Mac key, so everyone else is shown Ctrl. */
@@ -139,6 +152,7 @@ interface Search {
 })
 export class CommandPalette {
   readonly sidebar = input.required<HTMLElement>();
+  readonly shortcuts = input<readonly SidebarLink[]>([]);
 
   private readonly document = inject(DOCUMENT);
   private readonly http = inject(HttpClient);
@@ -201,7 +215,7 @@ export class CommandPalette {
   open(): void {
     if (this.isOpen()) return;
     this.opener = this.document.activeElement;
-    this.pages.set(paletteCommands(this.sidebar()));
+    this.pages.set(paletteCommands(this.sidebar(), this.shortcuts()));
     this.query.set('');
     this.isOpen.set(true);
     afterNextRender(() => this.field()?.nativeElement.focus(), { injector: this.injector });
