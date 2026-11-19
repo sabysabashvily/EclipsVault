@@ -379,6 +379,11 @@ test('revoking a real share ends the recipient browser access on its next reques
   await expect(shares.status).toHaveText('Access revoked.');
   await expect(shares.rows).toHaveCount(1);
   await expect(shares.share('E2e_Shared_No_Expiry')).toHaveCount(0);
+  // The recipient's next request for the secret is refused, so its page lands on Denied.
+  browserHealth.expectConsoleError({
+    text: /status of 403/,
+    url: /\/api\/ui\/secrets\/[0-9a-f-]{36}$/,
+  });
   await recipient.goto(secretDetails);
   await expect(recipient).toHaveURL(/\/Account\/Denied\?/);
   await expect(
