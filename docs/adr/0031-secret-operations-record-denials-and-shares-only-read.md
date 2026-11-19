@@ -77,9 +77,11 @@ high-sensitivity secret, needed no fresh proof, though revealing a secret of the
   click after `503 revoked_unrecorded`) each run the revocation. If the role's recipe cannot run twice,
   the later one fails and records RevocationFailed, with a critical row, for a credential the first
   already destroyed. This raises a false alarm; it never reports a live credential as destroyed.
-- If a lease's insert commits but the acknowledgement is lost, the vault drops the login and answers
-  `503 audit_unavailable`. The trail then shows a credential issued that no one received, and the lease
-  stays Active until the sweep revokes it again, as above.
+- If a lease's insert commits but the acknowledgement is lost, the vault treats the lease as unrecorded
+  and runs its cleanup. If the cleanup removes the login, the person gets `503 audit_unavailable`; if it
+  cannot, a critical log line names the role and login, as for a failed mint. Either way the trail shows
+  a credential issued that no one received, and the lease stays Active until the sweep revokes it again,
+  as above.
 - If minting fails part-way and the cleanup that follows also fails, a login the vault never recorded
   may remain on the target. The person is told the cleanup is unconfirmed, a critical log line names
   the role and login, and an operator checks the target (`docs/INCIDENT_RESPONSE.md`). Its password was

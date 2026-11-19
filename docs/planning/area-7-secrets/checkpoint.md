@@ -395,3 +395,41 @@ accepted under Q10; I3 is the Denied merge point above.
 
 To restart: confirm HEAD and a clean tracked tree; evidence and the final report are in `logs/ticket-172/`.
 Next is ticket 3 (#173), verify the whole part and prepare its PR.
+
+## Delivery: 7c ticket 3 (#173)
+
+#173 started from `ab90e85`, the checkpoint recording #172's CI result. 7b had not merged. Main had moved to
+`1c55064` (redesign batch 1, #187), and the coordinator merges it in before CI.
+
+- No Legacy Dynamic secrets handler remains. `RetiredDynamicSecretsRoutesTests` covers the routes, and
+  `RetiredSelfServiceRoutesTests` pins the Legacy sidebar's `href="/DynamicSecrets"`.
+- `461bb1a` adds browser tests that open Dynamic secrets from both shells' sidebars and palettes. The theme
+  test already covers both palettes.
+- ADR-0017 and ADR-0031 record the Legacy-shell move to Access denied, fixed lease notes, a role id revealing
+  that the role exists, and three review outcomes. Two closes of one lease at once can raise a false
+  RevocationFailed. A lost acknowledgement on the lease insert has two cleanup outcomes. A failed mint's
+  surviving login is named only in a critical log line. CONTEXT.md and ADR-0028 already matched.
+- Reviews of `git diff origin/main...HEAD`, finding by finding, in `logs/ticket-173/review-ledger.md`:
+  - Security-reviewer (Opus 5.5 high): no Critical, High or Medium; all five checks hold.
+  - GPT Sol 6.1 xhigh Standards: 7 Low and 1 Nit. Spec: 2 Medium and 2 Low.
+  - One GPT re-check of the fixes, then a second round fixed exactly as it prescribed (budget rules, 19 Nov).
+- Fix commits:
+  - `5dda697`: Web holds a `LeaseDto`, not the entity.
+  - `98f561a`: page-object locators, and straight Vitest cases.
+  - `9c68925` and the last commit: a production HTTP test of the lapsed-evaluation 402, a literal
+    50-newest lease list, and every failed-cleanup combination.
+  - `dc1f42e`: the lease port moves to Abstractions, history comments go, and the palette loop is split.
+- Left for the owner, also in the PR body:
+  - S1: a critical audit row for a login that may remain, beyond the log line.
+  - S2: the lease concurrency guard.
+  - G-S5 to G-S7: older standards debt in `e2e/sign-in.spec.ts` and `e2e/sidebar.ts`. 7b's #169 rewrites
+    the same lines, and browser specs run only in CI.
+
+Local checks on the final source (17 November rule):
+- `scripts/check.sh` with the PostgreSQL filter: 991 unit and 46 integration tests;
+- `dotnet format`;
+- Angular lint, the e2e type check and the Dynamic secrets Vitest spec (36 tests);
+- `npm audit --audit-level=high`, which passes because the picomatch advisory was withdrawn on 18 November.
+
+The PR body is `logs/ticket-173/pr-body.md`; its final-run line waits for CI. Next: the coordinator merges
+main, pushes, runs CI on the exact head and opens the PR.

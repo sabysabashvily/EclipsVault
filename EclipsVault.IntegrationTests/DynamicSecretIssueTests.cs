@@ -346,10 +346,15 @@ public sealed partial class DynamicSecretIssueTests(DynamicSecretsFixture fixtur
         {
             var leases = (await DynamicSecretsApi.GetAsync(admin)).GetProperty("leases");
 
-            Assert.Equal(50, leases.GetArrayLength());
-            Assert.Equal(stored[50], leases[0].GetProperty("leaseId").GetGuid());
-            Assert.Equal(stored[1], leases[49].GetProperty("leaseId").GetGuid());
-            Assert.DoesNotContain(leases.EnumerateArray(), lease => lease.GetProperty("leaseId").GetGuid() == stored[0]);
+            Guid[] newestFifty =
+            [
+                stored[50], stored[49], stored[48], stored[47], stored[46], stored[45], stored[44], stored[43], stored[42], stored[41],
+                stored[40], stored[39], stored[38], stored[37], stored[36], stored[35], stored[34], stored[33], stored[32], stored[31],
+                stored[30], stored[29], stored[28], stored[27], stored[26], stored[25], stored[24], stored[23], stored[22], stored[21],
+                stored[20], stored[19], stored[18], stored[17], stored[16], stored[15], stored[14], stored[13], stored[12], stored[11],
+                stored[10], stored[9], stored[8], stored[7], stored[6], stored[5], stored[4], stored[3], stored[2], stored[1]
+            ];
+            Assert.Equal(newestFifty, leases.EnumerateArray().Select(lease => lease.GetProperty("leaseId").GetGuid()));
         }
         finally
         {

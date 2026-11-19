@@ -66,7 +66,7 @@ public class DynamicSecretServiceTests
         var issued = await Build(repository, new FakeDynamicTarget(), usage).IssueAsync(role.Id, null, CancellationToken.None);
 
         Assert.Equal(LicenseFeatures.DynamicSecrets, Assert.Single(usage.Recorded));
-        Assert.NotEmpty(issued.Secret); // behaviour unchanged: a lease was still issued
+        Assert.NotEmpty(issued.Secret);
     }
 
     [Fact]
@@ -239,8 +239,16 @@ public class DynamicSecretServiceTests
         Assert.False(Assert.Single(target.RevokeTokens).CanBeCanceled, failure);
     }
 
-    [Fact]
-    public async Task A_request_cancelled_mid_mint_whose_cleanup_fails_names_the_login_that_may_remain()
+    public static TheoryData<string, Exception> FailedCleanups => new()
+    {
+        { "the revocation statements fail", new InvalidOperationException("Cannot drop the login.") },
+        { "the revocation statements time out", new TimeoutException("The command timed out.") },
+    };
+
+    [Theory]
+    [MemberData(nameof(FailedCleanups))]
+    public async Task A_request_cancelled_mid_mint_whose_cleanup_fails_names_the_login_that_may_remain(
+        string failure, Exception cleanupError)
     {
         var role = Role();
         var repository = new FakeLeaseRepository(role);
@@ -249,7 +257,7 @@ public class DynamicSecretServiceTests
         {
             StatementsThatRun = 1,
             MintFailure = new OperationCanceledException(cancelled),
-            RevokeFailure = new TimeoutException("The command timed out."),
+            RevokeFailure = cleanupError,
         };
 
         var incomplete = await Assert.ThrowsAsync<MintIncompleteException>(
@@ -258,7 +266,32 @@ public class DynamicSecretServiceTests
         Assert.Equal(("phoenix_db_reader", Assert.Single(target.Logins)), (incomplete.RoleName, incomplete.Login));
         Assert.DoesNotContain(Assert.Single(target.Passwords), incomplete.ToString());
         Assert.Empty(repository.Leases);
-        Assert.False(Assert.Single(target.RevokeTokens).CanBeCanceled);
+        Assert.False(Assert.Single(target.RevokeTokens).CanBeCanceled, failure);
+    }
+
+    [Theory]
+    [MemberData(nameof(FailedCleanups))]
+    public async Task A_failed_create_login_whose_cleanup_fails_is_reported_unconfirmed_though_no_login_was_made(
+        string failure, Exception cleanupError)
+    {
+        var role = Role();
+        var repository = new FakeLeaseRepository(role);
+        var target = new FakeDynamicTarget
+        {
+            StatementsThatRun = 0,
+            MintFailure = new InvalidOperationException("Cannot create the login."),
+            RevokeFailure = cleanupError,
+        };
+
+        var incomplete = await Assert.ThrowsAsync<MintIncompleteException>(
+            () => Build(repository, target).IssueAsync(role.Id, null, CancellationToken.None));
+
+        Assert.Equal("phoenix_db_reader", incomplete.RoleName);
+        Assert.Empty(target.Logins);
+        Assert.Empty(target.Users);
+        Assert.DoesNotContain(Assert.Single(target.Passwords), incomplete.ToString());
+        Assert.Empty(repository.Leases);
+        Assert.False(Assert.Single(target.RevokeTokens).CanBeCanceled, failure);
     }
 
     [Fact]
