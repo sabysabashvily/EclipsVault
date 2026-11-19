@@ -720,6 +720,17 @@ button {
   max-width: 660px;
 }
 
+/* Copied from the Legacy site.css, for the Denied page's list of the policy's reasons. */
+.denial-reasons {
+  margin: 0.6rem 0 1rem;
+  padding-left: 1.3rem;
+}
+
+.denial-reasons li {
+  margin: 0.4rem 0;
+  color: var(--danger);
+}
+
 .panel-header {
   display: flex;
   justify-content: space-between;

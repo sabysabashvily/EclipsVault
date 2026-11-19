@@ -19,7 +19,6 @@ import { ConfirmationDialog } from '../shared/confirmation-dialog';
 import { relativeTime } from '../shared/relative-time';
 import { StatusLine } from '../shared/status-line';
 import { StepUpDialog } from '../shared/step-up-dialog';
-import { PAGE_LOCATION } from '../shell/command-palette';
 import type { components } from '../ui-api/schema.generated';
 import { UiApiError } from '../ui-api/ui-api-errors';
 
@@ -44,7 +43,6 @@ export class SecretDetailsPage {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
   private readonly title = inject(Title);
-  private readonly location = inject(PAGE_LOCATION);
   private readonly parameters = toSignal(inject(ActivatedRoute).paramMap);
   private readonly id = computed(() => this.parameters()?.get('id'));
   private readonly path = computed(() => `/api/ui/secrets/${this.id()}`);
@@ -108,9 +106,14 @@ export class SecretDetailsPage {
       }
     });
     effect(() => {
-      // The Denied page does not receive the policy's reasons yet, so it shows its generic text.
-      if (this.failure() === 'access_denied')
-        this.location.assign(`/Account/Denied?secretId=${this.id()}`);
+      const error = this.details.error();
+      // The reasons travel in navigation memory only, so a reload of Denied shows its generic text.
+      // Replacing this page's entry keeps Back from opening the refused secret again.
+      if (error instanceof UiApiError && error.code === 'access_denied')
+        void this.router.navigateByUrl(`/Account/Denied?secretId=${this.id()}`, {
+          state: { reasons: error.reasons },
+          replaceUrl: true,
+        });
     });
   }
 

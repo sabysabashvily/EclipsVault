@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Web.Models.Ui;
 using Microsoft.AspNetCore.Mvc;
@@ -27,6 +29,28 @@ public static class AccessRequestProblems
 
     public static JsonResult ShareExists()
         => Problem(StatusCodes.Status409Conflict, "share_exists", "They already have a share on this secret.");
+
+    /// <summary>A request not filed. The Denied page sends the code on to Access requests, which says why.</summary>
+    public static JsonResult FilingRefused(AccessRequestRefusal refusal) => refusal switch
+    {
+        AccessRequestRefusal.ReasonTooShort => FilingRefused("reason_too_short", "Add a short reason so a reviewer can decide."),
+        _ => FilingRefused(CodeOf(refusal), AccessRequestRules.ExplainToRequester(refusal)),
+    };
+
+    public static JsonResult SecretGone() => FilingRefused("secret_not_found", SecretGoneMessage);
+
+    public const string SecretGoneMessage = "That secret no longer exists.";
+
+    /// <summary>The code of a refusal the requester can be told before filing.</summary>
+    public static string CodeOf(AccessRequestRefusal refusal) => refusal switch
+    {
+        AccessRequestRefusal.ShareCannotHelp => "share_cannot_help",
+        AccessRequestRefusal.AlreadyAbleToOpen => "already_able_to_open",
+        AccessRequestRefusal.AlreadyPending => "already_pending",
+        _ => throw new UnreachableException($"No filing code for {refusal}."),
+    };
+
+    private static JsonResult FilingRefused(string code, string title) => Problem(StatusCodes.Status409Conflict, code, title);
 
     private static JsonResult Problem(int status, string code, string title, IReadOnlyDictionary<string, string[]>? errors = null)
         => new(new AccessRequestProblemResponse { Status = status, Code = code, Title = title, Errors = errors })

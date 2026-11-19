@@ -68,6 +68,9 @@ public static class AngularUiRoutes
         // Access requests
         "/AccessRequests",
         "/AccessRequests/Index",
+
+        // Access denied, where the session cookie sends a caller refused a page
+        "/Account/Denied",
     ];
 
     /// <summary>

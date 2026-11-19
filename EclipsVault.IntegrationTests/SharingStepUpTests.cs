@@ -96,7 +96,7 @@ public sealed class SharingStepUpTests(VaultFixture vault)
         string name, string sensitivity, string reviewerAddress, string requesterAddress)
     {
         var (reviewer, details) = await SecretToShareAsync(name, sensitivity, reviewerAddress, requesterAddress);
-        return (reviewer, await LegacyAccessRequests.PendingAsync(vault, details, $"{name}-recipient"));
+        return (reviewer, await AccessRequestsApi.PendingAsync(vault, details, $"{name}-recipient"));
     }
 
     /// <summary>A GLOBAL secret, a reviewer who may share it, and a Secret-cleared account of another project to share it with.</summary>

@@ -76,13 +76,13 @@ public sealed class AccessRequestAuditFailureTests(AuditFailureFixture failure)
         var account = await ProfileHttp.AccountAsync(vault, "it-request-file-failure");
         var details = await SecretSharing.CreateSecretAsync(admin, "it-request-file-failure-secret");
         var secretId = SecretSharing.SecretIdOf(details);
-        var token = await LegacyAccessRequests.TokenAsync(requester.Client);
+        var token = await UiApiRequest.AntiforgeryTokenAsync(requester.Client);
         var before = await AuditTrail.HeadAsync(vault);
         await failure.RejectAuditWritesAsync();
         try
         {
-            var response = await LegacyAccessRequests.FileAsync(requester.Client, token, secretId);
-            Assert.Equal("/Home/Error?code=503", response.Headers.Location?.OriginalString);
+            var response = await AccessRequestsApi.FileWithTokenAsync(requester.Client, token, secretId);
+            await SecretsApi.AssertProblemAsync(response, 503, "audit_unavailable");
             using var scope = vault.Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
             Assert.False(await db.AccessRequests.AnyAsync(request => request.SecretId == secretId));
@@ -103,7 +103,7 @@ public sealed class AccessRequestAuditFailureTests(AuditFailureFixture failure)
         var username = $"it-request-failure-{addressSuffix}";
         var requester = await failure.Vault.SignInNewAccountAsync(username, IPAddress.Parse($"198.51.100.{addressSuffix}"), project: "IT-REQUESTERS");
         var details = await SecretSharing.CreateSecretAsync(reviewer, $"it-request-audit-{addressSuffix}");
-        var pending = await LegacyAccessRequests.PendingAsync(failure.Vault, details, username);
+        var pending = await AccessRequestsApi.PendingAsync(failure.Vault, details, username);
         return (pending, reviewer, requester, details);
     }
 }

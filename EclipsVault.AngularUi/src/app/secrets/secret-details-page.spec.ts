@@ -4,7 +4,6 @@ import { Title } from '@angular/platform-browser';
 import { ActivatedRoute, convertToParamMap, Router } from '@angular/router';
 import { of } from 'rxjs';
 import { appConfig } from '../app.config';
-import { PAGE_LOCATION } from '../shell/command-palette';
 import type { components } from '../ui-api/schema.generated';
 import { SecretDetailsPage } from './secret-details-page';
 
@@ -64,15 +63,12 @@ const rotated = 'Secret rotated. The previous value was archived to version hist
 
 describe('SecretDetailsPage', () => {
   let backend: HttpTestingController;
-  let assign: ReturnType<typeof vi.fn>;
 
   function render(prepare: () => void = () => undefined) {
-    assign = vi.fn();
     TestBed.configureTestingModule({
       providers: [
         ...appConfig.providers,
         provideHttpClientTesting(),
-        { provide: PAGE_LOCATION, useValue: { assign } },
         { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ id })) } },
       ],
     });
@@ -182,8 +178,11 @@ describe('SecretDetailsPage', () => {
     expect(page.querySelector('h1')).toBeNull();
   });
 
-  it('sends a refused caller to the Denied page with the secret named', async () => {
-    const { fixture, page } = render();
+  it('sends a refused caller to the Denied page with the secret named and the reasons in memory', async () => {
+    let navigate!: ReturnType<typeof vi.spyOn>;
+    const { fixture, page } = render(() => {
+      navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+    });
     backend.expectOne(path).flush(
       {
         code: 'access_denied',
@@ -194,7 +193,10 @@ describe('SecretDetailsPage', () => {
     );
     await fixture.whenStable();
 
-    expect(assign).toHaveBeenCalledExactlyOnceWith(`/Account/Denied?secretId=${id}`);
+    expect(navigate).toHaveBeenCalledExactlyOnceWith(`/Account/Denied?secretId=${id}`, {
+      state: { reasons: ["Clearance 'Standard' is below required sensitivity 'Secret'."] },
+      replaceUrl: true,
+    });
     expect(page.textContent).not.toContain('Secret not found.');
   });
 

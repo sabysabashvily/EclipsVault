@@ -7,8 +7,8 @@ using Xunit;
 namespace EclipsVault.IntegrationTests;
 
 /// <summary>
-/// The Secrets list, New secret and a secret's details are Angular pages; the Legacy search, create and
-/// details actions have no handler left. Each row signs in an account of its own, so no row spends
+/// The Secrets list, New secret, a secret's details and Access denied are Angular pages; the Legacy
+/// search, create and details actions have no handler left. Each row signs in an account of its own, so no row spends
 /// another's sign-in budget.
 /// </summary>
 [Collection(VaultCollection.Name)]
@@ -19,6 +19,7 @@ public sealed class RetiredSecretsRoutesTests(VaultFixture vault)
     [InlineData("/sEcReTs/InDeX", "it-secrets-page-2", "198.18.164.2")]
     [InlineData("/SECRETS/CREATE", "it-secrets-page-3", "198.18.164.3")]
     [InlineData("/sEcReTs/DeTaIlS/6d1b2c55-0000-4000-8000-000000000001", "it-secrets-page-4", "198.18.164.4")]
+    [InlineData("/aCcOuNt/DeNiEd?secretId=6d1b2c55-0000-4000-8000-000000000001", "it-secrets-page-5", "198.18.164.5")]
     public async Task Signed_in_the_secrets_paths_serve_the_Angular_document(string path, string username, string source)
     {
         var member = await vault.SignInNewAccountAsync(username, IPAddress.Parse(source));

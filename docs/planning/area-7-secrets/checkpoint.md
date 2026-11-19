@@ -437,3 +437,43 @@ re-checked OK) and one non-security label: two simultaneous deletes give the los
 left as is. GPT reviews the whole part in #170. Details: `logs/ticket-168/final-report.md` and
 `review-ledger.md` (ignored). To restart, read this section; ticket 4 (#169) starts after the coordinator
 accepts this one.
+
+## Delivery: 7b ticket 4 (#169)
+
+Branch `area-7b-secret-details`, from `372aea9`. Claude Opus 5.5 high implemented the ticket. Two #168 CI
+fixes came first, each as its own commit: `7dedfcd` and `66cd930` declare the browser's intended 403 when a
+refused recipient opens a secret.
+
+What changed: the UI API answers `GET /api/ui/access-requests/eligibility?secretId=` (records nothing) and
+`POST /api/ui/access-requests` (204). Filing takes the denial reasons from the vault's own access check and
+refuses an unknown field (400), so a caller cannot supply them. It writes only Area 4's `AccessRequested`
+row; when that cannot be stored it answers 503 `audit_unavailable` and stores nothing. Refusals answer 409
+with `share_cannot_help`, `already_able_to_open`, `already_pending`, `reason_too_short` or
+`secret_not_found`. A decoy trips and answers 404 on both endpoints. The Angular page at `/Account/Denied`
+copies the Legacy words. It lists the policy's reasons only when a refused open hands them over in
+navigation memory (Secret details now does), so a reload shows the generic text. It checks `secretId` as a
+GUID, offers the form or the refusal sentence, shows "Manage trusted networks" from the server's areas, and
+opens Access requests with `filed=1` or `refused=<code>`. No model change.
+
+Deleted: `AccountController.Denied`, `RequestRefusalMessageAsync` and `DenialReasonsTempDataKey`;
+`Views/Account/Denied.cshtml`; `AccessDeniedViewModel`; and the Legacy `AccessRequestsController`
+(`POST /AccessRequests/Create`). `/Account/Denied` stays the cookie's `AccessDeniedPath`, now served by
+Angular, and `MayLeadIntoAccount` still allows it. No Legacy-shell check was touched on this branch. 7c's
+checks that were re-homed to `/Account/Denied` now land on the Angular page, so the merge must re-check them.
+
+Deviations: an unknown secret answers eligibility with 200 `secret_not_found` while a decoy answers 404, as
+Legacy behaved. The owner question is in the ledger for #170. The theme tests check the theme attribute
+and a screenshot, with no `visual parity:` colour checks (override 4).
+
+Verification on the final source: `scripts/check.sh` passed (981 unit tests), `dotnet
+format` clean, both pending-model checks and the hook tests passed. The Angular checks passed: 633 Vitest
+tests, lint, prettier, build checks, `check:api-types` and build; `npm audit --audit-level=high` also passed with 10 moderate findings.
+The ticket's PostgreSQL filter passed 291 tests (14 classes). Browser specs were written but not run locally
+(`access-requests.spec.ts`: Denied with reasons → filing → Access requests, the under-cleared refusal
+sentence, keyboard, both themes, the titled document). They, the full suites and SQL Server run in CI.
+
+Reviews: security (Opus 5.5 high) found no defects. One low (the eligibility comment claimed a decoy and an
+unknown id answer alike; reworded) and one coverage gap (stale cookies on the two new endpoints) were fixed.
+A fresh re-check of the fixes found no defects. GPT reviews the whole part in #170. Details:
+`logs/ticket-169/final-report.md` and `review-ledger.md` (ignored). To restart, read this section; ticket 5
+(#170) starts after the coordinator accepts this one.
