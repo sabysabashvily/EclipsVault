@@ -1,3 +1,4 @@
+import { ScrollRegion } from '../shared/scroll-region';
 import { DatePipe, formatDate } from '@angular/common';
 import { httpResource } from '@angular/common/http';
 import { Component, computed, signal } from '@angular/core';
@@ -9,7 +10,7 @@ type Notification = components['schemas']['NotificationResponse'];
 
 @Component({
   selector: 'app-notifications-page',
-  imports: [DatePipe, EmptyState, TableFilter],
+  imports: [ScrollRegion, DatePipe, EmptyState, TableFilter],
   templateUrl: './notifications-page.html',
 })
 export class NotificationsPage {

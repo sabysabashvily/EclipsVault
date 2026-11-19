@@ -156,29 +156,6 @@ export async function verifySignInHistory(page: Page, info: TestInfo, theme: str
   await expect(page.locator('.empty-state')).toHaveCount(0);
   await expect(page.locator('style, [style]')).toHaveCount(0);
 
-  // The cards and the routine accents resolve through the ported rules and the shared theme tokens.
-  expect(
-    await page
-      .locator('.stat-grid')
-      .evaluate((grid) => [
-        getComputedStyle(grid).display,
-        getComputedStyle(grid.querySelector('.stat-card')!).flexDirection,
-      ]),
-  ).toEqual(['grid', 'column']);
-  const accents = await page
-    .locator('.activity-feed')
-    .evaluate((feed) =>
-      [...feed.querySelectorAll('.feed-icon')].map((icon) => [
-        getComputedStyle(icon).color,
-        getComputedStyle(icon).backgroundColor,
-      ]),
-    );
-  const routine =
-    theme === 'dark'
-      ? ['rgb(182, 188, 202)', 'rgb(13, 14, 19)']
-      : ['rgb(74, 78, 88)', 'rgb(236, 238, 242)'];
-  expect(accents).toEqual([routine, routine]);
-
   await page.evaluate(() => document.fonts.ready);
   const path = info.outputPath(`administrator-${theme}-sign-ins.png`);
   await page.screenshot({ path, fullPage: true });

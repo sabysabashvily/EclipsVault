@@ -10,8 +10,6 @@ export class SharedWithMe {
   readonly goToSecrets;
   readonly error;
   readonly retry;
-  readonly emptyState;
-  readonly emptyIcon;
 
   constructor(readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Shared with me', exact: true });
@@ -34,11 +32,6 @@ export class SharedWithMe {
     this.goToSecrets = page.getByRole('link', { name: 'Go to your secrets', exact: true });
     this.error = page.getByRole('main').getByRole('alert');
     this.retry = page.getByRole('button', { name: 'Try again', exact: true });
-    // The empty state's unlabelled layout and icon containers are read only for visual parity.
-    // eslint-disable-next-line playwright/no-raw-locators
-    this.emptyState = page.locator('.empty-state');
-    // eslint-disable-next-line playwright/no-raw-locators
-    this.emptyIcon = page.locator('.empty-icon');
   }
 
   async open(path = '/Secrets/SharedWithMe'): Promise<void> {

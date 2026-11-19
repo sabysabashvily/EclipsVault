@@ -45,55 +45,76 @@
 :root {
   color-scheme: dark;
 
-  /* Layered near-black surfaces (cool, low-chroma) */
-  --bg: #0a0b0f;
-  --bg-sidebar: rgba(18, 20, 27, 0.72);
-  /* Glass: the same raised surface, translucent, for elements that sit over the page
-       backdrop. A token rather than a literal rgba() so the light theme can answer for
-       itself — hardcoding a dark rgba here is how a "glass" panel ends up as a grey
-       smear on white. */
-  --bg-raised-glass: rgba(20, 22, 30, 0.72);
-  --glass-blur: saturate(160%) blur(14px);
-  --bg-raised: #14161e;
-  --bg-raised-2: #181b25;
-  --bg-inset: #0d0e13;
-  --bg-hover: #1c1f2a;
+  /* Solid, neutral near-black surfaces: depth comes from the canvas-to-card step and a hairline,
+       never from blur. The sidebar shares the canvas. */
+  --bg: #0b0b0d;
+  --bg-sidebar: #0b0b0d;
+  /* Kept so older rules that ask for "glass" get the solid card instead. */
+  --bg-raised-glass: #141416;
+  --glass-blur: none;
+  --bg-raised: #141416;
+  --bg-raised-2: #1c1c20;
+  --bg-inset: #0f0f11;
+  --bg-hover: #1a1a1d;
+  --brand-disc: #05060a;
 
   /* Hairline borders */
   --border: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(255, 255, 255, 0.13);
 
-  --text: #edeef2;
-  --text-secondary: #b6bcca;
-  --text-muted: #7f8798;
-  --text-faint: #5b6273;
+  --text: #ededef;
+  --text-secondary: #b4b4b9;
+  --text-muted: #8a8a91;
+  --text-faint: #5e5e65;
 
-  /* Accent: warm eclipse corona amber, used sparingly */
-  --accent: #ff9f0a; /* aligns with Apple systemOrange */
+  /* The one accent: brand, focus rings and links. Buttons are ink, so orange stays rare. */
+  --accent: #ff9f0a;
   --accent-hover: #ffb84d;
   --accent-press: #d97f00;
   --accent-soft: rgba(255, 159, 10, 0.14);
   --accent-line: rgba(255, 159, 10, 0.3);
 
-  --danger: #ff453a; /* systemRed (dark) */
-  --danger-soft: rgba(255, 69, 58, 0.14);
-  --warn: #ffd60a; /* systemYellow (dark) */
+  /* Status colours: a soft tint with a dot, never a solid block. A notice spans the page, so it
+       takes the lighter wash. Yellow, not amber, marks "due soon": amber sits too close to the accent. */
+  --danger: #ff6961;
+  --danger-soft: rgba(255, 69, 58, 0.13);
+  --danger-wash: rgba(255, 69, 58, 0.07);
+  --warn: #ffd60a;
   --warn-soft: rgba(255, 214, 10, 0.12);
-  --ok: #30d158; /* systemGreen (dark) */
-  --ok-soft: rgba(48, 209, 88, 0.14);
+  --warn-wash: rgba(255, 214, 10, 0.07);
+  --warn-dot: #ffd60a;
+  --ok: #30d158;
+  --ok-soft: rgba(48, 209, 88, 0.13);
+  --ok-wash: rgba(48, 209, 88, 0.07);
+  --info: #64a8ff;
+  --info-soft: rgba(100, 168, 255, 0.14);
+  --info-wash: rgba(100, 168, 255, 0.07);
 
+  /* The primary button and the selected row are inverted ink. */
+  --ink-button: #ffffff;
+  --ink-button-text: #0b0b0d;
+  --ink-button-hover: #e4e4e6;
+  --nav-active-bg: #ffffff;
+  --nav-active-text: #0b0b0d;
+  --tree-line: rgba(255, 255, 255, 0.3);
+
+  --radius-xl: 22px;
   --radius-lg: 16px;
   --radius: 12px;
-  --radius-sm: 8px;
+  --radius-sm: 10px;
   --radius-pill: 980px;
 
+  --shadow-card: none;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
   --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.55);
+  --shadow-dialog: 0 24px 70px rgba(0, 0, 0, 0.6);
+  --scrim: rgba(0, 0, 0, 0.55);
 
-  --sidebar-width: 244px;
+  --sidebar-width: 264px;
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
   --dur: 200ms;
+  --dur-press: 110ms;
 
   /* System faces stay behind Geist: font-display:swap paints in them first, and they are
        what renders if the woff2 ever fails to load. */
@@ -108,55 +129,65 @@
 }
 
 /* ---- Light palette --------------------------------------------- */
-/* Only color tokens change. Surfaces invert to layered whites, borders become
-   black-alpha hairlines, and the amber accent deepens so it stays readable as
-   link/button text on light — while keeping the same warm identity. */
+/* Only colour and shadow tokens change. The accent deepens so it stays readable as link text on
+   white while keeping the same warm identity. */
 :root[data-theme='light'] {
   color-scheme: light;
 
-  --bg: #f3f4f7;
-  --bg-sidebar: rgba(244, 245, 248, 0.8);
-  /* Light glass is nearly opaque on purpose. White-on-white has almost no contrast to
-       begin with, so the panel edge is the only thing separating content from page — let
-       it go translucent and the layering disappears rather than deepens. */
-  --bg-raised-glass: rgba(255, 255, 255, 0.86);
+  /* A warm grey canvas a step darker than the white cards, so white cards and the white
+       selected pill read without heavy shadows. */
+  --bg: #ececea;
+  --bg-sidebar: #ececea;
+  --bg-raised-glass: #ffffff;
   --bg-raised: #ffffff;
-  --bg-raised-2: #f6f7f9;
-  --bg-inset: #eceef2;
-  --bg-hover: #ebedf1;
+  --bg-raised-2: #f6f6f4;
+  --bg-inset: #f3f3f1;
+  --bg-hover: #f8f8f6;
+  --brand-disc: #05060a;
 
-  --border: rgba(0, 0, 0, 0.09);
-  --border-strong: rgba(0, 0, 0, 0.16);
+  --border: #e6e6e4;
+  --border-strong: #d6d6d3;
 
-  --text: #1c1d22;
-  --text-secondary: #4a4e58;
-  --text-muted: #697080;
-  --text-faint: #9aa0ac;
+  --text: #232322;
+  --text-secondary: #4b4a47;
+  --text-muted: #6c6b67;
+  --text-faint: #a09f9a;
 
   --accent: #b45f04;
   --accent-hover: #8f4b00;
   --accent-press: #703b00;
-  --accent-soft: rgba(180, 95, 4, 0.12);
+  --accent-soft: rgba(180, 95, 4, 0.11);
   --accent-line: rgba(180, 95, 4, 0.32);
 
-  --danger: #d70015;
-  --danger-soft: rgba(215, 0, 21, 0.1);
-  --warn: #8a6a00;
-  --warn-soft: rgba(180, 140, 0, 0.15);
+  /* Yellow text reads as olive on white, so a yellow pill keeps ink text and puts the colour in
+       its dot (3:1 against white). */
+  --danger: #c4000f;
+  --danger-soft: rgba(215, 0, 21, 0.08);
+  --danger-wash: rgba(215, 0, 21, 0.05);
+  --warn: #7a6200;
+  --warn-soft: rgba(255, 204, 0, 0.18);
+  --warn-wash: rgba(255, 204, 0, 0.09);
+  --warn-dot: #b58900;
   --ok: #1a7f37;
-  --ok-soft: rgba(26, 127, 55, 0.13);
+  --ok-soft: rgba(26, 127, 55, 0.1);
+  --ok-wash: rgba(26, 127, 55, 0.06);
+  --info: #1d5fbf;
+  --info-soft: rgba(29, 95, 191, 0.1);
+  --info-wash: rgba(29, 95, 191, 0.06);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
-  --shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
-  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.16);
-}
+  --ink-button: #2a2a29;
+  --ink-button-text: #ffffff;
+  --ink-button-hover: #3a3a38;
+  --nav-active-bg: #ffffff;
+  --nav-active-text: #232322;
+  --tree-line: #aeada8;
 
-/* A couple of rules bake in a white overlay for depth; on light they need a dark one. */
-:root[data-theme='light'] .data-table tbody tr:hover td {
-  background: rgba(0, 0, 0, 0.03);
-}
-:root[data-theme='light'] .button.primary {
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.05);
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.14);
+  --shadow-dialog: 0 24px 70px rgba(0, 0, 0, 0.18);
+  --scrim: rgba(20, 20, 18, 0.32);
 }
 
 /* ---- Base ------------------------------------------------------ */
@@ -189,42 +220,27 @@ body {
   font-variant-numeric: tabular-nums lining-nums;
 }
 
-/* Ambient corona. Glass needs something behind it to be glass — blur a flat colour and you get
-   the same flat colour, so the whole layer would be cost with no effect. Two very low-opacity
-   radial pools give the backdrop something to pick up, and they are the eclipse the product is
-   named for: a warm corona bleeding past a dark disc. Fixed and behind everything, so it does
-   not move with scroll or intercept a single click. */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(60rem 40rem at 78% -8%, rgba(255, 159, 10, 0.1), transparent 60%),
-    radial-gradient(48rem 34rem at 8% 102%, rgba(120, 90, 255, 0.07), transparent 62%);
-}
-
-:root[data-theme='light'] body::before {
-  background:
-    radial-gradient(60rem 40rem at 78% -8%, rgba(255, 159, 10, 0.13), transparent 60%),
-    radial-gradient(48rem 34rem at 8% 102%, rgba(120, 90, 255, 0.08), transparent 62%);
+/* Two weights only: 400 for text and numbers, 500 for titles. Hierarchy comes from size. */
+strong,
+b {
+  font-weight: 500;
 }
 
 h1,
 h2,
 h3 {
-  font-weight: 620;
+  font-weight: 500;
   letter-spacing: var(--tracking-heading);
   margin: 0;
   line-height: 1.25;
 }
 h1 {
-  font-size: 1.5rem;
+  font-size: clamp(1.9rem, 1.35rem + 1.9vw, 2.75rem);
+  line-height: 1.08;
   letter-spacing: var(--tracking-display);
 }
 h2 {
-  font-size: 1.06rem;
+  font-size: 1.12rem;
 }
 
 a {
@@ -280,15 +296,98 @@ button {
   min-height: 100vh;
 }
 
+/* The top of the page column: below 1200px the drawer's button and the logo, at every width the
+   search pill that opens the palette. */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.75rem;
+}
+.topbar .search-pill {
+  margin-left: auto;
+}
+.topbar-action {
+  flex-shrink: 0;
+}
+.topbar-action svg,
+.page-header > .button svg,
+.page-header .primary svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.topbar .topbar-brand {
+  padding: 0;
+  font-size: 1.05rem;
+}
+/* Icon-only buttons are circles. Qualified with .button so the general button padding, declared
+   later, cannot squeeze the icon out of a 44px circle. */
+.button.navigation-toggle,
+.button.navigation-close {
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border-radius: 50%;
+}
+.navigation-toggle svg,
+.navigation-close svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.navigation-close {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.65rem;
+}
+.mobile-navigation {
+  width: min(22rem, calc(100% - 0.5rem));
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--bg-sidebar);
+  color: var(--text);
+  transform: translateX(-100%);
+  transition:
+    transform var(--dur) var(--ease),
+    overlay var(--dur) allow-discrete,
+    display var(--dur) allow-discrete;
+}
+.mobile-navigation[open] {
+  transform: none;
+}
+@starting-style {
+  .mobile-navigation[open] {
+    transform: translateX(-100%);
+  }
+}
+.mobile-navigation::backdrop {
+  background: var(--scrim);
+}
+.mobile-navigation .sidebar {
+  width: 100%;
+  height: 100dvh;
+  position: relative;
+  padding-top: 1.4rem;
+}
+/* The drawer's close button sits in the top corner, so the workspace card stops short of it. */
+.mobile-navigation .workspace-card {
+  margin-right: 3.25rem;
+}
+body:has(.mobile-navigation[open]) {
+  overflow: hidden;
+}
+
 .sidebar {
   width: var(--sidebar-width);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   background: var(--bg-sidebar);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
-  backdrop-filter: saturate(180%) blur(20px);
-  border-right: 1px solid var(--border);
   padding: 1.2rem 0.85rem;
   position: sticky;
   top: 0;
@@ -301,19 +400,28 @@ button {
   gap: 0.6rem;
   padding: 0.35rem 0.65rem 1.2rem;
   font-size: 1.08rem;
-  font-weight: 650;
+  font-weight: 500;
   color: var(--text);
   letter-spacing: -0.02em;
 }
 .brand:hover {
   color: var(--text);
 }
+.workspace-card {
+  margin-bottom: 1.25rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-card);
+}
+
 /* Eclipse logomark — the favicon's twin: a dark disc haloed by the accent ring. */
 .brand-mark {
   width: 1.05em;
   height: 1.05em;
   border-radius: 50%;
-  background: #05060a;
+  background: var(--brand-disc);
   border: 1.5px solid var(--accent);
   flex-shrink: 0;
 }
@@ -326,24 +434,29 @@ button {
   overflow-y: auto;
 }
 
+/* The groups name themselves, so the space before them replaces a section label. */
+.nav-gap {
+  height: 0.9rem;
+}
+
+/* Sentence case everywhere, section labels included. */
 .nav-section {
-  padding: 1.15rem 0.65rem 0.4rem;
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-faint);
+  padding: 1.15rem 0.75rem 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 400;
+  color: var(--text-muted);
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
-  padding: 0.52rem 0.65rem;
-  border-radius: var(--radius-sm);
+  gap: 0.75rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-pill);
   color: var(--text-secondary);
-  font-size: 0.92rem;
-  font-weight: 500;
+  font-size: 0.97rem;
+  font-weight: 400;
   transition:
     background var(--dur) var(--ease),
     color var(--dur) var(--ease);
@@ -355,46 +468,20 @@ button {
   opacity: 0.85;
 }
 .nav-item:hover {
-  background: var(--bg-hover);
   color: var(--text);
 }
+/* The selected row is a pill in the inverted ink of the theme, so orange stays rare. */
 .nav-item.active {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--nav-active-bg);
+  color: var(--nav-active-text);
+  font-weight: 500;
+  box-shadow: var(--shadow-sm);
 }
 .nav-item.active svg {
   opacity: 1;
 }
-
-/* Active indicator: an accent rule on the leading edge, which reads as "you are here" at a
-   glance down the rail in a way a tinted background alone does not. It grows from the centre
-   rather than sliding between items — the items are links, so the browser repaints the page
-   anyway and there is no continuous element to slide. */
 .nav-item {
   position: relative;
-}
-.nav-item::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  width: 3px;
-  height: 0;
-  transform: translateY(-50%);
-  border-radius: 0 2px 2px 0;
-  background: var(--accent);
-  transition: height var(--dur) var(--ease);
-}
-.nav-item.active::before {
-  height: 60%;
-}
-.nav-item:hover::before {
-  height: 30%;
-  background: var(--border-strong);
-}
-.nav-item.active:hover::before {
-  height: 60%;
-  background: var(--accent);
 }
 
 /* Collapsible nav groups (native <details>, no script). A group opens itself and tints its
@@ -421,25 +508,54 @@ button {
   transform: rotate(90deg);
 }
 .nav-group-summary.has-active {
-  color: var(--accent);
+  color: var(--text);
 }
 .nav-group-summary.has-active svg {
   opacity: 1;
 }
 /* Children indented under the header, with a guide line so the grouping reads at a glance. */
 .nav-group-items {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin: 2px 0 2px 1.45rem;
-  padding-left: 0.4rem;
-  border-left: 1px solid var(--border);
+  margin: 2px 0 4px;
+  padding-left: 2.1rem;
+}
+.nav-group-items > .nav-item {
+  position: relative;
+}
+/* The elbow into each child: down from the line, then right towards the child's icon. */
+.nav-group-items > .nav-item::before {
+  content: '';
+  position: absolute;
+  left: calc(0.75rem + 9px - 2.1rem);
+  top: -2px;
+  width: calc(2.1rem - 9px - 0.2rem);
+  height: calc(50% + 2px);
+  border-left: 1.5px solid var(--tree-line);
+  border-bottom: 1.5px solid var(--tree-line);
+  border-bottom-left-radius: 0.7rem;
+}
+/* The next elbow begins at the row boundary, so the straight segment starts below this elbow. */
+.nav-group-items > .nav-item:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: calc(0.75rem + 9px - 2.1rem);
+  top: 50%;
+  bottom: 0;
+  border-left: 1.5px solid var(--tree-line);
 }
 
 .sidebar-footer {
-  border-top: 1px solid var(--border);
   padding-top: 0.85rem;
   margin-top: 0.85rem;
+}
+.sidebar-footer .user-card {
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-card);
 }
 
 /* ---- Account menu -------------------------------------------------- */
@@ -458,9 +574,9 @@ button {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.3rem;
+  padding: 0.4rem;
   min-width: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-lg);
   color: var(--text);
   cursor: pointer;
   transition: background var(--dur) var(--ease);
@@ -490,17 +606,17 @@ button {
   right: 0;
   bottom: calc(100% + 6px);
   z-index: 30;
-  padding: 0.3rem;
-  background: var(--bg-raised-2);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow);
+  padding: 0.4rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
 .account-menu-panel .menu-item {
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
 }
 .menu-sep {
   height: 1px;
@@ -537,8 +653,8 @@ button {
   flex: 1;
 }
 .user-name {
-  font-size: 0.88rem;
-  font-weight: 600;
+  font-size: 0.92rem;
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -582,8 +698,8 @@ button {
   color: var(--danger);
 }
 .menu-item.danger:hover {
-  background: var(--danger);
-  color: #fff;
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 /* /api/ui/me failed with something other than a missing session: say so, with its code. */
@@ -596,13 +712,14 @@ button {
 .content {
   flex: 1;
   min-width: 0;
-  padding: 2rem 2.4rem 1rem;
-  max-width: 1280px;
+  width: 100%;
+  max-width: calc(70rem + 5rem);
+  margin: 0 auto;
+  padding: 1.5rem 2.5rem 1rem;
   display: flex;
   flex-direction: column;
   animation: content-in 320ms var(--ease);
 }
-
 @keyframes content-in {
   from {
     opacity: 0;
@@ -622,17 +739,19 @@ button {
 }
 
 /* ---- Notice banner ------------------------------------------------ */
+/* A notice spans the page, so it takes a lighter wash than a pill: at pill strength a full-width
+   tint reads as a slab. The text stays ink; the colour sits in the wash and the icon. */
 .notice {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.7rem;
-  padding: 0.8rem 1.1rem;
-  border-radius: var(--radius);
-  border: 1px solid var(--border-strong);
+  gap: 0.75rem;
+  padding: 1rem 1.2rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
   background: var(--bg-raised);
-  margin-bottom: 1.4rem;
-  font-size: 0.92rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.94rem;
   overflow-wrap: anywhere;
 }
 .notice svg {
@@ -641,22 +760,29 @@ button {
   flex-shrink: 0;
 }
 .notice-warn {
-  border-color: rgba(255, 214, 10, 0.4);
-  background: linear-gradient(180deg, var(--warn-soft), var(--bg-raised) 70%);
+  border-color: transparent;
+  background: var(--warn-wash);
 }
 .notice-warn svg {
-  color: var(--warn);
+  color: var(--warn-dot);
 }
 .notice-ok {
-  border-color: rgba(48, 209, 88, 0.4);
-  background: linear-gradient(180deg, var(--ok-soft), var(--bg-raised) 70%);
+  border-color: transparent;
+  background: var(--ok-wash);
+}
+.notice-ok svg {
+  color: var(--ok);
 }
 .notice-critical {
-  border-color: rgba(255, 69, 58, 0.5);
-  background: linear-gradient(180deg, var(--danger-soft), var(--bg-raised) 70%);
+  border-color: transparent;
+  background: var(--danger-wash);
+}
+.notice-critical svg {
+  color: var(--danger);
 }
 .notice strong {
   margin-right: 0.15rem;
+  font-weight: 500;
 }
 
 /* ---- Page header ------------------------------------------------ */
@@ -664,15 +790,16 @@ button {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 1rem;
-  margin-bottom: 1.6rem;
+  gap: 1rem 1.5rem;
+  margin-bottom: 2rem;
   flex-wrap: wrap;
 }
 
 .page-sub {
-  margin: 0.4rem 0 0;
+  margin: 0.75rem 0 0;
+  max-width: 46rem;
   color: var(--text-muted);
-  font-size: 0.92rem;
+  font-size: 0.97rem;
   display: flex;
   gap: 0.4rem;
   align-items: center;
@@ -685,31 +812,19 @@ button {
 }
 
 /* ---- Panels & grids --------------------------------------------- */
+/* Solid cards: depth comes from the canvas-to-card step and a hairline, never from blur. */
 .panel {
-  /* Translucent over the page backdrop, so panels read as sheets above the surface rather
-       than holes cut in it. The solid colour stays as the fallback: backdrop-filter is what
-       makes this legible, and where it is unsupported an unblurred translucent panel would
-       just be text over text. */
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1.4rem 1.6rem;
-  margin-bottom: 1.2rem;
-  box-shadow: var(--shadow-sm);
-}
-
-@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .panel,
-  .stat-card {
-    background: var(--bg-raised-glass);
-    -webkit-backdrop-filter: var(--glass-blur);
-    backdrop-filter: var(--glass-blur);
-  }
+  border-radius: var(--radius-xl);
+  padding: 1.5rem 1.6rem;
+  margin-bottom: 1.25rem;
+  box-shadow: var(--shadow-card);
+  min-width: 0;
 }
 
 .panel.highlight {
   border-color: var(--accent-line);
-  background: linear-gradient(180deg, rgba(255, 159, 10, 0.06), var(--bg-raised) 60%);
 }
 .panel.narrow {
   max-width: 520px;
@@ -759,7 +874,7 @@ button {
 /* ---- Stat cards -------------------------------------------------- */
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
   gap: 1rem;
   margin-bottom: 1.4rem;
 }
@@ -767,86 +882,84 @@ button {
 .stat-card {
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1.15rem 1.3rem;
+  border-radius: var(--radius-lg);
+  padding: 1.2rem 1.35rem;
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.25rem;
+  min-width: 0;
   color: var(--text);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-card);
   transition:
-    transform var(--dur) var(--ease),
+    transform var(--dur-press) ease-out,
     border-color var(--dur) var(--ease),
     background var(--dur) var(--ease);
 }
 
-/* Only the linked cards lift — the lift is the affordance that says this one goes somewhere,
-   so lifting a plain stat would be a promise the card cannot keep. */
+/* Only the linked cards respond: the response is the affordance that says this one goes
+   somewhere, so moving a plain stat would be a promise the card cannot keep. */
 a.stat-card:hover {
-  transform: translateY(-3px);
-  border-color: var(--accent-line);
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
   color: var(--text);
   text-decoration: none;
-  box-shadow:
-    var(--shadow),
-    0 0 0 1px var(--accent-soft);
 }
-.stat-card {
-  transition:
-    transform var(--dur) var(--ease),
-    border-color var(--dur) var(--ease),
-    background var(--dur) var(--ease),
-    box-shadow var(--dur) var(--ease);
+a.stat-card:active {
+  transform: scale(0.98);
 }
 .stat-card.attention {
-  border-color: rgba(255, 214, 10, 0.35);
+  border-color: transparent;
+  background: var(--warn-soft);
 }
 .stat-card.alert {
-  border-color: rgba(255, 69, 58, 0.4);
-  background: linear-gradient(180deg, var(--danger-soft), var(--bg-raised) 65%);
+  border-color: transparent;
+  background: var(--danger-wash);
 }
 
+/* Big numbers at regular weight: size carries the hierarchy, not boldness. */
 .stat-value {
-  font-size: 1.9rem;
-  font-weight: 680;
-  letter-spacing: -0.03em;
+  font-size: clamp(1.9rem, 1.5rem + 1.2vw, 2.6rem);
+  font-weight: 400;
+  line-height: 1.1;
+  letter-spacing: -0.04em;
 }
 .stat-label {
-  font-size: 0.84rem;
-  color: var(--text-secondary);
-  font-weight: 600;
+  font-size: 0.86rem;
+  color: var(--text-muted);
+  font-weight: 400;
 }
 .stat-detail {
-  font-size: 0.76rem;
-  color: var(--text-faint);
+  font-size: 0.8rem;
+  color: var(--text-muted);
 }
 
 /* ---- Buttons ----------------------------------------------------- */
+/* Round controls: buttons are pills. Feedback on press is a quick scale, the same everywhere. */
 .button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
-  padding: 0.5rem 1.1rem;
+  gap: 0.45rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 1.2rem;
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--bg-raised-2);
+  border-radius: var(--radius-pill);
+  background: var(--bg-raised);
   color: var(--text);
-  font-size: 0.9rem;
-  font-weight: 550;
+  font-size: 0.94rem;
+  font-weight: 500;
   text-decoration: none;
   cursor: pointer;
   white-space: nowrap;
   transition:
-    transform var(--dur) var(--ease),
+    transform var(--dur-press) ease-out,
     border-color var(--dur) var(--ease),
-    background var(--dur) var(--ease),
-    color var(--dur) var(--ease),
-    box-shadow var(--dur) var(--ease);
+    background var(--dur-press) ease-out,
+    color var(--dur) var(--ease);
 }
 
 .button:hover {
-  background: var(--bg-hover);
+  background: var(--bg-raised-2);
   border-color: var(--border-strong);
   color: var(--text);
   text-decoration: none;
@@ -855,30 +968,36 @@ a.stat-card:hover {
   transform: scale(0.97);
 }
 
+/* The one primary per view is inverted ink, so the orange accent keeps its meaning. */
 .button.primary {
-  background: var(--accent);
+  background: var(--ink-button);
   border-color: transparent;
-  color: #1a1204;
-  font-weight: 620;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.15) inset;
+  color: var(--ink-button-text);
 }
 .button.primary:hover {
-  background: var(--accent-hover);
-  color: #1a1204;
+  background: var(--ink-button-hover);
+  color: var(--ink-button-text);
 }
 .button.danger {
-  border-color: rgba(255, 69, 58, 0.5);
+  border-color: var(--border-strong);
   color: var(--danger);
-  background: transparent;
+  background: var(--bg-raised);
 }
 .button.danger:hover {
-  background: var(--danger);
-  color: #fff;
-  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: transparent;
 }
 .button.small {
-  padding: 0.28rem 0.72rem;
-  font-size: 0.8rem;
+  min-height: 2.15rem;
+  padding: 0.3rem 0.85rem;
+  font-size: 0.86rem;
+}
+.button:disabled,
+.button[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }
 .button.wide {
   width: 100%;
@@ -896,10 +1015,10 @@ a.stat-card:hover {
 
 .detail-grid {
   display: grid;
-  grid-template-columns: 130px 1fr;
-  gap: 0.5rem 1rem;
+  grid-template-columns: minmax(8rem, max-content) 1fr;
+  gap: 0.7rem 1.5rem;
   margin: 0.4rem 0 1.2rem;
-  font-size: 0.9rem;
+  font-size: 0.94rem;
   min-width: 0;
 }
 .detail-grid dt {
@@ -929,10 +1048,10 @@ a.stat-card:hover {
   display: flex;
   align-items: center;
   gap: 0.7rem;
-  padding: 0.7rem 0.9rem;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--bg-raised);
+  padding: 0.75rem 1rem;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--bg-raised-2);
   font-size: 1.15rem;
   letter-spacing: 0.12em;
   user-select: all;
@@ -973,52 +1092,49 @@ a.stat-card:hover {
   }
 }
 
-/* ---- Command trigger (the ⌘K front door) -------------------------- */
+/* ---- Search pill (the ⌘K front door) ------------------------------ */
 /* Dressed as a search field because that is the shape people already know how to read: a
-   magnifier, grey prompt text, a shortcut on the right. It sits directly under the brand — the
-   first thing in the rail — because a shortcut is only discoverable if you meet it before you
-   need it. */
-.command-trigger {
-  display: flex;
+   magnifier, grey prompt text and the shortcut on the right. On a phone it shrinks to a circle. */
+.search-pill {
+  display: inline-flex;
   align-items: center;
-  gap: 0.55rem;
-  width: 100%;
-  margin-bottom: 0.9rem;
-  padding: 0.42rem 0.55rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-inset);
+  gap: 0.6rem;
+  width: min(20rem, 100%);
+  min-height: 2.75rem;
+  padding: 0 0.55rem 0 1rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--bg-raised);
   color: var(--text-muted);
   font-family: inherit;
-  font-size: 0.86rem;
+  font-size: 0.94rem;
   text-align: left;
   cursor: pointer;
   transition:
-    border-color var(--dur) var(--ease),
-    background var(--dur) var(--ease),
-    color var(--dur) var(--ease);
+    background var(--dur-press) ease-out,
+    transform var(--dur-press) ease-out;
 }
-.command-trigger:hover {
-  border-color: var(--border-strong);
+.search-pill:hover {
   background: var(--bg-hover);
   color: var(--text);
 }
-.command-trigger svg {
-  width: 15px;
-  height: 15px;
-  flex-shrink: 0;
-  opacity: 0.8;
+.search-pill:active {
+  transform: scale(0.98);
 }
-/* The label yields and the keycap holds its size — if anything has to give in a narrow rail it
-   should be the word "Search", not the shortcut this element exists to advertise. */
-.command-trigger-label {
+.search-pill svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+/* The label yields and the keycap holds its size: if anything gives, it is the prompt. */
+.search-pill-label {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.command-trigger kbd {
+.search-pill kbd {
   flex-shrink: 0;
 }
 
@@ -1045,70 +1161,53 @@ kbd {
 }
 
 /* ---- Badges --------------------------------------------------------- */
+/* A badge is a pill. Categories (environment, sensitivity, clearance) are neutral: a colour on them
+   would make a list of production secrets look like an emergency and drown the statuses that do
+   need someone. Status colours are reserved for state, through the tone- classes below. */
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 0.13rem 0.6rem;
+  gap: 0.35rem;
+  min-height: 1.6rem;
+  padding: 0.15rem 0.7rem;
   border-radius: var(--radius-pill);
-  font-size: 0.73rem;
-  font-weight: 600;
-  border: 1px solid var(--border-strong);
-  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 400;
+  border: 1px solid transparent;
+  background: var(--bg-raised-2);
+  color: var(--text-secondary);
   white-space: nowrap;
   letter-spacing: 0;
 }
 
-.badge.env-development {
-  color: var(--ok);
-  border-color: transparent;
-  background: var(--ok-soft);
-}
-.badge.env-staging {
-  color: var(--warn);
-  border-color: transparent;
-  background: var(--warn-soft);
+/* The riskiest categories carry an icon instead of a colour: a shield on Production and a lock on
+   the top classification, so they are findable at a glance without reading as an alarm. The icon
+   is a mask, so it takes the text colour in both themes and needs no markup. */
+.badge.env-production::before,
+.badge.sens-4::before {
+  content: '';
+  width: 0.85rem;
+  height: 0.85rem;
+  flex-shrink: 0;
+  background: var(--text-muted);
+  -webkit-mask: var(--badge-icon) center / contain no-repeat;
+  mask: var(--badge-icon) center / contain no-repeat;
 }
 .badge.env-production {
-  color: var(--danger);
-  border-color: transparent;
-  background: var(--danger-soft);
-  box-shadow: 0 0 10px rgba(255, 69, 58, 0.12);
-}
-
-/* Classification badges. The glow rises with the classification, so the most dangerous thing on
-   a page is the thing your eye lands on first — on a screen full of pills that all look alike,
-   "which of these is the production root key?" should not need reading. Restrained on purpose:
-   this is a signal, not decoration, and if every badge glowed none of them would mean anything.
-   No animation, either — a pulsing badge in the corner of the eye is a thing operators learn to
-   tune out, which is the opposite of what a TopSecret marker is for. */
-.badge.sens-1 {
-  color: var(--text-muted);
-}
-.badge.sens-2 {
-  color: var(--ok);
-  border-color: transparent;
-  background: var(--ok-soft);
-}
-.badge.sens-3 {
-  color: var(--warn);
-  border-color: rgba(255, 214, 10, 0.32);
-  background: var(--warn-soft);
+  --badge-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z'/%3E%3C/svg%3E");
 }
 .badge.sens-4 {
-  color: var(--danger);
-  border-color: rgba(255, 69, 58, 0.34);
-  background: var(--danger-soft);
-  box-shadow: 0 0 12px rgba(255, 69, 58, 0.16);
-  font-weight: 650;
+  --badge-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='11' x='3' y='11' rx='2' ry='2'/%3E%3Cpath d='M7 11V7a5 5 0 0 1 10 0v4'/%3E%3C/svg%3E");
 }
 
 /* ---- Overlays ----------------------------------------------------------------- */
+/* Blur is for overlays only: it says the page behind is paused, not that surfaces are glass. */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  -webkit-backdrop-filter: blur(3px);
-  backdrop-filter: blur(3px);
+  background: var(--scrim);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
   display: grid;
   place-items: center;
   z-index: 1000;
@@ -1146,10 +1245,10 @@ kbd {
 .palette {
   width: 100%;
   max-width: 560px;
-  background: var(--bg-raised-2);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-dialog);
   overflow: hidden;
   animation: modal-in 200ms var(--ease);
 }
@@ -1198,24 +1297,23 @@ kbd {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.55rem 0.65rem;
-  border-radius: var(--radius-sm);
+  min-height: 2.75rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: var(--radius);
   cursor: pointer;
 }
 /* Keyboard and mouse drive the same single highlight — :hover as a separate visual state would
    mean two "selected" rows whenever the pointer rests somewhere the arrows are not. */
 .palette-item.is-active {
-  background: var(--bg-hover);
+  background: var(--bg-raised-2);
 }
 
 .palette-kind {
   flex-shrink: 0;
-  font-size: 0.66rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-faint);
-  width: 3.4rem;
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  width: 3.6rem;
 }
 .palette-label {
   color: var(--text);
@@ -1247,7 +1345,7 @@ kbd {
   margin: 0;
   padding: 0.6rem 1rem;
   border-top: 1px solid var(--border);
-  background: var(--bg-inset);
+  background: var(--bg-raised-2);
   color: var(--text-faint);
   font-size: 0.72rem;
 }
@@ -1300,11 +1398,14 @@ app-command-palette {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.86rem;
-  min-width: 520px;
+  /* The same minimum as every scrolling table, so one hint threshold is always right. Its
+     longest cells ("Clearance too low") need about 615px. */
+  min-width: 640px;
 }
 .access-matrix th,
 .access-matrix td {
-  padding: 0.6rem 0.8rem;
+  height: 56px;
+  padding: 0 0.8rem;
   text-align: left;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
@@ -1314,28 +1415,70 @@ app-command-palette {
   border-bottom: none;
 }
 .access-matrix thead th {
+  height: auto;
+  padding-bottom: 0.6rem;
   color: var(--text-muted);
-  font-weight: 600;
-  font-size: 0.8rem;
+  font-weight: 400;
+  font-size: 0.84rem;
 }
 .access-matrix tbody th {
   font-weight: 500;
 }
-.cell-icon {
+/* A verdict is a small tinted square with its icon; the cell itself stays plain. */
+.cell-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  vertical-align: middle;
+}
+.cell-mark svg {
   width: 15px;
   height: 15px;
-  vertical-align: middle;
-  margin-right: 0.35rem;
-}
-.access-matrix td span {
-  vertical-align: middle;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .cell-allow {
   color: var(--ok);
   background: var(--ok-soft);
 }
 .cell-deny {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+.cell-reason {
+  margin-left: 0.6rem;
+  vertical-align: middle;
   color: var(--text-muted);
+}
+.matrix-header {
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+}
+.matrix-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+.matrix-legend .cell-mark {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+}
+.matrix-legend .cell-mark svg {
+  width: 12px;
+  height: 12px;
+}
+.matrix-legend .cell-deny {
+  margin-left: 0.6rem;
 }
 .access-hint {
   margin: 0.9rem 0 0;
@@ -1343,35 +1486,79 @@ app-command-palette {
   line-height: 1.5;
 }
 
+/* A notice card: a yellow wash over the card, ink text, and the colour carried by the icon tile. */
 .panel.callout-warn {
-  border-left: 3px solid var(--warn);
+  border-color: transparent;
+  box-shadow: none;
+  background: linear-gradient(var(--warn-wash), var(--warn-wash)), var(--bg-raised);
+}
+.callout-warn .panel-header {
+  justify-content: flex-start;
+  gap: 0.75rem;
+}
+.callout-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  color: var(--warn-dot);
+  background: var(--warn-soft);
+}
+.callout-icon svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .table-scroll {
+  container: table-scroll / inline-size;
+  /* Holds absolutely positioned children, such as visually hidden text, inside the scroller;
+     otherwise they escape it and widen the page. */
+  position: relative;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+/* A scroll region clips what overflows it, including an open row menu's panel. While a menu is
+   open the region makes room below its last row, so the panel stays inside and visible. */
+.table-scroll:has(.row-menu[open]) {
+  padding-bottom: 12rem;
+}
+.table-scroll-hint {
+  display: none;
+  margin: 0 0 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+.table-scroll.has-overflow > .table-scroll-hint {
+  display: block;
 }
 .table-scroll .data-table {
   min-width: 640px;
 }
+/* Room: tall rows, horizontal hairlines only, sentence-case muted headers. */
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: 0.94rem;
 }
 .data-table th {
   text-align: left;
-  color: var(--text-faint);
-  font-weight: 600;
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 0.5rem 0.7rem;
-  border-bottom: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 0.84rem;
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 .data-table td {
-  padding: 0.65rem 0.7rem;
+  height: 3.6rem;
+  padding: 0.75rem 0.85rem;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
 }
@@ -1382,10 +1569,10 @@ app-command-palette {
   transition: background var(--dur) var(--ease);
 }
 .data-table tbody tr:hover td {
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--bg-raised-2);
 }
 .cell-strong {
-  font-weight: 600;
+  font-weight: 500;
 }
 .cell-actions {
   text-align: right;
@@ -1402,31 +1589,44 @@ app-command-palette {
   max-width: 74px;
 }
 
+/* Status pills: a soft tint with a dot, never a solid block, and each colour always means the
+   same thing. Red: act now. Yellow: watch, due soon. Green: done, healthy. */
+.badge.tone-ok::before,
+.badge.tone-warn::before,
+.badge.tone-danger::before,
+.badge.tone-critical::before {
+  content: '';
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: currentColor;
+}
 .badge.tone-ok {
   color: var(--ok);
-  border-color: transparent;
   background: var(--ok-soft);
 }
 .badge.tone-warn {
   color: var(--warn);
-  border-color: transparent;
   background: var(--warn-soft);
 }
-.badge.tone-danger {
+.badge.tone-warn::before {
+  background: var(--warn-dot);
+}
+/* Yellow text reads as olive on white: a light yellow pill keeps ink text. */
+:root[data-theme='light'] .badge.tone-warn {
+  color: var(--text);
+}
+.badge.tone-danger,
+.badge.tone-critical {
   color: var(--danger);
-  border-color: transparent;
   background: var(--danger-soft);
+}
+.badge.tone-critical {
+  font-weight: 500;
 }
 .badge.tone-muted {
   color: var(--text-muted);
-}
-.badge.tone-critical {
-  color: #fff;
-  border-color: transparent;
-  background: var(--danger);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-size: 0.68rem;
 }
 
 .empty-state {
@@ -1439,14 +1639,15 @@ app-command-palette {
   align-items: center;
   gap: 0.35rem;
 }
+/* A neutral icon tile: an empty list is not an event, so it takes no status or accent colour. */
 .empty-state .empty-icon {
-  width: 54px;
-  height: 54px;
+  width: 52px;
+  height: 52px;
   display: grid;
   place-items: center;
-  border-radius: 50%;
-  background: var(--accent-soft);
-  color: var(--accent);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised-2);
+  color: var(--text-secondary);
   margin-bottom: 0.5rem;
 }
 .empty-state .empty-icon svg {
@@ -1455,8 +1656,8 @@ app-command-palette {
 }
 .empty-state h3 {
   margin: 0;
-  font-size: 1.05rem;
-  font-weight: 650;
+  font-size: 1.08rem;
+  font-weight: 500;
   letter-spacing: -0.01em;
 }
 .empty-state p {
@@ -1555,13 +1756,13 @@ app-command-palette {
 
 .feed-icon {
   flex-shrink: 0;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
-  border-radius: 50%;
-  background: var(--bg-inset);
-  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised-2);
+  border: 1px solid transparent;
   color: var(--text-secondary);
 }
 .feed-icon svg {
@@ -1574,9 +1775,9 @@ app-command-palette {
   background: var(--warn-soft);
 }
 .feed-item.sev-critical .feed-icon {
-  color: #fff;
+  color: var(--danger);
   border-color: transparent;
-  background: var(--danger);
+  background: var(--danger-soft);
 }
 
 .feed-body {
@@ -1590,8 +1791,8 @@ app-command-palette {
   flex-wrap: wrap;
 }
 .feed-title {
-  font-size: 0.9rem;
-  font-weight: 550;
+  font-size: 0.94rem;
+  font-weight: 500;
   color: var(--text);
 }
 .feed-resource {
@@ -1602,13 +1803,13 @@ app-command-palette {
 }
 .feed-meta {
   margin-top: 0.2rem;
-  font-size: 0.78rem;
-  color: var(--text-faint);
+  font-size: 0.84rem;
+  color: var(--text-muted);
 }
 .feed-time {
   flex-shrink: 0;
-  color: var(--text-faint);
-  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-size: 0.84rem;
   white-space: nowrap;
   padding-top: 0.15rem;
 }
@@ -1673,8 +1874,8 @@ app-command-palette {
   align-content: center;
 }
 .score-number {
-  font-size: 2rem;
-  font-weight: 680;
+  font-size: 2.2rem;
+  font-weight: 400;
   color: var(--text);
   line-height: 1;
 }
@@ -1692,10 +1893,8 @@ app-command-palette {
 }
 .grade-label {
   display: inline-block;
-  font-size: 0.82rem;
-  font-weight: 650;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 0.94rem;
+  font-weight: 500;
 }
 .checkup-lead {
   margin: 0;
@@ -1735,9 +1934,9 @@ app-command-palette {
   background: var(--warn-soft);
 }
 .feed-item.check-fail .feed-icon {
-  color: #fff;
+  color: var(--danger);
   border-color: transparent;
-  background: var(--danger);
+  background: var(--danger-soft);
 }
 .check-rec {
   margin-top: 0.3rem;
@@ -1756,39 +1955,38 @@ app-command-palette {
 }
 
 /* Status stays in the page until another action or navigation replaces it. */
+/* A status line is a notice for the result of the user's own action: the same wash, no slab. */
 .flash {
-  padding: 0.75rem 1rem 0.75rem 1.1rem;
-  border-radius: var(--radius);
-  border: 1px solid var(--border-strong);
-  border-left: 3px solid var(--ok);
-  background: var(--bg-raised-2);
-  box-shadow: var(--shadow);
-  margin: 0 0 1.2rem;
-  font-size: 0.92rem;
+  padding: 0.85rem 1.1rem;
+  border-radius: var(--radius-lg);
+  border: 0;
+  background: var(--ok-wash);
+  margin: 0 0 1.25rem;
+  font-size: 0.94rem;
 }
 .flash-error {
-  border-left-color: var(--danger);
+  background: var(--danger-wash);
+  color: var(--danger);
 }
 
 .confirmation-dialog {
   width: calc(100% - 2rem);
-  max-width: 400px;
+  max-width: 440px;
   color: var(--text);
-  background: var(--bg-raised-2);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  padding: 1.5rem 1.6rem;
-  box-shadow: var(--shadow-lg);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 1.6rem 1.7rem;
+  box-shadow: var(--shadow-dialog);
 }
 .confirmation-dialog::backdrop {
-  background: rgba(0, 0, 0, 0.55);
-  -webkit-backdrop-filter: blur(3px);
-  backdrop-filter: blur(3px);
+  background: var(--scrim);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
 }
 
 /* ---- Forms -------------------------------------------------------- */
-/* Copied from the Legacy site.css forms rules, so Profile's fields keep their Legacy look.
-   min-width:0 lets a field (and its width:100% control) shrink inside a flex row. */
+/* min-width:0 lets a field (and its width:100% control) shrink inside a flex row. */
 .field {
   margin-bottom: 1.05rem;
   display: flex;
@@ -1799,8 +1997,8 @@ app-command-palette {
 }
 
 .field label {
-  font-size: 0.84rem;
-  font-weight: 600;
+  font-size: 0.88rem;
+  font-weight: 500;
   color: var(--text-secondary);
 }
 
@@ -1858,15 +2056,22 @@ textarea,
 select {
   background: var(--bg-inset);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   color: var(--text);
-  padding: 0.6rem 0.8rem;
-  font-size: 0.95rem;
+  padding: 0.6rem 0.9rem;
+  /* 16px stops iOS zooming the page when a field takes focus. */
+  font-size: 1rem;
   font-family: inherit;
   width: 100%;
   transition:
     border-color var(--dur) var(--ease),
     box-shadow var(--dur) var(--ease);
+}
+
+input:not([type='checkbox'], [type='radio']),
+textarea,
+select {
+  min-height: 2.75rem;
 }
 
 input::placeholder,
@@ -2012,11 +2217,11 @@ select:focus {
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
-  border: 1px solid rgba(255, 69, 58, 0.35);
-  border-radius: var(--radius);
-  padding: 0.9rem 1.1rem;
-  margin-top: 1.2rem;
-  background: linear-gradient(180deg, var(--danger-soft), transparent 85%);
+  border: 0;
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.2rem;
+  margin-top: 1.25rem;
+  background: var(--danger-wash);
 }
 .danger-zone p {
   margin: 0.15rem 0 0;
@@ -2039,7 +2244,7 @@ select:focus {
 }
 .current-ip-value code {
   font-size: 1.3rem;
-  font-weight: 600;
+  font-weight: 500;
 }
 .current-ip p {
   margin: 0.35rem 0 0;
@@ -2225,11 +2430,11 @@ fieldset {
   top: calc(100% + 4px);
   z-index: 30;
   min-width: 160px;
-  padding: 0.3rem;
-  background: var(--bg-raised-2);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow);
+  padding: 0.4rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -2239,4 +2444,109 @@ fieldset {
 #users-table .cell-actions > .button + .button,
 #users-table .cell-actions > app-row-menu {
   margin-left: 0.4rem;
+}
+
+/* Wide screens: the sidebar takes a little more room; the column keeps its readable width. */
+@media (min-width: 1920px) {
+  :root {
+    --sidebar-width: 288px;
+  }
+}
+
+/* Below 1200px the sidebar is a drawer, so the page takes the full width. */
+@media (max-width: 1199px) {
+  .content {
+    padding: 1rem 1.5rem;
+  }
+  .button.small,
+  .menu-item {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+  /* The show/hide button fills the field's right end, so it is a 44px target too. */
+  .affix-button {
+    right: 0;
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+  .input-affix > input {
+    padding-right: 3rem;
+  }
+}
+
+@media (max-width: 767px) {
+  .shell {
+    flex-direction: column;
+  }
+  .topbar {
+    margin-bottom: 1.25rem;
+    gap: 0.5rem;
+  }
+  .topbar-brand .brand-name {
+    font-size: 0.95rem;
+  }
+  .topbar-action .button {
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    border-radius: 50%;
+  }
+  .topbar-action .action-label {
+    display: none;
+  }
+  .search-pill {
+    width: 2.75rem;
+    padding: 0;
+    justify-content: center;
+  }
+  .search-pill-label,
+  .search-pill kbd {
+    display: none;
+  }
+  .content {
+    padding: 1rem;
+    overflow-wrap: anywhere;
+  }
+  .panel {
+    padding: 1rem;
+  }
+  .page-actions,
+  .danger-zone,
+  .settings-row,
+  .checkup-hero,
+  .pager {
+    flex-wrap: wrap;
+  }
+  .page-actions {
+    max-width: 100%;
+  }
+  .feed-item {
+    flex-wrap: wrap;
+  }
+  .feed-body {
+    flex-basis: calc(100% - 3.2rem);
+  }
+  .feed-action {
+    margin-left: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-navigation {
+    transform: none;
+    opacity: 0;
+    transition:
+      opacity 120ms ease-out,
+      overlay 120ms allow-discrete,
+      display 120ms allow-discrete !important;
+  }
+  .mobile-navigation[open] {
+    opacity: 1;
+  }
+  @starting-style {
+    .mobile-navigation[open] {
+      transform: none;
+      opacity: 0;
+    }
+  }
 }

@@ -45,13 +45,13 @@ describe('App shell', () => {
     expect(alert?.textContent).toContain('audit_unavailable');
     expect(shell.querySelector('.sidenav')).toBeNull();
     expect(shell.querySelector('.account-menu')).toBeNull();
-    expect(shell.querySelector('.command-trigger')).toBeNull();
+    expect(shell.querySelector('.search-pill')).toBeNull();
   });
 
-  it('opens the command palette from the trigger above the sidebar, outside the sidebar', async () => {
+  it('opens the command palette from the search pill at the top of the page, outside the sidebar', async () => {
     const shell = await render((request) => request.flush(me));
-    const trigger = shell.querySelector<HTMLButtonElement>('.sidebar > .command-trigger');
-    expect(trigger?.nextElementSibling?.tagName).toBe('APP-SIDEBAR-NAV');
+    const trigger = shell.querySelector<HTMLButtonElement>('.content > .topbar > .search-pill');
+    expect(trigger?.getAttribute('aria-label')).toBe('Search secrets or jump to a page');
     expect(trigger?.querySelector('kbd')?.textContent).toMatch(/^(⌘K|Ctrl K)$/);
 
     // The palette must read what was rendered, including the account-menu link's current label/URL.

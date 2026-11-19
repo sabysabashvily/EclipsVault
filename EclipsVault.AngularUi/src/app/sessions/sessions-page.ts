@@ -7,6 +7,7 @@ import { ConfirmationDialog } from '../shared/confirmation-dialog';
 import { EmptyState } from '../shared/empty-state';
 import { relativeTime, utcTimestamp } from '../shared/relative-time';
 import { StatusLine } from '../shared/status-line';
+import { PagePrimary } from '../shell/page-primary';
 import type { paths } from '../ui-api/schema.generated';
 import { UiApiError } from '../ui-api/ui-api-errors';
 
@@ -29,7 +30,7 @@ function signedOutMessage(count: number): string {
 
 @Component({
   selector: 'app-sessions-page',
-  imports: [RouterLink, ConfirmationDialog, EmptyState, StatusLine],
+  imports: [PagePrimary, RouterLink, ConfirmationDialog, EmptyState, StatusLine],
   templateUrl: './sessions-page.html',
 })
 export class SessionsPage {

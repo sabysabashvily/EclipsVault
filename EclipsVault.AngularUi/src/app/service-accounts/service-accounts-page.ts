@@ -1,14 +1,16 @@
+import { ScrollRegion } from '../shared/scroll-region';
 import { DatePipe } from '@angular/common';
 import { httpResource } from '@angular/common/http';
 import { Component, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { StatusLine } from '../shared/status-line';
+import { PagePrimary } from '../shell/page-primary';
 import type { components } from '../ui-api/schema.generated';
 import { ServiceAccountNotices } from './service-account-notices';
 
 @Component({
   selector: 'app-service-accounts-page',
-  imports: [DatePipe, RouterLink, StatusLine],
+  imports: [PagePrimary, ScrollRegion, DatePipe, RouterLink, StatusLine],
   templateUrl: './service-accounts-page.html',
 })
 export class ServiceAccountsPage {

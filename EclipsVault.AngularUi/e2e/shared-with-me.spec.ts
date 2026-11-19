@@ -4,7 +4,6 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
-import { lookOf } from './look';
 import { createSecret, openPalette } from './palette';
 import { SecretsList } from './secrets-list';
 import { SharedByMe } from './shared-by-me';
@@ -110,11 +109,8 @@ test('a share whose recipient was later under-cleared is not listed for them', a
   await expect(recipient.getByText(underCleared, { exact: true })).toHaveCount(0);
 });
 
-for (const [theme, accent, accentBackground] of [
-  ['dark', 'rgb(255, 159, 10)', 'rgba(255, 159, 10, 0.14)'],
-  ['light', 'rgb(180, 95, 4)', 'rgba(180, 95, 4, 0.12)'],
-]) {
-  test(`visual parity: Shared with me keeps the Legacy empty state and share icon in ${theme}`, async ({
+for (const theme of ['dark', 'light']) {
+  test(`Shared with me explains the empty list and offers the Secrets link in ${theme}`, async ({
     page,
   }, info) => {
     await useTheme(page, theme);
@@ -126,12 +122,6 @@ for (const [theme, accent, accentBackground] of [
       "This is where secrets from other projects show up when a colleague grants you access to them. There's nothing for you to do here until someone shares one.",
     );
     await expect(shared.goToSecrets).toHaveAttribute('href', '/Secrets');
-    await expect(shared.emptyState).toHaveCSS('text-align', 'center');
-    await expect(shared.emptyState).toHaveCSS('padding', '48px 24px');
-    await expect(shared.emptyIcon).toHaveCSS('width', '54px');
-    await expect(shared.emptyIcon).toHaveCSS('height', '54px');
-    await expect(shared.emptyIcon).toHaveCSS('color', accent);
-    await expect(shared.emptyIcon).toHaveCSS('background-color', accentBackground);
     const path = info.outputPath(`${theme}-shared-with-me-empty.png`);
     await page.screenshot({ path, fullPage: true });
     await info.attach(`${theme}-shared-with-me-empty`, { path, contentType: 'image/png' });
@@ -197,47 +187,17 @@ test('after an issuer shares, the recipient lists it under the Legacy columns an
 });
 
 for (const theme of ['dark', 'light']) {
-  test(`visual parity: Shared with me rows look like the same secret's Legacy Secrets row in ${theme}`, async ({
-    page,
-  }, info) => {
+  test(`Shared with me shows the secret's scope and issuer in ${theme}`, async ({ page }, info) => {
     await page.setViewportSize({ width: 1440, height: 1200 });
     await useTheme(page, theme);
-    const legacy = new SecretsList(page);
-    await page.context().addCookies(recipientCookies);
-    await legacy.open();
-    const legacyRow = legacy.secret('E2e_Shared_With_Me');
-    // The removed Legacy page used the Secrets list's own table classes; its muted cells are the
-    // Expires (UTC) column's.
-    const expected = {
-      heading: await lookOf(legacy.heading),
-      introduction: await lookOf(legacy.introduction),
-      table: await lookOf(page.getByRole('table')),
-      column: await lookOf(legacy.columns.first()),
-      name: await lookOf(legacy.nameOf(legacyRow)),
-      project: await lookOf(legacy.projectOf(legacyRow)),
-      sharedBy: await lookOf(legacy.expiresOf(legacyRow)),
-      accessUntil: await lookOf(legacy.expiresOf(legacyRow)),
-      environment: await lookOf(legacy.environmentBadgeOf(legacyRow, 'Development')),
-      sensitivity: await lookOf(legacy.sensitivityBadgeOf(legacyRow, 'Internal')),
-      open: await lookOf(legacy.openOf(legacyRow)),
-    };
-
     const shared = await openAsRecipient(page);
     const row = shared.secret('E2e_Shared_With_Me');
     await expect(row).toBeVisible();
-    expect({
-      heading: await lookOf(shared.heading),
-      introduction: await lookOf(shared.introduction),
-      table: await lookOf(page.getByRole('table')),
-      column: await lookOf(shared.columns.first()),
-      name: await lookOf(shared.nameOf(row)),
-      project: await lookOf(shared.projectOf(row)),
-      sharedBy: await lookOf(shared.sharedByOf(row)),
-      accessUntil: await lookOf(shared.accessUntilOf(row)),
-      environment: await lookOf(shared.environmentBadgeOf(row, 'Development')),
-      sensitivity: await lookOf(shared.sensitivityBadgeOf(row, 'Internal')),
-      open: await lookOf(shared.openOf(row)),
-    }).toEqual(expected);
+    await expect(shared.projectOf(row)).toHaveText('GLOBAL');
+    await expect(shared.sharedByOf(row)).toHaveText('vault-admin');
+    await expect(shared.environmentBadgeOf(row, 'Development')).toBeVisible();
+    await expect(shared.sensitivityBadgeOf(row, 'Internal')).toBeVisible();
+    await expect(shared.openOf(row)).toBeVisible();
     const path = info.outputPath(`${theme}-shared-with-me.png`);
     await page.screenshot({ path, fullPage: true });
     await info.attach(`${theme}-shared-with-me`, { path, contentType: 'image/png' });
