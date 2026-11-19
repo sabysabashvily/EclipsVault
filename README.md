@@ -1,6 +1,11 @@
 # 🌒 EclipsVault
 
-A production-grade credentials & secret-management engine built on **ASP.NET Core MVC (.NET 10)** with strict Clean Architecture, envelope encryption, mandatory MFA, attribute-based access control, fail-closed immutable auditing, and active intrusion defence.
+A self-hosted credentials & secret-management engine built on **ASP.NET Core MVC (.NET 10)** with strict Clean Architecture, envelope encryption, mandatory MFA, attribute-based access control, fail-closed immutable auditing, and active intrusion defence.
+
+**Current testing milestone: Community evaluation with dummy credentials only.** Do not put real
+passwords, API keys, or company secrets into an evaluation instance. Production readiness has not
+been established. Start with the [tester walkthrough](docs/COMMUNITY_WALKTHROUGH.md); maintainers
+should complete the [evaluation preparation](docs/COMMUNITY_EVALUATION_SETUP.md) before inviting testers.
 
 ## Solution layout
 
