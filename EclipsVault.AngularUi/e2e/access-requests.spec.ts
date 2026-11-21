@@ -226,6 +226,22 @@ for (const theme of ['dark', 'light']) {
   });
 }
 
+for (const width of [300, 2000] as const) {
+  test(`Denied has no sideways scroll at ${width}px with reasons and the request form`, async ({
+    page,
+    browserHealth,
+  }) => {
+    expectRefusal(browserHealth);
+    await page.setViewportSize({ width, height: 900 });
+    await page.context().addCookies(requesterCookies);
+    await page.goto(detailsPaths.get(rejected)!);
+    const denied = new Denied(page);
+    await expect(denied.refusedBecause).toBeVisible();
+    await expect(denied.reason).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  });
+}
+
 test('Denied is served as the titled Angular document', async ({ page }) => {
   await page.context().addCookies(requesterCookies);
   const response = await page.goto('/Account/Denied');

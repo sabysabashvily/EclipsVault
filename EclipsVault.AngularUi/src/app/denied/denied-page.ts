@@ -33,6 +33,9 @@ export class DeniedPage {
   protected readonly managesNetworks = computed(
     () => this.me.hasValue() && this.me.value().areas.includes('networks'),
   );
+  protected readonly canRequest = computed(
+    () => this.eligibility.hasValue() && this.eligibility.value().eligible,
+  );
   protected readonly reason = signal('');
   protected readonly busy = signal(false);
   protected readonly failure = signal('');

@@ -83,6 +83,8 @@ describe('DeniedPage', () => {
     await fixture.whenStable();
 
     expect(text(page.querySelector('h1'))).toBe('Access denied');
+    expect(text(page.querySelector('.title-row .badge'))).toBe('Refused');
+    expect(page.querySelector('a[href="/Secrets"]')?.classList).toContain('primary');
     expect([...page.querySelectorAll('.denial-reasons li')].map(text)).toEqual(reasons);
     expect(text(page)).toContain(
       'Access is granted only when every requirement above is satisfied. The attempt has been logged.',
@@ -127,6 +129,8 @@ describe('DeniedPage', () => {
     expect(page.querySelector('label[for="reason"]')?.textContent).toBe('Reason');
     expect(page.querySelector('#reason')?.getAttribute('maxlength')).toBe('500');
     expect(text(page.querySelector('button[type="submit"]'))).toBe('Submit request');
+    expect(text(page.querySelector('.form-note'))).toBe('Saved to the audit log.');
+    expect(page.querySelector('a[href="/Secrets"]')?.classList).not.toContain('primary');
   });
 
   it('says why instead of offering the form when a share would not help', async () => {
