@@ -59,6 +59,19 @@ services:
       # The access grid must have the same expected result at every hour of the day.
       Abac__ProductionWindowStartUtcHour: '0'
       Abac__ProductionWindowEndUtcHour: '24'
+      Sso__Enabled: 'true'
+      Sso__Authority: '${E2E_SSO_AUTHORITY:?Set by run.mjs}'
+      Sso__ClientId: eclipsvault-e2e
+      Sso__ClientSecret: '${E2E_SSO_CLIENT_SECRET:?Set by run.mjs}'
+      Sso__DisplayName: Keycloak
+      Sso__TrustIdpMultiFactor: 'true'
+      # Discovery and the token endpoint are the proxy's HTTPS URL. Plain HTTP stays off.
+      Sso__AllowInsecureHttp: 'false'
+      SSL_CERT_FILE: /etc/ssl/e2e/ca-bundle.crt
+    extra_hosts:
+      - 'keycloak.localhost:${E2E_PROXY_IP:?Set by run.mjs}'
+    volumes:
+      - '${E2E_CA_BUNDLE:?Set by run.mjs}:/etc/ssl/e2e/ca-bundle.crt:ro'
     depends_on:
       redis:
         condition: service_healthy
@@ -66,9 +79,42 @@ services:
         condition: service_started
       sql:
         condition: service_healthy
+      keycloak:
+        condition: service_healthy
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4.7@sha256:9409c59bdfb65dbffa20b11e6f18b8abb9281d480c7ca402f51ed3d5977e6007
+    command: ['start-dev', '--import-realm']
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: e2e-admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${E2E_KEYCLOAK_ADMIN_PASSWORD:?Set by run.mjs}
+      KC_HEALTH_ENABLED: 'true'
+      KC_HTTP_ENABLED: 'true'
+      KC_HOSTNAME: 'https://keycloak.localhost:${E2E_HTTPS_PORT:?Set by run.mjs}'
+      # The admin client and the health check use the container's own address. The issuer stays
+      # the hostname above, which is a full URL.
+      KC_HOSTNAME_STRICT: 'false'
+      KC_PROXY_HEADERS: xforwarded
+    volumes:
+      - '${E2E_REALM_FILE:?Set by run.mjs}:/opt/keycloak/data/import/e2e-realm.json:ro'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'bash',
+          '-c',
+          'exec 3<>/dev/tcp/127.0.0.1/9000; printf "GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3; grep -q UP <&3',
+        ]
+      interval: 2s
+      timeout: 5s
+      retries: 90
+      start_period: 15s
 
   proxy:
     image: caddy:2.11.6@sha256:13b7fbadd017b042956fddbceedeeea12bb1e560534f9b3df281269dbcc61813
-    ports: ['127.0.0.1::443']
+    environment:
+      E2E_HTTPS_PORT: ${E2E_HTTPS_PORT:?Set by run.mjs}
+    ports:
+      - '127.0.0.1:${E2E_HTTPS_PORT:?Set by run.mjs}:${E2E_HTTPS_PORT:?Set by run.mjs}'
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro

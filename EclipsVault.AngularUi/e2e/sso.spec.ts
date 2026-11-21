@@ -1,0 +1,136 @@
+import { randomBytes } from 'node:crypto';
+import { AccountCreation } from './account-creation';
+import { AccountSignIn } from './account-sign-in';
+import { savedAdministratorCookies } from './administrator-cookies';
+import { refreshAdministratorProof } from './administrator-proof';
+import { AuthenticatorEnrollment } from './authenticator-enrollment';
+import { test, expect } from './fixtures';
+import { clearSignInBudget } from './profile-state';
+import { SecretsList } from './secrets-list';
+import { KeycloakSignIn, VaultSingleSignOn } from './sso';
+import { currentTotpStep, freshTotp } from './totp';
+import { Users } from './users';
+
+const mfaUsername = 'e2e-sso-mfa';
+const passwordUsername = 'e2e-sso-password';
+const mfaEmail = 'sso.multifactor.1@eclipsvault.local';
+const passwordEmail = 'sso.passwordonly.1@eclipsvault.local';
+const refused = 'Single sign-on did not grant access to this vault. Contact an administrator.';
+
+function idpPassword(): string {
+  const password = process.env['E2E_SSO_PASSWORD'];
+  if (!password)
+    throw new Error('Run through npm run e2e so the identity provider password is set');
+  return password;
+}
+
+function idpAuthenticatorSecret(): string {
+  const secret = process.env['E2E_SSO_OTP_SECRET'];
+  if (!secret)
+    throw new Error('Run through npm run e2e so the identity provider authenticator secret is set');
+  return secret;
+}
+
+test.describe.configure({ mode: 'serial' });
+let vaultAuthenticatorSecret = '';
+let vaultAuthenticatorStep = -1;
+
+test('the password-only identity provider user enrolls a vault authenticator', async ({
+  page,
+  browserHealth,
+}) => {
+  test.setTimeout(180_000);
+  const vaultPassword = `E2e-${randomBytes(24).toString('hex')}`;
+  await page.context().addCookies(await savedAdministratorCookies());
+  clearSignInBudget();
+  await refreshAdministratorProof(page);
+
+  const creation = new AccountCreation(page);
+  const users = new Users(page);
+  await creation.open();
+  await creation.create({
+    firstName: 'Sso',
+    lastName: 'Multifactor',
+    username: mfaUsername,
+    password: `E2e-${randomBytes(24).toString('hex')}`,
+    clearance: 'Standard',
+    project: 'GLOBAL',
+  });
+  await expect(users.heading).toBeVisible();
+  await expect(users.status).toContainText(`User '${mfaUsername}' created with email ${mfaEmail}.`);
+
+  await creation.open();
+  await creation.create({
+    firstName: 'Sso',
+    lastName: 'Passwordonly',
+    username: passwordUsername,
+    password: vaultPassword,
+    clearance: 'Standard',
+    project: 'GLOBAL',
+  });
+  await expect(users.status).toContainText(
+    `User '${passwordUsername}' created with email ${passwordEmail}.`,
+  );
+
+  const enrolling = await (await browserHealth.newContext()).newPage();
+  clearSignInBudget();
+  const signIn = new AccountSignIn(enrolling);
+  await signIn.open();
+  await signIn.submitPassword(passwordUsername, vaultPassword);
+  await expect(enrolling).toHaveURL(/\/Account\/EnrollTotp$/);
+  const enrollment = new AuthenticatorEnrollment(enrolling);
+  vaultAuthenticatorSecret = await enrollment.secret.innerText();
+  await enrollment.confirm(await freshTotp(vaultAuthenticatorSecret));
+  vaultAuthenticatorStep = currentTotpStep();
+  await expect(enrolling).toHaveURL(/\/Secrets$/);
+  await expect(new SecretsList(enrolling).heading).toBeVisible();
+});
+
+test('a user whose identity provider completed MFA lands on Secrets', async ({ browserHealth }) => {
+  test.setTimeout(120_000);
+  const page = await (await browserHealth.newContext()).newPage();
+  clearSignInBudget();
+  const vault = new VaultSingleSignOn(page);
+  await vault.open();
+  await vault.continueWithKeycloak();
+  const keycloak = new KeycloakSignIn(page);
+  await keycloak.submitPassword('sso-mfa', idpPassword());
+  await keycloak.submitOneTimeCode(await freshTotp(idpAuthenticatorSecret()));
+  await expect(page).toHaveURL(/\/Secrets$/);
+  await expect(new SecretsList(page).heading).toBeVisible();
+});
+
+test('a user whose identity provider did not complete MFA finishes with an authenticator code', async ({
+  browserHealth,
+}) => {
+  test.setTimeout(120_000);
+  const page = await (await browserHealth.newContext()).newPage();
+  clearSignInBudget();
+  const vault = new VaultSingleSignOn(page);
+  await vault.open();
+  await vault.continueWithKeycloak();
+  await new KeycloakSignIn(page).submitPassword('sso-password', idpPassword());
+  await expect(page).toHaveURL(/\/Account\/Totp$/);
+  await page
+    .getByLabel('Authenticator code')
+    .fill(await freshTotp(vaultAuthenticatorSecret, vaultAuthenticatorStep));
+  await page.getByRole('button', { name: 'Verify and sign in' }).click();
+  await expect(page).toHaveURL(/\/Secrets$/);
+  await expect(new SecretsList(page).heading).toBeVisible();
+});
+
+test('a user with no vault account is told single sign-on did not grant access', async ({
+  browserHealth,
+}) => {
+  const page = await (await browserHealth.newContext()).newPage();
+  clearSignInBudget();
+  const vault = new VaultSingleSignOn(page);
+  await vault.open();
+  await vault.continueWithKeycloak();
+  await new KeycloakSignIn(page).submitPassword('sso-stranger', idpPassword());
+  await expect(page).toHaveURL(/\/Account\/Login\?sso=refused$/);
+  await expect(page.getByText(refused, { exact: true })).toBeVisible();
+  expect(
+    (await page.context().cookies()).some((cookie) => cookie.name === 'EclipsVault.Session'),
+  ).toBe(false);
+});

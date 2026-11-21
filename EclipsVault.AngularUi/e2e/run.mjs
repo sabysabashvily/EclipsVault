@@ -2,6 +2,8 @@ import { spawn } from 'node:child_process';
 import { generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import https from 'node:https';
+import net from 'node:net';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { setTimeout } from 'node:timers/promises';
 
@@ -118,6 +120,167 @@ function verifyGuardFailures(report, exitCode) {
   }
 }
 
+function freeLoopbackPort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        reject(new Error('Could not reserve a loopback port'));
+        return;
+      }
+      const { port } = address;
+      server.close((error) => (error ? reject(error) : resolve(port)));
+    });
+  });
+}
+
+// 20 bytes is 32 Base32 characters, which is the authenticator secret length Keycloak imports.
+function base32Secret() {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const bits = [...randomBytes(20)].map((byte) => byte.toString(2).padStart(8, '0')).join('');
+  return bits
+    .match(/.{5}/g)
+    .map((chunk) => alphabet[Number.parseInt(chunk, 2)])
+    .join('');
+}
+
+async function writeRealm(path, values) {
+  let realm = await readFile(new URL('./realm.json', import.meta.url), 'utf8');
+  const tokens = {
+    __VAULT_ORIGIN__: values.baseURL,
+    __CLIENT_SECRET__: values.clientSecret,
+    __USER_PASSWORD__: values.idpPassword,
+    __OTP_SECRET__: values.otpSecret,
+  };
+  for (const [token, value] of Object.entries(tokens)) {
+    if (/["\\\n]/.test(value)) throw new Error(`Refusing to embed ${token}`);
+    if (!realm.includes(token)) throw new Error(`Realm template is missing ${token}`);
+    realm = realm.replaceAll(token, value);
+  }
+  if (realm.includes('__')) throw new Error('Realm template still has a placeholder');
+  await writeFile(path, realm, { mode: 0o600 });
+}
+
+async function trustProxyCertificate(compose, bundlePath) {
+  const root = await compose(
+    ['exec', '-T', 'proxy', 'cat', '/data/caddy/pki/authorities/local/root.crt'],
+    { capture: true },
+  );
+  if (!root.includes('BEGIN CERTIFICATE')) {
+    throw new Error('The proxy did not write its local certificate authority');
+  }
+  const system = await readFile('/etc/ssl/certs/ca-certificates.crt', 'utf8');
+  await writeFile(bundlePath, `${system.trim()}\n${root.trim()}\n`, { mode: 0o644 });
+}
+
+async function configureIdpAuthenticationReferences(compose) {
+  // The imported browser flow has no authenticator reference values. With the default max age of
+  // zero, Keycloak also drops a reference unless the token is minted in the same second the step
+  // completed, and the code exchange is a later request.
+  await compose([
+    'exec',
+    '-T',
+    'keycloak',
+    'bash',
+    '-c',
+    '/opt/keycloak/bin/kcadm.sh config credentials --server http://127.0.0.1:8080 --realm master --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null',
+  ]);
+  const listed = await compose(
+    [
+      'exec',
+      '-T',
+      'keycloak',
+      '/opt/keycloak/bin/kcadm.sh',
+      'get',
+      'authentication/flows/browser/executions',
+      '-r',
+      'e2e',
+    ],
+    { capture: true },
+  );
+  const jsonStart = listed.indexOf('[');
+  if (jsonStart < 0) throw new Error('Keycloak did not list its browser authentication steps');
+  const executions = JSON.parse(listed.slice(jsonStart));
+  const references = new Map([
+    ['auth-username-password-form', 'pwd'],
+    ['auth-otp-form', 'otp'],
+  ]);
+  for (const execution of executions) {
+    const reference = references.get(execution.providerId);
+    if (!reference || !/^[0-9a-f-]{36}$/i.test(execution.id)) continue;
+    await compose([
+      'exec',
+      '-T',
+      'keycloak',
+      '/opt/keycloak/bin/kcadm.sh',
+      'create',
+      `authentication/executions/${execution.id}/config`,
+      '-r',
+      'e2e',
+      '-b',
+      JSON.stringify({
+        alias: `amr-${reference}`,
+        config: {
+          'default.reference.value': reference,
+          'default.reference.maxAge': '300',
+        },
+      }),
+    ]);
+    references.delete(execution.providerId);
+  }
+  if (references.size) {
+    throw new Error(
+      `Keycloak is missing authentication steps: ${[...references.keys()].join(', ')}`,
+    );
+  }
+}
+
+function readHttps(port) {
+  return new Promise((resolve) => {
+    // The host resolver does not treat *.localhost as loopback. Chromium does, which is what the
+    // browser uses; this check talks to the published port with the proxy's name in SNI.
+    const request = https.get(
+      {
+        host: '127.0.0.1',
+        port,
+        path: '/realms/e2e/.well-known/openid-configuration',
+        servername: 'keycloak.localhost',
+        headers: { host: `keycloak.localhost:${port}` },
+        rejectUnauthorized: false,
+      },
+      (response) => {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk) => {
+          body += chunk;
+        });
+        response.on('end', () => resolve(response.statusCode === 200 ? body : ''));
+      },
+    );
+    request.setTimeout(2_000, () => request.destroy());
+    request.on('error', () => resolve(''));
+  });
+}
+
+async function assertIssuer(origin, port) {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    abort.signal.throwIfAborted();
+    const body = await readHttps(port);
+    if (body) {
+      const document = JSON.parse(body);
+      if (document.issuer !== `${origin}/realms/e2e`) {
+        throw new Error(`Keycloak issuer is ${document.issuer}`);
+      }
+      return;
+    }
+    await setTimeout(1_000, undefined, { signal: abort.signal });
+  }
+  throw new Error('Keycloak did not publish its discovery document');
+}
+
 async function main() {
   if (!process.env.Seed__AdminPassword || process.env.Seed__AdminPassword.length < 12) {
     throw new Error('Supply Seed__AdminPassword (at least 12 characters) in the test environment');
@@ -131,6 +294,15 @@ async function main() {
   // A fresh signing identity for the disposable vault. It goes straight to the child environment;
   // private key material is never logged or written to test artifacts.
   const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  // Chosen before the proxy starts, so the identity provider's issuer and the vault's redirect
+  // URL can be written into the realm. Both are this port: the provider has its own hostname.
+  const httpsPort = await freeLoopbackPort();
+  const baseURL = `https://localhost:${httpsPort}`;
+  const idpOrigin = `https://keycloak.localhost:${httpsPort}`;
+  const generated = `${tmpdir()}/${project}`;
+  const realmFile = `${generated}/realm.json`;
+  const caBundle = `${generated}/ca-bundle.crt`;
+  const idpPassword = `E2e-${randomBytes(24).toString('hex')}`;
   const env = {
     ...process.env,
     E2E_TEST_RESULTS: fileURLToPath(testResults),
@@ -140,6 +312,15 @@ async function main() {
     E2E_REDIS_PASSWORD: randomBytes(24).toString('hex'),
     E2E_SQL_PASSWORD: `Sa1!${randomBytes(24).toString('hex')}`,
     E2E_PROXY_IP: '127.0.0.1', // Replaced with the proxy's actual address before starting the vault.
+    E2E_HTTPS_PORT: String(httpsPort),
+    E2E_BASE_URL: baseURL,
+    E2E_SSO_AUTHORITY: `${idpOrigin}/realms/e2e`,
+    E2E_SSO_CLIENT_SECRET: randomBytes(24).toString('hex'),
+    E2E_SSO_PASSWORD: idpPassword,
+    E2E_SSO_OTP_SECRET: base32Secret(),
+    E2E_KEYCLOAK_ADMIN_PASSWORD: randomBytes(24).toString('hex'),
+    E2E_REALM_FILE: realmFile,
+    E2E_CA_BUNDLE: caBundle,
     ECLIPSVAULT_AUDIT_SIGNING_KEY: privateKey
       .export({ type: 'pkcs8', format: 'der' })
       .toString('base64'),
@@ -149,13 +330,34 @@ async function main() {
   await mkdir(output, { recursive: true });
   let builtImage = false;
   try {
+    await mkdir(generated, { recursive: true });
+    // Compose interpolates the bundle path before the proxy has a certificate. The file has to exist
+    // then; the vault is not started until the real bundle replaces it.
+    await writeFile(caBundle, '', { mode: 0o644 });
+    await writeRealm(realmFile, {
+      baseURL,
+      clientSecret: env.E2E_SSO_CLIENT_SECRET,
+      idpPassword,
+      otpSecret: env.E2E_SSO_OTP_SECRET,
+    });
     if (!process.env.E2E_IMAGE) {
       await checked('docker', ['build', '--tag', image, root], env);
       builtImage = true;
     }
     // Discover the address Docker assigned instead of trusting arbitrary forwarded headers or
     // reserving a fixed subnet that could collide with another developer's network.
-    await compose(['up', '-d', '--wait', '--wait-timeout', '180', 'sql', 'proxy', 'smtp', 'redis']);
+    await compose([
+      'up',
+      '-d',
+      '--wait',
+      '--wait-timeout',
+      '300',
+      'sql',
+      'proxy',
+      'smtp',
+      'redis',
+      'keycloak',
+    ]);
     const proxyId = await compose(['ps', '-q', 'proxy'], { capture: true });
     env.E2E_PROXY_IP = await checked(
       'docker',
@@ -163,8 +365,13 @@ async function main() {
       env,
       { capture: true },
     );
-    const address = await compose(['port', 'proxy', '443'], { capture: true });
-    env.E2E_BASE_URL = `https://localhost:${address.split(':').at(-1)}`;
+    const address = await compose(['port', 'proxy', String(httpsPort)], { capture: true });
+    if (address.split(':').at(-1) !== String(httpsPort)) {
+      throw new Error(`Proxy published ${address}, expected port ${httpsPort}`);
+    }
+    await trustProxyCertificate(compose, caBundle);
+    await configureIdpAuthenticationReferences(compose);
+    await assertIssuer(idpOrigin, httpsPort);
     await compose(['up', '-d', 'vault']);
     await waitForVault(env.E2E_BASE_URL);
 
@@ -192,33 +399,38 @@ async function main() {
     }
   } finally {
     try {
-      const logs = await compose(['logs', '--no-color'], { capture: true, cleanup: true });
-      await writeFile(new URL('docker.log', output), logs);
-    } finally {
-      // These containers belong to this run's unique project. Capture their anonymous image
-      // volumes explicitly so cleanup never asks Compose to remove an unbounded set of volumes.
-      const containers = await compose(['ps', '--all', '--quiet'], {
-        capture: true,
-        cleanup: true,
-      });
-      const volumes = new Set();
-      if (containers) {
-        const mounts = await checked(
-          'docker',
-          ['inspect', '--format', '{{json .Mounts}}', ...containers.split(/\s+/)],
-          env,
-          { capture: true, cleanup: true },
-        );
-        for (const line of mounts.split('\n')) {
-          for (const mount of JSON.parse(line)) {
-            if (mount.Type === 'volume') volumes.add(mount.Name);
+      try {
+        const logs = await compose(['logs', '--no-color'], { capture: true, cleanup: true });
+        await writeFile(new URL('docker.log', output), logs);
+      } finally {
+        // These containers belong to this run's unique project. Capture their anonymous image
+        // volumes explicitly so cleanup never asks Compose to remove an unbounded set of volumes.
+        const containers = await compose(['ps', '--all', '--quiet'], {
+          capture: true,
+          cleanup: true,
+        });
+        const volumes = new Set();
+        if (containers) {
+          const mounts = await checked(
+            'docker',
+            ['inspect', '--format', '{{json .Mounts}}', ...containers.split(/\s+/)],
+            env,
+            { capture: true, cleanup: true },
+          );
+          for (const line of mounts.split('\n')) {
+            for (const mount of JSON.parse(line)) {
+              if (mount.Type === 'volume') volumes.add(mount.Name);
+            }
           }
         }
+        await compose(['down', '--remove-orphans'], { cleanup: true });
+        if (volumes.size)
+          await checked('docker', ['volume', 'rm', ...volumes], env, { cleanup: true });
+        if (builtImage) await checked('docker', ['image', 'rm', image], env, { cleanup: true });
       }
-      await compose(['down', '--remove-orphans'], { cleanup: true });
-      if (volumes.size)
-        await checked('docker', ['volume', 'rm', ...volumes], env, { cleanup: true });
-      if (builtImage) await checked('docker', ['image', 'rm', image], env, { cleanup: true });
+    } finally {
+      // The rendered realm holds this run's identity-provider secret and passwords.
+      await rm(generated, { recursive: true, force: true });
     }
   }
 }
