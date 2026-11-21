@@ -36,6 +36,18 @@ const stranded: Encryption = {
   awaitingRotation: 5,
   onMissingKeys: 2,
 };
+// Under a KMS engine, earlier key versions aren't loaded here, yet the server counts their items as
+// waiting, not missing.
+const transit: Encryption = {
+  currentKekId: 'transit:eclipsvault:v2',
+  loadedKekIds: ['transit:eclipsvault:v2'],
+  keys: [
+    { kekId: 'transit:eclipsvault:v2', status: 'current', secrets: 3, versions: 0 },
+    { kekId: 'transit:eclipsvault:v1', status: 'not_loaded', secrets: 10, versions: 2 },
+  ],
+  awaitingRotation: 12,
+  onMissingKeys: 0,
+};
 const emptied: Encryption = {
   ...settled,
   loadedKekIds: ['kek-1a2b3c4d', 'kek-5e6f7a8b'],
@@ -180,6 +192,31 @@ describe('Encryption keys', () => {
       'Nothing changes until you confirm. The 2 items on the missing key are skipped.',
     );
     expect(rewrapButtons(page)).toEqual(['Re-wrap 5 items']);
+  });
+
+  it('KMS key versions: counts their items as waiting, not as unreadable', async () => {
+    const { page } = await loaded(transit);
+    expect(verdict(page)).toBe('Re-wrap pending');
+    expect(notices(page)).toEqual([]);
+    expect(
+      [...page.querySelectorAll('.stat-card')].map((figure) => [
+        text(figure.querySelector('.stat-label')),
+        text(figure.querySelector('.stat-value')),
+        text(figure.querySelector('.stat-detail')),
+      ]),
+    ).toEqual([
+      ['Waiting to re-wrap', '12', '10 secrets and 2 versions'],
+      ['On the current key', '3', 'of 15 items in the vault'],
+    ]);
+    expect(rewrapButtons(page)).toEqual(['Re-wrap 12 items']);
+    expect(
+      [...page.querySelectorAll('tbody tr')].map((row) =>
+        [...row.querySelectorAll('.key-role, .badge')].map((cell) => text(cell)),
+      ),
+    ).toEqual([
+      ['Wraps every new secret', 'Current'],
+      ['An earlier key version · re-wrap moves its items to the current key', 'Retired'],
+    ]);
   });
 
   it('re-wrapping: the button says so and is disabled while the request is in flight', async () => {

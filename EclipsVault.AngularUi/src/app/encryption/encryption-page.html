@@ -112,8 +112,8 @@
           <span class="stat-value">{{ model.waiting }}</span>
           <span class="stat-label">Waiting to re-wrap</span>
           <span class="stat-detail"
-            >{{ count(model.retired.secrets, 'secret', 'secrets') }} and
-            {{ count(model.retired.versions, 'version', 'versions') }}</span
+            >{{ count(model.toRewrap.secrets, 'secret', 'secrets') }} and
+            {{ count(model.toRewrap.versions, 'version', 'versions') }}</span
           >
         </div>
         @if (model.missing === 0) {
@@ -191,7 +191,7 @@
         </thead>
         <tbody>
           @for (key of model.keys; track key.kekId) {
-            @let role = roleOf(key);
+            @let role = roleOf(key, model.missingKeys.includes(key));
             <tr>
               <td class="cell-main">
                 <span class="mono cell-strong">{{ key.kekId }}</span>
