@@ -56,6 +56,37 @@ public sealed class SignInPagesTests(VaultFixture vault)
             cookie => cookie.StartsWith("XSRF-TOKEN=", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task A_signed_in_visitor_gets_Recover_with_a_token_its_call_accepts()
+    {
+        var username = "it-pages-recover-" + Guid.NewGuid().ToString("N")[..8];
+        var signedIn = await vault.SignInNewAccountAsync(username, NextSource(), password: Password);
+
+        await AssertRecoverAcceptsItsTokenAsync(signedIn, username);
+    }
+
+    [Fact]
+    public async Task A_pending_sign_in_gets_Recover_with_a_token_its_call_accepts()
+    {
+        var username = "it-pages-recover-" + Guid.NewGuid().ToString("N")[..8];
+        await vault.SignInNewAccountAsync(username, NextSource(), password: Password);
+        var pending = vault.CreateSession(source: NextSource());
+        await AuthApi.PendingAsync(pending, username, Password);
+
+        await AssertRecoverAcceptsItsTokenAsync(pending, username);
+    }
+
+    /// <summary>The Recover document's token passes antiforgery on the recover call for whoever loaded it.</summary>
+    private static async Task AssertRecoverAcceptsItsTokenAsync(VaultSession browser, string username)
+    {
+        using var response = await browser.Client.GetAsync("/Account/Recover");
+
+        AssertSignInDocument(response);
+        // A malformed code reaches validation only once antiforgery has accepted the token.
+        await ProfileApi.AssertProblemAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/recover", SignInDocument.TokenOf(response),
+            new { username, password = Password, code = "12" }), 400, "validation_failed");
+    }
+
     [Theory]
     [InlineData("/Account/Totp")]
     [InlineData("/Account/RecoveryCode")]

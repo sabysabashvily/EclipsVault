@@ -12,9 +12,6 @@ public static class SignInTarget
     /// <summary>The landing page after every sign-in method without a usable return URL.</summary>
     public const string Default = "/Secrets";
 
-    /// <summary>The landing page after break-glass recovery.</summary>
-    public const string AfterBreakGlass = "/";
-
     /// <returns>An absolute local path; an app-relative <c>~/</c> target is resolved, as the browser cannot.</returns>
     public static string Choose(IUrlHelper url, string? returnUrl, string defaultTarget = Default)
         => url.IsLocalUrl(returnUrl)

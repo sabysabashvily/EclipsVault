@@ -216,3 +216,45 @@ runs that probe on `/Account/Recover`, a Legacy page, with the inline-script pro
 CI run 44923165874 on `b1971e1`: every job green (migrations, build-test, integration on SQL Server
 and PostgreSQL, frontend, e2e with `e2e:verify-guards`, security-scan, image, sbom, agent-guardrails;
 commit-subjects skipped on a push). The coordinator accepted #175 on that run.
+
+## Delivery: 8a ticket 3 (#176)
+
+Commits on `88ab36c` (the checkpoint commit recording #175's green run): `5befceb` serves `/Account/Recover`
+from the Angular UI to anyone, with an anonymous request token and `no-store`; its only call is
+`POST /api/ui/auth/recover`. The page shows the outcome with "Continue to the vault" to `/`, and shows
+`recovery_failed`, `recovery_incomplete` and `audit_unavailable` in the vault's own sentence without
+claiming access restored. The Legacy Recover actions, view and `RecoverViewModel` are gone. The IP-block
+exemption is exactly GET/HEAD `/Account/Recover` and POST `/api/ui/auth/recover`; the retired form's POST,
+`/Account/Recover/` and anything under it are blocked. The last commit holds the review fixes (two
+`SignInPagesTests` for a signed-in and a pending visitor's Recover token; `SignInTarget.AfterBreakGlass`
+removed) and this section.
+
+Guard probes: the two inline-script probes and the uncaught-exception probe now open the Legacy shell's
+`/Home/Error?code=404` through `e2e/legacy-shell.ts`, byte-identical to part 7b's file in PR #193, and
+declare its 404 with `expectLegacyShell`. What each proves is unchanged; the driver still expects all 8.
+
+New browser spec `e2e/break-glass.spec.ts`, its own Playwright project after `chromium` and before `users`:
+it creates a Top Secret account, enrolls it, blocks the run's own browser address in the run's Redis
+(`e2e/break-glass.ts`), opens `/`, follows "Vault administrator? Recover access", recovers with the
+password and a real TOTP code, and continues to the Overview. Its `finally` clears the block and guard.
+
+Checks on `5befceb`: `scripts/check.sh` (957 unit); `scripts/check.sh integration` on PostgreSQL for
+AuthApiTests, SignInPagesTests, ProfileAuditTests, SignInRefusalAuditTests, AuthAuditFailureTests,
+RedisRecoveryLiftTests, SignInReturnUrlTests and OverviewApiTests (164 passed); `dotnet format`; both
+pending-model checks (no model change); hook tests (6 passed); Angular lint with e2e tsc, Prettier,
+642 Vitest, 15 build checks, `check:api-types`, build, `npm audit --audit-level=high`. After the fixes:
+`scripts/check.sh` (957 unit), `dotnet format --verify-no-changes`, and `SignInPagesTests` on PostgreSQL
+(29 passed). No browser spec ran locally (owner's rule).
+
+Reviews: `security-reviewer` (Opus 5.5 high) on `88ab36c..5befceb` and one re-check (Opus 5.5 high via
+Antigravity after the Claude API rate limit; `logs/ticket-176/review-ledger.md`). No important findings;
+N2 and N3 fixed and verified. Left for #178: N1, recover's `audit_unavailable` uses the global sentence
+even when the session row committed (owner decision); P1 (pre-existing), anonymous route-table pages are
+not pinned by `AuthorizationSurfaceTests`; R1 (optional, non-blocking), no negative control asserting
+`antiforgery_rejected` on `/api/ui/auth/recover`.
+
+CI: run 44931436200 on `5befceb` had 9/10 jobs green (migrations, build-test, integration on SQL Server
+and PostgreSQL, frontend, security-scan, image, sbom, agent-guardrails) with `e2e` still running when
+this review-fix commit was cut; full CI on this head is pending coordinator push.
+
+Restart: ticket 4 (#177) starts from this commit. The Legacy shell for tests is `/Home/Error?code=404`.
