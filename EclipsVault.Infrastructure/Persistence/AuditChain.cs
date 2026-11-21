@@ -85,13 +85,22 @@ public sealed class AuditChain
         }
     }
 
-    /// <summary>Commits the batch, which releases the chain. The head advances only now.</summary>
+    /// <summary>
+    /// Commits the batch, which releases the chain. The head advances only now. A commit that fails
+    /// still ends the transaction, so the chain is released and later reads see only committed rows.
+    /// </summary>
     public static async Task CommitAsync(AuditBatch batch, CancellationToken ct)
     {
         if (batch.OwnedTransaction is { } transaction)
         {
-            await transaction.CommitAsync(ct);
-            await transaction.DisposeAsync();
+            try
+            {
+                await transaction.CommitAsync(ct);
+            }
+            finally
+            {
+                await transaction.DisposeAsync();
+            }
         }
     }
 

@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { test, expect } from './fixtures';
+import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { AccountCreation } from './account-creation';
 import { savedAdministratorCookies } from './administrator-cookies';
 import { refreshAdministratorProof } from './administrator-proof';
@@ -48,10 +49,11 @@ test('the outbox shows the provisioning email this run delivered', async ({ page
   );
 });
 
-test('the Legacy sidebar opens Notifications', async ({ page }) => {
+test('the Legacy sidebar opens Notifications', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
   await page.context().addCookies(await savedAdministratorCookies());
   const notifications = new Notifications(page);
-  await notifications.fromSidebar('/Account/Denied');
+  await notifications.fromSidebar(legacyShell);
   await expect(notifications.heading).toBeVisible();
   await expect(page).toHaveURL(/\/Notifications$/);
 });
@@ -64,10 +66,11 @@ test('the Angular sidebar opens Notifications', async ({ page }) => {
   await expect(page).toHaveURL(/\/Notifications$/);
 });
 
-test('the palette in the Legacy shell opens Notifications', async ({ page }) => {
+test('the palette in the Legacy shell opens Notifications', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
   await page.context().addCookies(await savedAdministratorCookies());
   const notifications = new Notifications(page);
-  await notifications.fromPalette('/Account/Denied');
+  await notifications.fromPalette(legacyShell);
   await expect(notifications.heading).toBeVisible();
 });
 

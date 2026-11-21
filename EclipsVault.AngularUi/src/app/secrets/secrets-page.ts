@@ -8,7 +8,7 @@ import { TableFilter } from '../shared/table-filter';
 import type { components } from '../ui-api/schema.generated';
 import { SecretsTabs } from './secrets-tabs';
 
-/** The secrets the caller could open now. Opening one goes to its Legacy details page. */
+/** The secrets the caller could open now. Opening one goes to its details page. */
 @Component({
   selector: 'app-secrets-page',
   imports: [EmptyState, RouterLink, SecretsTabs, StatusLine, TableFilter],

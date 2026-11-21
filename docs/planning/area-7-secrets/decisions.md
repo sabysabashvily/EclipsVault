@@ -109,8 +109,9 @@ control is hidden for managed secrets (Q24).
 
 Details' `access_denied` opens `/Account/Denied?secretId=` with the reasons in navigation memory; a
 reload shows the generic paragraph. Denied asks the eligibility endpoint whether to show the form.
-Filing a decoy answers 404 and trips it; outcomes go to `/AccessRequests?filed=1` or `?refused=<code>`,
-`secret_not_found` included. A revealed value lives only in page memory and is cleared on departure.
+Filing a decoy answers 404 and trips it; outcomes go to `/AccessRequests?filed=1` or `?refused=<code>`.
+An unknown secret answers eligibility and filing with the decoy's 404, byte for byte (owner, 20 Nov), so
+there is no `secret_not_found` code. A revealed value lives only in page memory and is cleared on departure.
 
 ### 7c Dynamic secrets (Q16)
 

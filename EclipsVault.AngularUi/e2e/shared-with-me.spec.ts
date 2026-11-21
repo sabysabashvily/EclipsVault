@@ -4,6 +4,7 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
+import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { createSecret, openPalette } from './palette';
 import { SecretsList } from './secrets-list';
 import { SharedByMe } from './shared-by-me';
@@ -297,8 +298,9 @@ test('the palette opens Shared with me without a document load', async ({ page }
   expect(documents).toEqual([]);
 });
 
-test('the Legacy sidebar loads Shared with me into Angular', async ({ page }) => {
-  await openAsRecipient(page, '/Account/Denied');
+test('the Legacy sidebar loads Shared with me into Angular', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
+  await openAsRecipient(page, legacyShell);
   const documents = recordDocuments(page);
   await page.getByText('Sharing', { exact: true }).click();
   await page.getByRole('link', { name: 'Shared with me', exact: true }).click();
@@ -307,8 +309,9 @@ test('the Legacy sidebar loads Shared with me into Angular', async ({ page }) =>
   expect(documents).toEqual(['/Secrets/SharedWithMe']);
 });
 
-test('the Legacy palette loads Shared with me into Angular', async ({ page }) => {
-  await openAsRecipient(page, '/Account/Denied');
+test('the Legacy palette loads Shared with me into Angular', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
+  await openAsRecipient(page, legacyShell);
   const documents = recordDocuments(page);
   await openPalette(page);
   await page.getByRole('combobox').fill('Shared with me');

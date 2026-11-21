@@ -53,6 +53,8 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
     [InlineData("/AccessRequests/Index")]
     [InlineData("/accessrequests")]
     [InlineData("/ACCESSREQUESTS/index")]
+    [InlineData("/Account/Denied")]
+    [InlineData("/account/denied?secretId=6d1b2c55-0000-4000-8000-000000000001")]
     public async Task Angular_documents_add_only_the_two_Trusted_Types_directives(string path)
     {
         var client = await vault.AdminClientAsync();
@@ -73,7 +75,8 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
 
     [Theory]
     [InlineData("/Account/Login", HttpStatusCode.Redirect)]
-    [InlineData("/Account/Denied", HttpStatusCode.OK)]
+    // The error page is the last signed-in page on the Legacy layout.
+    [InlineData("/Home/Error?code=404", HttpStatusCode.NotFound)]
     [InlineData("/Access/NotAnAngularRoute", HttpStatusCode.NotFound)]
     [InlineData("/api/ui/me", HttpStatusCode.OK)]
     [InlineData("/css/site.css", HttpStatusCode.OK)]

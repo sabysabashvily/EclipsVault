@@ -1,14 +1,14 @@
 using System.Net;
+using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
 using Xunit;
 
 namespace EclipsVault.IntegrationTests;
 
 /// <summary>
-/// Shared with me, the Access requests page and its decisions are the Angular UI's. Their Legacy routes
+/// Shared with me, the Access requests page, filing and deciding are the Angular UI's. Their Legacy routes
 /// stay unreachable for both people who could have used them: a reviewer and the requester, each with a
-/// real session and a valid antiforgery token, aiming at a real pending request. Only
-/// <c>POST /AccessRequests/Create</c> remains, for the Denied page's form (<see cref="AccessRequestsApiTests"/>).
+/// real session and a valid antiforgery token, aiming at a real pending request.
 /// Each requester signs in from its own address in 198.18.102.0/24, so sign-in budgets never meet.
 /// </summary>
 [Collection(VaultCollection.Name)]
@@ -31,32 +31,36 @@ public sealed class RetiredSharingRoutesTests(VaultFixture vault)
     [InlineData("POST", "/Secrets/SharedWithMe", HttpStatusCode.MethodNotAllowed, "198.18.102.12")]
     [InlineData("DELETE", "/sEcReTs/sHaReDwItHmE", HttpStatusCode.MethodNotAllowed, "198.18.102.13")]
     [InlineData("GET", "/sEcReTs/sHaReDwItHmE/legacy", HttpStatusCode.NotFound, "198.18.102.14")]
+    [InlineData("POST", "/AccessRequests/Create", HttpStatusCode.NotFound, "198.18.102.15")]
+    [InlineData("POST", "/aCcEsSrEqUeStS/cReAtE/", HttpStatusCode.NotFound, "198.18.102.16")]
     public async Task A_retired_sharing_route_reaches_no_handler_for_the_reviewer_or_the_requester(
         string method, string path, HttpStatusCode expected, string source)
     {
         var admin = await vault.AdminClientAsync();
         var username = "it-retired-share-" + Guid.NewGuid().ToString("N");
         var requester = await vault.SignInNewAccountAsync(username, IPAddress.Parse(source), ClearanceLevel.Elevated, "IT-RETIRED-SHARE");
-        var details = await LegacySharing.CreateSecretAsync(admin, $"{username}-secret");
-        var pending = await LegacyAccessRequests.PendingAsync(vault, details, username);
+        var details = await SecretSharing.CreateSecretAsync(admin, $"{username}-secret");
+        var pending = await AccessRequestsApi.PendingAsync(vault, details, username);
         var before = await AuditTrail.HeadAsync(vault);
 
-        using var asReviewer = await SendAsync(admin, method, path, pending.Id);
-        using var asRequester = await SendAsync(requester.Client, method, path, pending.Id);
+        using var asReviewer = await SendAsync(admin, method, path, pending);
+        using var asRequester = await SendAsync(requester.Client, method, path, pending);
 
         Assert.Equal(expected, asReviewer.StatusCode);
         Assert.Equal(expected, asRequester.StatusCode);
         Assert.Equal(AccessRequestStatus.Pending, await AccessRequestsApi.StatusOfAsync(vault, pending.Id));
-        Assert.False(await LegacySharing.HasAnyShareAsync(vault, details));
+        Assert.False(await SecretSharing.HasAnyShareAsync(vault, details));
         Assert.DoesNotContain(await AuditTrail.RowsAfterAsync(vault, before), row => row.ResourceId == pending.SecretId);
     }
 
     /// <summary>Sends the fields the Legacy forms posted, naming the request in both the query and the form.</summary>
-    private static async Task<HttpResponseMessage> SendAsync(HttpClient caller, string method, string path, Guid requestId)
+    private static async Task<HttpResponseMessage> SendAsync(HttpClient caller, string method, string path, AccessRequest pending)
         => await UiApiRequest.SendWithTokenAsync(caller, await UiApiRequest.AntiforgeryTokenAsync(caller), new HttpMethod(method),
-            $"{path}?id={requestId}", new FormUrlEncodedContent(new Dictionary<string, string>
+            $"{path}?id={pending.Id}", new FormUrlEncodedContent(new Dictionary<string, string>
             {
-                ["id"] = requestId.ToString(),
+                ["id"] = pending.Id.ToString(),
+                ["secretId"] = pending.SecretId.ToString(),
+                ["reason"] = "Filed through a retired route",
                 ["ttlDays"] = "7",
                 ["note"] = "Decided through a retired route",
             }));

@@ -3,6 +3,7 @@ import type { BrowserContext } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
+import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { AccountCreation } from './account-creation';
 import { AccountSignIn } from './account-sign-in';
 import { AuthenticatorEnrollment } from './authenticator-enrollment';
@@ -70,6 +71,7 @@ test('both account menus, both palettes and Security checkup open Profile on the
   page,
   browserHealth,
 }) => {
+  expectLegacyShell(browserHealth);
   await page.context().addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   const documents: string[] = [];
@@ -102,13 +104,13 @@ test('both account menus, both palettes and Security checkup open Profile on the
   });
 
   await test.step('the Legacy account menu and palette load Profile into Angular', async () => {
-    await page.goto('/Account/Denied');
+    await page.goto(legacyShell);
     documents.length = 0;
     await page.getByText('Mailbox Owner', { exact: true }).click();
     await page.getByRole('menuitem', { name: 'Profile', exact: true }).click();
     await expect(profile.heading).toBeVisible();
     expect(documents).toEqual(['/Profile']);
-    await page.goto('/Account/Denied');
+    await page.goto(legacyShell);
     documents.length = 0;
     await openPalette(page);
     await page.getByRole('combobox').fill('Profile');

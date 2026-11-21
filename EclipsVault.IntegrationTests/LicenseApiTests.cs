@@ -98,12 +98,9 @@ public sealed class ExpiredLicenseApiTests(SingleAdministratorFixture fixture)
     {
         var admin = await fixture.Vault.AdminClientAsync();
         var value = "it-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
-        var details = await LegacySharing.CreateSecretAsync(admin, "it-expired-licence-secret", value);
-        var token = VaultFixture.FormTokenOf(await admin.GetStringAsync(details), details);
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-expired-licence-secret", value);
 
-        var revealed = await admin.PostAsync(
-            details.Replace("/Details/", "/Reveal/", StringComparison.Ordinal),
-            new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token }));
+        var revealed = await SecretDetailsApi.RevealAsync(admin, details);
 
         Assert.Equal(HttpStatusCode.OK, revealed.StatusCode);
         Assert.Contains(value, await revealed.Content.ReadAsStringAsync(), StringComparison.Ordinal);

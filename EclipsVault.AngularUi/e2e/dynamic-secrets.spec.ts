@@ -4,6 +4,7 @@ import { AppShell } from './app-shell';
 import { DynamicSecretsPage } from './dynamic-secrets';
 import { dynamicRoles, loginExists, provisionDynamicTarget } from './dynamic-target';
 import { test as browserTest, expect } from './fixtures';
+import { expectLegacyShell, legacyShell } from './legacy-shell';
 import {
   savedProofSetupTimeout,
   waitForSavedAdministratorProofToExpire,
@@ -150,10 +151,11 @@ test('cancelling Revoke keeps the login, and Revoke credential removes it', asyn
   expect(loginExists(internalLogin)).toBe(false);
 });
 
-test('the Legacy sidebar opens Dynamic secrets', async ({ page }) => {
+test('the Legacy sidebar opens Dynamic secrets', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
   await page.context().addCookies(await savedAdministratorCookies());
   const dynamicSecrets = new DynamicSecretsPage(page);
-  await dynamicSecrets.fromSidebar('/Account/Denied');
+  await dynamicSecrets.fromSidebar(legacyShell);
   await expect(dynamicSecrets.heading).toBeVisible();
   await expect(page).toHaveURL(/\/DynamicSecrets$/);
 });
@@ -166,10 +168,11 @@ test('the Angular sidebar opens Dynamic secrets', async ({ page }) => {
   await expect(page).toHaveURL(/\/DynamicSecrets$/);
 });
 
-test('the palette in the Legacy shell opens Dynamic secrets', async ({ page }) => {
+test('the palette in the Legacy shell opens Dynamic secrets', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
   await page.context().addCookies(await savedAdministratorCookies());
   const dynamicSecrets = new DynamicSecretsPage(page);
-  await dynamicSecrets.fromPalette('/Account/Denied');
+  await dynamicSecrets.fromPalette(legacyShell);
   await expect(dynamicSecrets.heading).toBeVisible();
 });
 

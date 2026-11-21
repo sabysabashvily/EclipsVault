@@ -2,6 +2,7 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { test, expect } from './fixtures';
+import { expectLegacyShell, legacyShell, legacyShellHeading } from './legacy-shell';
 import { clearSignInBudget } from './profile-state';
 import {
   type Activity,
@@ -99,6 +100,7 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
   context,
   browserHealth,
 }) => {
+  expectLegacyShell(browserHealth);
   const password = process.env['Seed__AdminPassword'];
   if (!password) throw new Error('Run through npm run e2e with Seed__AdminPassword supplied');
 
@@ -244,10 +246,10 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
   await expect(page).toHaveURL(/\/Access$/);
   await expect(page.locator('.access-matrix tbody tr')).toHaveCount(4);
 
-  // Every sidebar page is the Angular UI's now; Access denied is still a Legacy document.
-  const legacyDocument = await page.goto('/Account/Denied');
+  // Every sidebar page is the Angular UI's now; the error page is still a Legacy document.
+  const legacyDocument = await page.goto(legacyShell);
   expect(legacyDocument?.headers()['content-security-policy']).not.toContain('trusted-types');
-  await expect(page.getByRole('heading', { name: 'Access denied', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: legacyShellHeading, exact: true })).toBeVisible();
   await expect(page.locator('.sidebar')).toContainText('Vault Administrator');
   await page.getByText('Access', { exact: true }).click();
   await page.getByRole('link', { name: 'My access', exact: true }).click();
@@ -332,6 +334,7 @@ test('visual parity: the administrator and Standard sidebars match Legacy in bot
   page,
   browserHealth,
 }, info) => {
+  expectLegacyShell(browserHealth);
   test.setTimeout(180_000);
   // Reuse the real session established above. Extra sign-ins would exhaust the production per-IP
   // password budget before the revocation test; the limiter stays fully enabled.
@@ -407,9 +410,11 @@ test('a denied My access cell explains itself in a side panel, a bottom sheet on
 
 test('both UIs share the theme, and the Angular UI applies it before it starts', async ({
   page,
+  browserHealth,
 }) => {
+  expectLegacyShell(browserHealth);
   await page.context().addCookies(administratorCookies);
-  await page.goto('/Account/Denied');
+  await page.goto(legacyShell);
   await page.context().addCookies([
     {
       name: 'EclipsVault.Theme',
@@ -450,7 +455,7 @@ test('both UIs share the theme, and the Angular UI applies it before it starts',
     expect(
       (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Theme')?.value,
     ).toBe('dark');
-    await page.goto('/Account/Denied');
+    await page.goto(legacyShell);
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   });
 });
@@ -459,13 +464,14 @@ test("the ⌘K palette offers the sidebar's pages plus New secret and the Sharin
   page,
   browserHealth,
 }) => {
+  expectLegacyShell(browserHealth);
   expect(standardCookies).not.toHaveLength(0);
   await page.context().addCookies(administratorCookies);
   const standard = await (await browserHealth.newContext()).newPage();
   await standard.context().addCookies(standardCookies);
 
   await test.step(`administrator: Legacy and Angular palettes list the same destinations`, async () => {
-    await page.goto('/Account/Denied');
+    await page.goto(legacyShell);
     // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
     const legacyChord = await page.locator('.command-trigger kbd').textContent();
     await openPalette(page);
@@ -491,7 +497,7 @@ test("the ⌘K palette offers the sidebar's pages plus New secret and the Sharin
     await expect(page.locator('style, [style]')).toHaveCount(0);
   });
   await test.step(`standard: Legacy and Angular palettes list the same destinations`, async () => {
-    await standard.goto('/Account/Denied');
+    await standard.goto(legacyShell);
     // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
     const legacyChord = await standard.locator('.command-trigger kbd').textContent();
     await openPalette(standard);

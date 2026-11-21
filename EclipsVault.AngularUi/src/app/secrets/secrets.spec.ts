@@ -292,8 +292,9 @@ describe('New secret', () => {
     expect(text(form.page.querySelector('button[type="submit"]'))).toBe('Encrypt and store');
   });
 
-  it('stores the secret and opens its details page', async () => {
+  it('stores the secret and opens its details page, which announces it', async () => {
     const form = await filled();
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
     await form.submit();
 
     const request = backend.expectOne('/api/ui/secrets');
@@ -313,13 +314,15 @@ describe('New secret', () => {
     );
     await form.fixture.whenStable();
 
-    expect(assign).toHaveBeenCalledExactlyOnceWith(
+    expect(navigate).toHaveBeenCalledExactlyOnceWith(
       '/Secrets/Details/00000000-0000-4000-8000-000000000009',
+      { state: { stored: true } },
     );
   });
 
   it('names a taken name and keeps everything typed', async () => {
     const form = await filled();
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl');
     await form.submit();
     backend
       .expectOne('/api/ui/secrets')
@@ -341,7 +344,7 @@ describe('New secret', () => {
       '2',
     ]);
     expect(form.page.querySelector('fieldset')!.disabled).toBe(false);
-    expect(assign).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it('shows a policy refusal’s reasons together, as Legacy did', async () => {
@@ -410,6 +413,7 @@ describe('New secret', () => {
 
   it('reports an unavailable audit trail and clears it on the next attempt', async () => {
     const form = await filled();
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
     await form.submit();
     backend.expectOne('/api/ui/secrets').flush(
       {
@@ -430,6 +434,6 @@ describe('New secret', () => {
       .expectOne('/api/ui/secrets')
       .flush({ secretId: '00000000-0000-4000-8000-00000000000a' });
     await form.fixture.whenStable();
-    expect(assign).toHaveBeenCalledOnce();
+    expect(navigate).toHaveBeenCalledOnce();
   });
 });

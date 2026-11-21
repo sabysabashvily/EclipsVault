@@ -4,6 +4,7 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
+import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { clearSignInBudget } from './profile-state';
 import { createSecret, openPalette } from './palette';
 import { SecretsList } from './secrets-list';
@@ -68,6 +69,11 @@ test('an issuer shares two real secrets with a colleague outside their project',
 
   await createSecret(page, 'E2e_Shared_No_Expiry', 'Internal');
   secretDetails = new URL(page.url()).pathname;
+  // The page's own request for the secret is refused before the recipient lands on Denied.
+  browserHealth.expectConsoleError({
+    text: /status of 403/,
+    url: /\/api\/ui\/secrets\/[0-9a-f-]{36}$/,
+  });
   await recipient.goto(secretDetails);
   await expect(recipient).toHaveURL(/\/Account\/Denied\?/);
   await page.getByLabel('User to share with').fill(recipientUsername);
@@ -214,8 +220,9 @@ test('the palette opens Shared by me without a document load', async ({ page }) 
   expect(documents).toEqual([]);
 });
 
-test('the Legacy sidebar loads Shared by me into Angular', async ({ page }) => {
-  await openAsIssuer(page, '/Account/Denied');
+test('the Legacy sidebar loads Shared by me into Angular', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
+  await openAsIssuer(page, legacyShell);
   const documents: string[] = [];
   page.on('request', (request) => {
     if (request.isNavigationRequest() && request.resourceType() === 'document')
@@ -228,8 +235,9 @@ test('the Legacy sidebar loads Shared by me into Angular', async ({ page }) => {
   expect(documents).toEqual(['/Secrets/SharedByMe']);
 });
 
-test('the Legacy palette loads Shared by me into Angular', async ({ page }) => {
-  await openAsIssuer(page, '/Account/Denied');
+test('the Legacy palette loads Shared by me into Angular', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
+  await openAsIssuer(page, legacyShell);
   const documents: string[] = [];
   page.on('request', (request) => {
     if (request.isNavigationRequest() && request.resourceType() === 'document')
@@ -392,6 +400,11 @@ test('revoking a real share ends the recipient browser access on its next reques
   await expect(shares.status).toHaveText('Access revoked.');
   await expect(shares.rows).toHaveCount(1);
   await expect(shares.share('E2e_Shared_No_Expiry')).toHaveCount(0);
+  // The recipient's next request for the secret is refused, so its page lands on Denied.
+  browserHealth.expectConsoleError({
+    text: /status of 403/,
+    url: /\/api\/ui\/secrets\/[0-9a-f-]{36}$/,
+  });
   await recipient.goto(secretDetails);
   await expect(recipient).toHaveURL(/\/Account\/Denied\?/);
   await expect(
