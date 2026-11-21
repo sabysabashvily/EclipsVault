@@ -1254,7 +1254,8 @@ function unfamiliarSignIns(): SignIns {
         outcome: 'Success',
         method: 'Passkey',
         title: 'Signed in with a passkey',
-        sourceIp: '2001:db8::7',
+        // A full address, the longest unbroken value a row shows.
+        sourceIp: '2001:db8:1a80:4d00:b8e2:91ff:fe3c:7a10',
         locationFlag: 'FirstSeen',
       },
       {
@@ -1446,7 +1447,7 @@ test('Sign-in history shows its empty state, and an unfamiliar-location attempt 
         'Signed in with a passkey',
         'Passkey',
         'Success',
-        '2001:db8::7',
+        '2001:db8:1a80:4d00:b8e2:91ff:fe3c:7a10',
         'New location',
       ),
       row(

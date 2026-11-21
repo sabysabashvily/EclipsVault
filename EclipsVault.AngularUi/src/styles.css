@@ -1828,6 +1828,8 @@ button.matrix-cell:hover .matrix-word {
   .row-cards .cell-meta {
     order: 2;
     min-width: 0;
+    /* A full IPv6 address or a 64-character username has no break opportunity of its own. */
+    overflow-wrap: anywhere;
     color: var(--text-muted);
     font-size: 0.86rem;
   }

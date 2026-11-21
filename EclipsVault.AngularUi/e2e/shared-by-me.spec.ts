@@ -12,7 +12,8 @@ import { SharedWithMe } from './shared-with-me';
 import { freshTotp } from './totp';
 
 test.describe.configure({ mode: 'serial' });
-const recipientUsername = 'e2e-share-recipient';
+// Long and unbroken, so the width checks cover a name with no break opportunity of its own.
+const recipientUsername = 'e2esharerecipientfromthefinancedirectoryofacme01';
 let recipientCookies: Awaited<ReturnType<BrowserContext['cookies']>> = [];
 let secretDetails = '';
 
@@ -72,7 +73,7 @@ test('an issuer shares two real secrets with a colleague outside their project',
   await page.getByLabel('User to share with').fill(recipientUsername);
   await page.getByRole('button', { name: 'Share access', exact: true }).click();
   await expect(
-    page.getByText("Access to 'E2e_Shared_No_Expiry' was shared with e2e-share-recipient.", {
+    page.getByText(`Access to 'E2e_Shared_No_Expiry' was shared with ${recipientUsername}.`, {
       exact: true,
     }),
   ).toBeVisible();
@@ -85,7 +86,7 @@ test('an issuer shares two real secrets with a colleague outside their project',
   await page.getByLabel('Access expires in days').fill('7');
   await page.getByRole('button', { name: 'Share access', exact: true }).click();
   await expect(
-    page.getByText("Access to 'E2e_Shared_Expiring' was shared with e2e-share-recipient.", {
+    page.getByText(`Access to 'E2e_Shared_Expiring' was shared with ${recipientUsername}.`, {
       exact: true,
     }),
   ).toBeVisible();
@@ -292,9 +293,9 @@ test('Cancel and Escape keep access while confirmation names the recipient and s
     if (request.method() === 'DELETE') writes.push(request.url());
   });
   await revoke.click();
-  await expect(shares.confirmation).toHaveAccessibleName("Revoke e2e-share-recipient's access?");
+  await expect(shares.confirmation).toHaveAccessibleName(`Revoke ${recipientUsername}'s access?`);
   await expect(shares.confirmation).toHaveAccessibleDescription(
-    "Revoke e2e-share-recipient's access to 'E2e_Shared_No_Expiry'? They lose access on their next request.",
+    `Revoke ${recipientUsername}'s access to 'E2e_Shared_No_Expiry'? They lose access on their next request.`,
   );
   await expect(shares.cancel).toBeFocused();
   await page.keyboard.press('Enter');
