@@ -43,6 +43,6 @@ export function expiry(timestampUtc: string | null, now: Date): Expiry {
     const text = `In ${days} ${days === 1 ? 'day' : 'days'} · ${date}`;
     return { text, tone: left < redBelow ? 'danger' : 'warn', title };
   }
-  // A date in a plain table cell keeps the batch's `yyyy-MM-dd HH:mm` UTC form (owner, 16 Nov).
+  // A date in a plain table cell keeps the `yyyy-MM-dd HH:mm` UTC form the other tables use.
   return { text: title.slice(0, 16), tone: null, title: null };
 }
