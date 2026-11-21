@@ -3022,6 +3022,7 @@ select:focus {
 .current-ip-value code {
   font-size: 1.3rem;
   font-weight: 500;
+  overflow-wrap: anywhere;
 }
 .current-ip p {
   margin: 0.35rem 0 0;
@@ -3051,6 +3052,7 @@ select:focus {
   padding: 0.4rem 0;
   border-bottom: 1px solid var(--border);
   color: var(--text-muted);
+  overflow-wrap: anywhere;
 }
 .cidr-list li:last-child {
   border-bottom: none;
