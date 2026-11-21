@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Page, Route } from '@playwright/test';
 import type { components } from '../src/app/ui-api/schema.generated';
 import { openPalette } from './palette';
 import type { legacyShell } from './legacy-shell';
@@ -8,8 +8,10 @@ type Encryption = components['schemas']['EncryptionResponse'];
 
 export class EncryptionKeys {
   readonly heading;
-  readonly notice;
+  readonly verdict;
+  readonly nextKeySteps;
   readonly currentKey;
+  readonly rewrap;
   readonly rotate;
   readonly confirmation;
   readonly keepKeys;
@@ -17,17 +19,24 @@ export class EncryptionKeys {
   readonly rotationsSent: string[] = [];
   constructor(private readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Encryption keys', exact: true });
-    // eslint-disable-next-line playwright/no-raw-locators -- The notice is an unlabelled banner, as in Legacy; the shell's licence notice is one too.
-    this.notice = page.locator('app-encryption-page .notice');
+    this.verdict = page.getByText(
+      /^(All current|Re-wrap pending|Re-wrapping|Action needed|Stopped partway)$/,
+    );
+    this.nextKeySteps = page.getByRole('region', {
+      name: 'Moving to a new master key',
+      exact: true,
+    });
     this.currentKey = page
       .getByRole('row')
-      .filter({ has: page.getByRole('cell', { name: 'current', exact: true }) })
+      .filter({ has: page.getByRole('cell', { name: 'Current', exact: true }) })
       .getByRole('cell')
       .first();
-    this.rotate = page.getByRole('button', { name: 'Re-wrap under current KEK', exact: true });
+    // The figures and the one action; only there while something waits.
+    this.rewrap = page.getByRole('region', { name: 'Re-wrap', exact: true });
+    this.rotate = this.rewrap.getByRole('button', { name: /^Re-wrap(ping…| \d+ items?)$/ });
     this.confirmation = page.getByRole('alertdialog');
     this.keepKeys = this.confirmation.getByRole('button', { name: 'Cancel', exact: true });
-    this.continue = this.confirmation.getByRole('button', { name: 'Continue', exact: true });
+    this.continue = this.confirmation.getByRole('button', { name: /^Re-wrap \d+ items?$/ });
     page.on('request', (request) => {
       if (new URL(request.url()).pathname === '/api/ui/encryption/rotate')
         this.rotationsSent.push(request.method());
@@ -54,6 +63,13 @@ export class EncryptionKeys {
         onMissingKeys: 0,
       } satisfies Encryption;
       await route.fulfill({ response, json: pending });
+    });
+  }
+  // A re-wrap the vault answers with `response`, sent only once `release` resolves.
+  async answerRewrap(response: Parameters<Route['fulfill']>[0], release = Promise.resolve()) {
+    await this.page.route('**/api/ui/encryption/rotate', async (route) => {
+      await release;
+      await route.fulfill(response);
     });
   }
   async fromSidebar(path: typeof legacyShell | '/Access'): Promise<void> {

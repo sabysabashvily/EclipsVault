@@ -5,21 +5,22 @@ import { RowMenu } from './row-menu';
 @Component({
   imports: [RowMenu],
   template: `<app-row-menu
-      ><button role="menuitem">First</button><button role="menuitem" disabled>Unavailable</button
+      ><a role="menuitem" href="/first">First</a
+      ><button role="menuitem" disabled>Unavailable</button
       ><button role="menuitem">Last</button></app-row-menu
     ><button>Outside</button>`,
 })
 class MenuHost {}
 
 describe('RowMenu', () => {
-  it('supports arrow keys, Home, End and Escape while skipping disabled items', async () => {
+  it('supports arrow keys, Home, End and Escape over links and buttons, skipping disabled ones', async () => {
     const fixture = TestBed.createComponent(MenuHost);
     fixture.detectChanges();
     const page: HTMLElement = fixture.nativeElement;
     const trigger = page.querySelector('summary');
-    const first = page.querySelectorAll('button')[0];
-    const last = page.querySelectorAll('button')[2];
-    if (!trigger) throw new Error('No trigger');
+    const first = page.querySelector('a');
+    const last = page.querySelectorAll('button')[1];
+    if (!trigger || !first) throw new Error('No trigger or link');
     trigger.focus();
     trigger.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
@@ -54,7 +55,7 @@ describe('RowMenu', () => {
     );
     await fixture.whenStable();
     expect(document.activeElement?.textContent).toBe('Last');
-    const outside = page.querySelectorAll('button')[3];
+    const outside = page.querySelectorAll('button')[2];
     outside.click();
     expect(page.querySelector('details')?.open).toBe(false);
   });

@@ -42,9 +42,15 @@ test('Verify is anchored by the checkpoint just created', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const audit = new AuditLog(page);
   await audit.open();
-  const created = page.waitForResponse('**/api/ui/audit/checkpoints');
+  // The server's real reply, read as it passes: Chromium can drop a body before a test asks for it.
+  let sequence: number | undefined;
+  await page.route('**/api/ui/audit/checkpoints', async (route) => {
+    const response = await route.fetch();
+    sequence = ((await response.json()) as { sequence: number }).sequence;
+    await route.fulfill({ response });
+  });
   await audit.checkpoint.click();
-  const { sequence } = (await (await created).json()) as { sequence: number };
+  await expect.poll(() => sequence).toBeDefined();
   await expect(audit.status).toHaveText(
     new RegExp(`^Signed checkpoint created at sequence ${sequence} with key \\S+\\.$`),
   );

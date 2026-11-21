@@ -77,19 +77,39 @@ describe('UsersPage', () => {
     await fixture.whenStable();
     expect(page.textContent).toContain('Ada Staff');
   });
-  it('renders the Legacy columns even with no accounts', async () => {
+  it('renders the columns even with no accounts', async () => {
     const { fixture, page } = render();
     backend.expectOne('/api/ui/users').flush({ users: [] });
     await fixture.whenStable();
     expect([...page.querySelectorAll('th')].map((cell) => cell.textContent)).toEqual([
-      'User',
+      'Person',
       'Clearance',
       'Project',
-      'MFA',
+      'Two-step',
       'Status',
       '',
     ]);
     expect(page.querySelectorAll('tbody tr')).toHaveLength(0);
+  });
+  it('sums up the people, skipping counts that are zero', async () => {
+    const { fixture, page } = render();
+    backend.expectOne('/api/ui/users').flush({
+      users: [
+        colleague,
+        { ...colleague, userId: 'b', mfaEnrolled: false },
+        { ...colleague, userId: 'c', status: 'locked' },
+      ],
+    });
+    await fixture.whenStable();
+    expect(page.querySelector('.page-sub')?.textContent?.trim()).toBe(
+      '3 people · 1 without two-step · 1 locked. New users set up their authenticator at first sign-in.',
+    );
+  });
+  it('sums up one person with nothing to flag', async () => {
+    const { page } = await loaded();
+    expect(page.querySelector('.page-sub')?.textContent?.trim()).toBe(
+      '1 person. New users set up their authenticator at first sign-in.',
+    );
   });
   it('filters accounts by their displayed fields', async () => {
     const { fixture, page } = await loaded();
@@ -104,6 +124,39 @@ describe('UsersPage', () => {
     search.dispatchEvent(new Event('input'));
     await fixture.whenStable();
     expect(page.querySelectorAll('tbody tr')).toHaveLength(1);
+    search.value = 'not set up';
+    search.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    expect(page.querySelectorAll('tbody tr')).toHaveLength(0);
+  });
+  it('offers Edit, Disable, Force logout, Reset MFA and Delete user, in that order, on an active row', async () => {
+    const { page } = await loaded();
+    expect(
+      [...page.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent?.trim()),
+    ).toEqual(['Edit', 'Disable', 'Force logout', 'Reset MFA', 'Delete user']);
+    expect(page.querySelector('.cell-verb > button')).toBeNull();
+  });
+  it('keeps Disable out of a disabled row and offers Enable beside the menu', async () => {
+    const { page } = await loaded({ ...colleague, status: 'disabled' });
+    expect(
+      [...page.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent?.trim()),
+    ).toEqual(['Edit', 'Force logout', 'Reset MFA', 'Delete user']);
+    expect(page.querySelector('.cell-verb > button')?.textContent?.trim()).toBe('Enable');
+  });
+  it('names the Disable dialog after the account, with its consequence and the audit note', async () => {
+    const { fixture, page } = await loaded();
+    button(page, 'Disable').click();
+    await fixture.whenStable();
+    const dialog = page.querySelector('dialog[open]');
+    if (!dialog) throw new Error('No confirmation');
+    expect(dialog.querySelector('h2')?.textContent).toBe('Disable ada?');
+    expect(dialog.textContent).toContain(
+      "Disable 'ada'? They will be signed out immediately and cannot sign in until re-enabled.",
+    );
+    expect(dialog.querySelector('.dialog-note')?.textContent).toBe('Saved to the audit log');
+    button(dialog, 'Cancel').click();
+    await fixture.whenStable();
+    backend.expectNone(`${path}/disable`);
   });
   it('offers only Edit and Force logout on your own row', async () => {
     const { page } = await loaded({ ...colleague, isYou: true });
@@ -126,21 +179,34 @@ describe('UsersPage', () => {
     expect(page.querySelector('tbody')?.textContent).toContain('Ada Staff');
   });
   it.each([
-    ['Disable', `${path}/disable`, 'Account disabled and its sessions revoked.'],
     [
+      'Disable',
+      'Disable and sign out',
+      `${path}/disable`,
+      'Account disabled and its sessions revoked.',
+    ],
+    [
+      'Reset MFA',
       'Reset MFA',
       `${path}/reset-mfa`,
       'MFA was reset — the user will enroll a new authenticator at their next sign-in.',
     ],
-    ['Force logout', `${path}/sign-out`, "All of the user's sessions were revoked."],
-    ['Delete user', path, 'User deleted.'],
+    [
+      'Force logout',
+      'End their sessions',
+      `${path}/sign-out`,
+      "All of the user's sessions were revoked.",
+    ],
+    ['Delete user', 'Delete user', path, 'User deleted.'],
   ])(
-    '%s confirms before writing, announces the outcome and reloads',
-    async (label, url, outcome) => {
+    '%s confirms with %s before writing, announces the outcome and reloads',
+    async (label, confirm, url, outcome) => {
       const { fixture, page } = await loaded();
       button(page, label).click();
       await fixture.whenStable();
-      button(page, 'Continue').click();
+      const dialog = page.querySelector('dialog[open]');
+      if (!dialog) throw new Error('No confirmation');
+      button(dialog, confirm).click();
       backend.expectOne(url).flush(null);
       fixture.detectChanges();
       backend.expectOne('/api/ui/users').flush({ users: [colleague] });
@@ -281,7 +347,7 @@ describe('UsersPage', () => {
     const { fixture, page } = await loaded();
     button(page, 'Force logout').click();
     await fixture.whenStable();
-    button(page, 'Continue').click();
+    button(page, 'End their sessions').click();
     backend
       .expectOne(`${path}/sign-out`)
       .flush({ code, title: 'The server outcome.' }, { status: 503, statusText: 'Unavailable' });

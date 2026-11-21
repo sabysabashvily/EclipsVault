@@ -13,28 +13,20 @@ export async function verifyMyAccess(
   await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
   const you = page
     .locator('section')
-    .filter({ has: page.getByRole('heading', { name: 'You', exact: true }) });
-  const clearance = account === 'administrator' ? 'Top Secret' : 'Standard';
-  await expect(you.locator('dd').nth(0)).toHaveText(
-    `${clearance} — you can open secrets classified up to ${clearance}.`,
-  );
-  await expect(you.locator('dd').nth(1)).toHaveText('GLOBAL');
-  await expect(you.locator('dd').nth(2)).toHaveText(
-    account === 'administrator'
-      ? 'Your TopSecret clearance lets you reach secrets in any project.'
-      : 'You can only reach secrets in GLOBAL, unless a secret is explicitly shared with you.',
-  );
-  const now = page
-    .locator('section')
-    .filter({ has: page.getByRole('heading', { name: 'Right now', exact: true }) });
+    .filter({ has: page.getByRole('heading', { name: 'You · right now', exact: true }) });
   const response = await page.request.get('/api/ui/access');
   expect(response.status()).toBe(200);
   const access: paths['/api/ui/access']['get']['responses'][200]['content']['application/json'] =
     await response.json();
   // Docker allocates the proxy's forwarded source address; it is not necessarily loopback.
   expect(access.isTrustedNetwork).toBe(true);
-  await expect(now.locator('dd').nth(0)).toHaveText(`${access.sourceIp} Trusted`);
-  await expect(now.locator('dd').nth(1)).toHaveText('Open now 00:00–24:00 UTC');
+  await expect(you.getByRole('definition')).toHaveText([
+    account === 'administrator' ? 'Top Secret' : 'Standard',
+    'GLOBAL',
+    account === 'administrator' ? 'Any project' : 'Only GLOBAL, unless shared with you',
+    `${access.sourceIp} Trusted`,
+    'Open now 00:00–24:00 UTC',
+  ]);
   const rows = page.locator('.access-matrix tbody tr');
   await expect(page.locator('.access-matrix thead th')).toHaveText([
     'Sensitivity',
@@ -59,9 +51,11 @@ export async function verifyMyAccess(
     ],
   };
   await expect(rows.locator('td')).toHaveText(grids[account].flat());
-  await expect(page.locator('.callout-warn')).toContainText(
-    'opening a decoy always trips the trap',
-  );
+  await expect(
+    page.getByRole('region', { name: 'Decoys always trip the trap', exact: true }),
+  ).toContainText('opening a decoy always trips the trap');
+  // Only a denied cell has something to explain.
+  await expect(page.getByRole('button', { name: /^Can open/ })).toHaveCount(0);
   await expect(page.locator('style, [style]')).toHaveCount(0);
   await page.evaluate(() => document.fonts.ready);
   const path = info.outputPath(`${account}-${theme}-access.png`);

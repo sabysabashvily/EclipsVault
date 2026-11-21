@@ -9,6 +9,7 @@ import { createSecret, openPalette } from './palette';
 import { SecretsList } from './secrets-list';
 import { SharedByMe } from './shared-by-me';
 import { SharedWithMe } from './shared-with-me';
+import { Users } from './users';
 import { freshTotp } from './totp';
 
 test.describe.configure({ mode: 'serial' });
@@ -80,12 +81,9 @@ test('a share whose recipient was later under-cleared is not listed for them', a
   // lowered after: the state a later change of role leaves behind.
   await createSecret(page, underCleared, 'Confidential');
   await shareWithRecipient(page, underCleared);
-  await page.goto('/Admin/Users');
-  await page
-    .getByRole('row')
-    .filter({ hasText: recipientUsername })
-    .getByRole('link', { name: 'Edit', exact: true })
-    .click();
+  const users = new Users(page);
+  await users.open();
+  await users.edit(recipientUsername);
   await page.getByLabel('Clearance').selectOption({ label: 'Standard' });
   await page.getByRole('button', { name: 'Save role', exact: true }).click();
   await expect(page).toHaveURL(/\/Admin\/Users$/);
@@ -141,7 +139,7 @@ test('with nothing shared, the keyboard reaches Go to your secrets and opens the
   await expect(page).toHaveURL(/\/Secrets$/);
 });
 
-test('after an issuer shares, the recipient lists it under the Legacy columns and opens Details', async ({
+test('after an issuer shares, the recipient lists it soonest-ending first and opens Details', async ({
   page,
   browserHealth,
 }) => {
@@ -154,33 +152,37 @@ test('after an issuer shares, the recipient lists it under the Legacy columns an
 
   const recipient = await (await browserHealth.newContext()).newPage();
   const shared = await openAsRecipient(recipient);
+  await expect(shared.context).toHaveText(
+    /^2 secrets shared with you · soonest ends \d{1,2} [A-Z][a-z]{2}( \d{4})?\.$/,
+  );
   await expect(shared.columns).toHaveText([
-    'Name',
-    'Project',
+    'Secret',
     'Environment',
     'Sensitivity',
     'Shared by',
     'Access until',
-    '',
   ]);
   await expect(shared.rows).toHaveCount(2);
-  await expect(shared.nameOf(shared.rows.first())).toHaveText('E2e_Shared_With_Me');
-  await expect(shared.nameOf(shared.rows.last())).toHaveText('E2e_Shared_With_Me_Expiring');
-  const withoutExpiry = shared.secret('E2e_Shared_With_Me');
-  await expect(shared.projectOf(withoutExpiry)).toHaveText('GLOBAL');
-  await expect(shared.environmentBadgeOf(withoutExpiry, 'Development')).toBeVisible();
-  await expect(shared.sensitivityBadgeOf(withoutExpiry, 'Internal')).toBeVisible();
-  await expect(shared.sharedByOf(withoutExpiry)).toHaveText('vault-admin');
-  await expect(shared.accessUntilOf(withoutExpiry)).toHaveText('no expiry');
+  await expect(shared.openOf(shared.rows.first())).toHaveText('E2e_Shared_With_Me_Expiring');
+  await expect(shared.openOf(shared.rows.last())).toHaveText('E2e_Shared_With_Me');
   const expiring = shared.secret('E2e_Shared_With_Me_Expiring');
-  await expect(shared.projectOf(expiring)).toHaveText('GLOBAL');
+  await expect(shared.secretCellOf(expiring)).toContainText('GLOBAL');
   await expect(shared.environmentBadgeOf(expiring, 'Development')).toBeVisible();
   await expect(shared.sensitivityBadgeOf(expiring, 'Internal')).toBeVisible();
   await expect(shared.sharedByOf(expiring)).toHaveText('vault-admin');
-  await expect(shared.accessUntilOf(expiring)).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+  // Shared for 7 days a moment ago, so it ends within the week: the pill counts the days left.
+  await expect(shared.accessUntilOf(expiring)).toHaveText(
+    /^In 6 days · \d{1,2} [A-Z][a-z]{2}( \d{4})?$/,
+  );
+  const withoutExpiry = shared.secret('E2e_Shared_With_Me');
+  await expect(shared.secretCellOf(withoutExpiry)).toContainText('GLOBAL');
+  await expect(shared.environmentBadgeOf(withoutExpiry, 'Development')).toBeVisible();
+  await expect(shared.sensitivityBadgeOf(withoutExpiry, 'Internal')).toBeVisible();
+  await expect(shared.sharedByOf(withoutExpiry)).toHaveText('vault-admin');
+  await expect(shared.accessUntilOf(withoutExpiry)).toHaveText('No expiry');
   await expect(recipient.getByText(underCleared, { exact: true })).toHaveCount(0);
 
-  await shared.openOf(shared.secret('E2e_Shared_With_Me')).click();
+  await shared.openOf(withoutExpiry).click();
   await expect(recipient).toHaveURL(/\/Secrets\/Details\/[0-9a-f-]{36}$/);
   await expect(
     recipient.getByRole('heading', { name: 'E2e_Shared_With_Me', exact: true }),
@@ -194,7 +196,7 @@ for (const theme of ['dark', 'light']) {
     const shared = await openAsRecipient(page);
     const row = shared.secret('E2e_Shared_With_Me');
     await expect(row).toBeVisible();
-    await expect(shared.projectOf(row)).toHaveText('GLOBAL');
+    await expect(shared.secretCellOf(row)).toContainText('GLOBAL');
     await expect(shared.sharedByOf(row)).toHaveText('vault-admin');
     await expect(shared.environmentBadgeOf(row, 'Development')).toBeVisible();
     await expect(shared.sensitivityBadgeOf(row, 'Internal')).toBeVisible();
@@ -205,16 +207,51 @@ for (const theme of ['dark', 'light']) {
   });
 }
 
-test('the keyboard reaches a row and opens its Legacy Details page', async ({ page }) => {
+test('the keyboard reaches the first row and opens its Legacy Details page', async ({ page }) => {
   const shared = await openAsRecipient(page);
-  await shared.introduction.click();
+  await shared.heading.click();
   await page.keyboard.press('Tab');
   await expect(shared.openOf(shared.rows.first())).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(
+    page.getByRole('heading', { name: 'E2e_Shared_With_Me_Expiring', exact: true }),
+  ).toBeVisible();
+});
+
+test('a click anywhere on a row, not only its name, opens the secret', async ({ page }) => {
+  const shared = await openAsRecipient(page);
+
+  // The name's link stretches over the row, so the cell is covered: click where a person would,
+  // and let the topmost element, the link, take it.
+  await shared.sharedByOf(shared.secret('E2e_Shared_With_Me')).click({ force: true });
+
+  await expect(page).toHaveURL(/\/Secrets\/Details\/[0-9a-f-]{36}$/);
+  await expect(
     page.getByRole('heading', { name: 'E2e_Shared_With_Me', exact: true }),
   ).toBeVisible();
 });
+
+test('on a phone each share is a card, its pills under the name', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  const shared = await openAsRecipient(page);
+  const row = shared.secret('E2e_Shared_With_Me');
+  await expect(shared.rows).toHaveCount(2);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
+  const name = (await shared.openOf(row).boundingBox())!;
+  const environment = (await shared.environmentBadgeOf(row, 'Development').boundingBox())!;
+  expect(environment.y).toBeGreaterThan(name.y + name.height);
+});
+
+for (const width of [300, 2000]) {
+  test(`Shared with me has no sideways scroll at ${width}px with shares listed`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const shared = await openAsRecipient(page);
+    await expect(shared.rows).toHaveCount(2);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  });
+}
 
 test('Shared with me is served as the titled Angular document', async ({ page }) => {
   await page.context().addCookies(recipientCookies);
