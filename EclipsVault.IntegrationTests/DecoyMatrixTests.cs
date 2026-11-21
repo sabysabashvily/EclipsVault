@@ -2,6 +2,9 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace EclipsVault.IntegrationTests;
@@ -56,8 +59,18 @@ public sealed class DecoyMatrixTests(VaultFixture vault)
         Assert.DoesNotContain(decoy.Name, await admin.GetStringAsync("/api/ui/secrets"));
         Assert.DoesNotContain(decoy.Name, await admin.GetStringAsync("/api/ui/secrets/search?q=it-decoy-lists"));
         // The Overview's recent events are the audit trail, which names decoys to administrators (ADR-0028).
-        var overview = await admin.GetFromJsonAsync<JsonElement>("/api/ui/overview");
-        Assert.DoesNotContain(decoy.Name, overview.GetProperty("expiringSoon").GetRawText());
+        // Its expiring list shows only the soonest few, so a member of the decoy's own project reads it.
+        const string project = "IT-DECOY-LISTS";
+        using (var scope = vault.Services.CreateScope())
+        {
+            var secretId = SecretSharing.SecretIdOf(decoy.Details);
+            await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().Secrets.Where(secret => secret.Id == secretId)
+                .ExecuteUpdateAsync(set => set.SetProperty(secret => secret.ProjectKey, project));
+        }
+
+        var member = await vault.SignInNewAccountAsync("it-decoy-lists-member", IPAddress.Parse("10.173.21.1"), project: project);
+        var overview = await member.Client.GetFromJsonAsync<JsonElement>("/api/ui/overview");
+        Assert.Empty(overview.GetProperty("expiringSoon").EnumerateArray());
         Assert.DoesNotContain(decoy.Name, await admin.GetStringAsync("/api/ui/shared-by-me"));
         Assert.DoesNotContain(decoy.Name, await AccessRequestsApi.ToReviewAsync(admin));
         Assert.DoesNotContain(decoy.Name, await holder.Client.GetStringAsync("/api/ui/shared-with-me"));

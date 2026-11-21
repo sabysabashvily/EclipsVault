@@ -19,7 +19,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Serilog.Core;
 using Xunit;
-using Xunit;
 
 namespace EclipsVault.IntegrationTests;
 
