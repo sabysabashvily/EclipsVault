@@ -22,21 +22,28 @@ public sealed class SignInPagesTests(VaultFixture vault)
         "frame-ancestors 'none'; form-action 'self'; base-uri 'self'" +
         "; require-trusted-types-for 'script'; trusted-types angular angular#bundler";
 
+    // Login's single sign-on form redirects to the identity provider, so its origin, and only it, joins form-action.
+    private const string LoginPolicy =
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
+        "font-src 'self'; connect-src 'self'; object-src 'none'; frame-src 'none'; " +
+        "frame-ancestors 'none'; form-action 'self' https://idp.example.test; base-uri 'self'" +
+        "; require-trusted-types-for 'script'; trusted-types angular angular#bundler";
+
     [Theory]
-    [InlineData("GET", "/Account/Login")]
-    [InlineData("HEAD", "/Account/Login")]
-    [InlineData("GET", "/account/login/")]
-    [InlineData("GET", "/Account/Login?ReturnUrl=%2FAccess")]
-    [InlineData("GET", "/Account/Recover")]
-    [InlineData("HEAD", "/Account/Recover")]
-    [InlineData("GET", "/account/recover/")]
-    public async Task An_anonymous_visitor_gets_an_anonymous_sign_in_document_with_a_request_token(string method, string path)
+    [InlineData("GET", "/Account/Login", LoginPolicy)]
+    [InlineData("HEAD", "/Account/Login", LoginPolicy)]
+    [InlineData("GET", "/account/login/", LoginPolicy)]
+    [InlineData("GET", "/Account/Login?ReturnUrl=%2FAccess", LoginPolicy)]
+    [InlineData("GET", "/Account/Recover", AngularPolicy)]
+    [InlineData("HEAD", "/Account/Recover", AngularPolicy)]
+    [InlineData("GET", "/account/recover/", AngularPolicy)]
+    public async Task An_anonymous_visitor_gets_an_anonymous_sign_in_document_with_a_request_token(string method, string path, string policy)
     {
         var browser = vault.CreateSession(source: NextSource());
 
         using var response = await browser.Client.SendAsync(new HttpRequestMessage(new HttpMethod(method), path));
 
-        AssertSignInDocument(response);
+        AssertSignInDocument(response, policy);
     }
 
     [Theory]
@@ -193,11 +200,11 @@ public sealed class SignInPagesTests(VaultFixture vault)
     private static IPAddress NextSource()
         => IPAddress.Parse("2001:db8:175::" + Interlocked.Increment(ref _nextSource).ToString("x", CultureInfo.InvariantCulture));
 
-    private static void AssertSignInDocument(HttpResponseMessage response)
+    private static void AssertSignInDocument(HttpResponseMessage response, string policy = AngularPolicy)
     {
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
-        Assert.Equal(AngularPolicy, Assert.Single(response.Headers.GetValues("Content-Security-Policy")));
+        Assert.Equal(policy, Assert.Single(response.Headers.GetValues("Content-Security-Policy")));
         Assert.True(response.Headers.CacheControl?.NoStore);
         var token = Assert.Single(SetCookieHeaderValue.ParseList(response.Headers.GetValues(HeaderNames.SetCookie).ToList()),
             cookie => cookie.Name == "XSRF-TOKEN");

@@ -124,7 +124,8 @@ public static class AngularUiRoutes
     private static IResult ServeIndex(HttpContext context, IWebHostEnvironment environment)
         => Results.File(PrepareIndex(context, environment), "text/html; charset=utf-8");
 
-    private static IResult ServeLogin(HttpContext context, IWebHostEnvironment environment, IAntiforgery antiforgery, string? returnUrl)
+    private static IResult ServeLogin(
+        HttpContext context, IWebHostEnvironment environment, IAntiforgery antiforgery, ISsoAvailability sso, string? returnUrl)
     {
         if (context.User.Identity?.IsAuthenticated == true)
         {
@@ -138,6 +139,11 @@ public static class AngularUiRoutes
         // Only a page load takes the one-time notice; a HEAD request or probe must not spend it.
         var notice = HttpMethods.IsGet(context.Request.Method) ? SignInNotice.Take(context) : null;
         var index = PrepareIndex(context, environment);
+        // Only Login starts single sign-on, whose form post redirects to the identity provider.
+        if (sso.IdentityProviderOrigin is { Length: > 0 } origin)
+        {
+            context.Response.Headers["Content-Security-Policy"] = SecurityHeadersMiddleware.AngularContentSecurityPolicyWithFormTarget(origin);
+        }
         return notice is null
             ? Results.File(index, "text/html; charset=utf-8")
             : Results.Content(WithNotice(File.ReadAllText(index), notice), "text/html; charset=utf-8");

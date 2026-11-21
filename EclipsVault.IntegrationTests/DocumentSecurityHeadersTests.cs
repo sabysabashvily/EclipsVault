@@ -15,6 +15,13 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
     private const string AngularPolicy = LegacyPolicy +
         "; require-trusted-types-for 'script'; trusted-types angular angular#bundler";
 
+    // This vault offers single sign-on, whose form on Login redirects to the identity provider.
+    private const string LoginPolicy =
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
+        "font-src 'self'; connect-src 'self'; object-src 'none'; frame-src 'none'; " +
+        "frame-ancestors 'none'; form-action 'self' https://idp.example.test; base-uri 'self'" +
+        "; require-trusted-types-for 'script'; trusted-types angular angular#bundler";
+
     [Theory]
     [InlineData("/Profile")]
     [InlineData("/pRoFiLe/InDeX")]
@@ -103,6 +110,6 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         Assert.Equal("text/html", login.Content.Headers.ContentType?.MediaType);
         // The sign-in page itself is an Angular document (#175).
-        Assert.Equal(AngularPolicy, Assert.Single(login.Headers.GetValues("Content-Security-Policy")));
+        Assert.Equal(LoginPolicy, Assert.Single(login.Headers.GetValues("Content-Security-Policy")));
     }
 }

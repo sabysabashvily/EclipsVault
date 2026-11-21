@@ -71,6 +71,9 @@ public sealed partial class VaultFixture : IAsyncLifetime
 
     public bool ProductionWindowNeverOpens { get; init; }
 
+    /// <summary>A deployment without single sign-on; every other vault offers it.</summary>
+    public bool SsoDisabled { get; init; }
+
     /// <summary>The token the vault reads from ECLIPSVAULT_LICENSE at startup; none means unlicensed.</summary>
     public string? License { get; init; }
 
@@ -113,7 +116,7 @@ public sealed partial class VaultFixture : IAsyncLifetime
         SetEnvironment("DynamicSecrets__ReapIntervalSeconds", "86400");
         // Register the production OIDC correlation cookie for HTTP callback scoping tests.
         // Those start after the IdP assertion, so this authority is never contacted.
-        SetEnvironment("Sso__Enabled", "true");
+        SetEnvironment("Sso__Enabled", SsoDisabled ? "false" : "true");
         SetEnvironment("Sso__TrustIdpMultiFactor", TrustIdpMfa.ToString());
         SetEnvironment("Sso__Authority", "https://idp.example.test/realms/integration");
         SetEnvironment("Sso__ClientId", "integration-vault");
