@@ -478,6 +478,41 @@ A fresh re-check of the fixes found no defects. GPT reviews the whole part in #1
 `logs/ticket-169/final-report.md` and `review-ledger.md` (ignored). To restart, read this section; ticket 5
 (#170) starts after the coordinator accepts this one.
 
+## Delivery: 7b ticket 5 (#170)
+
+Branch `area-7b-secret-details`, from `04afbe3`. Claude Opus 5.5 high verified the part and prepared its PR.
+
+Commits:
+- `f2cc2a4` merges `main` `de3a968` (part 7c). `SqlServerBackend`'s nothing-sent callback now receives the
+  failure, so managed rotation reports a certain refusal with its cause. Test vaults have one SQL Server target
+  (7c's `DynamicSecretsTarget`). Each resolution is in `logs/ticket-170/review-ledger.md`.
+- `043733f` and part of `12a2bfb`: `/Account/Denied` is now Angular, so the checks that need a Legacy page
+  open the error page (`/Home/Error?code=404`), the last signed-in Legacy page until Area 9. Browser specs
+  name it once in `e2e/legacy-shell.ts`, which also declares the 404 the browser logs; .NET tests in
+  `VaultFixture.LegacyShell`. Area 9 changes those two lines.
+- `1f06e27`: an unknown secret answers eligibility and filing with the decoy's 404 `not_found`, byte for
+  byte (owner, 20 Nov); `secret_not_found` is gone. A decoy still revokes the session and blocks the range.
+- `12a2bfb` and `fa4278b`: review fixes, and `DecoyMatrixTests`: a secret made a decoy after it has a
+  version, a share and a pending request trips on all nine by-id endpoints, eligibility and filing, each
+  answer equal to an unknown id's, and no secret list shows it.
+- CONTEXT.md, ADR-0017, ADR-0031 and decisions.md match the final code; ADR-0028 already did.
+
+Reviews of `de3a968...HEAD`: GPT Sol 6.1 was out until 22 Nov 17:33, so security, Standards and Spec ran
+on fresh Claude Opus 5.5 high sessions standing in for it. Security approved (two lows fixed); Standards
+1 must-fix and 4 nits (fixed, Legacy-parity comment wording kept); Spec 0 not met, 4 partly met (a browser
+test wrongly moved to the error page, the decoy matrix and doc details fixed; the rest listed for the owner).
+One re-check confirmed every fix; its two new items were fixed in `fa4278b`.
+
+Local checks on the final source: `scripts/check.sh` (unit) and the part's PostgreSQL filter, 632 of 632
+at `12a2bfb`, then `DecoyMatrixTests` with `OverviewApiTests` 28 of 28 at `fa4278b`; `dotnet format`;
+both pending-model checks; the hook tests; Angular lint (with the e2e type check), prettier, 680 Vitest,
+build checks, `check:api-types`, build and `npm audit --audit-level=high`. Browser specs run only in CI;
+early CI 44920519912 on `043733f` found the .NET and browser Legacy-shell failures fixed since.
+
+To restart: read this section and `logs/ticket-170/final-report.md`. The PR body is
+`logs/ticket-170/pr-body.md`; the coordinator fills its final head and CI run, pushes, runs CI with both
+databases, the full browser suite and `e2e:verify-guards`, and opens the PR.
+
 ## Delivery: 7c ticket 1 (#171)
 
 #171 started from `fb39fc2` (7a merged, #186). Issuing and revoking dynamic credentials now follow
