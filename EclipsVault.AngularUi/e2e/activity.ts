@@ -6,51 +6,46 @@ export type Activity =
   paths['/api/ui/activity']['get']['responses'][200]['content']['application/json'];
 export type ActivityItem = Activity['items'][number];
 
-/** One feed row as a person reads it, with the accent class it carries. */
+/** One activity row as a person reads it. */
 export interface FeedRow {
   title: string;
-  badges: string[];
-  resource: { text: string; tooltip: string | null } | null;
-  meta: string;
+  kind: string;
+  tone: string;
+  resource: string | null;
+  from: string;
   time: string;
-  tooltip: string | null;
-  accent: string;
 }
 
-/** A real row expected in the administrator's feed: its title, category badge and accent class. */
+/** A real row expected on My activity: its title, kind and status-pill tone. */
 export interface ExpectedRow {
   title: string;
   category: string;
-  accent: string;
+  tone: string;
 }
 
 export async function feedRows(page: Page): Promise<FeedRow[]> {
-  return page.locator('.activity-feed > li').evaluateAll((items) =>
-    items.map((item) => {
-      const resource = item.querySelector('.feed-resource');
-      const time = item.querySelector('time.feed-time')!;
+  return page.locator('.activity-table tbody tr').evaluateAll((rows) =>
+    rows.map((row) => {
+      const resource = row.querySelector('.activity-resource');
+      const badge = row.querySelector('.badge');
+      const time = row.querySelector('time');
       return {
-        title: item.querySelector('.feed-title')!.textContent!.trim(),
-        badges: [...item.querySelectorAll('.feed-title-row > .badge')].map((badge) =>
-          badge.textContent!.trim(),
-        ),
-        resource: resource
-          ? { text: resource.textContent!.trim(), tooltip: resource.getAttribute('title') }
-          : null,
-        meta: item.querySelector('.feed-meta')!.textContent!.trim(),
-        time: time.textContent!.trim(),
-        tooltip: time.getAttribute('title'),
-        accent: [...item.classList].filter((name) => name !== 'feed-item').join(' '),
+        title: row.querySelector('.activity-title')?.textContent?.trim() ?? '',
+        kind: badge?.textContent?.trim() ?? '',
+        tone: [...(badge?.classList ?? [])].find((name) => name.startsWith('tone-')) ?? '',
+        resource: resource?.textContent?.trim() ?? null,
+        from: row.querySelector('td:last-child')?.textContent?.trim() ?? '',
+        time: time?.textContent?.trim() ?? '',
       };
     }),
   );
 }
 
-/** The feed row that records `title` for the resource named `resource`. */
+/** The row that records `title` for the resource named `resource`. */
 export function feedEntry(page: Page, title: string, resource: string): Locator {
   return page
     .getByRole('main')
-    .getByRole('listitem')
+    .getByRole('row')
     .filter({ hasText: title })
     .filter({ hasText: resource });
 }
@@ -67,12 +62,7 @@ export async function svgShapes(icons: Locator): Promise<string[][]> {
   );
 }
 
-/** The geometry inside each row's icon chip, so a category's icon can be compared literally. */
-export async function feedIcons(page: Page): Promise<string[][]> {
-  return svgShapes(page.locator('.activity-feed .feed-icon svg'));
-}
-
-/** The UTC tooltip the Legacy page wrote for a timestamp, restated literally. */
+/** The exact UTC time the activity table shows for a timestamp. */
 export function utc(timestampUtc: string): string {
   const date = new Date(timestampUtc);
   const two = (value: number) => String(value).padStart(2, '0');
@@ -128,17 +118,19 @@ export async function verifyMyActivity(
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
   await expect(page).toHaveTitle('My activity — EclipsVault');
   await expect(page.getByRole('heading', { name: 'My activity', exact: true })).toBeVisible();
+  const notable = rows.filter(({ tone }) => tone !== 'muted').length;
+  const notableSentence = notable === 0 ? '' : `${notable} notable on this page. `;
   await expect(page.locator('.page-sub')).toHaveText(
-    'Everything you have done in EclipsVault, newest first — sign-ins, secret reveals, and account changes. ' +
-      "Only your own actions appear here. Spot something you don't recognise? " +
+    `Newest first. ${notableSentence}Only your own actions are listed. This wasn't you? ` +
       'Change your password or sign out everywhere.',
   );
   await expect(page.locator('.page-sub a')).toHaveAttribute('href', '/Profile');
+  await expect(page.getByText('Newest first', { exact: true }).last()).toBeVisible();
 
   // Docker allocates the proxy's forwarded source address; every row of this session comes from it.
   const access = await page.request.get('/api/ui/access');
   const sourceIp: string = (await access.json()).sourceIp;
-  await expect(page.locator('.activity-feed > li')).toHaveCount(rows.length);
+  await expect(page.locator('.activity-table tbody tr')).toHaveCount(rows.length);
   // Read the rows' timestamps from the API itself: the body of the page's own fetch is not always
   // still held by the browser once the page has consumed it.
   const response = await page.request.get('/api/ui/activity');
@@ -146,23 +138,13 @@ export async function verifyMyActivity(
   const activity: Activity = await response.json();
   expect(activity.items).toHaveLength(rows.length);
   const shown = await feedRows(page);
-  expect(
-    shown.map(({ title, badges, accent }) => ({ title, category: badges[0], accent })),
-  ).toEqual(rows);
+  expect(shown.map(({ title, kind, tone }) => ({ title, category: kind, tone }))).toEqual(
+    rows.map((row) => ({ ...row, tone: `tone-${row.tone}` })),
+  );
   for (const [i, row] of shown.entries()) {
-    expect(row.badges).toHaveLength(1);
     expect(row.resource).toBeNull();
-    expect(row.meta).toBe(`from ${sourceIp}`);
-    expect(row.time).toMatch(/^(just now|\d{1,2}m ago)$/);
-    expect(row.tooltip).toBe(utc(activity.items[i]!.timestampUtc));
-  }
-  const notable = rows.filter(({ accent }) => accent !== 'sev-muted').length;
-  const badge = page.locator('.page-header > .badge');
-  if (notable) {
-    await expect(badge).toHaveText(`${notable} notable`);
-    await expect(badge).toHaveAttribute('title', 'Notable or higher-severity entries on this page');
-  } else {
-    await expect(badge).toHaveCount(0);
+    expect(row.from).toBe(sourceIp);
+    expect(row.time).toBe(utc(activity.items[i]!.timestampUtc));
   }
   await expect(page.locator('.pager')).toHaveCount(0);
   await expect(page.locator('style, [style]')).toHaveCount(0);
