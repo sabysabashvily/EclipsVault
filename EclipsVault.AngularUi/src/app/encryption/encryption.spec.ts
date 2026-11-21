@@ -36,16 +36,17 @@ const stranded: Encryption = {
   awaitingRotation: 5,
   onMissingKeys: 2,
 };
-// Under a KMS engine, earlier key versions aren't loaded here, yet the server counts their items as
-// waiting, not missing.
+// As the server reports Vault Transit: the environment master key is current, and every transit key
+// version is not loaded here, yet the server counts their items as waiting, not missing.
 const transit: Encryption = {
-  currentKekId: 'transit:eclipsvault:v2',
-  loadedKekIds: ['transit:eclipsvault:v2'],
+  currentKekId: 'kek-1a2b3c4d',
+  loadedKekIds: ['kek-1a2b3c4d'],
   keys: [
-    { kekId: 'transit:eclipsvault:v2', status: 'current', secrets: 3, versions: 0 },
-    { kekId: 'transit:eclipsvault:v1', status: 'not_loaded', secrets: 10, versions: 2 },
+    { kekId: 'kek-1a2b3c4d', status: 'current', secrets: 0, versions: 0 },
+    { kekId: 'vault:eclipsvault:v1', status: 'not_loaded', secrets: 10, versions: 2 },
+    { kekId: 'vault:eclipsvault:v2', status: 'not_loaded', secrets: 3, versions: 0 },
   ],
-  awaitingRotation: 12,
+  awaitingRotation: 15,
   onMissingKeys: 0,
 };
 const emptied: Encryption = {
@@ -205,17 +206,18 @@ describe('Encryption keys', () => {
         text(figure.querySelector('.stat-detail')),
       ]),
     ).toEqual([
-      ['Waiting to re-wrap', '12', '10 secrets and 2 versions'],
-      ['On the current key', '3', 'of 15 items in the vault'],
+      ['Waiting to re-wrap', '15', '13 secrets and 2 versions'],
+      ['On the current key', '0', 'of 15 items in the vault'],
     ]);
-    expect(rewrapButtons(page)).toEqual(['Re-wrap 12 items']);
+    expect(rewrapButtons(page)).toEqual(['Re-wrap 15 items']);
     expect(
       [...page.querySelectorAll('tbody tr')].map((row) =>
         [...row.querySelectorAll('.key-role, .badge')].map((cell) => text(cell)),
       ),
     ).toEqual([
       ['Wraps every new secret', 'Current'],
-      ['An earlier key version · re-wrap moves its items to the current key', 'Retired'],
+      ['Held by the key service · a re-wrap moves items to its latest version', 'KMS version'],
+      ['Held by the key service · a re-wrap moves items to its latest version', 'KMS version'],
     ]);
   });
 

@@ -41,11 +41,12 @@ export function roleOf(
       label: 'Not loaded',
       role: "Not on this server · its items can't be read",
     };
+  // A KMS key version. The API doesn't say which is the latest, so the words hold for every one.
   if (key.status === 'not_loaded')
     return {
-      tone: 'warn',
-      label: 'Retired',
-      role: 'An earlier key version · re-wrap moves its items to the current key',
+      tone: 'muted',
+      label: 'KMS version',
+      role: 'Held by the key service · a re-wrap moves items to its latest version',
     };
   return Number(key.secrets) + Number(key.versions) > 0
     ? {
