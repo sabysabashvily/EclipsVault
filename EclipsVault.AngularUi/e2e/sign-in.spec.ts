@@ -1387,13 +1387,12 @@ test('Sign-in history shows its empty state, and an unfamiliar-location attempt 
     // The notice leads, then the figures, then the events.
     const notice = signInNotice(page);
     const top = async (box: Promise<{ y: number } | null>) => (await box)!.y;
-    const order = [
-      await top(notice.boundingBox()),
-      // eslint-disable-next-line playwright/no-raw-locators -- The figures strip has no role or name of its own.
-      await top(page.locator('.stat-grid').boundingBox()),
-      await top(page.getByRole('table').boundingBox()),
-    ];
-    expect(order).toEqual([...order].sort((a, b) => a - b));
+    const noticeTop = await top(notice.boundingBox());
+    // eslint-disable-next-line playwright/no-raw-locators -- The figures strip has no role or name of its own.
+    const figuresTop = await top(page.locator('.stat-grid').boundingBox());
+    const tableTop = await top(page.getByRole('table').boundingBox());
+    expect(noticeTop).toBeLessThan(figuresTop);
+    expect(figuresTop).toBeLessThan(tableTop);
     await expect(notice.getByRole('heading', { level: 2 })).toHaveText(
       "Don't recognise these attempts?",
     );
