@@ -100,7 +100,7 @@
 
   @if (model.waiting > 0 || model.missing > 0) {
     <section class="panel action-strip" aria-label="Re-wrap">
-      <div class="stat-grid figures">
+      <div class="stat-grid">
         @if (model.missing > 0) {
           <div class="stat-card alert">
             <span class="stat-value">{{ model.missing }}</span>

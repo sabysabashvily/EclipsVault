@@ -185,12 +185,12 @@ describe('Overview', () => {
     );
   });
 
-  it('counts every expiring secret in the notice, not only the rows listed', async () => {
+  it('counts every expiring secret in the lede, not only the rows listed', async () => {
     const { page } = await loaded(administrator, administratorAreas);
-    expect(text(page.querySelector('.notice'))).toBe(
+    expect(text(page.querySelector('.panel-lede'))).toBe(
       '9 secrets will expire within 7 days and be shredded automatically. Rotate them to extend their life.',
     );
-    expect(texts(page, 'tbody tr td:first-child')).toEqual([
+    expect(texts(page, '.attention-title')).toEqual([
       'WEB_TLS_CERT',
       'SMTP_PASSWORD',
       'CI_DEPLOY_TOKEN',
@@ -199,14 +199,14 @@ describe('Overview', () => {
 
   it('names a single expiring secret in the singular', async () => {
     const { page } = await loaded(member, memberAreas);
-    expect(text(page.querySelector('.notice'))).toBe(
+    expect(text(page.querySelector('.panel-lede'))).toBe(
       '1 secret will expire within 7 days and be shredded automatically. Rotate them to extend their life.',
     );
   });
 
-  it('shows no notice and no Expiring soon panel when nothing expires', async () => {
+  it('shows no Expiring soon panel when nothing expires', async () => {
     const { page } = await loaded(quiet, memberAreas);
-    expect(page.querySelector('.notice')).toBeNull();
+    expect(page.querySelector('.panel-lede')).toBeNull();
     expect(texts(page, 'h2')).toEqual(['Your recent activity', 'Quick actions']);
     expect(text(page.querySelector('.panel .muted'))).toBe('No recorded activity yet.');
   });
@@ -221,18 +221,21 @@ describe('Overview', () => {
     ]);
   });
 
-  it('shows the activity, Quick actions and Expiring soon panels when secrets expire', async () => {
+  it('puts Expiring soon ahead of activity and Quick actions when secrets expire', async () => {
     const { page } = await loaded(administrator, administratorAreas);
-    expect(texts(page, 'h2')).toEqual(['Recent activity', 'Quick actions', 'Expiring soon']);
+    expect(texts(page, 'h2')).toEqual(['Expiring soon', 'Recent activity', 'Quick actions']);
   });
 
-  it("gives an administrator the vault's activity", async () => {
+  it("gives an administrator the vault's activity and marks critical events with an icon and word", async () => {
     const { page } = await loaded(administrator, administratorAreas);
-    expect(text(page.querySelector('.panel h2'))).toBe('Recent activity');
+    expect(text(page.querySelector('#overview-activity'))).toBe('Recent activity');
     expect(texts(page, '.activity-item')).toEqual([
-      'Honey token FINANCE_DECOY_KEY mallory · 45m ago',
+      'Critical Honey token FINANCE_DECOY_KEY mallory · 45m ago',
       'Access denied PAYMENTS_DB_PASSWORD alice · 2d ago',
     ]);
+    const items = [...page.querySelectorAll('.activity-item')];
+    expect(items[0]?.querySelector('.critical-mark svg')).not.toBeNull();
+    expect(items[1]?.querySelector('.critical-mark')).toBeNull();
   });
 
   it('links an administrator to the audit log and the administration pages', async () => {
@@ -243,15 +246,15 @@ describe('Overview', () => {
       ['9 Expiring within 7 days Shredded automatically at TTL', '/Secrets'],
       ['2 Critical alerts (24 h) Review the audit log →', '/Audit'],
       ['7 Staff accounts Manage users →', '/Admin/Users'],
+      ['Rotate', '/Secrets/Details/00000000-0000-4000-8000-000000000001'],
+      ['Rotate', '/Secrets/Details/00000000-0000-4000-8000-000000000002'],
+      ['Rotate', '/Secrets/Details/00000000-0000-4000-8000-000000000003'],
+      ['All secrets', '/Secrets'],
       ['Full audit log', '/Audit'],
       ['Browse secrets Metadata only — reveals are audited', '/Secrets'],
       ['Store a new secret AES-256-GCM envelope encryption', '/Secrets/Create'],
       ['Provision a user TOTP enrollment at first sign-in', '/Admin/CreateUser'],
       ['Manage trusted networks Trust your current IP, lift blocks', '/Admin/Networks'],
-      ['All secrets', '/Secrets'],
-      ['Rotate', '/Secrets/Details/00000000-0000-4000-8000-000000000001'],
-      ['Rotate', '/Secrets/Details/00000000-0000-4000-8000-000000000002'],
-      ['Rotate', '/Secrets/Details/00000000-0000-4000-8000-000000000003'],
     ]);
   });
 
@@ -266,7 +269,7 @@ describe('Overview', () => {
 
   it('gives a non-administrator their own activity, its denial without the secret', async () => {
     const { page } = await loaded(member, memberAreas);
-    expect(text(page.querySelector('.panel h2'))).toBe('Your recent activity');
+    expect(text(page.querySelector('#overview-activity'))).toBe('Your recent activity');
     expect(texts(page, '.activity-item')).toEqual(['Access denied Secret alice · just now']);
   });
 
@@ -276,10 +279,10 @@ describe('Overview', () => {
       ['New secret', '/Secrets/Create'],
       ['1 Active secrets 1 dev · 0 staging · 0 prod', '/Secrets'],
       ['1 Expiring within 7 days Shredded automatically at TTL', '/Secrets'],
+      ['Rotate', '/Secrets/Details/00000000-0000-4000-8000-000000000004'],
+      ['All secrets', '/Secrets'],
       ['Browse secrets Metadata only — reveals are audited', '/Secrets'],
       ['Store a new secret AES-256-GCM envelope encryption', '/Secrets/Create'],
-      ['All secrets', '/Secrets'],
-      ['Rotate', '/Secrets/Details/00000000-0000-4000-8000-000000000004'],
     ]);
   });
 
@@ -290,14 +293,18 @@ describe('Overview', () => {
     );
   });
 
-  it('shows each expiring secret with its UTC expiry and how soon it expires', async () => {
+  it('shows each expiring secret with its environment and expiry pill', async () => {
     const { page } = await loaded(administrator, administratorAreas);
     expect(
-      [...page.querySelectorAll('tbody tr')].map((row) => texts(row, 'td').slice(0, 3)),
+      [...page.querySelectorAll('.attention-list > li')].map((item) => [
+        text(item.querySelector('.attention-title')),
+        text(item.querySelector('.attention-meta')),
+        text(item.querySelector('.attention-chip')),
+      ]),
     ).toEqual([
-      ['WEB_TLS_CERT', 'Production', '2026-11-13 11:00 now'],
-      ['SMTP_PASSWORD', 'Staging', '2026-11-13 12:20 in 1h'],
-      ['CI_DEPLOY_TOKEN', 'Development', '2026-11-16 09:30 in 2d'],
+      ['WEB_TLS_CERT', 'Production', 'Expired · 13 Nov'],
+      ['SMTP_PASSWORD', 'Staging', 'In 1 hour · 13 Nov'],
+      ['CI_DEPLOY_TOKEN', 'Development', 'In 2 days · 16 Nov'],
     ]);
   });
 });

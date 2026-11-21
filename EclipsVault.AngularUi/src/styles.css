@@ -884,7 +884,23 @@ body:has(.mobile-navigation[open]) {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
   margin-bottom: 1rem;
+}
+.panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.panel-lede {
+  margin: -0.25rem 0 1.1rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+.all-link {
+  margin-top: 1rem;
 }
 
 .two-col {
@@ -916,60 +932,58 @@ body:has(.mobile-navigation[open]) {
   }
 }
 
-/* ---- Stat cards -------------------------------------------------- */
+/* ---- Figures ----------------------------------------------------- */
+/* One card whose tiles are divided by hairlines (the grid's gap shows its border colour), one tile
+   per figure. Label on top, the number, then its context; two columns on a phone, one below 380px. */
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
-  gap: 1rem;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 1px;
+  overflow: hidden;
   margin-bottom: 1.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--border);
+  box-shadow: var(--shadow-card);
 }
 
 .stat-card {
   background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 1.2rem 1.35rem;
+  padding: 1.1rem 1.3rem;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
   min-width: 0;
   color: var(--text);
-  box-shadow: var(--shadow-card);
-  transition:
-    transform var(--dur-press) ease-out,
-    border-color var(--dur) var(--ease),
-    background var(--dur) var(--ease);
+  transition: background var(--dur) var(--ease);
 }
 
-/* Only the linked cards respond: the response is the affordance that says this one goes
-   somewhere, so moving a plain stat would be a promise the card cannot keep. */
+/* Only the linked tiles respond: the response is the affordance that says this one goes
+   somewhere, so moving a plain figure would be a promise the tile cannot keep. */
 a.stat-card:hover {
-  border-color: var(--border-strong);
   background: var(--bg-hover);
   color: var(--text);
   text-decoration: none;
 }
-a.stat-card:active {
-  transform: scale(0.98);
-}
 .stat-card.attention {
-  border-color: transparent;
-  background: var(--warn-soft);
+  background: linear-gradient(var(--warn-soft), var(--warn-soft)), var(--bg-raised);
 }
 .stat-card.alert {
-  border-color: transparent;
-  background: var(--danger-wash);
+  background: linear-gradient(var(--danger-wash), var(--danger-wash)), var(--bg-raised);
 }
 
 /* Big numbers at regular weight: size carries the hierarchy, not boldness. */
 .stat-value {
-  font-size: clamp(1.9rem, 1.5rem + 1.2vw, 2.6rem);
+  font-size: 3rem;
   font-weight: 400;
   line-height: 1.1;
   letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
 }
 .stat-label {
-  font-size: 0.86rem;
+  order: -1;
+  font-size: 0.8125rem;
   color: var(--text-muted);
   font-weight: 400;
 }
@@ -977,45 +991,18 @@ a.stat-card:active {
   font-size: 0.8rem;
   color: var(--text-muted);
 }
-
-/* Figures: one card whose tiles are divided by hairlines (the grid's gap shows its border colour).
-   Label on top, the number, then its context; two columns on a phone, one below 380px. */
-.stat-grid.figures {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--border);
-  box-shadow: var(--shadow-card);
-}
-.figures .stat-card {
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-  padding: 1.1rem 1.3rem;
-}
-.figures .stat-card.attention {
-  background: linear-gradient(var(--warn-soft), var(--warn-soft)), var(--bg-raised);
-}
-.figures .stat-card.alert {
-  background: linear-gradient(var(--danger-wash), var(--danger-wash)), var(--bg-raised);
-}
-.figures .stat-label {
-  order: -1;
-  font-size: 0.8125rem;
-}
-.figures .stat-value {
-  font-size: 3rem;
-  font-variant-numeric: tabular-nums;
-}
 @media (max-width: 767px) {
-  .stat-grid.figures {
+  .stat-grid {
+    grid-auto-flow: row;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* An odd last figure takes the whole row rather than leaving a hairline-coloured gap. */
+  .stat-card:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
   }
 }
 @media (max-width: 379px) {
-  .stat-grid.figures {
+  .stat-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -2187,7 +2174,8 @@ tr:has(.row-link) [title] {
 .activity-item {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.7rem;
   padding: 0.6rem 0.2rem;
   border-bottom: 1px solid var(--border);
   font-size: 0.88rem;
@@ -2196,13 +2184,33 @@ tr:has(.row-link) [title] {
   border-bottom: none;
 }
 .activity-item.critical {
-  background: var(--danger-soft);
+  background: var(--danger-wash);
   border-radius: var(--radius-sm);
   padding-left: 0.55rem;
   padding-right: 0.55rem;
 }
+/* A critical event says so in words and an icon, not only by the row's red tint. */
+.critical-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--danger);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.critical-mark svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .activity-target {
-  flex: 1;
+  flex: 1 1 8rem;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2225,17 +2233,14 @@ tr:has(.row-link) [title] {
   flex-direction: column;
   gap: 0.12rem;
   padding: 0.8rem 1rem;
-  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text);
-  background: var(--bg-inset);
+  background: var(--bg-raised-2);
   transition:
-    border-color var(--dur) var(--ease),
     background var(--dur) var(--ease),
     transform var(--dur) var(--ease);
 }
 .quick-action:hover {
-  border-color: var(--accent-line);
   background: var(--bg-hover);
   color: var(--text);
   text-decoration: none;
@@ -2358,7 +2363,7 @@ tr:has(.row-link) [title] {
   align-items: stretch;
   container: strip / inline-size;
 }
-.action-strip .stat-grid.figures {
+.action-strip .stat-grid {
   margin-bottom: 0;
 }
 @media (max-width: 1100px) {
