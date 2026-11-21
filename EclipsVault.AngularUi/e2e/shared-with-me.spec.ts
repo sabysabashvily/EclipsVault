@@ -211,6 +211,12 @@ test('the keyboard reaches the first row and opens its Legacy Details page', asy
   const shared = await openAsRecipient(page);
   await shared.heading.click();
   await page.keyboard.press('Tab');
+  await expect(shared.tab('All secrets')).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(shared.tab('Shared with me')).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(shared.tab('Shared by me')).toBeFocused();
+  await page.keyboard.press('Tab');
   await expect(shared.openOf(shared.rows.first())).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(

@@ -219,11 +219,12 @@ test('deleting returns to the list, which says so', async ({ page }) => {
   await details.confirm('Delete secret');
 
   await expect(page).toHaveURL(/\/Secrets$/);
-  await expect(new SecretsList(page).heading).toBeVisible();
+  const list = new SecretsList(page);
+  await expect(list.heading).toBeVisible();
   await expect(
     page.getByText('Secret deleted. The action was recorded in the audit trail.', { exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole('cell', { name: deleted, exact: true })).toHaveCount(0);
+  await expect(list.secret(deleted)).toHaveCount(0);
 });
 
 for (const theme of ['dark', 'light']) {

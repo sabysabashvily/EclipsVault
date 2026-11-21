@@ -265,22 +265,25 @@ test('the keyboard fills New secret in order, stores it, and opens it from the l
   await expect(new SecretDetails(page, typed).heading).toBeVisible();
 });
 
-const now = Date.now();
 const day = 24 * 3_600_000;
-const highlighted = {
-  secrets: [
-    {
-      secretId: '00000000-0000-4000-8000-0000000000f1',
-      name: 'E2E_PRODUCTION_SOON',
-      project: 'GLOBAL',
-      environment: 'Production',
-      sensitivity: 2,
-      sensitivityLabel: 'Confidential',
-      createdAtUtc: new Date(now - day).toISOString(),
-      expiresAtUtc: new Date(now + 2 * day).toISOString(),
-    },
-  ],
-};
+const highlightedSecretId = '00000000-0000-4000-8000-0000000000f1';
+function highlighted() {
+  const now = Date.now();
+  return {
+    secrets: [
+      {
+        secretId: highlightedSecretId,
+        name: 'E2E_PRODUCTION_SOON',
+        project: 'GLOBAL',
+        environment: 'Production',
+        sensitivity: 2,
+        sensitivityLabel: 'Confidential',
+        createdAtUtc: new Date(now - day).toISOString(),
+        expiresAtUtc: new Date(now + 2.5 * day).toISOString(),
+      },
+    ],
+  };
+}
 test('the list and the palette show sensitivity, production and expiry, and New secret shows a refusal', async ({
   page,
   browserHealth,
@@ -288,7 +291,7 @@ test('the list and the palette show sensitivity, production and expiry, and New 
   browserHealth.expectConsoleError({ text: /status of 409/, url: /\/api\/ui\/secrets$/ });
   await page.route('**/api/ui/secrets', (route) =>
     route.request().method() === 'GET'
-      ? route.fulfill({ json: highlighted })
+      ? route.fulfill({ json: highlighted() })
       : route.fulfill({
           status: 409,
           contentType: 'application/problem+json',
@@ -311,13 +314,13 @@ test('the list and the palette show sensitivity, production and expiry, and New 
     route.fulfill({
       json: [
         {
-          id: highlighted.secrets[0].secretId,
+          id: highlightedSecretId,
           name: 'E2E_PRODUCTION_SOON',
           project: 'GLOBAL',
           environment: 'Production',
           sensitivity: 2,
           sensitivityName: 'Confidential',
-          url: `/Secrets/Details/${highlighted.secrets[0].secretId}`,
+          url: `/Secrets/Details/${highlightedSecretId}`,
         },
       ],
     }),
@@ -366,7 +369,7 @@ test('the Secrets card tabs switch between All secrets, Shared with me and Share
 for (const width of [300, 2000] as const) {
   test(`the Secrets list has no sideways scroll at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    await page.route('**/api/ui/secrets', (route) => route.fulfill({ json: highlighted }));
+    await page.route('**/api/ui/secrets', (route) => route.fulfill({ json: highlighted() }));
     await page.context().addCookies(await savedAdministratorCookies());
     const list = new SecretsList(page);
     await list.open();
