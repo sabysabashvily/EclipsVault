@@ -33,6 +33,130 @@ public class UserAdminServiceTests
     }
 
     [Fact]
+    public async Task Resending_an_invitation_commits_a_new_token_hash_and_InvitationSent_before_delivering_to_the_stored_address()
+    {
+        var invited = Target(ClearanceLevel.Standard);
+        invited.AwaitingActivation = true;
+        invited.Email = "person@example.test";
+        var vault = new Vault(invited, Administrator());
+        var previousHash = InvitationToken.Hash("old-token");
+        vault.Invitations.Rows.Add(new AccountInvitation
+        {
+            Id = Guid.NewGuid(),
+            UserId = invited.Id,
+            TokenHash = previousHash,
+            CreatedAtUtc = DateTimeOffset.UtcNow.AddDays(-2),
+            ExpiresAtUtc = DateTimeOffset.UtcNow.AddDays(1),
+            PendingTotpSecret = "OLDSEED"
+        });
+
+        var sent = await vault.Service.ResendInvitationAsync(invited.Id, default);
+
+        Assert.NotNull(sent);
+        Assert.True(sent.Delivered);
+        Assert.Equal(["commit InvitationSent (generation 0)", "invitation-mail person@example.test"], vault.Steps);
+        var stored = Assert.Single(vault.Invitations.Rows);
+        Assert.Null(stored.SpentAtUtc);
+        Assert.Null(stored.PendingTotpSecret);
+        Assert.False(previousHash.SequenceEqual(stored.TokenHash));
+        var mail = Assert.Single(vault.InvitationDelivery.Sent);
+        Assert.Equal("person@example.test", mail.Address);
+        Assert.True(InvitationToken.Matches(mail.Token, stored.TokenHash));
+        Assert.DoesNotContain(mail.Token, vault.Changes.Events.Single().Details!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Resending_refuses_an_active_account_or_unavailable_delivery_without_saving_or_mailing()
+    {
+        var active = Target(ClearanceLevel.Standard);
+        var activeVault = new Vault(active, Administrator());
+
+        await Assert.ThrowsAsync<AccountAlreadyActiveException>(() => activeVault.Service.ResendInvitationAsync(active.Id, default));
+        Assert.Empty(activeVault.Steps);
+        Assert.Empty(activeVault.InvitationDelivery.Sent);
+
+        var invited = Target(ClearanceLevel.Standard);
+        invited.AwaitingActivation = true;
+        var unavailableVault = new Vault(invited, Administrator());
+        unavailableVault.InvitationDelivery.Available = false;
+
+        await Assert.ThrowsAsync<InvitationsUnavailableException>(() => unavailableVault.Service.ResendInvitationAsync(invited.Id, default));
+        Assert.Empty(unavailableVault.Steps);
+        Assert.Empty(unavailableVault.InvitationDelivery.Sent);
+    }
+
+    [Fact]
+    public async Task Replacing_an_invitation_address_spends_the_live_token_audits_the_new_address_and_sends_no_mail()
+    {
+        var invited = Target(ClearanceLevel.Standard);
+        invited.AwaitingActivation = true;
+        invited.Email = "wrong@example.test";
+        var vault = new Vault(invited, Administrator());
+        var live = new AccountInvitation
+        {
+            Id = Guid.NewGuid(),
+            UserId = invited.Id,
+            TokenHash = InvitationToken.Hash("live-token"),
+            CreatedAtUtc = DateTimeOffset.UtcNow.AddHours(-1),
+            ExpiresAtUtc = DateTimeOffset.UtcNow.AddHours(71),
+            PendingTotpSecret = "PENDINGSEED"
+        };
+        vault.Invitations.Rows.Add(live);
+
+        var replaced = await vault.Service.ReplaceInvitationAddressAsync(invited.Id, "  right@example.test  ", default);
+
+        Assert.Equal("right@example.test", replaced);
+        Assert.Equal("right@example.test", invited.Email);
+        Assert.NotNull(live.SpentAtUtc);
+        Assert.Null(live.PendingTotpSecret);
+        Assert.Equal(["commit InvitationAddressReplaced (generation 0)"], vault.Steps);
+        Assert.Contains("right@example.test", vault.Changes.Events.Single().Details!, StringComparison.Ordinal);
+        Assert.Empty(vault.InvitationDelivery.Sent);
+    }
+
+    [Fact]
+    public async Task Resetting_an_invited_accounts_authenticator_is_refused_as_not_activated()
+    {
+        var invited = Target(ClearanceLevel.Standard);
+        invited.AwaitingActivation = true;
+        var vault = new Vault(invited, Administrator());
+
+        await Assert.ThrowsAsync<AccountNotActivatedException>(() => vault.Service.ResetTotpAsync(invited.Id, default));
+        Assert.Empty(vault.Steps);
+    }
+
+    [Fact]
+    public async Task An_invited_top_secret_account_does_not_count_as_an_enabled_administrator()
+    {
+        static (User ActiveAdmin, User InvitedAdmin, Vault Vault) Setup()
+        {
+            var activeAdmin = Target(ClearanceLevel.TopSecret);
+            var invitedAdmin = new User
+            {
+                Id = Guid.NewGuid(),
+                Username = "invited-admin",
+                Email = "invited.admin@example.test",
+                Clearance = ClearanceLevel.TopSecret,
+                ProjectKey = "GLOBAL",
+                AwaitingActivation = true
+            };
+            return (activeAdmin, invitedAdmin, new Vault(activeAdmin, invitedAdmin));
+        }
+
+        var demote = Setup();
+        await Assert.ThrowsAsync<LastAdministratorException>(() => demote.Vault.Service.SetRoleAsync(demote.ActiveAdmin.Id, ClearanceLevel.Secret, "GLOBAL", default));
+
+        var disable = Setup();
+        await Assert.ThrowsAsync<LastAdministratorException>(() => disable.Vault.Service.SetEnabledAsync(disable.ActiveAdmin.Id, false, default));
+
+        var delete = Setup();
+        await Assert.ThrowsAsync<LastAdministratorException>(() => delete.Vault.Service.DeleteAsync(delete.ActiveAdmin.Id, default));
+
+        var demoteInvited = Setup();
+        Assert.True(await demoteInvited.Vault.Service.SetRoleAsync(demoteInvited.InvitedAdmin.Id, ClearanceLevel.Standard, "GLOBAL", default));
+    }
+
+    [Fact]
     public async Task A_create_whose_commit_fails_emails_no_one_and_reports_the_audit_trail_unavailable()
     {
         var vault = new Vault();
@@ -466,15 +590,19 @@ public class UserAdminServiceTests
         private Vault(INotificationService? notifications, Guid signedInAs, User[] accounts)
         {
             Users = new FakeUsers(Steps, [.. accounts]);
+            Invitations = new FakeInvitations(Steps);
+            InvitationDelivery = new RecordingInvitationDelivery(Steps);
             Changes = new RecordingChanges(Steps, Users);
             Audit = new RecordingAudit(Steps);
             Service = new UserAdminService(
                 Users,
+                Invitations,
+                InvitationDelivery,
                 new StubHasher(),
                 new RecordingRevocation(Steps),
                 new UnusedRecoveryCodes(),
                 new CleanBreachScreen(),
-                new UserDirectoryOptions("example.test"),
+                new UserDirectoryOptions("example.test", "https://vault.example.test"),
                 notifications ?? new RecordingNotifications(Steps),
                 Audit,
                 Changes,
@@ -486,11 +614,46 @@ public class UserAdminServiceTests
 
         public FakeUsers Users { get; }
 
+        public FakeInvitations Invitations { get; }
+
+        public RecordingInvitationDelivery InvitationDelivery { get; }
+
         public RecordingChanges Changes { get; }
 
         public RecordingAudit Audit { get; }
 
         public UserAdminService Service { get; }
+    }
+
+    private sealed class FakeInvitations(List<string> steps) : IAccountInvitationRepository
+    {
+        public List<AccountInvitation> Rows { get; } = [];
+
+        public Task<AccountInvitation?> FindByUserIdAsync(Guid userId, CancellationToken ct)
+            => Task.FromResult(Rows.FirstOrDefault(i => i.UserId == userId));
+
+        public Task<AccountInvitation?> FindByTokenHashAsync(byte[] tokenHash, CancellationToken ct)
+            => Task.FromResult(Rows.FirstOrDefault(i => i.TokenHash.SequenceEqual(tokenHash)));
+
+        public void StageAddition(AccountInvitation invitation)
+        {
+            Rows.Add(invitation);
+            steps.Add($"stage invitation {invitation.UserId}");
+        }
+    }
+
+    private sealed class RecordingInvitationDelivery(List<string> steps) : IAccountInvitationDelivery
+    {
+        public bool Available { get; set; } = true;
+        public bool Delivered { get; set; } = true;
+        public List<(string Address, string DisplayName, string Username, string Token)> Sent { get; } = [];
+
+        public Task<bool> TrySendAsync(string address, string displayName, string username, string token, CancellationToken ct)
+        {
+            Sent.Add((address, displayName, username, token));
+            steps.Add($"invitation-mail {address}");
+            return Task.FromResult(Delivered);
+        }
     }
 
     private sealed class FakeUsers(List<string> steps, List<User> accounts) : IUserRepository
@@ -504,8 +667,13 @@ public class UserAdminServiceTests
             => Task.FromResult<IReadOnlyList<string>>([.. Accounts.Select(account => account.Email).Where(email => email.StartsWith($"{localPrefix}.", StringComparison.Ordinal))]);
 
         public Task<bool> AnyOtherEnabledAdministratorAsync(Guid accountId, CancellationToken ct)
-            => Task.FromResult(Accounts.Any(account => account.Id != accountId && account.Clearance == ClearanceLevel.TopSecret && !account.IsDisabled));
-        public Task<bool> IsEmailTakenAsync(string email, Guid accountId, CancellationToken ct) => Task.FromResult(false);
+            => Task.FromResult(Accounts.Any(account => account.Id != accountId
+                && account.Clearance == ClearanceLevel.TopSecret
+                && !account.IsDisabled
+                && !account.AwaitingActivation));
+        public Task<bool> IsEmailTakenAsync(string email, Guid accountId, CancellationToken ct)
+            => Task.FromResult(Accounts.Any(account => account.Id != accountId
+                && account.NormalizedEmail == EclipsVault.Core.Domain.EmailIdentity.Normalize(email)));
 
         public void StageAddition(User user) => steps.Add($"stage new {user.Username}");
 
@@ -561,6 +729,12 @@ public class UserAdminServiceTests
             steps.Add($"commit {entry.Action} (generation {account.CredentialGeneration})");
             Events.Add(entry);
             return Task.FromResult(true);
+        }
+
+        public async Task<bool> CommitAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct)
+        {
+            await recheck(ct);
+            return await CommitAsync(account, entry, ct);
         }
 
         public async Task<bool> CommitAdministratorChangeAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct)

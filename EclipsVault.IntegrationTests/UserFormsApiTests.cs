@@ -39,14 +39,15 @@ public sealed class UserFormsApiTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task New_user_metadata_has_only_the_configured_domain_and_defined_clearances()
+    public async Task New_user_metadata_has_only_the_configured_domain_clearances_and_invitation_availability()
     {
         var admin = await vault.AdminClientAsync();
         var response = await admin.GetAsync("/api/ui/users/new");
         Assert.True(response.Headers.CacheControl?.NoStore);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal(["clearances", "emailDomain"], ProfileApi.NamesOf(body.RootElement));
+        Assert.Equal(["clearances", "emailDomain", "invitationsAvailable"], ProfileApi.NamesOf(body.RootElement));
         Assert.Equal("eclipsvault.local", body.RootElement.GetProperty("emailDomain").GetString());
+        Assert.False(body.RootElement.GetProperty("invitationsAvailable").GetBoolean());
         Assert.Equal("[{\"value\":1,\"label\":\"Standard\"},{\"value\":2,\"label\":\"Elevated\"},{\"value\":3,\"label\":\"Secret\"},{\"value\":4,\"label\":\"Top Secret\"}]", body.RootElement.GetProperty("clearances").GetRawText());
     }
 

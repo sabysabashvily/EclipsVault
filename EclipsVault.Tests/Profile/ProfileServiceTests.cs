@@ -52,6 +52,9 @@ public class ProfileServiceTests
         public Task<bool> CommitAsync(User account, AuditEntry entry, CancellationToken ct)
             => CommitAsync(account, entry.Action, entry.Details!, ct);
 
+        public Task<bool> CommitAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct)
+            => throw new NotSupportedException();
+
         public List<(AuditAction Action, long CredentialGeneration)> Committed { get; } = [];
 
         public Task<bool> CommitAsync(User account, AuditAction action, string details, CancellationToken ct)

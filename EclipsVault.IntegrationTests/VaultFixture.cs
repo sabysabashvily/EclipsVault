@@ -67,6 +67,8 @@ public sealed partial class VaultFixture : IAsyncLifetime
 
     public SmtpCapture? Mailbox { get; init; }
 
+    public string? PublicUrl { get; init; }
+
     public string? RedisConfiguration { get; init; }
 
     public bool ProductionWindowNeverOpens { get; init; }
@@ -87,6 +89,11 @@ public sealed partial class VaultFixture : IAsyncLifetime
             SetEnvironment("Email__Enabled", "true");
             SetEnvironment("Email__Smtp__Host", Mailbox.Host);
             SetEnvironment("Email__Smtp__Port", Mailbox.Port.ToString(CultureInfo.InvariantCulture));
+        }
+
+        if (PublicUrl is not null)
+        {
+            SetEnvironment("Identity__PublicUrl", PublicUrl);
         }
 
         using var signingKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);

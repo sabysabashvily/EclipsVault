@@ -48,6 +48,26 @@ public sealed class SmtpCapture : IAsyncDisposable
         return Regex.Match(body.GetProperty("Text").GetString()!, "change: ([A-F0-9]{32})").Groups[1].Value;
     }
 
+    public async Task<int> CountMessagesForAsync(string address)
+    {
+        var messages = await MessagesAsync();
+        return messages.Count(message => IsAddressedTo(message, address));
+    }
+
+    public async Task<(string Subject, string Body, string Link, string Token)> LatestInvitationForAsync(string address)
+    {
+        using var client = NewClient();
+        var messages = await MessagesAsync();
+        var message = messages.First(message => IsAddressedTo(message, address)
+            && message.GetProperty("Subject").GetString() == "You're invited to EclipsVault");
+        var full = await client.GetFromJsonAsync<JsonElement>($"/api/v1/message/{message.GetProperty("ID").GetString()}");
+        var subject = full.GetProperty("Subject").GetString()!;
+        var body = full.GetProperty("Text").GetString()!;
+        var match = Regex.Match(body, @"(https?://[^\s]+/Account/Activate#([A-Za-z0-9_-]+))");
+        Assert.True(match.Success, $"Invitation body did not contain an activation link: {body}");
+        return (subject, body, match.Groups[1].Value, match.Groups[2].Value);
+    }
+
     private HttpClient NewClient() => new() { BaseAddress = new Uri($"http://{Host}:{_container.GetMappedPublicPort(8025)}") };
 
     private async Task<JsonElement[]> MessagesAsync()

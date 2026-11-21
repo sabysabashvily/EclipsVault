@@ -155,3 +155,11 @@ upgrade from a release whose sessions carry neither:
   change that parameter before upgrading. Every configured server must answer at startup: a vault
   that used to start while one endpoint was down now refuses until it is back. See
   [`BACKUP_AND_RECOVERY.md`](BACKUP_AND_RECOVERY.md).
+- **Enroll the bootstrap administrator before upgrading.** The upgrade moves every never-used account
+  (no enrolled authenticator, no passkey, and no `LoginSucceeded` or `PasskeyLogin` row in the audit
+  trail) to awaiting activation, advances its credential generation, and clears any pending
+  authenticator secret. The migration never invites the last enabled administrator: if every enabled
+  administrator would otherwise be invited, `vault-admin` (or otherwise the earliest created enabled
+  administrator) stays on its existing password and enrolls at first sign-in. Configure real SMTP
+  delivery and `Identity__PublicUrl` so you can replace any generated addresses on migrated accounts
+  and resend their invitations. Drain and retire old nodes before serving traffic after the upgrade.

@@ -1,3 +1,4 @@
+using System.Net.Mail;
 using EclipsVault.Core.Application.Mfa;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
@@ -15,13 +16,19 @@ public sealed class UserAdminService : IUserAdminService
 {
     private const int MinimumPasswordLength = 12;
     private const int MaximumPasswordLength = 256;
+    private const int MaximumEmailLength = 254;
     private const int MaximumProjectKeyLength = 64;
     private const int MaximumNameLength = 64;
 
     /// <summary>The display name column's width, which "First Last" must fit.</summary>
     private const int MaximumDisplayNameLength = 64;
 
+    private const string InvitationsUnavailableMessage =
+        "Invitations need email delivery and the vault's public address (Identity:PublicUrl). Configure both to add accounts.";
+
     private readonly IUserRepository _users;
+    private readonly IAccountInvitationRepository _invitations;
+    private readonly IAccountInvitationDelivery _invitationDelivery;
     private readonly IPasswordHasher _hasher;
     private readonly ISessionRevocationService _revocation;
     private readonly IMfaRecoveryCodeRepository _recoveryCodes;
@@ -35,6 +42,8 @@ public sealed class UserAdminService : IUserAdminService
 
     public UserAdminService(
         IUserRepository users,
+        IAccountInvitationRepository invitations,
+        IAccountInvitationDelivery invitationDelivery,
         IPasswordHasher hasher,
         ISessionRevocationService revocation,
         IMfaRecoveryCodeRepository recoveryCodes,
@@ -47,6 +56,8 @@ public sealed class UserAdminService : IUserAdminService
         TimeProvider clock)
     {
         _users = users;
+        _invitations = invitations;
+        _invitationDelivery = invitationDelivery;
         _hasher = hasher;
         _revocation = revocation;
         _recoveryCodes = recoveryCodes;
@@ -58,6 +69,8 @@ public sealed class UserAdminService : IUserAdminService
         _actor = actor;
         _clock = clock;
     }
+
+    public bool InvitationsAvailable => _invitationDelivery.Available;
 
     /// <summary>An administrator's action on an account, attributed to the administrator.</summary>
     private AuditEntry AdministratorEvent(AuditAction action, User account, string details) => new()
@@ -129,6 +142,119 @@ public sealed class UserAdminService : IUserAdminService
 
         await _notifications.NotifyUserProvisionedAsync(user.Email, displayName, user.Username, ct);
         return new CreatedUserDto(user.Id, user.Username, user.Email, displayName);
+    }
+
+    public async Task<SentInvitationDto?> ResendInvitationAsync(Guid userId, CancellationToken ct)
+    {
+        var user = await _users.FindByIdAsync(userId, ct);
+        if (user is null)
+        {
+            return null;
+        }
+
+        if (!user.AwaitingActivation)
+        {
+            throw new AccountAlreadyActiveException("This account has already been activated.");
+        }
+
+        if (!_invitationDelivery.Available)
+        {
+            throw new InvitationsUnavailableException(InvitationsUnavailableMessage);
+        }
+
+        var existing = await _invitations.FindByUserIdAsync(user.Id, ct);
+        var token = InvitationToken.Generate();
+        var tokenHash = InvitationToken.Hash(token);
+        var now = _clock.GetUtcNow();
+        var expiresAtUtc = now + InvitationToken.Lifetime;
+
+        if (existing is null)
+        {
+            _invitations.StageAddition(new AccountInvitation
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                TokenHash = tokenHash,
+                CreatedAtUtc = now,
+                ExpiresAtUtc = expiresAtUtc
+            });
+        }
+        else
+        {
+            existing.TokenHash = tokenHash;
+            existing.CreatedAtUtc = now;
+            existing.ExpiresAtUtc = expiresAtUtc;
+            existing.SpentAtUtc = null;
+            existing.PendingTotpSecret = null;
+        }
+
+        await _changes.CommitAsync(user, AdministratorEvent(AuditAction.InvitationSent, user,
+            $"Invitation sent for '{user.Username}' to <{user.Email}>; expires {expiresAtUtc:u}"), ct);
+
+        var delivered = await _invitationDelivery.TrySendAsync(user.Email, user.DisplayName, user.Username, token, ct);
+        return new SentInvitationDto(delivered, expiresAtUtc);
+    }
+
+    public async Task<string?> ReplaceInvitationAddressAsync(Guid userId, string email, CancellationToken ct)
+    {
+        var trimmed = CheckedEmail(email);
+        var user = await _users.FindByIdAsync(userId, ct);
+        if (user is null)
+        {
+            return null;
+        }
+
+        if (!user.AwaitingActivation)
+        {
+            throw new AccountAlreadyActiveException("This account has already been activated.");
+        }
+
+        if (await _users.IsEmailTakenAsync(trimmed, user.Id, ct))
+        {
+            throw new EmailAddressTakenException();
+        }
+
+        var existing = await _invitations.FindByUserIdAsync(user.Id, ct);
+        var hasUnspentToken = existing is not null && existing.SpentAtUtc is null;
+        if (string.Equals(user.Email, trimmed, StringComparison.Ordinal) && !hasUnspentToken)
+        {
+            return user.Email;
+        }
+
+        user.Email = trimmed;
+        if (existing is not null && existing.SpentAtUtc is null)
+        {
+            // Spend the live token in the same transaction so the link already sent cannot activate the account.
+            existing.SpentAtUtc = _clock.GetUtcNow();
+            existing.PendingTotpSecret = null;
+        }
+
+        await _changes.CommitAsync(user,
+            AdministratorEvent(AuditAction.InvitationAddressReplaced, user,
+                $"Invitation address for '{user.Username}' replaced with <{user.Email}>"),
+            async token =>
+            {
+                if (await _users.IsEmailTakenAsync(trimmed, user.Id, token))
+                {
+                    throw new EmailAddressTakenException();
+                }
+            }, ct);
+
+        return user.Email;
+    }
+
+    private static string CheckedEmail(string email)
+    {
+        var trimmed = email.Trim();
+        if (trimmed.Length is 0 or > MaximumEmailLength
+            || trimmed.Any(char.IsControl)
+            || !MailAddress.TryCreate(trimmed, out var parsed)
+            || !string.Equals(parsed.Address, trimmed, StringComparison.Ordinal))
+        {
+            throw new AccountInputException("Email", "Enter a valid email address.");
+        }
+
+        return trimmed;
     }
 
     /// <summary>Saves the new account with its UserCreated event.</summary>
@@ -358,6 +484,11 @@ public sealed class UserAdminService : IUserAdminService
             return false;
         }
 
+        if (user.AwaitingActivation)
+        {
+            throw new AccountNotActivatedException("This account has not been activated yet.");
+        }
+
         await _recoveryCodes.StageRemovalOfAllAsync(user.Id, ct);
         user.TotpSecret = null;
         user.TotpEnabled = false;
@@ -443,7 +574,8 @@ public sealed class UserAdminService : IUserAdminService
         }, ct);
     }
 
-    private static bool IsEnabledAdministrator(User account) => account.Clearance == ClearanceLevel.TopSecret && !account.IsDisabled;
+    private static bool IsEnabledAdministrator(User account)
+        => account.Clearance == ClearanceLevel.TopSecret && !account.IsDisabled && !account.AwaitingActivation;
 
     private UserSummaryDto Map(User u) =>
         new(u.Id, u.Username, u.DisplayName, u.Email, u.Clearance, u.ProjectKey,

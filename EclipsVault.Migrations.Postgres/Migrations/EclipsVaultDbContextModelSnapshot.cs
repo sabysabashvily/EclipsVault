@@ -87,6 +87,44 @@ namespace EclipsVault.Migrations.Postgres.Migrations
                     b.ToTable("AccessRequests", (string)null);
                 });
 
+            modelBuilder.Entity("EclipsVault.Core.Domain.Entities.AccountInvitation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PendingTotpSecret")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset?>("SpentAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("bytea");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("AccountInvitations", (string)null);
+                });
+
             modelBuilder.Entity("EclipsVault.Core.Domain.Entities.ApiKey", b =>
                 {
                     b.Property<Guid>("Id")
@@ -862,6 +900,9 @@ namespace EclipsVault.Migrations.Postgres.Migrations
                     b.Property<DateTimeOffset?>("AvatarUpdatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("AwaitingActivation")
+                        .HasColumnType("boolean");
+
                     b.Property<int>("Clearance")
                         .HasColumnType("integer");
 
@@ -971,6 +1012,17 @@ namespace EclipsVault.Migrations.Postgres.Migrations
                         .HasForeignKey("SecretId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("EclipsVault.Core.Domain.Entities.AccountInvitation", b =>
+                {
+                    b.HasOne("EclipsVault.Core.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("EclipsVault.Core.Domain.Entities.ApiKey", b =>

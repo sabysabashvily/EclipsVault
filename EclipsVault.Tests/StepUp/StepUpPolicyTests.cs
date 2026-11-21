@@ -46,6 +46,8 @@ public class StepUpPolicyTests
         => Assert.Equal(15, Service(maxAgeMinutes: 15).MaxAuthAgeMinutes);
     [Theory]
     [InlineData(AdministratorAction.CreateAccount, true)]
+    [InlineData(AdministratorAction.ResendInvitation, true)]
+    [InlineData(AdministratorAction.ReplaceInvitationAddress, true)]
     [InlineData(AdministratorAction.ChangeAccountRole, true)]
     [InlineData(AdministratorAction.EnableAccount, true)]
     [InlineData(AdministratorAction.UnlockAccount, true)]

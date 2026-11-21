@@ -16,6 +16,8 @@ public sealed class EclipsVaultDbContext : DbContext
 
     public DbSet<User> Users => Set<User>();
 
+    public DbSet<AccountInvitation> AccountInvitations => Set<AccountInvitation>();
+
     public DbSet<Secret> Secrets => Set<Secret>();
 
     public DbSet<SecretVersion> SecretVersions => Set<SecretVersion>();

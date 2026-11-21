@@ -40,7 +40,7 @@ public sealed class UsersController(IUserAdminService users, AdministratorStepUp
 
     [HttpGet("new")]
     [ProducesResponseType<NewUserResponse>(StatusCodes.Status200OK, "application/json")]
-    public ActionResult<NewUserResponse> New() => new NewUserResponse(directory.EmailDomain, Clearances);
+    public ActionResult<NewUserResponse> New() => new NewUserResponse(directory.EmailDomain, Clearances, users.InvitationsAvailable);
 
     [HttpGet("{userId:guid}")]
     [ProducesResponseType<UserDetailsResponse>(StatusCodes.Status200OK, "application/json")]
@@ -73,6 +73,44 @@ public sealed class UsersController(IUserAdminService users, AdministratorStepUp
             request.Password ?? "", (ClearanceLevel)(request.Clearance ?? 0), request.Project ?? ""), ct);
         Success($"User '{created.Username}' created with email {created.Email}. They can sign in with either and will set up their authenticator on first sign-in.");
         return Created($"/api/ui/users/{created.Id}", new CreatedUserResponse(created.Id, created.Username, created.Email));
+    }
+
+    [HttpPost("{userId:guid}/invitation")]
+    [ProducesResponseType<InvitationResponse>(StatusCodes.Status200OK, "application/json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status403Forbidden, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status404NotFound, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status409Conflict, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
+    public async Task<IActionResult> ResendInvitation(Guid userId, CancellationToken ct)
+    {
+        if (await stepUp.RequireAsync(User, AdministratorAction.ResendInvitation, ct) is { } required)
+        {
+            return required;
+        }
+        var sent = await users.ResendInvitationAsync(userId, ct);
+        return sent is null
+            ? AdministratorProblems.UserNotFound()
+            : Ok(new InvitationResponse(sent.Delivered ? "sent" : "not_delivered", sent.ExpiresAtUtc));
+    }
+
+    [HttpPost("{userId:guid}/invitation-address")]
+    [RequestSizeLimit(4096)]
+    [ProducesResponseType<InvitationAddressResponse>(StatusCodes.Status200OK, "application/json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status400BadRequest, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status403Forbidden, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status404NotFound, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status409Conflict, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
+    public async Task<IActionResult> ReplaceInvitationAddress(Guid userId, [FromBody] ReplaceInvitationAddressRequest request, CancellationToken ct)
+    {
+        if (await stepUp.RequireAsync(User, AdministratorAction.ReplaceInvitationAddress, ct) is { } required)
+        {
+            return required;
+        }
+        var email = await users.ReplaceInvitationAddressAsync(userId, request.Email ?? "", ct);
+        return email is null
+            ? AdministratorProblems.UserNotFound()
+            : Ok(new InvitationAddressResponse(email));
     }
 
     [HttpPatch("{userId:guid}/role")]

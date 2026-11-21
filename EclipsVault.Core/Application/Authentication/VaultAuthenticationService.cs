@@ -73,8 +73,18 @@ public sealed class VaultAuthenticationService : IVaultAuthenticationService
         var revocationVersion = await _revocation.CaptureAsync(user.Id, ct);
         return await _attempt.RunAsync(user, async token =>
         {
-            // Hashed before the lockout check, so a locked account answers no faster than any other.
-            var passwordMatches = _hasher.Verify(password, user.PasswordHash, user.PasswordSalt);
+            // Hashed before state checks so locked and awaiting-activation accounts answer no faster than any other.
+            var useDummy = user.AwaitingActivation || user.PasswordHash.Length == 0 || user.PasswordSalt.Length == 0;
+            var passwordMatches = _hasher.Verify(
+                password,
+                useDummy ? DummyHash : user.PasswordHash,
+                useDummy ? DummySalt : user.PasswordSalt);
+            if (user.AwaitingActivation)
+            {
+                _attempt.RecordUserEvent(AuditAction.LoginFailed, user, "Account awaiting activation");
+                return CredentialCheckResult.Invalid;
+            }
+
             if (user.IsLockedOut(_clock.GetUtcNow()))
             {
                 _attempt.RecordUserEvent(AuditAction.LoginFailed, user, "Account is locked out");
@@ -117,6 +127,17 @@ public sealed class VaultAuthenticationService : IVaultAuthenticationService
         return await _attempt.RunAsync<UserDto?>(user, async token =>
         {
             await RequireCurrentProofAsync(user, stamp, ct);
+            if (user.AwaitingActivation)
+            {
+                if (administratorRequired)
+                {
+                    _attempt.RecordUserEvent(AuditAction.LoginFailed, user, "Account awaiting activation");
+                    return null;
+                }
+
+                throw new StaleProofException();
+            }
+
             if (user.IsDisabled || !user.TotpEnabled || user.TotpSecret is null)
             {
                 return null;
@@ -159,6 +180,11 @@ public sealed class VaultAuthenticationService : IVaultAuthenticationService
         return await _attempt.RunAsync<UserDto?>(user, async token =>
         {
             await RequireCurrentProofAsync(user, stamp, ct);
+            if (user.AwaitingActivation)
+            {
+                throw new StaleProofException();
+            }
+
             if (user.IsDisabled || !user.TotpEnabled)
             {
                 return null;
@@ -188,6 +214,10 @@ public sealed class VaultAuthenticationService : IVaultAuthenticationService
         var user = await _users.FindByIdAsync(userId, ct)
                    ?? throw new TotpEnrollmentException($"User '{userId}' was not found.");
         await RequireCurrentProofAsync(user, stamp, ct);
+        if (user.AwaitingActivation)
+        {
+            throw new StaleProofException();
+        }
 
         if (user.TotpEnabled)
         {
@@ -216,6 +246,11 @@ public sealed class VaultAuthenticationService : IVaultAuthenticationService
         return await _attempt.RunAsync<UserDto?>(user, async token =>
         {
             await RequireCurrentProofAsync(user, stamp, ct);
+            if (user.AwaitingActivation)
+            {
+                throw new StaleProofException();
+            }
+
             if (user.IsDisabled || user.TotpEnabled || string.IsNullOrEmpty(user.TotpSecret))
             {
                 return null;

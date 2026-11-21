@@ -35,6 +35,12 @@ public interface IAccountChangeCommitter
     Task<bool> CommitAsync(User account, AuditEntry entry, CancellationToken ct);
 
     /// <summary>
+    /// Like <see cref="CommitAsync(User, AuditEntry, CancellationToken)"/>, running <paramref name="recheck"/>
+    /// while the account's lock is held before saving. A refusal it throws saves nothing.
+    /// </summary>
+    Task<bool> CommitAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct);
+
+    /// <summary>
     /// Like <see cref="CommitAsync(User, AuditEntry, CancellationToken)"/>, for a change that could leave
     /// the vault without an enabled administrator. After the account's lock it takes the vault-wide
     /// administrators lock, so such changes take effect one at a time, and runs <paramref name="recheck"/>

@@ -35,7 +35,9 @@ public sealed class StepUpService : IStepUpService
     public bool IsRequired(AdministratorAction action, DateTimeOffset lastStrongAuthUtc, DateTimeOffset nowUtc)
         => action switch
         {
-            AdministratorAction.CreateAccount or AdministratorAction.ChangeAccountRole or AdministratorAction.EnableAccount or AdministratorAction.UnlockAccount or AdministratorAction.ResetAuthenticator or AdministratorAction.IssueApiKey or AdministratorAction.EnableServiceAccount
+            AdministratorAction.CreateAccount or AdministratorAction.ResendInvitation or AdministratorAction.ReplaceInvitationAddress
+                or AdministratorAction.ChangeAccountRole or AdministratorAction.EnableAccount or AdministratorAction.UnlockAccount
+                or AdministratorAction.ResetAuthenticator or AdministratorAction.IssueApiKey or AdministratorAction.EnableServiceAccount
                 or AdministratorAction.TrustNetwork or AdministratorAction.LiftBlock or AdministratorAction.ExportAuditTrail
                 => nowUtc - lastStrongAuthUtc > TimeSpan.FromMinutes(_options.MaxAuthAgeMinutes),
             AdministratorAction.DisableAccount or AdministratorAction.DeleteAccount or AdministratorAction.SignOutAccount
@@ -60,7 +62,7 @@ public sealed class StepUpService : IStepUpService
             {
                 throw new StaleProofException();
             }
-            if (user.IsDisabled || user.IsLockedOut(_clock.GetUtcNow()))
+            if (user.IsDisabled || user.AwaitingActivation || user.IsLockedOut(_clock.GetUtcNow()))
             {
                 _attempt.RecordUserEvent(AuditAction.StepUpFailed, user, "Account is disabled or locked out");
                 return false;

@@ -109,6 +109,8 @@ public abstract class AdministratorRaceTests(AccountChangeDatabases databases)
 
     private static UserAdminService UserAdmin(AccountRequest request, Guid signedInAs, Barrier bothReady) => new(
         request.Users,
+        new AccountInvitationRepository(request.Context),
+        new UnavailableInvitationDelivery(),
         new UnusedHasher(),
         new UnusedSessionStore(),
         request.RecoveryCodes,
@@ -121,6 +123,13 @@ public abstract class AdministratorRaceTests(AccountChangeDatabases databases)
         new SignedIn(signedInAs),
         TimeProvider.System);
 
+    private sealed class UnavailableInvitationDelivery : IAccountInvitationDelivery
+    {
+        public bool Available => false;
+        public Task<bool> TrySendAsync(string address, string displayName, string username, string token, CancellationToken ct)
+            => throw new NotSupportedException();
+    }
+
     /// <summary>
     /// Holds each change at its commit until the other arrives, so both have read their account and
     /// passed every check made before the commit when either starts saving.
@@ -131,6 +140,12 @@ public abstract class AdministratorRaceTests(AccountChangeDatabases databases)
         {
             WaitForTheOtherChange();
             return inner.CommitAsync(account, entry, ct);
+        }
+
+        public Task<bool> CommitAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct)
+        {
+            WaitForTheOtherChange();
+            return inner.CommitAsync(account, entry, recheck, ct);
         }
 
         public Task<bool> CommitAdministratorChangeAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct)

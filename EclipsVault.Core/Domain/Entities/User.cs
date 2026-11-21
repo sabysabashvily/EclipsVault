@@ -76,6 +76,9 @@ public class User
     /// <summary>When true, the account cannot sign in and active sessions are rejected.</summary>
     public bool IsDisabled { get; set; }
 
+    /// <summary>When true, the account has not completed activation by invitation and cannot sign in by any route.</summary>
+    public bool AwaitingActivation { get; set; }
+
     /// <summary>Consecutive failed authentication attempts since the last success; drives lockout.</summary>
     public int FailedAccessCount { get; set; }
 

@@ -69,7 +69,8 @@ public sealed class AccountTransaction(EclipsVaultDbContext context, IAuditChain
             }
 
             if (failure is OperationCanceledException or AccountChangedException or EmailAddressTakenException or UsernameTakenException
-                or StaleProofException or ProfileOperationRefusedException or LastAdministratorException)
+                or StaleProofException or ProfileOperationRefusedException or LastAdministratorException
+                or AccountAlreadyActiveException or AccountNotActivatedException or InvitationsUnavailableException)
             {
                 throw;
             }

@@ -16,5 +16,8 @@ public enum SsoOutcome
     NoVaultAccount = 4,
 
     /// <summary>The account exists but is disabled here — the vault's answer outranks the IdP's.</summary>
-    Disabled = 5
+    Disabled = 5,
+
+    /// <summary>The account is awaiting activation by invitation and cannot sign in by any route.</summary>
+    NotActivated = 6
 }

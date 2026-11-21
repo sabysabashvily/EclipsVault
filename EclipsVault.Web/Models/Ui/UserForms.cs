@@ -1,13 +1,24 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace EclipsVault.Web.Models.Ui;
 
 public sealed record ClearanceOptionResponse(int Value, string Label);
 
-public sealed record NewUserResponse(string EmailDomain, IReadOnlyList<ClearanceOptionResponse> Clearances);
+public sealed record NewUserResponse(string EmailDomain, IReadOnlyList<ClearanceOptionResponse> Clearances, bool InvitationsAvailable);
 
 public sealed record UserDetailsResponse(Guid UserId, string Username, string DisplayName, int Clearance,
     string Project, bool IsYou, IReadOnlyList<ClearanceOptionResponse> Clearances);
 
 public sealed record CreatedUserResponse(Guid UserId, string Username, string Email);
+
+public sealed record InvitationResponse([property: AllowedValues("sent", "not_delivered")] string Invitation, DateTimeOffset ExpiresAtUtc);
+
+public sealed record InvitationAddressResponse(string Email);
+
+public sealed class ReplaceInvitationAddressRequest
+{
+    public string? Email { get; init; }
+}
 
 public sealed class CreateUserUiRequest
 {

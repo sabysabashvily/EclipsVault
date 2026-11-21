@@ -68,6 +68,8 @@ public abstract class AccountCreationRaceTests(AccountChangeDatabases databases)
 
     private static UserAdminService UserAdmin(AccountRequest request, Barrier bothChecked) => new(
         request.Users,
+        new AccountInvitationRepository(request.Context),
+        new UnavailableInvitationDelivery(),
         new HasherThatWaitsForTheOtherCreate(bothChecked),
         new UnusedSessionStore(),
         request.RecoveryCodes,
@@ -79,6 +81,13 @@ public abstract class AccountCreationRaceTests(AccountChangeDatabases databases)
         request.Changes,
         new Administrator(),
         TimeProvider.System);
+
+    private sealed class UnavailableInvitationDelivery : IAccountInvitationDelivery
+    {
+        public bool Available => false;
+        public Task<bool> TrySendAsync(string address, string displayName, string username, string token, CancellationToken ct)
+            => throw new NotSupportedException();
+    }
 
     /// <summary>
     /// A create hashes the password after it checks the username and before it saves, so holding each

@@ -242,6 +242,12 @@ public sealed class PasskeyService : IPasskeyService
                 return PasskeyAssertionResult.Failed("This sign-in expired. Try again.");
             }
 
+            if (user.AwaitingActivation)
+            {
+                _attempt.RecordUserEvent(AuditAction.LoginFailed, user, "Passkey sign-in blocked: account is awaiting activation");
+                return PasskeyAssertionResult.Failed("This passkey could not be verified.");
+            }
+
             if (user.IsDisabled)
             {
                 _attempt.RecordUserEvent(AuditAction.LoginFailed, user, "Passkey sign-in blocked: account is disabled");
