@@ -113,17 +113,17 @@ test('the Internal role issues by keyboard without a dialog, and reloading forge
   await expect(page.getByText(password)).toHaveCount(0);
 });
 
-test('Revoke by keyboard asks with the Legacy confirmation and removes the login', async ({
-  page,
-}) => {
+test('Revoke by keyboard asks with the decision dialog and removes the login', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const dynamicSecrets = new DynamicSecretsPage(page);
   await dynamicSecrets.open();
   await dynamicSecrets.revoke(secretLogin).focus();
   await page.keyboard.press('Enter');
+  await expect(dynamicSecrets.confirmation).toContainText('Revoke dynamic credential?');
   await expect(dynamicSecrets.confirmation).toContainText(
     `Hand back '${secretLogin}'? It stops working immediately.`,
   );
+  await expect(dynamicSecrets.confirmation).toContainText('Saved to the audit log');
   await expect(dynamicSecrets.confirmationCancel).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(dynamicSecrets.confirmationContinue).toBeFocused();
@@ -134,7 +134,7 @@ test('Revoke by keyboard asks with the Legacy confirmation and removes the login
   expect(loginExists(secretLogin)).toBe(false);
 });
 
-test('cancelling Revoke keeps the login, and Continue removes it', async ({ page }) => {
+test('cancelling Revoke keeps the login, and Revoke credential removes it', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const dynamicSecrets = new DynamicSecretsPage(page);
   await dynamicSecrets.open();
@@ -181,7 +181,9 @@ test('the palette in the Angular shell opens Dynamic secrets', async ({ page }) 
 });
 
 for (const theme of ['dark', 'light'] as const) {
-  test(`visual parity: Dynamic secrets in ${theme} appearance`, async ({ page }, info) => {
+  test(`Dynamic secrets renders roles and leases in ${theme} appearance`, async ({
+    page,
+  }, info) => {
     await page.context().addCookies(await savedAdministratorCookies());
     const dynamicSecrets = new DynamicSecretsPage(page);
     await dynamicSecrets.open();
@@ -193,5 +195,16 @@ for (const theme of ['dark', 'light'] as const) {
       path: info.outputPath(`dynamic-secrets-${theme}.png`),
       fullPage: true,
     });
+  });
+}
+
+for (const width of [300, 2000] as const) {
+  test(`Dynamic secrets has no sideways scroll at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.context().addCookies(await savedAdministratorCookies());
+    const dynamicSecrets = new DynamicSecretsPage(page);
+    await dynamicSecrets.open();
+    await expect(dynamicSecrets.generate(dynamicRoles.internal)).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
   });
 }

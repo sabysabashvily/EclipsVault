@@ -30,7 +30,9 @@ export class DynamicSecretsPage {
     this.stepUp = page.getByRole('dialog', { name: "Confirm it's you" });
     this.confirmation = page.getByRole('alertdialog');
     this.confirmationCancel = this.confirmation.getByRole('button', { name: 'Cancel' });
-    this.confirmationContinue = this.confirmation.getByRole('button', { name: 'Continue' });
+    this.confirmationContinue = this.confirmation.getByRole('button', {
+      name: 'Revoke credential',
+    });
   }
 
   async open(): Promise<void> {

@@ -13,6 +13,7 @@ import {
 import { Observable, finalize } from 'rxjs';
 import { AdministratorWrites } from '../shared/administrator-writes';
 import { ConfirmationDialog } from '../shared/confirmation-dialog';
+import { EmptyState } from '../shared/empty-state';
 import { StatusLine } from '../shared/status-line';
 import { StepUpDialog } from '../shared/step-up-dialog';
 import type { components } from '../ui-api/schema.generated';
@@ -27,7 +28,7 @@ const backendRefused = 'The backend refused to destroy the credential; it may st
 
 @Component({
   selector: 'app-dynamic-secrets-page',
-  imports: [DatePipe, StatusLine, StepUpDialog, ConfirmationDialog],
+  imports: [DatePipe, EmptyState, StatusLine, StepUpDialog, ConfirmationDialog],
   providers: [AdministratorWrites],
   templateUrl: './dynamic-secrets-page.html',
 })
@@ -51,6 +52,17 @@ export class DynamicSecretsPage {
   protected readonly everyone = computed(
     () => this.page.hasValue() && this.page.value().leaseScope === 'everyone',
   );
+  protected readonly verdict = computed<{ label: string; tone: 'danger' | 'ok' } | null>(() => {
+    if (!this.page.hasValue()) return null;
+    const leases = this.page.value().leases;
+    if (leases.some((lease) => lease.status === 'RevocationFailed')) {
+      return { label: 'Revocation failed', tone: 'danger' };
+    }
+    if (leases.some((lease) => lease.status === 'Active')) {
+      return { label: 'Active leases', tone: 'ok' };
+    }
+    return null;
+  });
 
   constructor() {
     // Leaving the page, a lost session or a lost response forgets the credential with the pending write.
@@ -69,6 +81,7 @@ export class DynamicSecretsPage {
       roleId: role.roleId,
       ttlMinutes: minutes === '' ? null : Number(minutes),
     };
+    const detail = `Confirming mints a live credential for '${role.name}' on ${role.backend}. The password is shown once and saved to the audit log.`;
     this.writes.send(
       () => this.reloading(this.http.post<Issued>(`${path}/issue`, request)),
       (issued) => {
@@ -77,7 +90,7 @@ export class DynamicSecretsPage {
           injector: this.injector,
         });
       },
-      (proof) => this.stepUp().open(proof),
+      (proof) => this.stepUp().open(proof, detail),
     );
   }
 
@@ -90,6 +103,16 @@ export class DynamicSecretsPage {
     this.pendingRevoke = lease;
     this.confirmation().open(
       `Hand back '${lease.credentialIdentity}'? It stops working immediately.`,
+      {
+        title: 'Revoke dynamic credential?',
+        confirm: 'Revoke credential',
+        facts: [
+          ['Role', lease.roleName],
+          ['Username', lease.credentialIdentity],
+          ...(this.everyone() ? ([['Taken by', lease.holder]] as const) : []),
+        ],
+        note: 'Saved to the audit log',
+      },
     );
   }
 

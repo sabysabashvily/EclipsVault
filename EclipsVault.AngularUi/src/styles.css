@@ -2796,6 +2796,97 @@ textarea {
   font-size: 0.84rem;
 }
 
+/* ---- Dynamic secrets ---------------------------------------------- */
+.licence-note {
+  margin: 0 0 1.1rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius);
+  background: var(--info-wash);
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.licence-note strong {
+  color: var(--text);
+  font-weight: 500;
+}
+.licence-note-warn {
+  background: var(--warn-wash);
+}
+.role-description {
+  margin-top: 0.15rem;
+  font-size: 0.84rem;
+}
+.lease-note {
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.inline-form {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.inline-form input {
+  width: 5.5rem;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: var(--radius-pill);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.credential-table th {
+  width: 11rem;
+}
+.credential-table td {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 1199px) {
+  .inline-form input {
+    min-height: 2.75rem;
+  }
+}
+@container rows (width < 880px) {
+  .row-cards .inline-form {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .row-cards .cell-verb:has(.inline-form) {
+    order: 4;
+    flex-basis: 100%;
+    margin-left: 0;
+    margin-top: 0.35rem;
+  }
+  .row-cards .inline-form .button {
+    flex: 1;
+  }
+}
+@media (max-width: 520px) {
+  .credential-table,
+  .credential-table tbody,
+  .credential-table tr,
+  .credential-table th,
+  .credential-table td {
+    display: block;
+    width: auto;
+    height: auto;
+  }
+  .credential-table tr {
+    padding: 0.65rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .credential-table tr:last-child {
+    border-bottom: none;
+  }
+  .credential-table th,
+  .credential-table td {
+    padding: 0.15rem 0;
+    border-bottom: none;
+  }
+}
+
 input,
 textarea,
 select {

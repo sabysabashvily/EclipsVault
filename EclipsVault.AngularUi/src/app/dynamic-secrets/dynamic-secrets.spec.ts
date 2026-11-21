@@ -140,7 +140,7 @@ function refuse(url: string, code: string, title: string, status: number): void 
 async function confirmRevoke(page: HTMLElement, fixture: ComponentFixture<unknown>) {
   button(page, 'Revoke').click();
   await fixture.whenStable();
-  button(page, 'Continue').click();
+  button(page, 'Revoke credential').click();
   fixture.detectChanges();
   return backend.expectOne(revokePath);
 }
@@ -177,32 +177,31 @@ describe('Dynamic secrets', () => {
     expect(page.textContent).not.toContain('Could not load dynamic secrets.');
   });
 
-  it('copies the Legacy heading, roles and the holder’s own leases word for word', async () => {
+  it('renders the heading, roles with category pills, and the holder’s own leases', async () => {
     const { page } = await loaded();
     expect(text(page.querySelector('.page-sub'))).toBe(
       'Credentials the vault creates on a real backend when you ask, and destroys when the lease elapses. Nothing is stored — the value is shown once and cannot be recovered.',
     );
+    expect(text(page.querySelector('.title-row .badge'))).toBe('Active leases');
     expect([...page.querySelectorAll('section h2')].map((heading) => text(heading))).toEqual([
       'Roles you can issue',
       'Your leases',
     ]);
     expect(
       [...page.querySelectorAll('section')[0]!.querySelectorAll('tbody tr')].map((row) =>
-        [...row.querySelectorAll('td')].slice(0, 6).map((cell) => text(cell)),
+        [...row.querySelectorAll('td')].slice(0, 5).map((cell) => text(cell)),
       ),
     ).toEqual([
       [
-        'reporting_readerRead-only access to the reporting database.',
+        'reporting_readerGLOBALRead-only access to the reporting database.',
         'SqlServer',
-        'GLOBAL',
         'Development',
         'Internal',
         '15 min (max 60)',
       ],
       [
-        'billing_adminBilling database owner.',
+        'billing_adminGLOBALBilling database owner.',
         'SqlServer',
-        'GLOBAL',
         'Development',
         'Secret',
         '5 min (max 30)',
@@ -272,7 +271,7 @@ describe('Dynamic secrets', () => {
       ...own,
       licence: { licensed: false, evaluationDaysRemaining: days },
     });
-    expect(text(page.querySelector('section .muted'))).toBe(note);
+    expect(text(page.querySelector('.licence-note'))).toBe(note);
   });
 
   it.each([
@@ -283,7 +282,7 @@ describe('Dynamic secrets', () => {
     expect(page.textContent).not.toContain('licence');
   });
 
-  it('shows each lease status, with the fixed note of a failed revocation', async () => {
+  it('shows each lease status as a pill, with a danger pill and note on a failed revocation', async () => {
     const { page } = await loaded({
       ...own,
       leases: [
@@ -297,8 +296,10 @@ describe('Dynamic secrets', () => {
         },
       ],
     });
+    expect(text(page.querySelector('.title-row .badge.tone-danger'))).toBe('Revocation failed');
+    const leaseRows = [...page.querySelectorAll('section')[1]!.querySelectorAll('tbody tr')];
     expect(
-      [...page.querySelectorAll('section')[1]!.querySelectorAll('tbody tr')].map((row) =>
+      leaseRows.map((row) =>
         [...row.querySelectorAll('td')[4]!.children].map((part) => text(part)),
       ),
     ).toEqual([
@@ -306,6 +307,7 @@ describe('Dynamic secrets', () => {
       ['Revoked'],
       ['Revocation failed', 'The backend refused to destroy the credential; it may still work.'],
     ]);
+    expect(leaseRows[2]?.querySelector('.badge.tone-danger')).not.toBeNull();
     expect(page.querySelectorAll('section')[1]!.querySelectorAll('button')).toHaveLength(0);
   });
 
@@ -354,6 +356,9 @@ describe('Dynamic secrets', () => {
     );
     await reload(fixture);
     expect(page.querySelector('app-step-up-dialog dialog[open]')).not.toBeNull();
+    expect(text(page.querySelector('app-step-up-dialog dialog p'))).toBe(
+      "Confirming mints a live credential for 'billing_admin' on SqlServer. The password is shown once and saved to the audit log.",
+    );
     expect(button(rowOf(page, 'billing_admin'), 'Generate').disabled).toBe(true);
     expect(credential(page)).toEqual([]);
     enterProof(page, '123456');
@@ -484,13 +489,28 @@ describe('Dynamic secrets', () => {
     expect(returned.nativeElement.textContent).not.toContain(issued.password);
   });
 
-  it('asks before revoking with the exact Legacy confirmation, and Cancel sends nothing', async () => {
+  it('asks before revoking with consequence, facts and audit note, and Cancel sends nothing', async () => {
     const { page, fixture } = await loaded();
     const revoke = button(page, 'Revoke');
     revoke.focus();
     revoke.click();
     await fixture.whenStable();
+    expect(text(page.querySelector('[role="alertdialog"][open] h2'))).toBe(
+      'Revoke dynamic credential?',
+    );
     expect(text(page.querySelector('[role="alertdialog"][open] p'))).toBe(confirmation);
+    expect(
+      [...page.querySelectorAll('[role="alertdialog"][open] .facts div')].map((row) => [
+        text(row.querySelector('dt')),
+        text(row.querySelector('dd')),
+      ]),
+    ).toEqual([
+      ['Role', 'reporting_reader'],
+      ['Username', 'ev_reporting_reader_k3mq8x2ptw'],
+    ]);
+    expect(text(page.querySelector('[role="alertdialog"][open] .dialog-note'))).toBe(
+      'Saved to the audit log',
+    );
     button(page, 'Cancel').click();
     await fixture.whenStable();
     backend.expectNone(revokePath);
