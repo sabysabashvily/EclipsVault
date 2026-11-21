@@ -45,13 +45,16 @@ export class SessionsPage {
   protected readonly devices = computed(() => {
     if (!this.sessions.hasValue()) return null;
     const now = new Date();
-    return this.sessions.value().sessions.map((session) => ({
-      ...session,
-      kind: deviceKind(session.device),
-      signedIn: relativeTime(session.createdAtUtc, now),
-      lastActive: relativeTime(session.lastSeenAtUtc, now),
-      lastActiveUtc: utcTimestamp(session.lastSeenAtUtc),
-    }));
+    return this.sessions
+      .value()
+      .sessions.map((session) => ({
+        ...session,
+        kind: deviceKind(session.device),
+        signedIn: relativeTime(session.createdAtUtc, now),
+        lastActive: relativeTime(session.lastSeenAtUtc, now),
+        lastActiveUtc: utcTimestamp(session.lastSeenAtUtc),
+      }))
+      .sort((left, right) => Number(right.isCurrent) - Number(left.isCurrent));
   });
   protected readonly hasOthers = computed(
     () => this.devices()?.some((session) => !session.isCurrent) ?? false,

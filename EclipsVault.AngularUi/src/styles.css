@@ -2566,13 +2566,51 @@ ol.steps > li::before {
 }
 
 /* ---- Signed-in devices ------------------------------------------------------- */
-.feed-item.session-current .feed-icon {
-  color: var(--ok);
-  border-color: transparent;
-  background: var(--ok-soft);
+/* This device leads the list; the others wrap their sign-out onto a full row when the card is narrow. */
+.device-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.current-pill {
-  font-size: 0.78rem;
+.device-list > li {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.device-list > li:first-child {
+  padding-top: 0;
+}
+.device-list > li:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.device-name {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.device-meta {
+  margin: 0.2rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+.device-list .button {
+  justify-self: end;
+}
+.attention-icon.tone-ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+@media (max-width: 560px) {
+  .device-list > li {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+  .device-list .button {
+    grid-column: 1 / -1;
+  }
 }
 
 /* Status stays in the page until another action or navigation replaces it. */
