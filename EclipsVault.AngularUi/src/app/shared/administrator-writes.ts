@@ -16,7 +16,11 @@ export class AdministratorWrites {
   readonly busy = signal(false);
   readonly awaitingProof = signal(false);
   readonly blocked = signal(false);
-  readonly status = signal({ message: '', error: false });
+  /** `code` is the refusal's problem code, for a page that words some refusals itself. */
+  readonly status = signal<{ message: string; error: boolean; code?: string }>({
+    message: '',
+    error: false,
+  });
   readonly errors = signal<Readonly<Record<string, string[]>>>({});
   readonly ended = new Subject<void>();
   private readonly injector = inject(Injector);
@@ -104,6 +108,7 @@ export class AdministratorWrites {
                 ? error.title
                 : 'The response was lost. Reload the page before trying again.',
             error: true,
+            code: error instanceof UiApiError ? error.code : undefined,
           });
         },
       });

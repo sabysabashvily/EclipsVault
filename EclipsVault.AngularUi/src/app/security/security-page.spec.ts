@@ -1,4 +1,4 @@
-import { fixLabels, fixUrls, grades, ringDasharray } from './security-page';
+import { context, fixLabels, fixUrls, grades, verdict } from './security-page';
 
 describe('security checkup presentation', () => {
   it('sends each remediation to its Legacy self-service page, or nowhere', () => {
@@ -19,28 +19,32 @@ describe('security checkup presentation', () => {
     });
   });
 
-  it('labels and colours each grade as the Legacy page does', () => {
+  it('labels and tones each grade', () => {
     expect(grades).toEqual({
-      Strong: { label: 'Strong', class: 'grade-strong' },
-      Good: { label: 'Good', class: 'grade-good' },
-      Fair: { label: 'Fair', class: 'grade-fair' },
-      AtRisk: { label: 'At risk', class: 'grade-atrisk' },
+      Strong: { label: 'Strong', tone: 'ok' },
+      Good: { label: 'Good', tone: 'ok' },
+      Fair: { label: 'Fair', tone: 'warn' },
+      AtRisk: { label: 'At risk', tone: 'danger' },
     });
   });
 
   it.each([
-    [-1, '0.0 326.7'],
-    [0, '0.0 326.7'],
-    [25, '81.7 245.0'],
-    [50, '163.4 163.4'],
-    [70, '228.7 98.0'],
-    [90, '294.1 32.7'],
-    [100, '326.7 0.0'],
-    [101, '326.7 0.0'],
+    [1, 3, { label: 'Action needed', tone: 'danger' }],
+    [0, 2, { label: 'Recommended', tone: 'warn' }],
+    [0, 0, { label: 'All good', tone: 'ok' }],
   ])(
-    'draws score %i on a radius-52 ring with clamped arc and gap to one decimal',
-    (score, expected) => {
-      expect(ringDasharray(score)).toBe(expected);
+    'with %i action needed and %i recommended, the verdict is %o',
+    (action, recommended, expected) => {
+      expect(verdict(action, recommended)).toEqual(expected);
     },
   );
+
+  it.each([
+    [0, 4, null, 'All 4 checks pass. Everything here is about your account only.'],
+    [1, 3, 'Add a passkey.', '1 check needs you · next: Add a passkey.'],
+    [2, 2, 'Generate codes.', '2 checks need you · next: Generate codes.'],
+    [2, 2, null, '2 checks need you.'],
+  ])('with %i open and %i passing checks, the line reads as expected', (open, pass, next, line) => {
+    expect(context(open, pass, next)).toBe(line);
+  });
 });

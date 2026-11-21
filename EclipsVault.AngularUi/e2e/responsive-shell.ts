@@ -7,6 +7,7 @@ export class ResponsiveShell {
   readonly search;
   readonly palette;
   readonly newUser;
+  readonly rowMore;
   readonly editUser;
   readonly usersLink;
   readonly users;
@@ -25,7 +26,8 @@ export class ResponsiveShell {
       exact: true,
     });
     this.newUser = page.getByRole('link', { name: 'New user', exact: true });
-    this.editUser = page.getByRole('link', { name: 'Edit', exact: true }).first();
+    this.rowMore = page.getByText('More', { exact: true }).first();
+    this.editUser = page.getByRole('menuitem', { name: 'Edit', exact: true }).first();
     this.usersLink = this.navigation.getByRole('link', { name: 'Users', exact: true });
     this.users = page.getByRole('region', { name: 'Users', exact: true });
     this.showPassword = page.getByRole('button', { name: 'Show password', exact: true });
