@@ -398,13 +398,16 @@ describe('AccessRequestsPage', () => {
   });
 
   it.each(['1.5', '-1', '3651'])(
-    'refuses an expiry of %s before anything is sent, as Legacy did',
+    'refuses an expiry of %s before anything is sent, keeping the approval and what was typed',
     async (typed) => {
       const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
       await approve(fixture, page, typed);
       await fixture.whenStable();
       backend.expectNone(`${path}/${toReview.requestId}/approve`);
-      expect(announced(page).error).toBe('Access must end after 0 to 3650 whole days.');
+      const dialog = page.querySelector('dialog[open]');
+      expect(dialog?.querySelector('h2')?.textContent).toBe("Approve colleague's request?");
+      expect(dialog?.querySelector<HTMLInputElement>('#approval-days')?.value).toBe(typed);
+      expect(announced(page).error).toBe('');
     },
   );
 

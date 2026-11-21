@@ -1,11 +1,13 @@
 import { formatDate } from '@angular/common';
 import { HttpClient, httpResource } from '@angular/common/http';
 import {
+  afterNextRender,
   Component,
   computed,
   DestroyRef,
   ElementRef,
   inject,
+  Injector,
   LOCALE_ID,
   signal,
   viewChild,
@@ -63,6 +65,7 @@ const badges: Record<FiledRequest['status'], { tone: string; label: string }> = 
 export class AccessRequestsPage {
   private readonly http = inject(HttpClient);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
   private readonly locale = inject(LOCALE_ID);
   private readonly confirmation = viewChild.required('confirmation', { read: ConfirmationDialog });
   private readonly approval = viewChild.required('approval', { read: ConfirmationDialog });
@@ -147,9 +150,13 @@ export class AccessRequestsPage {
 
   protected askToApprove(request: RequestToReview): void {
     if (this.busy()) return;
-    this.approving = request;
     this.days().nativeElement.value = '0';
     this.endsAfter.set('0');
+    this.showApproval(request);
+  }
+
+  private showApproval(request: RequestToReview): void {
+    this.approving = request;
     this.approval().open(`${request.requester} gets ${request.secretName} as a share.`, {
       title: `Approve ${request.requester}'s request?`,
       confirm: 'Approve and grant access',
@@ -170,9 +177,11 @@ export class AccessRequestsPage {
     if (!confirmed || request === null) return;
     const days = this.days().nativeElement;
     // The field's own rules (whole days, 0 to 3650) refuse before anything is sent, as Legacy's
-    // form did. An empty one is sent as null, which the server refuses as out of range.
+    // form did: the approval stays open with what was typed, and the field says what is wrong.
+    // An empty one is sent as null, which the server refuses as out of range.
     if (!days.checkValidity()) {
-      this.status.set({ message: 'Access must end after 0 to 3650 whole days.', error: true });
+      this.showApproval(request);
+      afterNextRender(() => days.reportValidity(), { injector: this.injector });
       return;
     }
     const expiresInDays = Number.isInteger(days.valueAsNumber) ? days.valueAsNumber : null;
