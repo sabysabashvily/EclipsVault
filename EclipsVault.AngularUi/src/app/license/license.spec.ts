@@ -156,10 +156,10 @@ it('explains the actual installation inputs', async () => {
     'Set the ECLIPSVAULT_LICENSE environment variable to your license token, or point License:FilePath at a file that holds the token, then restart. The token is verified offline against the vendor key pinned into this build — it never leaves your infrastructure.',
   );
 });
-it('keeps the Legacy commercial copy word for word', async () => {
+it('states that secrets stay available whatever the licence says', async () => {
   const { page } = await loaded();
   expect(text(page)).toContain(
-    'How this vault is licensed. Licensing is soft — your secrets, and every baseline protection, are never gated.',
+    'Secrets and baseline protection stay available whatever the licence says.',
   );
   expect(text(page)).toContain(
     'See the Pricing & licensing section of the README to buy or renew.',

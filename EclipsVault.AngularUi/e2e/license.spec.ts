@@ -96,7 +96,7 @@ test('the sidebar on License opens Your data in the Angular UI', async ({ page }
 });
 
 for (const theme of ['dark', 'light'] as const) {
-  test(`visual parity: License in ${theme} appearance`, async ({ page }, info) => {
+  test(`License shows an unlicensed vault in ${theme} appearance`, async ({ page }, info) => {
     await page.context().addCookies(await savedAdministratorCookies());
     const license = new License(page);
     await license.open();
