@@ -37,11 +37,11 @@ public sealed class SharedWithMeApiTests(VaultFixture vault)
     {
         var issuer = await vault.SignInNewAccountAsync("it-swm-shape-issuer", IPAddress.Parse("10.104.0.1"), ClearanceLevel.TopSecret);
         var recipient = await vault.SignInNewAccountAsync("it-swm-shape", IPAddress.Parse("10.104.0.2"), ClearanceLevel.Secret, "IT-SWM-SHAPE");
-        var staging = await LegacySharing.CreateSecretAsync(issuer.Client, "it-swm-shape-staging", sensitivity: "Secret", environment: "Staging");
-        var development = await LegacySharing.CreateSecretAsync(issuer.Client, "it-swm-shape-development");
-        await LegacySharing.ShareAsync(issuer.Client, staging, "it-swm-shape", ttlDays: "7");
-        await LegacySharing.ShareAsync(issuer.Client, development, "it-swm-shape");
-        var expiringShare = await LegacySharing.ShareOfAsync(vault, staging);
+        var staging = await SecretSharing.CreateSecretAsync(issuer.Client, "it-swm-shape-staging", sensitivity: "Secret", environment: "Staging");
+        var development = await SecretSharing.CreateSecretAsync(issuer.Client, "it-swm-shape-development");
+        await SecretDetailsApi.ShareAsync(issuer.Client, staging, "it-swm-shape", ttlDays: 7);
+        await SecretDetailsApi.ShareAsync(issuer.Client, development, "it-swm-shape");
+        var expiringShare = await SecretSharing.ShareOfAsync(vault, staging);
 
         var response = await recipient.Client.GetAsync("/api/ui/shared-with-me");
 
@@ -53,7 +53,7 @@ public sealed class SharedWithMeApiTests(VaultFixture vault)
         Assert.Equal(2, shares.Length);
         Assert.All(shares, share => Assert.Equal(
             ["accessUntilUtc", "environment", "name", "project", "secretId", "sensitivity", "sensitivityLabel", "sharedBy"], NamesOf(share)));
-        Assert.Equal(LegacySharing.SecretIdOf(development), shares[0].GetProperty("secretId").GetGuid());
+        Assert.Equal(SecretSharing.SecretIdOf(development), shares[0].GetProperty("secretId").GetGuid());
         Assert.Equal("it-swm-shape-development", shares[0].GetProperty("name").GetString());
         Assert.Equal("GLOBAL", shares[0].GetProperty("project").GetString());
         Assert.Equal("Development", shares[0].GetProperty("environment").GetString());
@@ -61,7 +61,7 @@ public sealed class SharedWithMeApiTests(VaultFixture vault)
         Assert.Equal("Internal", shares[0].GetProperty("sensitivityLabel").GetString());
         Assert.Equal("it-swm-shape-issuer", shares[0].GetProperty("sharedBy").GetString());
         Assert.Equal(JsonValueKind.Null, shares[0].GetProperty("accessUntilUtc").ValueKind);
-        Assert.Equal(LegacySharing.SecretIdOf(staging), shares[1].GetProperty("secretId").GetGuid());
+        Assert.Equal(SecretSharing.SecretIdOf(staging), shares[1].GetProperty("secretId").GetGuid());
         Assert.Equal("it-swm-shape-staging", shares[1].GetProperty("name").GetString());
         Assert.Equal("GLOBAL", shares[1].GetProperty("project").GetString());
         Assert.Equal("Staging", shares[1].GetProperty("environment").GetString());
@@ -79,8 +79,8 @@ public sealed class SharedWithMeApiTests(VaultFixture vault)
         var firstId = SessionApi.PrincipalOf(vault, first).GetUserId();
         var secondId = SessionApi.PrincipalOf(vault, second).GetUserId();
         var admin = await vault.AdminClientAsync();
-        await LegacySharing.ShareAsync(admin, await LegacySharing.CreateSecretAsync(admin, "it-swm-scope-secret-a"), "it-swm-scope-a");
-        await LegacySharing.ShareAsync(admin, await LegacySharing.CreateSecretAsync(admin, "it-swm-scope-secret-b"), "it-swm-scope-b");
+        await SecretDetailsApi.ShareAsync(admin, await SecretSharing.CreateSecretAsync(admin, "it-swm-scope-secret-a"), "it-swm-scope-a");
+        await SecretDetailsApi.ShareAsync(admin, await SecretSharing.CreateSecretAsync(admin, "it-swm-scope-secret-b"), "it-swm-scope-b");
         var claimingSecond = $"?userId={secondId}&recipientId={secondId}&granteeUserId={secondId}&accountId={secondId}&username=it-swm-scope-b&recipient=it-swm-scope-b";
         var claimingFirst = $"?userId={firstId}&recipientId={firstId}&granteeUserId={firstId}&accountId={firstId}&username=it-swm-scope-a&recipient=it-swm-scope-a";
 
@@ -96,10 +96,10 @@ public sealed class SharedWithMeApiTests(VaultFixture vault)
     {
         var recipient = await vault.SignInNewAccountAsync("it-swm-under-cleared", IPAddress.Parse("10.104.0.5"), project: "IT-SWM-CLEARANCE");
         var admin = await vault.AdminClientAsync();
-        var confidential = await LegacySharing.CreateSecretAsync(admin, "it-swm-under-cleared-confidential", sensitivity: "Confidential");
-        var internalSecret = await LegacySharing.CreateSecretAsync(admin, "it-swm-under-cleared-internal");
-        await LegacySharing.InsertShareAsync(vault, confidential, "it-swm-under-cleared");
-        await LegacySharing.ShareAsync(admin, internalSecret, "it-swm-under-cleared");
+        var confidential = await SecretSharing.CreateSecretAsync(admin, "it-swm-under-cleared-confidential", sensitivity: "Confidential");
+        var internalSecret = await SecretSharing.CreateSecretAsync(admin, "it-swm-under-cleared-internal");
+        await SecretSharing.InsertShareAsync(vault, confidential, "it-swm-under-cleared");
+        await SecretDetailsApi.ShareAsync(admin, internalSecret, "it-swm-under-cleared");
 
         Assert.Equal(["it-swm-under-cleared-internal"], await ListedNamesAsync(recipient));
     }
@@ -110,11 +110,11 @@ public sealed class SharedWithMeApiTests(VaultFixture vault)
         var issuer = await vault.SignInNewAccountAsync("it-swm-off-network-issuer", IPAddress.Parse("10.104.0.6"), ClearanceLevel.TopSecret);
         var recipient = await vault.SignInNewAccountAsync(
             "it-swm-off-network", IPAddress.Parse("100.104.0.1"), ClearanceLevel.Elevated, "IT-SWM-NETWORK");
-        var confidential = await LegacySharing.CreateSecretAsync(issuer.Client, "it-swm-off-network-confidential", sensitivity: "Confidential");
-        var internalSecret = await LegacySharing.CreateSecretAsync(issuer.Client, "it-swm-off-network-internal");
-        Assert.Equal(HttpStatusCode.Redirect, (await LegacySharing.ShareAsync(issuer.Client, confidential, "it-swm-off-network")).StatusCode);
-        Assert.True(await LegacySharing.HasAnyShareAsync(vault, confidential));
-        await LegacySharing.ShareAsync(issuer.Client, internalSecret, "it-swm-off-network");
+        var confidential = await SecretSharing.CreateSecretAsync(issuer.Client, "it-swm-off-network-confidential", sensitivity: "Confidential");
+        var internalSecret = await SecretSharing.CreateSecretAsync(issuer.Client, "it-swm-off-network-internal");
+        Assert.Equal(HttpStatusCode.NoContent, (await SecretDetailsApi.ShareAsync(issuer.Client, confidential, "it-swm-off-network")).StatusCode);
+        Assert.True(await SecretSharing.HasAnyShareAsync(vault, confidential));
+        await SecretDetailsApi.ShareAsync(issuer.Client, internalSecret, "it-swm-off-network");
 
         Assert.Equal(["it-swm-off-network-internal"], await ListedNamesAsync(recipient));
     }
@@ -124,21 +124,21 @@ public sealed class SharedWithMeApiTests(VaultFixture vault)
     {
         var recipient = await vault.SignInNewAccountAsync("it-swm-lifetime", IPAddress.Parse("10.104.0.7"), project: "IT-SWM-LIFETIME");
         var admin = await vault.AdminClientAsync();
-        var expiredShare = await LegacySharing.CreateSecretAsync(admin, "it-swm-lifetime-expired-share");
-        var shredded = await LegacySharing.CreateSecretAsync(admin, "it-swm-lifetime-shredded");
-        var expiredSecret = await LegacySharing.CreateSecretAsync(admin, "it-swm-lifetime-expired-secret");
-        var live = await LegacySharing.CreateSecretAsync(admin, "it-swm-lifetime-live");
-        await LegacySharing.ShareAsync(admin, expiredShare, "it-swm-lifetime");
-        await LegacySharing.ShareAsync(admin, shredded, "it-swm-lifetime");
-        await LegacySharing.ShareAsync(admin, expiredSecret, "it-swm-lifetime");
-        await LegacySharing.ShareAsync(admin, live, "it-swm-lifetime");
+        var expiredShare = await SecretSharing.CreateSecretAsync(admin, "it-swm-lifetime-expired-share");
+        var shredded = await SecretSharing.CreateSecretAsync(admin, "it-swm-lifetime-shredded");
+        var expiredSecret = await SecretSharing.CreateSecretAsync(admin, "it-swm-lifetime-expired-secret");
+        var live = await SecretSharing.CreateSecretAsync(admin, "it-swm-lifetime-live");
+        await SecretDetailsApi.ShareAsync(admin, expiredShare, "it-swm-lifetime");
+        await SecretDetailsApi.ShareAsync(admin, shredded, "it-swm-lifetime");
+        await SecretDetailsApi.ShareAsync(admin, expiredSecret, "it-swm-lifetime");
+        await SecretDetailsApi.ShareAsync(admin, live, "it-swm-lifetime");
 
-        await LegacySharing.ExpireShareAsync(vault, (await LegacySharing.ShareOfAsync(vault, expiredShare)).Id);
+        await SecretSharing.ExpireShareAsync(vault, (await SecretSharing.ShareOfAsync(vault, expiredShare)).Id);
         using (var scope = vault.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
-            (await db.Secrets.SingleAsync(secret => secret.Id == LegacySharing.SecretIdOf(shredded))).Shred(DateTimeOffset.UtcNow);
-            (await db.Secrets.SingleAsync(secret => secret.Id == LegacySharing.SecretIdOf(expiredSecret))).ExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1);
+            (await db.Secrets.SingleAsync(secret => secret.Id == SecretSharing.SecretIdOf(shredded))).Shred(DateTimeOffset.UtcNow);
+            (await db.Secrets.SingleAsync(secret => secret.Id == SecretSharing.SecretIdOf(expiredSecret))).ExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1);
             await db.SaveChangesAsync();
         }
 
@@ -150,16 +150,16 @@ public sealed class SharedWithMeApiTests(VaultFixture vault)
     {
         var recipient = await vault.SignInNewAccountAsync("it-swm-decoy", IPAddress.Parse("10.104.0.11"), project: "IT-SWM-DECOY");
         var admin = await vault.AdminClientAsync();
-        var decoy = await LegacySharing.CreateSecretAsync(admin, "it-swm-decoy-flagged");
-        var genuine = await LegacySharing.CreateSecretAsync(admin, "it-swm-decoy-genuine");
-        await LegacySharing.ShareAsync(admin, decoy, "it-swm-decoy");
-        await LegacySharing.ShareAsync(admin, genuine, "it-swm-decoy");
+        var decoy = await SecretSharing.CreateSecretAsync(admin, "it-swm-decoy-flagged");
+        var genuine = await SecretSharing.CreateSecretAsync(admin, "it-swm-decoy-genuine");
+        await SecretDetailsApi.ShareAsync(admin, decoy, "it-swm-decoy");
+        await SecretDetailsApi.ShareAsync(admin, genuine, "it-swm-decoy");
 
         // No screen makes a decoy: an operator flags one in the database, and its shares remain.
         using (var scope = vault.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
-            (await db.Secrets.SingleAsync(secret => secret.Id == LegacySharing.SecretIdOf(decoy))).IsHoneyToken = true;
+            (await db.Secrets.SingleAsync(secret => secret.Id == SecretSharing.SecretIdOf(decoy))).IsHoneyToken = true;
             await db.SaveChangesAsync();
         }
 
@@ -205,10 +205,10 @@ public sealed class SharedWithMeProductionWindowTests(ClosedProductionWindowFixt
         var vault = fixture.Vault;
         var recipient = await vault.SignInNewAccountAsync("it-swm-window", IPAddress.Parse("10.104.0.10"), project: "IT-SWM-WINDOW");
         var admin = await vault.AdminClientAsync();
-        var production = await LegacySharing.CreateSecretAsync(admin, "it-swm-window-production", environment: "Production");
-        var development = await LegacySharing.CreateSecretAsync(admin, "it-swm-window-development");
-        await LegacySharing.InsertShareAsync(vault, production, "it-swm-window");
-        await LegacySharing.ShareAsync(admin, development, "it-swm-window");
+        var production = await SecretSharing.CreateSecretAsync(admin, "it-swm-window-production", environment: "Production");
+        var development = await SecretSharing.CreateSecretAsync(admin, "it-swm-window-development");
+        await SecretSharing.InsertShareAsync(vault, production, "it-swm-window");
+        await SecretDetailsApi.ShareAsync(admin, development, "it-swm-window");
 
         var listed = await recipient.Client.GetFromJsonAsync<SharedWithMeResponse>("/api/ui/shared-with-me");
 

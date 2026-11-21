@@ -18,8 +18,9 @@ public sealed class FakeCryptoEngine : ICryptoEngine, ICryptoEngineFactory
 
     public ICryptoEngine Create() => this;
 
+    // A fresh data key per seal, as the real engines wrap: writes tell a changed value by its wrapped key.
     public Task<SealedSecret> SealAsync(byte[] plaintext, byte[] associatedData, CancellationToken ct)
-        => Task.FromResult(new SealedSecret(Frame(associatedData, plaintext), [], "test-kek", "FAKE"));
+        => Task.FromResult(new SealedSecret(Frame(associatedData, plaintext), RandomNumberGenerator.GetBytes(16), "test-kek", "FAKE"));
 
     public Task<byte[]> UnsealAsync(SealedSecret sealedSecret, byte[] associatedData, CancellationToken ct)
     {

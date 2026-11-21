@@ -38,6 +38,7 @@ const sharedWithMe = () =>
   import('./shared-with-me/shared-with-me-page').then((m) => m.SharedWithMePage);
 const accessRequests = () =>
   import('./access-requests/access-requests-page').then((m) => m.AccessRequestsPage);
+const denied = () => import('./denied/denied-page').then((m) => m.DeniedPage);
 
 const profile = () => import('./profile/profile-page').then((m) => m.ProfilePage);
 const password = () => import('./profile/change-password-page').then((m) => m.ChangePasswordPage);
@@ -142,6 +143,10 @@ export const routes: Routes = [
     title: 'New secret — EclipsVault',
   },
   {
+    matcher: detailsPath('Secrets', 'Details'),
+    loadComponent: () => import('./secrets/secret-details-page').then((m) => m.SecretDetailsPage),
+  },
+  {
     matcher: legacyPath('DynamicSecrets'),
     loadComponent: dynamicSecrets,
     title: 'Dynamic secrets — EclipsVault',
@@ -170,6 +175,11 @@ export const routes: Routes = [
     matcher: legacyPath('AccessRequests/Index'),
     loadComponent: accessRequests,
     title: 'Access requests — EclipsVault',
+  },
+  {
+    matcher: legacyPath('Account/Denied'),
+    loadComponent: denied,
+    title: 'Access denied — EclipsVault',
   },
   {
     matcher: legacyPath('Sessions'),

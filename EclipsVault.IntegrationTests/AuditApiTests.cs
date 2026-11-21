@@ -177,11 +177,11 @@ public sealed class AuditApiTests(VaultFixture vault)
         var observer = await vault.SignInNewAccountAsync("it-audit-decoy-observer", IPAddress.Parse("198.18.143.41"), ClearanceLevel.TopSecret);
         var intruder = await vault.SignInNewAccountAsync("it-audit-decoy-intruder", IPAddress.Parse("198.18.143.42"), ClearanceLevel.TopSecret);
         const string decoy = "it-audit-decoy";
-        var details = await LegacySharing.CreateSecretAsync(intruder.Client, decoy);
-        await LegacySharing.MakeDecoyAsync(vault, details);
+        var details = await SecretSharing.CreateSecretAsync(intruder.Client, decoy);
+        await SecretSharing.MakeDecoyAsync(vault, details);
 
         var before = await EntriesNamingAsync(observer, decoy);
-        await intruder.Client.GetAsync(details);
+        await SecretDetailsApi.GetAsync(intruder.Client, details);
         var after = await EntriesNamingAsync(observer, decoy);
 
         Assert.Equal(("SecretCreated", "Created", "ok", false), Summary(Assert.Single(before)));
@@ -223,8 +223,7 @@ public sealed class AuditApiTests(VaultFixture vault)
     [Fact]
     public async Task The_Legacy_sidebar_link_keeps_its_destination()
     {
-        // Access denied still renders the Legacy sidebar.
-        var html = await (await vault.AdminClientAsync()).GetStringAsync("/Account/Denied");
+        var html = await VaultFixture.LegacyShellAsync(await vault.AdminClientAsync());
         var link = Assert.Single(Regex.Matches(html, "<a\\b[^>]*>[\\s\\S]*?</a>").Select(match => match.Value),
             anchor => Regex.Replace(anchor, "<[^>]*>", "").Contains("Audit log", StringComparison.Ordinal));
 

@@ -414,38 +414,6 @@ public sealed class AccountController : Controller
         return RedirectToAction("Index", "Home");
     }
 
-    /// <summary>TempData key used to hand ABAC denial reasons to the Denied page ('\n'-separated).</summary>
-    internal const string DenialReasonsTempDataKey = "AbacDenialReasons";
-
-    [HttpGet]
-    public async Task<IActionResult> Denied(Guid? secretId, [FromServices] IAccessRequestService requests, CancellationToken ct)
-        => View(new AccessDeniedViewModel
-        {
-            Reasons = TempData[DenialReasonsTempDataKey] is string reasons
-                ? reasons.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                : [],
-            SecretId = secretId,
-            RequestRefusalMessage = secretId is { } id ? await RequestRefusalMessageAsync(requests, id, ct) : null,
-        });
-
-    /// <summary>
-    /// Why the Request access form is not offered for this secret, or null when it is. A honey token's
-    /// exception is left to the global handler, which signs the session out.
-    /// </summary>
-    private async Task<string?> RequestRefusalMessageAsync(IAccessRequestService requests, Guid secretId, CancellationToken ct)
-    {
-        try
-        {
-            return await requests.FilingRefusalAsync(secretId, User.GetUserId(), ct) is { } refusal
-                ? AccessRequestRules.ExplainToRequester(refusal)
-                : null;
-        }
-        catch (SecretNotFoundException)
-        {
-            return "That secret no longer exists.";
-        }
-    }
-
     private async Task<IActionResult> RedisplayEnrollmentAsync(Guid userId, SessionStamp stamp, EnrollTotpViewModel model, CancellationToken ct)
     {
         var enrollment = await _auth.BeginTotpEnrollmentAsync(userId, stamp, ct);

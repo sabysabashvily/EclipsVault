@@ -36,7 +36,7 @@ public sealed class MonitoringPagesTests(VaultFixture vault)
     [InlineData("View license", "/License")]
     public async Task Legacy_navigation_links_keep_their_destinations(string label, string destination)
     {
-        var html = await (await vault.AdminClientAsync()).GetStringAsync("/Account/Denied");
+        var html = await VaultFixture.LegacyShellAsync(await vault.AdminClientAsync());
         var link = Assert.Single(Regex.Matches(html, "<a\\b[^>]*>[\\s\\S]*?</a>")
             .Select(match => match.Value), anchor => Regex.Replace(anchor, "<[^>]*>", "").Trim() == label);
 

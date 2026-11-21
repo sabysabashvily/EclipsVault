@@ -35,6 +35,13 @@ public sealed class SqlServerBackend : IDynamicSecretBackend, IManagedSecretBack
     /// </summary>
     private const string RotateStatement = "ALTER LOGIN [{{name}}] WITH PASSWORD = '{{password}}';";
 
+    /// <summary>
+    /// The errors with which SQL Server refuses <c>ALTER LOGIN</c> before changing anything: no such
+    /// login or no permission (15151, 15247), and a password its policy rejects (15114 to 15118).
+    /// Any other error, a cancellation or a trigger's message among them, may follow a change that held.
+    /// </summary>
+    private static readonly HashSet<int> PasswordUnchangedErrors = [15151, 15247, 15114, 15115, 15116, 15117, 15118];
+
     private const string NotConfiguredMessage =
         "Dynamic secrets and managed rotation need a target database of their own. Set " +
         $"'{DynamicSecretTargetOptions.SectionName}:TargetConnectionString' to the database whose " +
@@ -60,14 +67,16 @@ public sealed class SqlServerBackend : IDynamicSecretBackend, IManagedSecretBack
     /// application compromise into control of the evidence.
     ///
     /// When <paramref name="nothingSent"/> is given, a failure before the statement reached the target
-    /// throws what it returns instead, so the caller knows there is nothing to undo.
+    /// throws what it returns for that failure instead, so the caller knows there is nothing to undo.
     /// </summary>
-    private async Task ExecuteOnTargetAsync(string sql, CancellationToken ct, Func<Exception>? nothingSent = null)
+    private async Task ExecuteOnTargetAsync(
+        string sql, CancellationToken ct, Func<Exception, Exception>? nothingSent = null)
     {
         if (!_target.IsConfigured)
         {
             _logger.LogError(NotConfiguredMessage);
-            throw nothingSent?.Invoke() ?? new InvalidOperationException(NotConfiguredMessage);
+            var notConfigured = new InvalidOperationException(NotConfiguredMessage);
+            throw nothingSent?.Invoke(notConfigured) ?? notConfigured;
         }
 
         await using var connection = new SqlConnection(_target.TargetConnectionString);
@@ -83,7 +92,7 @@ public sealed class SqlServerBackend : IDynamicSecretBackend, IManagedSecretBack
                 throw;
             }
 
-            throw nothingSent();
+            throw nothingSent(ex);
         }
 
         try
@@ -110,7 +119,7 @@ public sealed class SqlServerBackend : IDynamicSecretBackend, IManagedSecretBack
         DynamicSecretRole role, string identity, string password, DateTimeOffset expiresAtUtc, CancellationToken ct)
     {
         var sql = CredentialStatementTemplate.Render(role.CreationStatements, identity, password, expiresAtUtc);
-        await ExecuteOnTargetAsync(sql, ct, () => new MintRefusedException(role.Name));
+        await ExecuteOnTargetAsync(sql, ct, _ => new MintRefusedException(role.Name));
 
         _logger.LogInformation(
             "Minted SQL Server login {Identity} for role {RoleName}; lease elapses at {ExpiresAtUtc}",
@@ -127,10 +136,32 @@ public sealed class SqlServerBackend : IDynamicSecretBackend, IManagedSecretBack
         _logger.LogInformation("Dropped SQL Server login {Identity} for role {RoleName}", identity, role.Name);
     }
 
+    /// <summary>
+    /// Throws <see cref="UpstreamRotationRefusedException"/> only when the password certainly did not
+    /// change: the statement was never sent, or the server refused it with an error that leaves the
+    /// password as it was. Any other failure
+    /// (a timeout, a lost connection, a cancelled call) leaves it unknown whether the server ran it.
+    /// </summary>
     public async Task RotatePrincipalAsync(string principal, string newPassword, CancellationToken ct)
     {
-        var sql = CredentialStatementTemplate.Render(RotateStatement, principal, newPassword, DateTimeOffset.UnixEpoch);
-        await ExecuteOnTargetAsync(sql, ct);
+        string sql;
+        try
+        {
+            sql = CredentialStatementTemplate.Render(RotateStatement, principal, newPassword, DateTimeOffset.UnixEpoch);
+        }
+        catch (Exception notSent)
+        {
+            throw new UpstreamRotationRefusedException(notSent);
+        }
+
+        try
+        {
+            await ExecuteOnTargetAsync(sql, ct, notSent => new UpstreamRotationRefusedException(notSent));
+        }
+        catch (SqlException refused) when (PasswordUnchangedErrors.Contains(refused.Number))
+        {
+            throw new UpstreamRotationRefusedException(refused);
+        }
 
         // Never log the password — only that the principal moved.
         _logger.LogInformation("Rotated the password of SQL Server login {Principal}", principal);

@@ -60,8 +60,13 @@ public class SqlServerBackendTargetTests
 
     [Fact]
     public async Task Rotating_a_managed_principal_refuses_when_no_target_is_configured()
-        => await Assert.ThrowsAsync<InvalidOperationException>(() =>
+    {
+        // Nothing was sent, so the refusal is a certain one: the caller need not put a password back.
+        var refused = await Assert.ThrowsAsync<UpstreamRotationRefusedException>(() =>
             Backend(null).RotatePrincipalAsync("svc_reporting", "Abc123", CancellationToken.None));
+
+        Assert.IsType<InvalidOperationException>(refused.InnerException);
+    }
 
     [Fact]
     public void A_configured_target_is_reported_as_configured()

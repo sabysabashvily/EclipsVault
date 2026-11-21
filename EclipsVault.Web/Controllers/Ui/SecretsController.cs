@@ -11,7 +11,6 @@ using EclipsVault.Web.Models.Ui;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ViewFeatures;
 
 namespace EclipsVault.Web.Controllers.Ui;
 
@@ -28,7 +27,6 @@ namespace EclipsVault.Web.Controllers.Ui;
 public sealed class SecretsController(
     ISecretService secrets,
     IAuthorizationService authorization,
-    ITempDataDictionaryFactory tempData,
     ILogger<SecretsController> logger) : ControllerBase
 {
     [HttpGet]
@@ -90,10 +88,6 @@ public sealed class SecretsController(
             return Refusal(StatusCodes.Status409Conflict, "name_taken", taken.Message);
         }
 
-        // The Legacy Details page shows this until it is served by the Angular UI.
-        var flash = tempData.GetTempData(HttpContext);
-        flash[FlashExtensions.TypeKey] = "success";
-        flash[FlashExtensions.MessageKey] = $"Secret '{request.Name}' was envelope-encrypted and stored.";
         return Created($"/Secrets/Details/{id}", new CreatedSecretResponse(id));
     }
 

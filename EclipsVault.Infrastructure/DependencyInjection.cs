@@ -106,6 +106,7 @@ public static class DependencyInjection
         services.AddScoped<AuthenticationFailures>();
 
         services.AddScoped<ISecretRepository, SecretRepository>();
+        services.AddScoped<IManagedPrincipalLock, ManagedPrincipalLock>();
         services.AddScoped<ISecretGrantRepository, SecretGrantRepository>();
         services.AddScoped<IServiceAccountRepository, ServiceAccountRepository>();
         services.AddScoped<IServiceAccountChanges, ServiceAccountChanges>();

@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { test as browserTest, expect } from './fixtures';
+import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { savedAdministratorCookies } from './administrator-cookies';
 import {
   savedProofSetupTimeout,
@@ -129,8 +130,9 @@ for (const [name, link] of [
   });
 }
 
-for (const shell of ['/Account/Denied', '/Access'] as const) {
-  test(`the sidebar on ${shell} opens the Audit log`, async ({ page }) => {
+for (const shell of [legacyShell, '/Access'] as const) {
+  test(`the sidebar on ${shell} opens the Audit log`, async ({ page, browserHealth }) => {
+    expectLegacyShell(browserHealth, shell);
     await page.context().addCookies(await savedAdministratorCookies());
     const audit = new AuditLog(page);
     await audit.fromSidebar(shell);
@@ -138,7 +140,8 @@ for (const shell of ['/Account/Denied', '/Access'] as const) {
     await expect(page).toHaveURL(/\/Audit$/);
   });
 
-  test(`the palette on ${shell} opens the Audit log`, async ({ page }) => {
+  test(`the palette on ${shell} opens the Audit log`, async ({ page, browserHealth }) => {
+    expectLegacyShell(browserHealth, shell);
     await page.context().addCookies(await savedAdministratorCookies());
     const audit = new AuditLog(page);
     await audit.fromPalette(shell);
