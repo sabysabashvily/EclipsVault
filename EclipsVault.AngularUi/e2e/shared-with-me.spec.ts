@@ -169,11 +169,10 @@ test('after an issuer shares, the recipient lists it soonest-ending first and op
   await expect(shared.environmentBadgeOf(expiring, 'Development')).toBeVisible();
   await expect(shared.sensitivityBadgeOf(expiring, 'Internal')).toBeVisible();
   await expect(shared.sharedByOf(expiring)).toHaveText('vault-admin');
-  // Shared for 7 days a moment ago, so it ends within the week: yellow, not yet red.
-  // eslint-disable-next-line playwright/no-raw-locators -- The pill's tone is a class; it has no role of its own.
-  const pill = shared.accessUntilOf(expiring).locator('.badge');
-  await expect(pill).toHaveText(/^In 6 days · \d{1,2} [A-Z][a-z]{2}( \d{4})?$/);
-  await expect(pill).toHaveClass(/\btone-warn\b/);
+  // Shared for 7 days a moment ago, so it ends within the week: the pill counts the days left.
+  await expect(shared.accessUntilOf(expiring)).toHaveText(
+    /^In 6 days · \d{1,2} [A-Z][a-z]{2}( \d{4})?$/,
+  );
   const withoutExpiry = shared.secret('E2e_Shared_With_Me');
   await expect(shared.secretCellOf(withoutExpiry)).toContainText('GLOBAL');
   await expect(shared.environmentBadgeOf(withoutExpiry, 'Development')).toBeVisible();

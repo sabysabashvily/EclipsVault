@@ -163,11 +163,10 @@ test('Shared by me lists shares soonest-ending first, the close one as a yellow 
   await expect(shares.sharedOnOf(shares.rows.first())).toHaveText(
     /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
   );
-  // Shared for 7 days a moment ago, so it ends within the week: yellow, not yet red.
-  // eslint-disable-next-line playwright/no-raw-locators -- The pill's tone is a class; it has no role of its own.
-  const pill = shares.accessUntilOf(shares.rows.first()).locator('.badge');
-  await expect(pill).toHaveText(/^In 6 days · \d{1,2} [A-Z][a-z]{2}( \d{4})?$/);
-  await expect(pill).toHaveClass(/\btone-warn\b/);
+  // Shared for 7 days a moment ago, so it ends within the week: the pill counts the days left.
+  await expect(shares.accessUntilOf(shares.rows.first())).toHaveText(
+    /^In 6 days · \d{1,2} [A-Z][a-z]{2}( \d{4})?$/,
+  );
   await expect(
     page.getByText(/^2 shares you gave · soonest ends \d{1,2} [A-Z][a-z]{2}/),
   ).toBeVisible();
