@@ -14,91 +14,30 @@ using Microsoft.AspNetCore.WebUtilities;
 namespace EclipsVault.Web.Controllers;
 
 /// <summary>
-/// What sign-in still serves from the Legacy UI: single sign-on's two server redirects, break-glass
-/// recovery, the Error page's sign-out and the Denied page. The Angular UI serves the sign-in pages
-/// themselves, on the UI API's calls (ADR-0032).
+/// What sign-in still serves from the Legacy UI: single sign-on's two server redirects, the Error
+/// page's sign-out and the Denied page. The Angular UI serves the sign-in pages themselves, break-glass
+/// recovery included, on the UI API's calls (ADR-0032).
 /// </summary>
 // Default-deny at the class, opened per action, so every anonymous action here is declared where it is.
 [Authorize]
 [ServiceFilter(typeof(AuthThrottleFilter))]
 public sealed class AccountController : Controller
 {
-    private readonly IVaultAuthenticationService _auth;
-    private readonly IIpBlacklist _blacklist;
     private readonly AccountSignOut _signOut;
-    private readonly IAuditSink _audit;
     private readonly ISsoSignInService _sso;
     private readonly SessionIssuer _issuer;
     private readonly ILogger<AccountController> _logger;
 
     public AccountController(
-        IVaultAuthenticationService auth,
-        IIpBlacklist blacklist,
         AccountSignOut signOut,
-        IAuditSink audit,
         ISsoSignInService sso,
         SessionIssuer issuer,
         ILogger<AccountController> logger)
     {
-        _auth = auth;
-        _blacklist = blacklist;
         _signOut = signOut;
-        _audit = audit;
         _sso = sso;
         _issuer = issuer;
         _logger = logger;
-    }
-
-    /// <summary>
-    /// Break-glass recovery for administrators locked out by the intrusion defence.
-    /// The IP-blacklist middleware exempts only this endpoint; it demands all factors
-    /// (password + TOTP) in one step, is restricted to TopSecret clearance, heavily
-    /// rate limited, and every attempt is audited.
-    /// </summary>
-    [AllowAnonymous]
-    [HttpGet]
-    public IActionResult Recover() => View(new RecoverViewModel());
-
-    [AllowAnonymous]
-    [HttpPost]
-    public async Task<IActionResult> Recover(RecoverViewModel model, CancellationToken ct)
-    {
-        if (!ModelState.IsValid)
-        {
-            return View(model);
-        }
-
-        var sourceIp = HttpContext.Connection.RemoteIpAddress;
-
-        var credentials = await _auth.ValidateCredentialsAsync(model.Username, model.Password, ct);
-        var stamp = credentials.Stamp;
-        var user = credentials.Status == CredentialStatus.RequiresTotp && credentials.User is not null && stamp is not null
-            ? await _auth.VerifyBreakGlassAsync(credentials.User.Id, stamp, model.Code, ct)
-            : null;
-
-        if (user is null || stamp is null)
-        {
-            _logger.LogWarning("Break-glass recovery failed for {Username} from {SourceIp}", model.Username, sourceIp);
-            ModelState.AddModelError(string.Empty, "Recovery could not be completed with these credentials.");
-            return View(model);
-        }
-
-        var finished = await new BreakGlassSignIn(_issuer, _blacklist, _audit)
-            .FinishAsync(HttpContext, user, stamp, sourceIp, ct);
-        if (!finished.SessionIssued)
-        {
-            ModelState.AddModelError(string.Empty, "Recovery could not be completed with these credentials.");
-            return View(model);
-        }
-
-        _logger.LogWarning(
-            "Break-glass recovery completed by {Username} from {SourceIp}; block lifted: {BlockLifted}",
-            user.Username, sourceIp, finished.BlockLifted);
-
-        this.FlashSuccess(finished.BlockLifted
-            ? "The intrusion-defence block on your network was lifted and your session restored."
-            : "Access restored. Your network was not blocked.");
-        return LocalRedirect(SignInTarget.AfterBreakGlass);
     }
 
     /// <summary>The Error page's sign-out until Area 9; the UI API's sign-out runs the same implementation.</summary>

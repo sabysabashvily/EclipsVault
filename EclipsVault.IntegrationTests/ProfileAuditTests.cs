@@ -173,18 +173,14 @@ public sealed class ProfileAuditTests(VaultFixture vault)
         }
 
         var browser = vault.CreateSession(source: IPAddress.Parse("203.0.113.122"));
-        var page = await browser.Client.GetStringAsync("/Account/Recover");
+        var token = await AuthApi.AnonymousTokenAsync(browser, "/Account/Recover");
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await browser.Client.PostAsync("/Account/Recover", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(page, "/Account/Recover"),
-            ["Username"] = account.Username,
-            ["Password"] = password,
-            ["Code"] = NextCode(account.TotpSecret!),
-        }));
+        var response = await AuthApi.PostAsync(browser, "/api/ui/auth/recover", token,
+            new { username = account.Username, password, code = NextCode(account.TotpSecret!) });
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await ProfileApi.AssertProblemAsync(response, 400, "recovery_failed");
+        Assert.Null(browser.SessionCookie);
         Assert.Equal(2, (await ProfileHttp.AccountAsync(vault, account.Username)).FailedAccessCount);
         Assert.Equal([AuditAction.LoginFailed], await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
     }

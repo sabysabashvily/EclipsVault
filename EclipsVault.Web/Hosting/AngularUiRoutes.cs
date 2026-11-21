@@ -96,13 +96,15 @@ public static class AngularUiRoutes
             endpoints.MapMethods(path, [HttpMethods.Get, HttpMethods.Head], ServeIndex).RequireAuthorization(session);
         }
 
-        // Sign-in (ADR-0032). Login is anonymous, and a signed-in visit goes on to its target. The
-        // second-factor pages are served only to a pending sign-in; anyone else is sent to Login.
+        // Sign-in (ADR-0032). Login is anonymous, and a signed-in visit goes on to its target. Recover
+        // is served to anyone, as the Legacy page was. The second-factor pages are served only to a
+        // pending sign-in; anyone else is sent to Login.
         endpoints.MapMethods("/Account/Login", [HttpMethods.Get, HttpMethods.Head], ServeLogin).AllowAnonymous();
+        endpoints.MapMethods("/Account/Recover", [HttpMethods.Get, HttpMethods.Head], ServeSignInStep).AllowAnonymous();
         var pending = new AuthorizeAttribute { AuthenticationSchemes = AuthSchemes.MfaPending };
         foreach (var path in SecondFactorPaths)
         {
-            endpoints.MapMethods(path, [HttpMethods.Get, HttpMethods.Head], ServeSecondFactor).RequireAuthorization(pending);
+            endpoints.MapMethods(path, [HttpMethods.Get, HttpMethods.Head], ServeSignInStep).RequireAuthorization(pending);
         }
 
         string[] administratorPaths = ["/Admin/Users", "/Admin/CreateUser", "/Admin/EditUser/{id:guid}", "/Admin/Networks",
@@ -141,8 +143,8 @@ public static class AngularUiRoutes
             : Results.Content(WithNotice(File.ReadAllText(index), notice), "text/html; charset=utf-8");
     }
 
-    // The token names the pending sign-in, the identity the page's calls carry.
-    private static IResult ServeSecondFactor(HttpContext context, IWebHostEnvironment environment, IAntiforgery antiforgery)
+    // The token names the identity the page's calls carry: the pending sign-in on a second-factor page.
+    private static IResult ServeSignInStep(HttpContext context, IWebHostEnvironment environment, IAntiforgery antiforgery)
     {
         UiAntiforgery.IssueToken(context, antiforgery);
         context.Response.Headers.CacheControl = "no-store";

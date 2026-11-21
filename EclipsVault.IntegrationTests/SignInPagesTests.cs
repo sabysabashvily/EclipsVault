@@ -27,7 +27,10 @@ public sealed class SignInPagesTests(VaultFixture vault)
     [InlineData("HEAD", "/Account/Login")]
     [InlineData("GET", "/account/login/")]
     [InlineData("GET", "/Account/Login?ReturnUrl=%2FAccess")]
-    public async Task An_anonymous_visitor_gets_the_Login_document_with_a_request_token(string method, string path)
+    [InlineData("GET", "/Account/Recover")]
+    [InlineData("HEAD", "/Account/Recover")]
+    [InlineData("GET", "/account/recover/")]
+    public async Task An_anonymous_visitor_gets_an_anonymous_sign_in_document_with_a_request_token(string method, string path)
     {
         var browser = vault.CreateSession(source: NextSource());
 
@@ -111,6 +114,7 @@ public sealed class SignInPagesTests(VaultFixture vault)
     [InlineData("/Account/Totp", HttpStatusCode.MethodNotAllowed)]
     [InlineData("/Account/RecoveryCode", HttpStatusCode.MethodNotAllowed)]
     [InlineData("/Account/EnrollTotp", HttpStatusCode.MethodNotAllowed)]
+    [InlineData("/Account/Recover", HttpStatusCode.MethodNotAllowed)]
     [InlineData("/Account/PasskeyLoginBegin", HttpStatusCode.NotFound)]
     [InlineData("/Account/PasskeyLoginComplete", HttpStatusCode.NotFound)]
     public async Task A_retired_sign_in_action_neither_signs_in_nor_records_anything(string path, HttpStatusCode expected)

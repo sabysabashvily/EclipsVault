@@ -1,25 +1,4 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace EclipsVault.Web.Models;
-
-public sealed class RecoverViewModel
-{
-    [Required]
-    [StringLength(64)]
-    [Display(Name = "Username")]
-    public string Username { get; set; } = string.Empty;
-
-    [Required]
-    [StringLength(256)]
-    [DataType(DataType.Password)]
-    [Display(Name = "Password")]
-    public string Password { get; set; } = string.Empty;
-
-    [Required]
-    [RegularExpression(@"^\d{6}$", ErrorMessage = "Enter the 6-digit code from your authenticator app.")]
-    [Display(Name = "Authenticator code")]
-    public string Code { get; set; } = string.Empty;
-}
 
 public sealed class AccessDeniedViewModel
 {

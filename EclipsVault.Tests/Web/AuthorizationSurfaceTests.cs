@@ -36,16 +36,15 @@ public class AuthorizationSurfaceTests
     /// <summary>
     /// The complete set of actions reachable without a session, as <c>Controller.Action</c>.
     /// Every one of them by definition runs before a session exists: the SSO redirect and its
-    /// callback from the identity provider, break-glass recovery for a locked-out administrator,
-    /// the landing page, the error page, and the UI API's sign-in calls (ADR-0032): the password,
-    /// the passkey ceremony's two legs, recovery, and the Login page's options.
+    /// callback from the identity provider, the landing page, the error page, and the UI API's sign-in
+    /// calls (ADR-0032): the password, the passkey ceremony's two legs, break-glass recovery for a
+    /// locked-out administrator, and the Login page's options.
     /// Adding a name here is a decision that an unauthenticated stranger may reach it.
     /// </summary>
     private static readonly string[] IntentionallyAnonymous =
     [
         "AccountController.ExternalCallback",
         "AccountController.ExternalLogin",
-        "AccountController.Recover",
         "HomeController.Error",
         "HomeController.Index",
         .. UiApiAnonymous,

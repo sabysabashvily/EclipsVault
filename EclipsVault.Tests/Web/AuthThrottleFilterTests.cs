@@ -105,7 +105,7 @@ public sealed class AuthThrottleFilterTests
         var posts = typeof(AccountController).GetMethods()
             .Where(method => method.IsDefined(typeof(HttpPostAttribute)))
             .Select(method => method.Name).Order(StringComparer.Ordinal).ToArray();
-        string[] metered = ["ExternalLogin", "Recover"];
+        string[] metered = ["ExternalLogin"];
         Assert.Equal(metered.Append("Logout").Order(StringComparer.Ordinal), posts);
 
         foreach (var name in metered)

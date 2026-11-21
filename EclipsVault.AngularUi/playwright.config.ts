@@ -48,6 +48,7 @@ export default defineConfig({
             '**/theme-foundation.spec.ts',
             '**/overview.spec.ts',
             '**/secrets.spec.ts',
+            '**/break-glass.spec.ts',
           ],
           use: { ...devices['Desktop Chrome'] },
         },
@@ -91,6 +92,14 @@ export default defineConfig({
           use: { ...devices['Desktop Chrome'] },
         },
         {
+          // Needs the administrator session that sign-in saves. It blocks the address every browser
+          // in the run shares, and recovery lifts it before the next project starts.
+          name: 'break-glass',
+          testMatch: '**/break-glass.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
           // Needs the administrator session that sign-in saves.
           name: 'secrets',
           testMatch: '**/secrets.spec.ts',
@@ -105,11 +114,11 @@ export default defineConfig({
         },
         {
           // Users ends with the administrator's own Force logout, which ends the saved session that
-          // Networks, Notifications, License, Encryption keys, the Audit log, the Overview and Secrets
-          // reuse, so they run first.
+          // Networks, Notifications, License, Encryption keys, the Audit log, the Overview, Secrets and
+          // break-glass reuse, so they run first.
           name: 'users',
           testMatch: '**/users.spec.ts',
-          dependencies: ['license', 'encryption', 'audit', 'overview', 'secrets'],
+          dependencies: ['license', 'encryption', 'audit', 'overview', 'secrets', 'break-glass'],
           use: { ...devices['Desktop Chrome'] },
         },
         {

@@ -90,7 +90,9 @@ public sealed class IpBlacklistMiddleware
         await _next(context);
     }
 
+    // Exact paths and methods, so no other route under the page, the retired form's POST included, escapes the block.
     private static bool IsRecovery(HttpRequest request)
-        => request.Path.StartsWithSegments(RecoveryPath)
+        => (HttpMethods.IsGet(request.Method) || HttpMethods.IsHead(request.Method))
+                && request.Path.Equals(RecoveryPath, StringComparison.OrdinalIgnoreCase)
             || HttpMethods.IsPost(request.Method) && request.Path.Equals(RecoveryCall, StringComparison.OrdinalIgnoreCase);
 }

@@ -8,6 +8,7 @@ import { PAGE_LOCATION } from '../shell/command-palette';
 import { signInApiErrors } from '../ui-api/ui-api-errors';
 import { EnrollTotpPage } from './enroll-totp-page';
 import { LoginPage, loginNotice } from './login-page';
+import { RecoverPage } from './recover-page';
 import { RecoveryCodePage } from './recovery-code-page';
 import { SignInFlow } from './sign-in-flow';
 import { TotpPage } from './totp-page';
@@ -595,6 +596,129 @@ describe('sign-in pages', () => {
       );
 
       expect(navigate).toHaveBeenCalledExactlyOnceWith('/Account/Login');
+    });
+  });
+  describe('Recover', () => {
+    const lifted =
+      'The intrusion-defence block on your network was lifted and your session restored.';
+    const restored = 'Access restored. Your network was not blocked.';
+
+    function recoverWith(page: HTMLElement): void {
+      type(page, 'Username', 'vault-admin');
+      type(page, 'Password', 'correct horse');
+      type(page, 'Code', '123456');
+      submit(page);
+    }
+
+    function text(page: HTMLElement): string {
+      return page.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    }
+
+    it('is the Legacy page, and makes no call until the form is sent', async () => {
+      const { page } = await render(RecoverPage, '/Account/Recover');
+
+      expect(page.querySelector('h1')?.textContent).toBe('Recover access');
+      expect(page.querySelector('p.muted')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+        'Administrator break-glass recovery. Enter all of your credentials in one step — if they ' +
+          'verify and your account holds TopSecret clearance, the intrusion-defence block on your ' +
+          'network is lifted and your session restored. Every attempt is audited.',
+      );
+      expect([...page.querySelectorAll('label')].map((label) => label.textContent)).toEqual([
+        'Username',
+        'Password',
+        'Authenticator code',
+      ]);
+      expect(page.querySelector<HTMLInputElement>('#Password')?.type).toBe('password');
+      expect(page.querySelector('#Code')?.getAttribute('autocomplete')).toBe('one-time-code');
+      expect(button(page, 'Verify and restore access').type).toBe('submit');
+      expect(page.querySelector('p.footnote')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+        'Not an administrator? Ask one to lift the block from Admin → Networks, or restart the ' +
+          'application in development.',
+      );
+      backend.expectNone(() => true);
+    });
+
+    it('sends every factor at once, says the block was lifted and continues to the vault', async () => {
+      const { page, fixture } = await render(RecoverPage, '/Account/Recover');
+      recoverWith(page);
+
+      const request = backend.expectOne({ method: 'POST', url: '/api/ui/auth/recover' });
+      expect(request.request.body).toEqual({
+        username: 'vault-admin',
+        password: 'correct horse',
+        code: '123456',
+      });
+      expect(request.request.headers.get('RequestVerificationToken')).toBe('anonymous-token');
+      request.flush({ blockLifted: true });
+      await fixture.whenStable();
+
+      expect(page.querySelector('[role="status"].flash-success')?.textContent?.trim()).toBe(lifted);
+      expect(page.querySelector('form')).toBeNull();
+      expect(assign).not.toHaveBeenCalled();
+      button(page, 'Continue to the vault').click();
+      expect(assign).toHaveBeenCalledExactlyOnceWith('/');
+    });
+
+    it('says access was restored when the network was not blocked', async () => {
+      const { page, fixture } = await render(RecoverPage, '/Account/Recover');
+      recoverWith(page);
+      backend.expectOne('/api/ui/auth/recover').flush({ blockLifted: false });
+      await fixture.whenStable();
+
+      expect(page.querySelector('.flash-success')?.textContent?.trim()).toBe(restored);
+      expect(text(page)).not.toContain('lifted');
+    });
+
+    it.each([
+      [400, 'recovery_failed', 'Recovery could not be completed with these credentials.'],
+      [
+        503,
+        'recovery_incomplete',
+        'Your sign-in was recorded, but the vault could not finish restoring network access. This source remains blocked. Contact an administrator.',
+      ],
+      [
+        503,
+        'audit_unavailable',
+        'The audit trail is unavailable, so the vault refused the request.',
+      ],
+    ])(
+      'shows a %s %s in the vault’s words and claims no access restored',
+      async (status, code, title) => {
+        const { page, fixture } = await render(RecoverPage, '/Account/Recover');
+        recoverWith(page);
+        refuse('/api/ui/auth/recover', status, code, title);
+        await fixture.whenStable();
+
+        expect(page.querySelector('.validation-summary')?.textContent?.trim()).toBe(title);
+        expect(page.querySelector('.flash-success')).toBeNull();
+        expect(text(page)).not.toContain(restored);
+        expect(text(page)).not.toContain(lifted);
+        expect(text(page)).not.toContain('Continue to the vault');
+        expect(assign).not.toHaveBeenCalled();
+        expect(navigate).not.toHaveBeenCalled();
+      },
+    );
+
+    it('shows a field error from validation and lets the person send again', async () => {
+      const { page, fixture } = await render(RecoverPage, '/Account/Recover');
+      recoverWith(page);
+      backend.expectOne('/api/ui/auth/recover').flush(
+        {
+          status: 400,
+          code: 'validation_failed',
+          title: 'One or more fields are invalid.',
+          errors: { Code: ['Enter the 6-digit code from your authenticator app.'] },
+        },
+        { status: 400, statusText: 'Bad Request' },
+      );
+      await fixture.whenStable();
+
+      expect(page.querySelector('.validation-summary')?.textContent?.trim()).toBe(
+        'Enter the 6-digit code from your authenticator app.',
+      );
+      expect(page.querySelector('fieldset')?.disabled).toBe(false);
+      submit(page);
+      backend.expectOne('/api/ui/auth/recover').flush({ blockLifted: false });
     });
   });
 });

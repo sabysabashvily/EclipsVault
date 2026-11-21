@@ -39,7 +39,7 @@ public sealed record PasskeySignInCompleteRequest(JsonElement Credential);
 public sealed record RecoverRequest(
     [Required, StringLength(64)] string Username,
     [Required, StringLength(256)] string Password,
-    [Required, RegularExpression(@"^\d{6}$")] string Code);
+    [Required, RegularExpression(@"^\d{6}$", ErrorMessage = "Enter the 6-digit code from your authenticator app.")] string Code);
 
 public sealed record RecoverResponse(bool BlockLifted);
 

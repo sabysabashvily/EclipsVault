@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
@@ -370,15 +371,27 @@ public sealed class AuthApiTests(VaultFixture vault)
             await AssertProblemAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/recover", token,
                 new { username = "it-auth-no-such-account", password = Password, code = "123456" }), 400, "recovery_failed",
                 "Recovery could not be completed with these credentials.");
-            var form = await browser.Client.PostAsync("/Account/Recover", new FormUrlEncodedContent(new Dictionary<string, string>
+            Assert.Equal(HttpStatusCode.OK, (await browser.Client.SendAsync(new HttpRequestMessage(HttpMethod.Head, "/account/recover"))).StatusCode);
+            // The document's own static files load too, so the page works from here.
+            var assets = Regex.Matches(await browser.Client.GetStringAsync("/Account/Recover"), "(?:src|href)=\"(/[^\"]+)\"")
+                .Select(match => match.Groups[1].Value).ToList();
+            Assert.Contains(assets, asset => asset.StartsWith("/ui/main-", StringComparison.Ordinal));
+            foreach (var asset in assets)
             {
-                ["__RequestVerificationToken"] = token,
-                ["Username"] = "it-auth-no-such-account",
-                ["Password"] = Password,
-                ["Code"] = "123456",
-            }));
-            Assert.Equal(HttpStatusCode.OK, form.StatusCode);
-            Assert.Contains("Recovery could not be completed with these credentials.", await form.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+                Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync(asset)).StatusCode);
+            }
+
+            // The Legacy form's POST and any other path or method under the page are blocked like the rest.
+            foreach (var (method, path) in new[] { ("POST", "/Account/Recover"), ("GET", "/Account/Recover/x"), ("GET", "/Account/Recover/") })
+            {
+                using var request = new HttpRequestMessage(new HttpMethod(method), path)
+                {
+                    Content = method == "POST" ? new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token }) : null,
+                };
+                using var response = await browser.Client.SendAsync(request);
+                Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+                Assert.Contains("<h1>Access blocked</h1>", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+            }
 
             await UiApiFailureContractTests.AssertProblemAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/password", token, Guess), 403, "blocked");
             await UiApiFailureContractTests.AssertProblemAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/passkey/begin", token, Guess), 403, "blocked");
@@ -394,28 +407,22 @@ public sealed class AuthApiTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task The_legacy_recover_form_still_lifts_a_block_through_the_shared_break_glass()
+    public async Task Recovery_from_the_recover_page_lifts_the_block_and_records_its_rows_in_order()
     {
-        const string username = "it-auth-legacy-recover";
+        const string username = "it-auth-page-recover";
         var source = IPAddress.Parse("100.74.174.31");
         await vault.SignInNewAccountAsync(username, IPAddress.Parse("100.74.174.32"), ClearanceLevel.TopSecret, password: Password);
         var account = await ProfileHttp.AccountAsync(vault, username);
         var blacklist = vault.Services.GetRequiredService<IIpBlacklist>();
-        await blacklist.BlockAsync(source.ToString(), "legacy recover");
+        await blacklist.BlockAsync(source.ToString(), "page recover");
         var browser = vault.CreateSession(source: source);
         var token = await AuthApi.AnonymousTokenAsync(browser, "/Account/Recover");
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await browser.Client.PostAsync("/Account/Recover", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = token,
-            ["Username"] = username,
-            ["Password"] = Password,
-            ["Code"] = Totp.NextCode(account.TotpSecret!),
-        }));
+        var response = await AuthApi.PostAsync(browser, "/api/ui/auth/recover", token,
+            new { username, password = Password, code = Totp.NextCode(account.TotpSecret!) });
 
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/", response.Headers.Location?.OriginalString);
+        Assert.True((await AuthApi.JsonAsync(response)).GetProperty("blockLifted").GetBoolean());
         Assert.False(await blacklist.IsBlockedAsync(source));
         Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync("/api/ui/me")).StatusCode);
         Assert.Equal([AuditAction.SignInFactorVerified, AuditAction.LoginSucceeded, AuditAction.BreakGlassRecovery, AuditAction.IpRangeUnblocked],
