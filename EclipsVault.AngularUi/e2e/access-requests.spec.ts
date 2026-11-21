@@ -7,6 +7,7 @@ import { AccessRequests } from './access-requests';
 import { feedEntry } from './activity';
 import { Denied } from './denied';
 import { test, expect, type BrowserHealth } from './fixtures';
+import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { createSecret, openPalette } from './palette';
 import { SecretsList } from './secrets-list';
 import { SharedWithMe } from './shared-with-me';
@@ -226,7 +227,7 @@ for (const theme of ['dark', 'light']) {
 
 test('Denied is served as the titled Angular document', async ({ page }) => {
   await page.context().addCookies(requesterCookies);
-  const response = await page.goto('/Account/Denied');
+  const response = await page.goto(legacyShell);
   await expect(new Denied(page).generic).toBeVisible();
   await expect(page).toHaveTitle('Access denied — EclipsVault');
   expect(response?.headers()['content-security-policy']).toContain(
@@ -464,8 +465,9 @@ test('the palette opens Access requests without a document load', async ({ page 
   expect(documents).toEqual([]);
 });
 
-test('the Legacy sidebar loads Access requests into Angular', async ({ page }) => {
-  await openAsRequester(page, '/Account/Denied');
+test('the Legacy sidebar loads Access requests into Angular', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
+  await openAsRequester(page, legacyShell);
   const documents = recordDocuments(page);
   await page.getByText('Access', { exact: true }).click();
   await page.getByRole('link', { name: 'Access requests', exact: true }).click();
@@ -474,8 +476,9 @@ test('the Legacy sidebar loads Access requests into Angular', async ({ page }) =
   expect(documents).toEqual(['/AccessRequests']);
 });
 
-test('the Legacy palette loads Access requests into Angular', async ({ page }) => {
-  await openAsRequester(page, '/Account/Denied');
+test('the Legacy palette loads Access requests into Angular', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
+  await openAsRequester(page, legacyShell);
   const documents = recordDocuments(page);
   await openPalette(page);
   await page.getByRole('combobox').fill('Access requests');

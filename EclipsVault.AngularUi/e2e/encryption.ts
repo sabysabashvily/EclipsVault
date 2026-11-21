@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import type { components } from '../src/app/ui-api/schema.generated';
 import { openPalette } from './palette';
+import type { legacyShell } from './legacy-shell';
 import { AppShell } from './app-shell';
 
 type Encryption = components['schemas']['EncryptionResponse'];
@@ -55,13 +56,13 @@ export class EncryptionKeys {
       await route.fulfill({ response, json: pending });
     });
   }
-  async fromSidebar(path: '/Account/Denied' | '/Access'): Promise<void> {
+  async fromSidebar(path: typeof legacyShell | '/Access'): Promise<void> {
     await this.page.goto(path);
     // The Angular sidebar folds its administration pages into a group; the Legacy one lists them.
     if (path === '/Access') await new AppShell(this.page).administration.click();
     await this.page.getByRole('link', { name: 'Encryption keys', exact: true }).click();
   }
-  async fromPalette(path: '/Account/Denied' | '/Access'): Promise<void> {
+  async fromPalette(path: typeof legacyShell | '/Access'): Promise<void> {
     await this.page.goto(path);
     await openPalette(this.page);
     await this.page.getByRole('combobox').fill('Encryption keys');

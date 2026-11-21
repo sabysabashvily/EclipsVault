@@ -4,6 +4,7 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
+import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { clearSignInBudget } from './profile-state';
 import { createSecret, openPalette } from './palette';
 import { SecretsList } from './secrets-list';
@@ -205,8 +206,9 @@ test('the palette opens Shared by me without a document load', async ({ page }) 
   expect(documents).toEqual([]);
 });
 
-test('the Legacy sidebar loads Shared by me into Angular', async ({ page }) => {
-  await openAsIssuer(page, '/Account/Denied');
+test('the Legacy sidebar loads Shared by me into Angular', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
+  await openAsIssuer(page, legacyShell);
   const documents: string[] = [];
   page.on('request', (request) => {
     if (request.isNavigationRequest() && request.resourceType() === 'document')
@@ -219,8 +221,9 @@ test('the Legacy sidebar loads Shared by me into Angular', async ({ page }) => {
   expect(documents).toEqual(['/Secrets/SharedByMe']);
 });
 
-test('the Legacy palette loads Shared by me into Angular', async ({ page }) => {
-  await openAsIssuer(page, '/Account/Denied');
+test('the Legacy palette loads Shared by me into Angular', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
+  await openAsIssuer(page, legacyShell);
   const documents: string[] = [];
   page.on('request', (request) => {
     if (request.isNavigationRequest() && request.resourceType() === 'document')
