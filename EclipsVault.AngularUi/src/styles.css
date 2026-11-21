@@ -3308,6 +3308,17 @@ fieldset {
   }
 }
 
+/* ---- Notifications -------------------------------------------------- */
+/* A failed delivery says why beside its pill; the reason wraps inside the scrolling table. */
+.outbox-error {
+  display: block;
+  max-width: 18rem;
+  margin-top: 0.2rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
 /* ---- Service accounts -------------------------------------------------- */
 /* The one-time key: its ends stay readable, and Copy is the way to take the whole value. */
 .issued-key {
