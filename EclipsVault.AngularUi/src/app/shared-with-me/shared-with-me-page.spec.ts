@@ -74,8 +74,13 @@ describe('SharedWithMePage', () => {
       "This is where secrets from other projects show up when a colleague grants you access to them. There's nothing for you to do here until someone shares one.",
     );
     expect(page.querySelector('table')).toBeNull();
-    expect(page.querySelector('a')?.textContent).toBe('Go to your secrets');
-    expect(page.querySelector('a')?.getAttribute('href')).toBe('/Secrets');
+    expect(page.querySelector('.empty-state a')?.textContent).toBe('Go to your secrets');
+    expect(page.querySelector('.empty-state a')?.getAttribute('href')).toBe('/Secrets');
+    expect(
+      page
+        .querySelector('nav[aria-label="Secrets views"] a[aria-current="page"]')
+        ?.textContent?.trim(),
+    ).toBe('Shared with me');
   });
 
   it('lists the soonest-ending share first, its close expiry as a yellow pill', async () => {

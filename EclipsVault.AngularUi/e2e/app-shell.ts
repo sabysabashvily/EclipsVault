@@ -8,7 +8,6 @@ export class AppShell {
   readonly secrets;
   readonly paletteQuery;
   readonly navigation;
-  readonly sharing;
   readonly youGroup;
   readonly administrationGroup;
 
@@ -17,7 +16,6 @@ export class AppShell {
     // A folding group's summary has no role of its own, so it is found by its text in the navigation.
     const navigation = page.getByRole('navigation', { name: 'Main navigation' });
     this.navigation = navigation;
-    this.sharing = navigation.getByRole('group', { name: 'Sharing', exact: true });
     this.youGroup = navigation.getByRole('group', { name: 'You', exact: true });
     this.administrationGroup = navigation.getByRole('group', {
       name: 'Administration',

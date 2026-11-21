@@ -3,6 +3,7 @@ import { Component, computed } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { EmptyState } from '../shared/empty-state';
 import { expiry, pillDate } from '../shared/expiry';
+import { SecretsTabs } from '../secrets/secrets-tabs';
 import type { paths } from '../ui-api/schema.generated';
 
 type SharedWithMe =
@@ -10,7 +11,7 @@ type SharedWithMe =
 
 @Component({
   selector: 'app-shared-with-me-page',
-  imports: [EmptyState, RouterLink],
+  imports: [EmptyState, RouterLink, SecretsTabs],
   templateUrl: './shared-with-me-page.html',
 })
 export class SharedWithMePage {

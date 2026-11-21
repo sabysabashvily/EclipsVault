@@ -117,13 +117,14 @@ test('the sidebar opens the Secrets list in place, marking the new secret as exp
   await expect(page).toHaveTitle('Secrets — EclipsVault');
   expect(documents).toEqual([]);
   await expect(list.introduction).toHaveText(
-    /^\d+ active secrets?\. Opening one records an audit entry\.$/,
+    /^\d+ active secrets?(?: · \d+ expires? within 7 days)?\. Opening one records an audit entry\.$/,
   );
+  await expect(list.tab('All secrets')).toHaveAttribute('aria-current', 'page');
   const row = list.secret(created.name);
-  await expect(list.projectOf(row)).toHaveText('GLOBAL');
+  await expect(list.secretCellOf(row)).toContainText('GLOBAL');
   await expect(list.environmentBadgeOf(row, 'Development')).toBeVisible();
   await expect(list.sensitivityBadgeOf(row, 'Internal')).toBeVisible();
-  await expect(list.expiresOf(row)).toContainText('soon');
+  await expect(list.expiresOf(row)).toContainText(/^In [23] days · /);
 
   await list.filter.fill('e2e_secrets_c');
   await expect(list.rows).toHaveCount(2);
@@ -299,7 +300,7 @@ test('the list and the palette show sensitivity, production and expiry, and New 
   const row = list.secret('E2E_PRODUCTION_SOON');
   await expect(list.environmentBadgeOf(row, 'Production')).toBeVisible();
   await expect(list.sensitivityBadgeOf(row, 'Confidential')).toBeVisible();
-  await expect(list.expiresOf(row).getByText('soon', { exact: true })).toBeVisible();
+  await expect(list.expiresOf(row).getByText(/^In 2 days · /)).toBeVisible();
 
   await page.route('**/api/ui/secrets/search?*', (route) =>
     route.fulfill({
@@ -333,3 +334,38 @@ test('the list and the palette show sensitivity, production and expiry, and New 
   });
   await expect(form.refusal).toHaveText('A secret with that name already exists.');
 });
+
+test('the Secrets card tabs switch between All secrets, Shared with me and Shared by me in place', async ({
+  page,
+}) => {
+  await page.context().addCookies(await savedAdministratorCookies());
+  const list = new SecretsList(page);
+  await list.open();
+  await expect(list.tab('All secrets')).toHaveAttribute('aria-current', 'page');
+  const documents = recordDocuments(page);
+
+  await list.tab('Shared with me').click();
+  await expect(page).toHaveURL(/\/Secrets\/SharedWithMe$/);
+  await expect(list.tab('Shared with me')).toHaveAttribute('aria-current', 'page');
+
+  await list.tab('Shared by me').click();
+  await expect(page).toHaveURL(/\/Secrets\/SharedByMe$/);
+  await expect(list.tab('Shared by me')).toHaveAttribute('aria-current', 'page');
+
+  await list.tab('All secrets').click();
+  await expect(page).toHaveURL(/\/Secrets$/);
+  await expect(list.tab('All secrets')).toHaveAttribute('aria-current', 'page');
+  expect(documents).toEqual([]);
+});
+
+for (const width of [300, 2000] as const) {
+  test(`the Secrets list has no sideways scroll at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.route('**/api/ui/secrets', (route) => route.fulfill({ json: highlighted }));
+    await page.context().addCookies(await savedAdministratorCookies());
+    const list = new SecretsList(page);
+    await list.open();
+    await expect(list.secret('E2E_PRODUCTION_SOON')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  });
+}

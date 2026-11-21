@@ -8,6 +8,7 @@ import { ConfirmationDialog } from '../shared/confirmation-dialog';
 import { EmptyState } from '../shared/empty-state';
 import { expiry, pillDate } from '../shared/expiry';
 import { StatusLine } from '../shared/status-line';
+import { SecretsTabs } from '../secrets/secrets-tabs';
 import type { paths } from '../ui-api/schema.generated';
 import { UiApiError } from '../ui-api/ui-api-errors';
 
@@ -17,7 +18,7 @@ type Share = SharedByMe['shares'][number];
 
 @Component({
   selector: 'app-shared-by-me-page',
-  imports: [DatePipe, ConfirmationDialog, EmptyState, RouterLink, StatusLine],
+  imports: [DatePipe, ConfirmationDialog, EmptyState, RouterLink, SecretsTabs, StatusLine],
   templateUrl: './shared-by-me-page.html',
 })
 export class SharedByMePage {

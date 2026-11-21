@@ -268,15 +268,22 @@ test('a mixed-case Shared with me bookmark serves the titled Angular page', asyn
   await expect(page).toHaveTitle('Shared with me — EclipsVault');
 });
 
-test('the sidebar opens Shared with me in-app with its Sharing group active', async ({ page }) => {
+test('the Secrets card tab opens Shared with me in-app while keeping Secrets active in the sidebar', async ({
+  page,
+}) => {
   await openAsRecipient(page, '/Access');
   const documents = recordDocuments(page);
-  await page.getByText('Sharing', { exact: true }).click();
-  const link = page.getByRole('link', { name: 'Shared with me', exact: true });
-  await link.click();
+  const secretsLink = page
+    .getByRole('navigation', { name: 'Main navigation' })
+    .getByRole('link', { name: 'Secrets', exact: true });
+  await secretsLink.click();
+  const tab = page
+    .getByRole('navigation', { name: 'Secrets views' })
+    .getByRole('link', { name: 'Shared with me', exact: true });
+  await tab.click();
   await expect(new SharedWithMe(page).rows).toHaveCount(2);
-  await expect(link).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('group').filter({ has: link })).toHaveJSProperty('open', true);
+  await expect(tab).toHaveAttribute('aria-current', 'page');
+  await expect(secretsLink).toHaveAttribute('aria-current', 'true');
   expect(documents).toEqual([]);
 });
 

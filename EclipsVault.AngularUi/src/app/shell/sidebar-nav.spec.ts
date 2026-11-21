@@ -13,13 +13,22 @@ describe('SidebarNav', () => {
     });
     await TestBed.inject(Router).navigateByUrl(url);
     const fixture = TestBed.createComponent(SidebarNav);
-    fixture.componentRef.setInput('areas', ['users', 'service-accounts', 'networks']);
+    fixture.componentRef.setInput('areas', ['secrets', 'users', 'service-accounts', 'networks']);
     await fixture.whenStable();
     const page = fixture.nativeElement as HTMLElement;
     const link = (label: string) =>
       [...page.querySelectorAll('a')].find((anchor) => anchor.textContent?.trim() === label)!;
     return { group: page.querySelector('details')!, link };
   }
+
+  it('keeps Secrets active on its Sharing tabs and New secret page', async () => {
+    for (const url of ['/Secrets/SharedWithMe', '/Secrets/SharedByMe', '/Secrets/Create']) {
+      TestBed.resetTestingModule();
+      const { link } = await renderAt(url);
+      expect(link('Secrets').classList).toContain('active');
+      expect(link('Secrets').getAttribute('aria-current')).toBe('true');
+    }
+  });
 
   it('keeps Administration open on a create page, marking its list as the current section', async () => {
     const { group, link } = await renderAt('/Admin/CreateUser');

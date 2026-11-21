@@ -455,7 +455,7 @@ test('both UIs share the theme, and the Angular UI applies it before it starts',
   });
 });
 
-test("the ⌘K palette offers exactly the sidebar's pages, as the Legacy palette does, for an administrator and a Standard account", async ({
+test("the ⌘K palette offers the sidebar's pages plus New secret and the Sharing tabs, for an administrator and a Standard account", async ({
   page,
   browserHealth,
 }) => {
@@ -464,7 +464,7 @@ test("the ⌘K palette offers exactly the sidebar's pages, as the Legacy palette
   const standard = await (await browserHealth.newContext()).newPage();
   await standard.context().addCookies(standardCookies);
 
-  await test.step(`administrator: Legacy and Angular palettes list the same pages as the sidebar`, async () => {
+  await test.step(`administrator: Legacy and Angular palettes list the same destinations`, async () => {
     await page.goto('/Account/Denied');
     // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
     const legacyChord = await page.locator('.command-trigger kbd').textContent();
@@ -479,13 +479,18 @@ test("the ⌘K palette offers exactly the sidebar's pages, as the Legacy palette
     const sidebar = await sidebarPages(page);
     await openPalette(page);
     const angular = await paletteEntries(page);
-    // Creation is a palette shortcut after the navigation destinations.
-    expect(angular).toEqual([...sidebar.map((label) => ['Go to', label]), ['Go to', 'New secret']]);
+    // New secret and the Sharing tabs left the sidebar, so the palette offers them after the sidebar's pages.
+    expect(angular).toEqual([
+      ...sidebar.map((label) => ['Go to', label]),
+      ['Go to', 'New secret'],
+      ['Go to', 'Shared with me'],
+      ['Go to', 'Shared by me'],
+    ]);
     expect([...angular].sort()).toEqual([...legacy].sort());
     expect(angular).toHaveLength(21);
     await expect(page.locator('style, [style]')).toHaveCount(0);
   });
-  await test.step(`standard: Legacy and Angular palettes list the same pages as the sidebar`, async () => {
+  await test.step(`standard: Legacy and Angular palettes list the same destinations`, async () => {
     await standard.goto('/Account/Denied');
     // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
     const legacyChord = await standard.locator('.command-trigger kbd').textContent();
@@ -500,8 +505,13 @@ test("the ⌘K palette offers exactly the sidebar's pages, as the Legacy palette
     const sidebar = await sidebarPages(standard);
     await openPalette(standard);
     const angular = await paletteEntries(standard);
-    // New secret left the sidebar for the page's own button, so the palette offers it after the pages.
-    expect(angular).toEqual([...sidebar.map((label) => ['Go to', label]), ['Go to', 'New secret']]);
+    // New secret and the Sharing tabs left the sidebar, so the palette offers them after the sidebar's pages.
+    expect(angular).toEqual([
+      ...sidebar.map((label) => ['Go to', label]),
+      ['Go to', 'New secret'],
+      ['Go to', 'Shared with me'],
+      ['Go to', 'Shared by me'],
+    ]);
     expect([...angular].sort()).toEqual([...legacy].sort());
     expect(angular).toHaveLength(14);
     expect(sidebar).not.toContain('Users');
