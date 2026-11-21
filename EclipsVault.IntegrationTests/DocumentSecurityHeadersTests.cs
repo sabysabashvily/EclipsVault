@@ -114,7 +114,7 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
         using var login = await client.GetAsync(response.Headers.Location);
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         Assert.Equal("text/html", login.Content.Headers.ContentType?.MediaType);
-        // The sign-in page itself is an Angular document (#175).
+        // The sign-in page itself is an Angular document (ADR-0032).
         Assert.Equal(LoginPolicy, Assert.Single(login.Headers.GetValues("Content-Security-Policy")));
     }
 }

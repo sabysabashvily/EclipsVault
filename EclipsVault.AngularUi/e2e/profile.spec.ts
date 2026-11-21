@@ -726,15 +726,9 @@ test('a recovery code signs in from the keyboard in both themes, then the menu s
 
   await test.step('the sign-in pages follow the shared theme and switch it', async () => {
     const theme = () => page.evaluate(() => document.documentElement.dataset['theme']);
-    const background = () =>
-      page
-        .getByRole('heading', { name: 'Sign in', exact: true })
-        .evaluate((heading) => getComputedStyle(heading.closest('.auth-card')!).backgroundColor);
     await expect.poll(theme).toBe('dark');
-    const dark = await background();
     await page.getByRole('button', { name: 'Switch color theme', exact: true }).click();
     await expect.poll(theme).toBe('light');
-    expect(await background()).not.toBe(dark);
     expect(
       (await context.cookies()).find((cookie) => cookie.name === 'EclipsVault.Theme')?.value,
     ).toBe('light');

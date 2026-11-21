@@ -18,7 +18,9 @@ Angular sign-in pages are reached and what they may reveal.
   form submission redirects, and single sign-on's POST to `/Account/ExternalLogin` answers with a
   redirect to the identity provider. While SSO is enabled, Login's policy adds the configured
   authority's origin, its scheme, host and port taken from configuration, never from the request.
-  Every other document keeps `form-action 'self'`.
+  Every other document keeps `form-action 'self'`. Single sign-on therefore needs the provider's
+  authorization endpoint on the authority's origin, as Keycloak's is; one that authorizes elsewhere,
+  such as Cognito's hosted UI, would need that endpoint's origin from the discovery document instead.
 - **Antiforgery before a session.** Serving an anonymous sign-in page sets an anonymous request token;
   every call that changes who the browser is (password, second factor, sign-out) issues a fresh one
   for the new identity (ADR-0004).

@@ -40,7 +40,7 @@ public sealed class AccountController : Controller
         _logger = logger;
     }
 
-    /// <summary>The Error page's sign-out until Area 9; the UI API's sign-out runs the same implementation.</summary>
+    /// <summary>The Error page's sign-out; the UI API's sign-out runs the same implementation.</summary>
     [HttpPost]
     public async Task<IActionResult> Logout(CancellationToken ct)
         => await _signOut.ThisSessionAsync(HttpContext, ct)
