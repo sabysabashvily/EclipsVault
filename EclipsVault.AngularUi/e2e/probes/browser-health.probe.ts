@@ -2,8 +2,9 @@ import { test, expect } from '../fixtures';
 
 // Intentionally failing tests, run only by e2e:verify-guards. The driver checks that each failed
 // specifically in the shared browser-health fixture, rather than accepting any nonzero exit.
-// The inline-script probes use a Legacy page: on an Angular document, Trusted Types refuses the
-// script's text before script-src can, which is a different violation.
+// The inline-script and uncaught-exception probes use a Legacy page. On an Angular document, Trusted
+// Types refuses the script's text before script-src can, and Angular's ErrorHandler catches the throw
+// and logs it as console.error, so neither reaches the guard the probe is meant to prove.
 test('CSP violation', async ({ page }) => {
   await page.goto('/Account/Recover');
   await page.evaluate(
@@ -61,7 +62,7 @@ test('console.error after navigation in a second page', async ({ context, page }
 });
 
 test('uncaught browser exception', async ({ page }) => {
-  await page.goto('/Account/Login');
+  await page.goto('/Account/Recover');
   const error = page.waitForEvent('pageerror');
   await page.evaluate(() => {
     setTimeout(() => {
