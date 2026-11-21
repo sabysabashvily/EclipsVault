@@ -23,12 +23,26 @@ import { UiApiError } from '../ui-api/ui-api-errors';
 import { ServiceAccountNotices } from './service-account-notices';
 
 type Key = components['schemas']['ServiceAccountKeyResponse'];
+type Account = components['schemas']['ServiceAccountDetailsResponse'];
 type Confirmation = { kind: 'delete' } | { kind: 'revoke'; key: Key };
 const keyStatuses: Record<Key['status'], { label: string; tone: string }> = {
   active: { label: 'Active', tone: 'tone-ok' },
   expired: { label: 'Expired', tone: 'tone-warn' },
   revoked: { label: 'Revoked', tone: 'tone-danger' },
 };
+
+/** The key is shown once, with only its ends visible. Copy reads the value the page still holds. */
+function maskedKey(apiKey: string): string {
+  const shown = 4;
+  if (apiKey.length <= shown * 2) return '•'.repeat(apiKey.length);
+  return `${apiKey.slice(0, shown)}…${apiKey.slice(-shown)}`;
+}
+
+function expiryChip(days: number): string {
+  if (!Number.isInteger(days) || days < 0) return 'Expiry not set';
+  if (days === 0) return 'Does not expire';
+  return `Expires in ${days} ${days === 1 ? 'day' : 'days'}`;
+}
 
 @Component({
   selector: 'app-service-account-page',
@@ -44,7 +58,9 @@ export class ServiceAccountPage {
   private readonly parameters = toSignal(inject(ActivatedRoute).paramMap);
   private readonly id = computed(() => this.parameters()?.get('id'));
   private readonly stepUp = viewChild.required(StepUpDialog);
-  private readonly confirmation = viewChild.required(ConfirmationDialog);
+  private readonly confirmation = viewChild.required<ConfirmationDialog>('decisions');
+  private readonly issuance = viewChild.required<ConfirmationDialog>('issuance');
+  private readonly issueButton = viewChild<ElementRef<HTMLButtonElement>>('issueButton');
   private readonly tokenBox = viewChild<ElementRef<HTMLElement>>('tokenBox');
   private opener: HTMLButtonElement | null = null;
   private pendingConfirmation: Confirmation | null = null;
@@ -59,6 +75,24 @@ export class ServiceAccountPage {
   protected readonly metadataOnly = signal(false);
   protected readonly allowedRanges = signal('');
   protected readonly keyStatuses = keyStatuses;
+  protected readonly maskedKey = maskedKey;
+  /** The issue dialog's chips, one per field, from the values the form would send. */
+  protected readonly issueChips = computed(() => {
+    const account: Account | null = this.account.hasValue() ? this.account.value() : null;
+    const ceiling = this.ceiling();
+    const ceilingLabel = account?.ceilings.find(
+      (option) => Number(option.value) === ceiling,
+    )?.label;
+    const scope = this.projectScope().trim();
+    const ranges = this.allowedRanges().trim();
+    return [
+      expiryChip(this.expiry()),
+      ceilingLabel ? `At most ${ceilingLabel}` : 'No clearance limit',
+      scope ? `Project ${scope}` : `Account project ${account?.project ?? ''}`.trim(),
+      this.metadataOnly() ? 'Metadata only' : 'Can read values',
+      ranges || 'Any network',
+    ];
+  });
 
   constructor() {
     this.writes.onClear(() => {
@@ -95,8 +129,24 @@ export class ServiceAccountPage {
     return this.writes.errors()[field]?.[0] ?? '';
   }
 
-  protected issue(event: Event, opener: HTMLButtonElement): void {
+  protected askIssue(event: Event): void {
     event.preventDefault();
+    if (this.writes.busy() || this.writes.awaitingProof() || this.writes.blocked()) return;
+    this.issuance().open('It is shown once and is not stored.', {
+      title: 'Issue a key',
+      confirm: 'Issue key',
+      tone: 'primary',
+    });
+  }
+
+  protected confirmedIssue(confirmed: boolean): void {
+    if (!confirmed) return;
+    const opener = this.issueButton()?.nativeElement;
+    if (!opener) return;
+    this.issue(opener);
+  }
+
+  private issue(opener: HTMLButtonElement): void {
     this.opener = opener;
     const request: components['schemas']['IssueServiceAccountKeyRequest'] = {
       expiresInDays: this.expiry(),
@@ -172,10 +222,10 @@ export class ServiceAccountPage {
     );
   }
   protected async copy(): Promise<void> {
-    const visible = this.tokenBox()?.nativeElement.textContent;
-    if (!visible) return;
+    const apiKey = this.issued();
+    if (!apiKey) return;
     try {
-      await navigator.clipboard.writeText(visible);
+      await navigator.clipboard.writeText(apiKey);
     } catch {
       this.writes.status.set({
         message: 'Could not copy the key. Select it and copy it now.',

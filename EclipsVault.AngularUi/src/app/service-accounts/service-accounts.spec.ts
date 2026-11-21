@@ -70,6 +70,16 @@ function submit(page: ParentNode): void {
   if (!form) throw new Error('No form');
   form.dispatchEvent(new Event('submit', { cancelable: true }));
 }
+function openDialog(page: ParentNode): HTMLElement {
+  const dialog = [...page.querySelectorAll('dialog')].find((item) => item.hasAttribute('open'));
+  if (!dialog) throw new Error('No open dialog');
+  return dialog;
+}
+async function confirmIssue(page: ParentNode, fixture: ComponentFixture<unknown>): Promise<void> {
+  submit(page);
+  await fixture.whenStable();
+  button(openDialog(page), 'Issue key').click();
+}
 function render<T>(component: Type<T>, url = `/ServiceAccounts/Details/${id}`) {
   history.replaceState(null, '', url);
   TestBed.configureTestingModule({
@@ -157,13 +167,13 @@ describe('Service accounts list', () => {
       .expectOne('/api/ui/service-accounts')
       .flush({ serviceAccounts: [{ ...details, activeKeys: 2, enabled: false }] });
     await fixture.whenStable();
+    expect(page.textContent).toContain('1 service account · 1 with a live key.');
     expect([...page.querySelectorAll('th')].map((cell) => cell.textContent)).toEqual([
       'Name',
       'Clearance',
       'Project',
       'Active keys',
       'Status',
-      'Created (UTC)',
       '',
     ]);
     expect([...page.querySelectorAll('td')].map((cell) => cell.textContent?.trim())).toEqual([
@@ -172,7 +182,6 @@ describe('Service accounts list', () => {
       'PAYMENTS',
       '2',
       'Disabled',
-      '2026-01-02',
       'Manage',
     ]);
     expect(page.querySelector('tbody a')?.getAttribute('href')).toBe(
@@ -332,13 +341,13 @@ describe('Service account Details', () => {
     expect(page.textContent).toContain('full access');
     expect(page.textContent).toContain('metadata-only');
     expect(page.textContent).toContain('at most Standard');
-    expect(page.textContent).toContain('1 network');
+    expect(page.textContent).toContain('10.8.0.0/24');
     expect(page.textContent).toContain('2026-01-04 05:06');
     expect(page.textContent).toContain('2026-02-03');
     expect(page.textContent).toContain('never');
     expect(
       [...page.querySelectorAll('tbody tr')].map((row) =>
-        row.querySelectorAll('td')[5]?.textContent?.trim(),
+        row.querySelectorAll('td')[7]?.textContent?.trim(),
       ),
     ).toEqual(['Active', 'Expired', 'Revoked']);
     expect(
@@ -364,6 +373,15 @@ describe('Service account Details', () => {
     if (!metadata) throw new Error('No metadata');
     metadata.click();
     submit(page);
+    await fixture.whenStable();
+    const dialog = openDialog(page);
+    expect(dialog.textContent).toContain('Expires in 7 days');
+    expect(dialog.textContent).toContain('At most Standard');
+    expect(dialog.textContent).toContain('Project straße');
+    expect(dialog.textContent).toContain('Metadata only');
+    expect(dialog.textContent).toContain('10.8.0.5, 10.8.0.5');
+    backend.expectNone(path + '/keys');
+    button(dialog, 'Issue key').click();
     const request = backend.expectOne(path + '/keys');
     expect(request.request.body).toEqual({
       expiresInDays: 7,
@@ -374,7 +392,8 @@ describe('Service account Details', () => {
     });
     request.flush({ keyId, prefix: 'evk_prefix', apiKey: oneTimeKey });
     await reload(fixture);
-    expect(page.querySelector('#new-token')?.textContent).toBe(oneTimeKey);
+    expect(page.querySelector('#new-token')?.textContent).toBe('evk_…only');
+    expect(page.textContent).not.toContain(oneTimeKey);
     expect(page.textContent).toContain('API key issued. Copy it now — it will not be shown again.');
     button(page, 'Copy').click();
     await fixture.whenStable();
@@ -392,10 +411,10 @@ describe('Service account Details', () => {
     'clears the key synchronously on $event and blocks another write',
     async ({ event, target }) => {
       const { page, fixture } = await loadedDetails();
-      submit(page);
+      await confirmIssue(page, fixture);
       backend.expectOne(path + '/keys').flush({ keyId, prefix: 'evk_prefix', apiKey: oneTimeKey });
       await reload(fixture);
-      expect(page.querySelector('#new-token')?.textContent).toBe(oneTimeKey);
+      expect(page.querySelector('#new-token')?.textContent).toBe('evk_…only');
       target.dispatchEvent(new Event(event));
       expect(page.querySelector('#new-token')?.textContent).toBe('');
       await fixture.whenStable();
@@ -405,7 +424,7 @@ describe('Service account Details', () => {
   );
   it('clears on component departure and a reloaded Details never recovers a key', async () => {
     const { fixture, page } = await loadedDetails();
-    submit(page);
+    await confirmIssue(page, fixture);
     backend.expectOne(path + '/keys').flush({ keyId, prefix: 'evk_prefix', apiKey: oneTimeKey });
     await reload(fixture);
     fixture.destroy();
@@ -419,7 +438,7 @@ describe('Service account Details', () => {
   });
   it('shows the expiry field refusal beside the input', async () => {
     const { page, fixture } = await loadedDetails();
-    submit(page);
+    await confirmIssue(page, fixture);
     backend.expectOne(path + '/keys').flush(
       {
         code: 'validation_failed',
@@ -433,7 +452,7 @@ describe('Service account Details', () => {
   });
   it('blocks another issuance after a lost response', async () => {
     const { page, fixture } = await loadedDetails();
-    submit(page);
+    await confirmIssue(page, fixture);
     backend.expectOne(path + '/keys').error(new ProgressEvent('error'));
     await fixture.whenStable();
     expect(page.textContent).toContain(
@@ -501,6 +520,10 @@ describe('Service account Details', () => {
       const opener = button(page, action);
       opener.focus();
       opener.click();
+      if (action === 'Issue new key') {
+        await fixture.whenStable();
+        button(openDialog(page), 'Issue key').click();
+      }
       backend
         .expectOne(path + endpoint)
         .flush(
@@ -516,7 +539,7 @@ describe('Service account Details', () => {
   );
   it('retries issuance exactly once after shared code proof', async () => {
     const { page, fixture } = await loadedDetails();
-    submit(page);
+    await confirmIssue(page, fixture);
     blocked();
     await fixture.whenStable();
     enterProof(page, '123456');
@@ -533,7 +556,7 @@ describe('Service account Details', () => {
   });
   it('ends the stale session before following the sign-in fallback with its return URL', async () => {
     const { page, fixture } = await loadedDetails();
-    submit(page);
+    await confirmIssue(page, fixture);
     blocked('sign_in');
     await fixture.whenStable();
     button(page, 'Sign in again').click();
