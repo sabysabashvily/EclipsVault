@@ -189,7 +189,7 @@ public sealed class UserAdminService : IUserAdminService
         }
 
         await _changes.CommitAsync(user, AdministratorEvent(AuditAction.InvitationSent, user,
-            $"Invitation sent for '{user.Username}' to <{user.Email}>; expires {expiresAtUtc:u}"), ct);
+            $"Invitation issued for '{user.Username}' to <{user.Email}>; expires {expiresAtUtc:u}"), ct);
 
         var delivered = await _invitationDelivery.TrySendAsync(user.Email, user.DisplayName, user.Username, token, ct);
         return new SentInvitationDto(delivered, expiresAtUtc);

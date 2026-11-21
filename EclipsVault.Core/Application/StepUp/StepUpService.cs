@@ -62,9 +62,14 @@ public sealed class StepUpService : IStepUpService
             {
                 throw new StaleProofException();
             }
-            if (user.IsDisabled || user.AwaitingActivation || user.IsLockedOut(_clock.GetUtcNow()))
+            if (user.IsDisabled || user.IsLockedOut(_clock.GetUtcNow()))
             {
                 _attempt.RecordUserEvent(AuditAction.StepUpFailed, user, "Account is disabled or locked out");
+                return false;
+            }
+            if (user.AwaitingActivation)
+            {
+                _attempt.RecordUserEvent(AuditAction.StepUpFailed, user, "Account awaiting activation");
                 return false;
             }
 

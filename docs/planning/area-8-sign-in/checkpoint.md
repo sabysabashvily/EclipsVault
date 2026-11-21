@@ -258,3 +258,32 @@ and PostgreSQL, frontend, security-scan, image, sbom, agent-guardrails) with `e2
 this review-fix commit was cut; full CI on this head is pending coordinator push.
 
 Restart: ticket 4 (#177) starts from this commit. The Legacy shell for tests is `/Home/Error?code=404`.
+
+## Delivery: 8b ticket 1 (#179)
+
+Branch `area-8b-invitations`, stacked on 8a at `c5e077e`. `0a9137b` adds the awaiting-activation state
+and the `AccountInvitations` table, with schema and Q18 data migrations in both sets and both
+`db/*/migrations.sql` regenerated. It adds `POST /api/ui/users/{id}/invitation` (resend) and
+`POST /api/ui/users/{id}/invitation-address` (address replacement), both with fresh proof, and
+`invitationsAvailable` on `GET /api/ui/users/new`. It refuses invited accounts on every sign-in route,
+and adds the `InvitationSent`, `InvitationAddressReplaced` and `AccountActivated` audit actions.
+`POST /api/ui/users` still takes the password body, so F3 and F7 stay visible until #180. F9 was shown
+failing in `logs/ticket-179/f9-failing.txt`, then made impossible: links come only from
+`Identity:PublicUrl`. A Gemini session wrote `0a9137b`; a Claude Opus 5.5 high session took over after
+Gemini's quota ran out. The follow-up commit holds the review fixes and this section.
+
+Checks on `0a9137b`: `scripts/check.sh`, then `check.sh integration` on PostgreSQL with the filter in
+`logs/ticket-179/integration-filter.txt`, `dotnet format`, both pending-model checks, hook tests, and
+every Angular gate including `check:api-types`. After the fixes: `scripts/check.sh` and
+`dotnet format`. Output is in `logs/ticket-179/opus-checks/`. SQL Server (including
+`SqlServerAccountInvitationUpgradeTests`), the full suites and e2e run in CI: run 44946422470 on
+`0a9137b`.
+
+Reviews: a fresh `security-reviewer` (Claude Opus 5.5 high), then one re-check, recorded in
+`logs/ticket-179/review-ledger.md`. Nothing important. Fixed: S2, the `InvitationSent` row now says
+"issued"; S3, step-up records "Account awaiting activation"; S4, the unused C# copy of the selection
+rule is deleted. For #182: S1, race tests for resend and replacement, and the unmapped
+invitation-row unique violation.
+
+Restart: ticket 2 (#180) starts from this commit. It switches create to the email contract, retires
+generated addresses, and adds the activation endpoints and the `404 invitation_invalid` proof.

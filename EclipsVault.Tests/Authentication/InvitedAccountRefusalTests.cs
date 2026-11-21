@@ -3,6 +3,7 @@ using EclipsVault.Core.Application.Activity;
 using EclipsVault.Core.Application.Authentication;
 using EclipsVault.Core.Application.Sessions;
 using EclipsVault.Core.Application.Sso;
+using EclipsVault.Core.Application.StepUp;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
@@ -58,6 +59,26 @@ public class InvitedAccountRefusalTests
         Assert.Null(verified);
         var entry = Assert.Single(attempt.Entries);
         Assert.Equal(AuditAction.LoginFailed, entry.Action);
+        Assert.Equal("Account awaiting activation", entry.Details);
+    }
+
+    [Fact]
+    public async Task Step_up_refuses_an_invited_account_before_checking_its_code_and_records_awaiting_activation()
+    {
+        var invited = InvitedAccount(clearance: ClearanceLevel.TopSecret, totpEnabled: true, totpSecret: "JBSWY3DPEHPK3PXP");
+        var users = new SingleUserRepository(invited);
+        var hasher = new CountingHasher();
+        var attempt = new RecordingAttempt();
+        var stepUp = new StepUpService(new StepUpOptions(), users,
+            new SecondFactorVerifier(users, new UnusedRecoveryCodes(), new UnusedTotp(), hasher, TimeProvider.System),
+            attempt, new AuthenticationFailures(users, attempt, LockoutPolicy.Default, TimeProvider.System),
+            TimeProvider.System, new FixedRevocation("rev-1"));
+
+        var verified = await stepUp.VerifyAsync(invited.Id, MatchingStamp, "123456", default);
+
+        Assert.False(verified);
+        var entry = Assert.Single(attempt.Entries);
+        Assert.Equal(AuditAction.StepUpFailed, entry.Action);
         Assert.Equal("Account awaiting activation", entry.Details);
     }
 
