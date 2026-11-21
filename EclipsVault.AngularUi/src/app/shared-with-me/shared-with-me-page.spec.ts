@@ -78,57 +78,59 @@ describe('SharedWithMePage', () => {
     expect(page.querySelector('a')?.getAttribute('href')).toBe('/Secrets');
   });
 
-  it('lists each shared secret under the Legacy columns with UTC dates and no expiry', async () => {
-    const { fixture, page } = render();
-    backend.expectOne('/api/ui/shared-with-me').flush({ shares: [share, withoutExpiry] });
-    await fixture.whenStable();
-    expect(page.querySelector('h1')?.textContent).toBe('Shared with me');
-    expect(page.querySelector('.page-sub')?.textContent).toBe(
-      'Secrets outside your project that someone has granted you access to.',
-    );
-    expect([...page.querySelectorAll('th')].map((cell) => cell.textContent?.trim())).toEqual([
-      'Name',
-      'Project',
-      'Environment',
-      'Sensitivity',
-      'Shared by',
-      'Access until',
-      '',
-    ]);
-    expect(
-      [...page.querySelectorAll('tbody tr')].map((row) =>
-        [...row.querySelectorAll('td')].map((cell) => cell.textContent?.trim()),
-      ),
-    ).toEqual([
-      [
-        'Billing_Db_Password',
-        'BILLING',
-        'Production',
+  it('lists the soonest-ending share first, its close expiry as a yellow pill', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-03T09:30:00Z'));
+    try {
+      const { fixture, page } = render();
+      backend.expectOne('/api/ui/shared-with-me').flush({ shares: [withoutExpiry, share] });
+      await fixture.whenStable();
+      expect(page.querySelector('h1')?.textContent).toBe('Shared with me');
+      expect(page.querySelector('.page-sub')?.textContent).toBe(
+        '2 secrets shared with you · soonest ends 7 Nov.',
+      );
+      expect(page.querySelector('.trust-line')?.textContent?.trim()).toBe('Every reveal is logged');
+      expect(page.querySelector('.sort-note')?.textContent).toBe(
+        'Sorted by end date, soonest first',
+      );
+      expect([...page.querySelectorAll('th')].map((cell) => cell.textContent?.trim())).toEqual([
         'Secret',
-        'colleague',
-        '2026-11-07 09:30',
-        'Open',
-      ],
-      [
-        'Payments_Api_Key',
-        'PAYMENTS',
-        'Development',
-        'Internal',
-        'another-colleague',
-        'no expiry',
-        'Open',
-      ],
-    ]);
-    // Legacy's muted cells held their text alone, with no spaces around it.
-    expect([...page.querySelectorAll('tbody td.muted')].map((cell) => cell.textContent)).toEqual([
-      'colleague',
-      '2026-11-07 09:30',
-      'another-colleague',
-      'no expiry',
-    ]);
+        'Environment',
+        'Sensitivity',
+        'Shared by',
+        'Access until',
+      ]);
+      // The project code is a block under the secret's name, with no space between them.
+      expect(
+        [...page.querySelectorAll('tbody tr')].map((row) =>
+          [...row.querySelectorAll('td')].map((cell) => cell.textContent?.trim()),
+        ),
+      ).toEqual([
+        ['Billing_Db_PasswordBILLING', 'Production', 'Secret', 'colleague', 'In 4 days · 7 Nov'],
+        ['Payments_Api_KeyPAYMENTS', 'Development', 'Internal', 'another-colleague', 'No expiry'],
+      ]);
+      // Exact text, untrimmed: the browser tests match the cell's whole text.
+      expect(
+        [...page.querySelectorAll('tbody td.cell-meta')].map((cell) => cell.textContent),
+      ).toEqual(['colleague', 'another-colleague']);
+      const pill = page.querySelector('tbody .badge.tone-warn')!;
+      expect(pill.textContent).toBe('In 4 days · 7 Nov');
+      expect(pill.getAttribute('title')).toBe('2026-11-07 09:30:00 UTC');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it('opens each shared secret on its Legacy details page', async () => {
+  it('says when no share ends', async () => {
+    const { fixture, page } = render();
+    backend.expectOne('/api/ui/shared-with-me').flush({ shares: [withoutExpiry] });
+    await fixture.whenStable();
+    expect(page.querySelector('.page-sub')?.textContent).toBe(
+      '1 secret shared with you · none of them end.',
+    );
+  });
+
+  it('opens each shared secret on its details page', async () => {
     const { fixture, page } = render();
     backend.expectOne('/api/ui/shared-with-me').flush({ shares: [share, withoutExpiry] });
     await fixture.whenStable();
@@ -138,8 +140,8 @@ describe('SharedWithMePage', () => {
         link.getAttribute('href'),
       ]),
     ).toEqual([
-      ['Open', '/Secrets/Details/11111111-1111-1111-1111-111111111111'],
-      ['Open', '/Secrets/Details/22222222-2222-2222-2222-222222222222'],
+      ['Billing_Db_Password', '/Secrets/Details/11111111-1111-1111-1111-111111111111'],
+      ['Payments_Api_Key', '/Secrets/Details/22222222-2222-2222-2222-222222222222'],
     ]);
   });
 });

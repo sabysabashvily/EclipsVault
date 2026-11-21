@@ -1,0 +1,61 @@
+<div class="page-header">
+  <div>
+    <h1>Access denied</h1>
+    <p class="page-sub">The attribute-based access policy rejected this request.</p>
+  </div>
+</div>
+
+<section class="panel narrow-left">
+  @if (reasons.length > 0) {
+    <p>Access was refused because:</p>
+    <ul class="denial-reasons">
+      @for (reason of reasons; track $index) {
+        <li>{{ reason }}</li>
+      }
+    </ul>
+    <p class="muted">
+      Access is granted only when every requirement above is satisfied. The attempt has been logged.
+    </p>
+  } @else {
+    <p>
+      Your clearance, project assignment, the time window, or your network location did not satisfy
+      the resource's requirements. The attempt has been logged.
+    </p>
+  }
+  <div class="button-row">
+    <a class="button" routerLink="/Secrets">Back to secrets</a>
+    @if (managesNetworks()) {
+      <a class="button" routerLink="/Admin/Networks">Manage trusted networks</a>
+    }
+  </div>
+</section>
+
+@if (eligibility.hasValue()) {
+  <section class="panel narrow-left">
+    <div class="panel-header"><h2>Request access</h2></div>
+    @if (eligibility.value().eligible) {
+      <p class="muted">
+        Ask a reviewer, an administrator or a member of this secret's project who can open it, to
+        share it with you.
+      </p>
+      <app-status-line [message]="failure()" [error]="true" />
+      <form (submit)="submit($event)">
+        <div class="field">
+          <label for="reason">Reason</label
+          ><textarea
+            id="reason"
+            #reasonInput
+            rows="3"
+            maxlength="500"
+            placeholder="Why do you need this secret?"
+            [value]="reason()"
+            (input)="reason.set(reasonInput.value)"
+          ></textarea>
+        </div>
+        <button type="submit" class="button primary" [disabled]="busy()">Submit request</button>
+      </form>
+    } @else {
+      <p class="muted">{{ eligibility.value().message }}</p>
+    }
+  </section>
+}

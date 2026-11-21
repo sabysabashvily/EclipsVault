@@ -61,7 +61,7 @@ public sealed class SecretGrantService : ISecretGrantService
         var existing = await _grants.FindForRecipientAsync(grantee.Id, secretId, ct);
         if (existing is not null && existing.IsActive(now))
         {
-            throw new SharingException($"'{grantee.Username}' already has a grant on this secret.");
+            throw new ShareExistsException($"'{grantee.Username}' already has a grant on this secret.");
         }
 
         var grant = ShareRecipient.NewShare(secret, grantee, _actor, now, ttlDays);
@@ -71,7 +71,7 @@ public sealed class SecretGrantService : ISecretGrantService
             : await _grants.ReplaceExpiredAsync(existing, grant, ct);
         if (!saved)
         {
-            throw new SharingException("They already have a share on this secret.");
+            throw new ShareExistsException("They already have a share on this secret.");
         }
     }
 

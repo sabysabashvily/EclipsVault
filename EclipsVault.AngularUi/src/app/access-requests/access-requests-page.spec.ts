@@ -56,9 +56,11 @@ describe('AccessRequestsPage', () => {
     const fixture = TestBed.createComponent(AccessRequestsPage);
     fixture.detectChanges();
     const page = fixture.nativeElement as HTMLElement;
-    const dialog = page.querySelector('dialog')!;
-    dialog.showModal = () => dialog.setAttribute('open', '');
-    dialog.close = () => dialog.removeAttribute('open');
+    // The test DOM has no modal dialogs; each dialog only shows whether it is open.
+    for (const dialog of page.querySelectorAll('dialog')) {
+      dialog.showModal = () => dialog.setAttribute('open', '');
+      dialog.close = () => dialog.removeAttribute('open');
+    }
     return { fixture, page };
   }
 
@@ -96,6 +98,33 @@ describe('AccessRequestsPage', () => {
     ].map((cell) => cell.textContent);
   }
 
+  function stepUpDialog(page: HTMLElement): HTMLDialogElement {
+    return [...page.querySelectorAll('dialog')].find(
+      (dialog) => dialog.querySelector('h2')?.textContent === "Confirm it's you",
+    )!;
+  }
+
+  const staleProof = {
+    code: 'step_up_required',
+    title: "Confirm it's you before sharing this secret.",
+    proof: 'code',
+  };
+
+  /** Opens the approve dialog, types the expiry, and confirms. */
+  async function approve(
+    fixture: { whenStable(): Promise<unknown> },
+    page: HTMLElement,
+    days?: string,
+  ) {
+    button(page, 'Approve').click();
+    await fixture.whenStable();
+    if (days !== undefined) {
+      const field = page.querySelector<HTMLInputElement>('#approval-days')!;
+      field.value = days;
+      field.dispatchEvent(new Event('input'));
+    }
+    button(page, 'Approve and grant access').click();
+  }
   function announced(page: HTMLElement) {
     return {
       success: page.querySelector('.flash-success')?.textContent ?? '',
@@ -125,14 +154,19 @@ describe('AccessRequestsPage', () => {
     fixture.detectChanges();
     backend.expectOne(path).flush({ ...empty, toReview: [toReview] });
     await fixture.whenStable();
-    expect(rows(panel(page, 'To review'))).toHaveLength(1);
+    expect(panel(page, 'To review').querySelectorAll('li')).toHaveLength(1);
     expect(page.textContent).not.toContain('Could not load');
   });
 
-  it('shows the Legacy empty state in each panel', async () => {
+  it('shows the empty state in each panel and that nothing waits on you', async () => {
     const { page } = await loaded(empty);
+    expect(page.querySelector('.title-row .badge')?.textContent).toBe('Nothing to review');
+    expect(page.querySelector('.title-row .badge')?.classList).toContain('tone-ok');
+    expect(page.querySelector('.page-sub')?.textContent).toBe(
+      'Nothing waits on you · requests you file from a denied secret appear under My requests.',
+    );
     const review = panel(page, 'To review');
-    expect(review.querySelector('.panel-header .muted')?.textContent?.trim()).toBe('Your project');
+    expect(review.querySelector('.sort-note')?.textContent).toBe('Your project · Newest first');
     expect(review.querySelector('h3')?.textContent).toBe('Nothing waiting on you');
     expect(review.querySelector('.empty-state p')?.textContent).toBe(
       'When someone requests access to a secret you can share, it lands here for you to approve or reject.',
@@ -148,60 +182,95 @@ describe('AccessRequestsPage', () => {
     expect(mine.querySelector('a')?.getAttribute('href')).toBe('/Secrets');
   });
 
-  it('visual parity: an empty My requests panel draws the Legacy inbox icon', async () => {
-    const { page } = await loaded(empty);
-    expect(panel(page, 'My requests').querySelectorAll('.empty-icon path')).toHaveLength(3);
+  it('lists each request to review with who asks, why, why they were denied and how long it waited', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-20T13:05:00Z'));
+    try {
+      const { page } = await loaded({
+        ...empty,
+        reviewScope: 'all',
+        toReview: [toReview, noDenial],
+      });
+      expect(page.querySelector('.title-row .badge')?.textContent).toBe('Waiting on you');
+      expect(page.querySelector('.title-row .badge')?.classList).toContain('tone-warn');
+      expect(page.querySelector('.page-sub')?.textContent).toBe(
+        '2 requests wait on you · approving shares the secret; you choose when access ends.',
+      );
+      const review = panel(page, 'To review');
+      expect(review.querySelector('.sort-note')?.textContent).toBe('All projects · Newest first');
+      const list = review.querySelector('ul[aria-label="Requests to review"]')!;
+      expect(
+        [...list.querySelectorAll('li')].map((item) =>
+          [...item.querySelectorAll('.attention-title, .attention-meta, .badge, button')].map(
+            (part) => part.textContent?.trim(),
+          ),
+        ),
+      ).toEqual([
+        [
+          'Deployment_key GLOBAL',
+          'colleague · Need it for the release',
+          "Denied because: Subject project 'OPS' does not match resource project 'GLOBAL'.",
+          '3h ago',
+          'Approve',
+          'Reject',
+        ],
+        ['Other_key GLOBAL', 'colleague · Need it for the release', '3h ago', 'Approve', 'Reject'],
+      ]);
+      expect(list.querySelector('.badge')?.getAttribute('title')).toBe('2026-10-20 10:05:00 UTC');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it('lists each request to review as Legacy did', async () => {
-    const { page } = await loaded({ ...empty, reviewScope: 'all', toReview: [toReview, noDenial] });
-    const review = panel(page, 'To review');
-    expect(review.querySelector('.panel-header .muted')?.textContent?.trim()).toBe('All projects');
-    expect([...review.querySelectorAll('th')].map((cell) => cell.textContent)).toEqual([
-      'Secret',
-      'Requester',
-      'Reason',
-      'Denied because',
-      'Requested',
-      '',
+  it('dates a request that waited over a week', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-28T10:05:00Z'));
+    try {
+      const { page } = await loaded({ ...empty, toReview: [toReview] });
+      expect(page.querySelector('.attention-chip')?.textContent).toBe('Since 20 Oct');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('asks before approving, naming the request and what the share carries', async () => {
+    const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
+    button(page, 'Approve').click();
+    await fixture.whenStable();
+    const dialog = page.querySelector('dialog[open]')!;
+    expect(dialog.querySelector('h2')?.textContent).toBe("Approve colleague's request?");
+    expect(dialog.querySelector('h2 + p')?.textContent).toBe(
+      'colleague gets Deployment_key as a share.',
+    );
+    expect(
+      [...dialog.querySelectorAll('.facts div')].map((row) => [
+        row.querySelector('dt')?.textContent,
+        row.querySelector('dd')?.textContent,
+      ]),
+    ).toEqual([
+      ['Secret', 'Deployment_key'],
+      ['Project', 'GLOBAL'],
+      ['Requester', 'colleague'],
+      ['Reason', 'Need it for the release'],
     ]);
-    expect(rows(review)).toEqual([
-      [
-        'Deployment_key GLOBAL',
-        'colleague',
-        'Need it for the release',
-        "Subject project 'OPS' does not match resource project 'GLOBAL'.",
-        '2026-10-20 10:05',
-        'Approve Reject',
-      ],
-      [
-        'Other_key GLOBAL',
-        'colleague',
-        'Need it for the release',
-        '—',
-        '2026-10-20 10:05',
-        'Approve Reject',
-      ],
-    ]);
-    expect(review.querySelector('td .badge.tone-muted')?.textContent).toBe('GLOBAL');
-    // Legacy's text cells held their text alone, with no spaces around it.
-    expect(textCells(review)).toEqual([
-      'Deployment_key GLOBAL',
-      'colleague',
-      'Need it for the release',
-      "Subject project 'OPS' does not match resource project 'GLOBAL'.",
-      '2026-10-20 10:05',
-      'Other_key GLOBAL',
-      'colleague',
-      'Need it for the release',
-      '—',
-      '2026-10-20 10:05',
-    ]);
-    const expiry = review.querySelector('input')!;
-    expect(expiry.type).toBe('number');
-    expect([expiry.min, expiry.max, expiry.value]).toEqual(['0', '3650', '0']);
-    expect(expiry.title).toBe('Grant expires in days (0 = no expiry)');
-    expect(expiry.getAttribute('aria-label')).toBe('Grant expiry in days');
+    const field = dialog.querySelector<HTMLInputElement>('input')!;
+    expect(dialog.querySelector(`label[for="${field.id}"]`)?.textContent).toBe(
+      'Access ends after (days)',
+    );
+    expect([field.type, field.min, field.max, field.value]).toEqual(['number', '0', '3650', '0']);
+    expect(document.getElementById(field.getAttribute('aria-describedby')!)?.textContent).toBe(
+      '0 = no end date',
+    );
+    const chips = () =>
+      [...dialog.querySelectorAll('.scope-chips li')].map((chip) => chip.textContent?.trim());
+    expect(chips()).toEqual(['Every reveal is logged', 'No end date']);
+    field.value = '3';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(chips()).toEqual(['Every reveal is logged', 'Ends after 3 days']);
+    expect(dialog.querySelector('.dialog-note')?.textContent).toBe('Saved to the audit log');
+    button(page, 'Cancel').click();
+    backend.expectNone(`${path}/${toReview.requestId}/approve`);
   });
 
   it('shows each of your requests as Legacy did', async () => {
@@ -264,7 +333,7 @@ describe('AccessRequestsPage', () => {
     ]);
   });
 
-  it('visual parity: each status badge takes its Legacy tone', async () => {
+  it('gives each status the tone of what it means', async () => {
     const { page } = await loaded({
       ...empty,
       mine: [
@@ -279,13 +348,12 @@ describe('AccessRequestsPage', () => {
     ).toEqual(['badge tone-warn', 'badge tone-ok', 'badge tone-danger', 'badge tone-muted']);
   });
 
-  it('sends the typed expiry with the antiforgery token, without asking first', async () => {
+  it('sends the typed expiry with the antiforgery token once confirmed', async () => {
     document.cookie = 'XSRF-TOKEN=access-requests-token; path=/';
     const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
-    page.querySelector('input')!.value = '7';
-    button(page, 'Approve').click();
+    await approve(fixture, page, '7');
     fixture.detectChanges();
-    expect(page.querySelector('dialog')?.hasAttribute('open')).toBe(false);
+    expect(page.querySelector('dialog[open]')).toBeNull();
     const approval = backend.expectOne({
       method: 'POST',
       url: `${path}/${toReview.requestId}/approve`,
@@ -299,7 +367,7 @@ describe('AccessRequestsPage', () => {
 
   it('disables every decision while one is in flight', async () => {
     const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
-    button(page, 'Approve').click();
+    await approve(fixture, page);
     fixture.detectChanges();
     expect(button(page, 'Approve').disabled).toBe(true);
     expect(button(page, 'Reject').disabled).toBe(true);
@@ -312,7 +380,7 @@ describe('AccessRequestsPage', () => {
 
   it('announces an approval once the lists reload', async () => {
     const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
-    button(page, 'Approve').click();
+    await approve(fixture, page);
     backend
       .expectOne(`${path}/${toReview.requestId}/approve`)
       .flush(null, { status: 204, statusText: 'No Content' });
@@ -326,10 +394,81 @@ describe('AccessRequestsPage', () => {
     expect(page.textContent).toContain('Nothing waiting on you');
   });
 
+  it('asks for an authenticator code when an approval needs fresh proof, then approves once', async () => {
+    const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
+    await approve(fixture, page, '7');
+    backend
+      .expectOne(`${path}/${toReview.requestId}/approve`)
+      .flush(staleProof, { status: 403, statusText: 'Forbidden' });
+    await fixture.whenStable();
+    const dialog = stepUpDialog(page);
+    expect(dialog.hasAttribute('open')).toBe(true);
+    expect(dialog.textContent).toContain('Enter an authenticator code to continue.');
+
+    dialog.querySelector('input')!.value = '123456';
+    dialog.querySelector('form')!.dispatchEvent(new Event('submit'));
+    const proof = backend.expectOne({ method: 'POST', url: '/api/ui/step-up' });
+    expect(proof.request.body).toEqual({ code: '123456' });
+    proof.flush(null, { status: 204, statusText: 'No Content' });
+    await fixture.whenStable();
+    const approval = backend.expectOne(`${path}/${toReview.requestId}/approve`);
+    expect(approval.request.body).toEqual({ expiresInDays: 7 });
+    approval.flush(null, { status: 204, statusText: 'No Content' });
+    fixture.detectChanges();
+    backend.expectOne(path).flush(empty);
+    await fixture.whenStable();
+
+    expect(dialog.hasAttribute('open')).toBe(false);
+    expect(announced(page)).toEqual({
+      success: 'Request approved — a grant was created for the requester.',
+      error: '',
+    });
+  });
+
+  it('approves nothing when the authenticator dialog is cancelled', async () => {
+    const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
+    await approve(fixture, page);
+    backend
+      .expectOne(`${path}/${toReview.requestId}/approve`)
+      .flush(staleProof, { status: 403, statusText: 'Forbidden' });
+    await fixture.whenStable();
+
+    button(stepUpDialog(page), 'Cancel').click();
+    await fixture.whenStable();
+
+    backend.expectNone(`${path}/${toReview.requestId}/approve`);
+    expect(stepUpDialog(page).hasAttribute('open')).toBe(false);
+    expect(announced(page)).toEqual({ success: '', error: '' });
+    expect(button(page, 'Approve').disabled).toBe(false);
+  });
+
+  it('asks for fresh proof only once and announces a second refusal as an error', async () => {
+    const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
+    await approve(fixture, page);
+    backend
+      .expectOne(`${path}/${toReview.requestId}/approve`)
+      .flush(staleProof, { status: 403, statusText: 'Forbidden' });
+    await fixture.whenStable();
+    const dialog = stepUpDialog(page);
+    dialog.querySelector('input')!.value = '123456';
+    dialog.querySelector('form')!.dispatchEvent(new Event('submit'));
+    backend.expectOne('/api/ui/step-up').flush(null, { status: 204, statusText: 'No Content' });
+    await fixture.whenStable();
+
+    backend
+      .expectOne(`${path}/${toReview.requestId}/approve`)
+      .flush(staleProof, { status: 403, statusText: 'Forbidden' });
+    fixture.detectChanges();
+    backend.expectOne(path).flush({ ...empty, toReview: [toReview] });
+    await fixture.whenStable();
+
+    expect(dialog.hasAttribute('open')).toBe(false);
+    expect(announced(page)).toEqual({ success: '', error: staleProof.title });
+  });
+
   it('sends an empty expiry as null, which the server refuses as out of range', async () => {
     const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
-    page.querySelector('input')!.value = '';
-    button(page, 'Approve').click();
+    await approve(fixture, page, '');
     const approval = backend.expectOne(`${path}/${toReview.requestId}/approve`);
     expect(approval.request.body).toEqual({ expiresInDays: null });
     approval.flush(
@@ -343,12 +482,16 @@ describe('AccessRequestsPage', () => {
   });
 
   it.each(['1.5', '-1', '3651'])(
-    'lets the browser refuse an expiry of %s before anything is sent, as Legacy did',
+    'refuses an expiry of %s before anything is sent, keeping the approval and what was typed',
     async (typed) => {
-      const { page } = await loaded({ ...empty, toReview: [toReview] });
-      page.querySelector('input')!.value = typed;
-      button(page, 'Approve').click();
+      const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
+      await approve(fixture, page, typed);
+      await fixture.whenStable();
       backend.expectNone(`${path}/${toReview.requestId}/approve`);
+      const dialog = page.querySelector('dialog[open]');
+      expect(dialog?.querySelector('h2')?.textContent).toBe("Approve colleague's request?");
+      expect(dialog?.querySelector<HTMLInputElement>('#approval-days')?.value).toBe(typed);
+      expect(announced(page).error).toBe('');
     },
   );
 
@@ -356,20 +499,21 @@ describe('AccessRequestsPage', () => {
     const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
     button(page, 'Reject').click();
     await fixture.whenStable();
+    expect(page.querySelector('dialog h2')?.textContent).toBe('Reject this request?');
     expect(page.querySelector('dialog p')?.textContent).toBe(
       "Reject colleague's request for Deployment_key?",
     );
     button(page, 'Cancel').click();
     await fixture.whenStable();
     backend.expectNone(`${path}/${toReview.requestId}/reject`);
-    expect(rows(panel(page, 'To review'))).toHaveLength(1);
+    expect(panel(page, 'To review').querySelectorAll('li')).toHaveLength(1);
   });
 
   it('announces a confirmed rejection once the lists reload', async () => {
     const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
     button(page, 'Reject').click();
     await fixture.whenStable();
-    button(page, 'Continue').click();
+    button(page, 'Reject request').click();
     const rejection = backend.expectOne({
       method: 'POST',
       url: `${path}/${toReview.requestId}/reject`,
@@ -389,7 +533,7 @@ describe('AccessRequestsPage', () => {
     expect(page.querySelector('dialog p')?.textContent).toBe(
       'Withdraw your request for Billing_key?',
     );
-    button(page, 'Continue').click();
+    button(page, 'Withdraw request').click();
     backend
       .expectOne({ method: 'POST', url: `${path}/${filed.requestId}/withdraw` })
       .flush(null, { status: 204, statusText: 'No Content' });
@@ -414,7 +558,7 @@ describe('AccessRequestsPage', () => {
     'announces a %i %s refusal as an error over freshly loaded lists',
     async (status, code, title) => {
       const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
-      button(page, 'Approve').click();
+      await approve(fixture, page);
       backend
         .expectOne(`${path}/${toReview.requestId}/approve`)
         .flush({ code, title }, { status, statusText: 'Refused' });
@@ -430,7 +574,7 @@ describe('AccessRequestsPage', () => {
     const { fixture, page } = await loaded({ ...empty, mine: [filed] });
     button(page, 'Withdraw').click();
     await fixture.whenStable();
-    button(page, 'Continue').click();
+    button(page, 'Withdraw request').click();
     backend.expectOne(`${path}/${filed.requestId}/withdraw`).error(new ProgressEvent('error'));
     fixture.detectChanges();
     backend.expectOne(path).flush({ ...empty, mine: [filed] });
@@ -465,7 +609,6 @@ describe('AccessRequestsPage', () => {
     ],
     ['already_pending', 'You already have a pending request for this secret.'],
     ['reason_too_short', 'Add a short reason so a reviewer can decide.'],
-    ['secret_not_found', 'That secret no longer exists.'],
   ])('announces the refusal %s as an error', async (code, message) => {
     const { page } = await loaded(empty, { refused: code });
     expect(announced(page)).toEqual({ success: '', error: message });

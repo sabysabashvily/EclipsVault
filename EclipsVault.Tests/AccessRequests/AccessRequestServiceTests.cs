@@ -83,7 +83,7 @@ public sealed class AccessRequestServiceTests
         public EclipsVaultDbContext Context { get; } = context;
         public AccessRequest Request { get; } = request;
         public AccessRequestService Service { get; } = new(new AccessRequestRepository(context), new SecretGrantRepository(context),
-            new SecretRepository(context), new UserRepository(context, TimeProvider.System), new AccessRequestCommitter(context),
+            new SecretRepository(context, audit: null!, chain: null!), new UserRepository(context, TimeProvider.System), new AccessRequestCommitter(context),
             intrusion: null!, new Reviewer(), new NotificationService(new LoggingEmailSender(NullLogger<LoggingEmailSender>.Instance),
                 new EmailLogRepository(context), new UserRepository(context, TimeProvider.System), new NotificationOptions(false), TimeProvider.System), TimeProvider.System);
 

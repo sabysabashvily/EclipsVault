@@ -1,10 +1,9 @@
-import { ScrollRegion } from '../shared/scroll-region';
 import { RouterLink } from '@angular/router';
 import { HttpClient, httpResource } from '@angular/common/http';
 import { Component, computed, DestroyRef, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize } from 'rxjs';
-import { ConfirmationDialog } from '../shared/confirmation-dialog';
+import { ConfirmationDialog, type DecisionOptions } from '../shared/confirmation-dialog';
 import { PAGE_LOCATION } from '../shell/command-palette';
 import { RowMenu } from '../shared/row-menu';
 import { StatusLine } from '../shared/status-line';
@@ -39,7 +38,6 @@ const statuses: Record<User['status'], { label: string; tone: string }> = {
   selector: 'app-users-page',
   imports: [
     PagePrimary,
-    ScrollRegion,
     RouterLink,
     ConfirmationDialog,
     RowMenu,
@@ -75,13 +73,30 @@ export class UsersPage {
         account.isYou ? 'you' : '',
         account.clearanceLabel,
         account.project,
-        account.mfaEnrolled ? 'Enrolled' : 'Pending',
+        account.mfaEnrolled ? 'On' : 'Not set up',
         statuses[account.status].label,
       ]
         .join(' ')
         .toLowerCase()
         .includes(query),
     );
+  });
+
+  /** "4 people · 1 without two-step · 1 locked. …": parts after the count only when not zero. */
+  protected readonly summary = computed(() => {
+    const onboarding = 'New users set up their authenticator at first sign-in.';
+    if (!this.users.hasValue()) return onboarding;
+    const accounts = this.users.value().users;
+    const withoutTwoStep = accounts.filter((account) => !account.mfaEnrolled).length;
+    const locked = accounts.filter((account) => account.status === 'locked').length;
+    const counts = [
+      `${accounts.length} ${accounts.length === 1 ? 'person' : 'people'}`,
+      withoutTwoStep ? `${withoutTwoStep} without two-step` : '',
+      locked ? `${locked} locked` : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    return `${counts}. ${onboarding}`;
   });
 
   constructor() {
@@ -108,6 +123,7 @@ export class UsersPage {
           action,
           user,
           `Disable '${user.username}'? They will be signed out immediately and cannot sign in until re-enabled.`,
+          { title: `Disable ${user.username}?`, confirm: 'Disable and sign out' },
         );
         break;
       case 'reset-mfa':
@@ -115,13 +131,19 @@ export class UsersPage {
           action,
           user,
           `Reset MFA for '${user.username}'? They will re-enroll at next sign-in.`,
+          { confirm: 'Reset MFA' },
         );
         break;
       case 'sign-out':
-        this.ask(action, user, `Revoke all active sessions for '${user.username}'?`);
+        this.ask(action, user, `Revoke all active sessions for '${user.username}'?`, {
+          confirm: 'End their sessions',
+        });
         break;
       case 'delete':
-        this.ask(action, user, `Delete user '${user.username}' permanently? This is audited.`);
+        this.ask(action, user, `Delete user '${user.username}' permanently? This is audited.`, {
+          title: `Delete ${user.username}?`,
+          confirm: 'Delete user',
+        });
         break;
       case 'enable':
       case 'unlock':
@@ -134,9 +156,9 @@ export class UsersPage {
     }
   }
 
-  private ask(action: Action, user: User, message: string): void {
+  private ask(action: Action, user: User, message: string, options: DecisionOptions): void {
     this.awaitingConfirmation = { action, user };
-    this.confirmation().open(message);
+    this.confirmation().open(message, { ...options, note: 'Saved to the audit log' });
   }
 
   protected confirmed(confirmed: boolean): void {

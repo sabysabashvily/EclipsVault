@@ -19,7 +19,7 @@ public abstract class ConcurrentShareTests(ShareDatabases databases)
         await using var first = databases.NewRequest(issuer);
         await using var second = databases.NewRequest(issuer);
 
-        Task<SharingException?> firstRefusal, secondRefusal;
+        Task<ShareExistsException?> firstRefusal, secondRefusal;
         await using (var chain = await databases.HoldAuditChainAsync())
         {
             firstRefusal = RefusalOf(first.Shares.GrantAsync(secret.Id, recipient.Username, ttlDays: null, default));
@@ -44,7 +44,7 @@ public abstract class ConcurrentShareTests(ShareDatabases databases)
         await using var first = databases.NewRequest(issuer);
         await using var second = databases.NewRequest(issuer);
 
-        Task<SharingException?> firstRefusal, secondRefusal;
+        Task<ShareExistsException?> firstRefusal, secondRefusal;
         await using (var chain = await databases.HoldAuditChainAsync())
         {
             firstRefusal = RefusalOf(first.Shares.GrantAsync(secret.Id, recipient.Username, ttlDays: null, default));
@@ -63,14 +63,14 @@ public abstract class ConcurrentShareTests(ShareDatabases databases)
     }
 
     /// <summary>Null when the share was saved, or the refusal the request answered. Any other failure fails the test.</summary>
-    private static async Task<SharingException?> RefusalOf(Task share)
+    private static async Task<ShareExistsException?> RefusalOf(Task share)
     {
         try
         {
             await share;
             return null;
         }
-        catch (SharingException refused)
+        catch (ShareExistsException refused)
         {
             return refused;
         }

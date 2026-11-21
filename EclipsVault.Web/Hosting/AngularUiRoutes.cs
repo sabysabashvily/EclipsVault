@@ -62,10 +62,15 @@ public static class AngularUiRoutes
         "/Profile/ChangePassword",
         "/Profile/RecoveryCodes",
 
-        // Secrets and New secret
+        // Secrets, New secret and a secret's details
         "/Secrets",
         "/Secrets/Index",
         "/Secrets/Create",
+        "/Secrets/Details/{id:guid}",
+
+        // Dynamic secrets
+        "/DynamicSecrets",
+        "/DynamicSecrets/Index",
 
         // Shared by me
         "/Secrets/SharedByMe",
@@ -76,6 +81,9 @@ public static class AngularUiRoutes
         // Access requests
         "/AccessRequests",
         "/AccessRequests/Index",
+
+        // Access denied, where the session cookie sends a caller refused a page
+        "/Account/Denied",
     ];
 
     /// <summary>

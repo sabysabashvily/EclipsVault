@@ -48,6 +48,8 @@ export default defineConfig({
             '**/theme-foundation.spec.ts',
             '**/overview.spec.ts',
             '**/secrets.spec.ts',
+            '**/secret-details.spec.ts',
+            '**/dynamic-secrets.spec.ts',
             '**/break-glass.spec.ts',
             '**/sso.spec.ts',
           ],
@@ -116,6 +118,21 @@ export default defineConfig({
           use: { ...devices['Desktop Chrome'] },
         },
         {
+          // Needs the administrator session and authenticator that sign-in saves, and makes its own
+          // share recipient.
+          name: 'secret-details',
+          testMatch: '**/secret-details.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          // Needs the administrator session that sign-in saves and its authenticator.
+          name: 'dynamic-secrets',
+          testMatch: '**/dynamic-secrets.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
           name: 'audit',
           testMatch: '**/audit.spec.ts',
           dependencies: ['chromium'],
@@ -124,7 +141,7 @@ export default defineConfig({
         {
           // Users ends with the administrator's own Force logout, which ends the saved session that
           // Networks, Notifications, License, Encryption keys, the Audit log, the Overview, Secrets,
-          // break-glass and single sign-on reuse, so they run first.
+          // Secret details, Dynamic secrets, break-glass and single sign-on reuse, so they run first.
           name: 'users',
           testMatch: '**/users.spec.ts',
           dependencies: [
@@ -133,6 +150,8 @@ export default defineConfig({
             'audit',
             'overview',
             'secrets',
+            'secret-details',
+            'dynamic-secrets',
             'break-glass',
             'sso',
           ],

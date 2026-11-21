@@ -2,14 +2,14 @@ import { HttpClient } from '@angular/common/http';
 import { Component, DestroyRef, inject, linkedSignal, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize } from 'rxjs';
+import { Router } from '@angular/router';
 import { CurrentAccount } from '../account/current-account';
-import { PAGE_LOCATION } from '../shell/command-palette';
 import type { components } from '../ui-api/schema.generated';
 import { UiApiError } from '../ui-api/ui-api-errors';
 
 type Request = components['schemas']['CreateSecretUiRequest'];
 
-/** New secret, in the caller's own project by default. A stored secret opens on its Legacy details page. */
+/** New secret, in the caller's own project by default. A stored secret opens on its details page. */
 @Component({
   selector: 'app-new-secret-page',
   templateUrl: './new-secret-page.html',
@@ -17,7 +17,7 @@ type Request = components['schemas']['CreateSecretUiRequest'];
 export class NewSecretPage {
   private readonly http = inject(HttpClient);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly location = inject(PAGE_LOCATION);
+  private readonly router = inject(Router);
   private readonly me = inject(CurrentAccount).me;
   protected readonly environments = ['Development', 'Staging', 'Production'] as const;
   protected readonly sensitivities = [
@@ -64,8 +64,11 @@ export class NewSecretPage {
         finalize(() => this.busy.set(false)),
       )
       .subscribe({
-        // The details page is still the Legacy UI's, which shows the stored secret's success message.
-        next: (created) => this.location.assign(`/Secrets/Details/${created.secretId}`),
+        // The details page announces the stored secret when this navigation's state says so.
+        next: (created) =>
+          void this.router.navigateByUrl(`/Secrets/Details/${created.secretId}`, {
+            state: { stored: true },
+          }),
         error: (error: unknown) => {
           if (error instanceof UiApiError && Object.keys(error.errors).length) {
             this.errors.set(error.errors);

@@ -129,12 +129,12 @@ public sealed class EmailIdentitySignInTests(VaultFixture vault)
         await ProvisionAsync("it-email-share-alias@example.test", "it-email-share-alias-named@example.test");
         await ProvisionAsync("it-email-share-alias-addressed", "it-email-share-alias@example.test");
         var admin = await vault.AdminClientAsync();
-        var details = await LegacySharing.CreateSecretAsync(admin, "it-email-share-alias-secret");
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-email-share-alias-secret");
 
-        await LegacySharing.ShareAsync(admin, details, "it-email-share-alias@example.test");
+        await SecretDetailsApi.ShareAsync(admin, details, "it-email-share-alias@example.test");
 
         using var scope = vault.Services.CreateScope();
-        var secretId = LegacySharing.SecretIdOf(details);
+        var secretId = SecretSharing.SecretIdOf(details);
         Assert.False(await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().SecretGrants
             .AnyAsync(share => share.SecretId == secretId));
     }

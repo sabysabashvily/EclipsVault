@@ -38,6 +38,7 @@ const sharedWithMe = () =>
   import('./shared-with-me/shared-with-me-page').then((m) => m.SharedWithMePage);
 const accessRequests = () =>
   import('./access-requests/access-requests-page').then((m) => m.AccessRequestsPage);
+const denied = () => import('./denied/denied-page').then((m) => m.DeniedPage);
 
 const profile = () => import('./profile/profile-page').then((m) => m.ProfilePage);
 const password = () => import('./profile/change-password-page').then((m) => m.ChangePasswordPage);
@@ -52,6 +53,8 @@ const encryption = () => import('./encryption/encryption-page').then((m) => m.En
 const audit = () => import('./audit/audit-page').then((m) => m.AuditPage);
 const overview = () => import('./overview/overview-page').then((m) => m.OverviewPage);
 const secrets = () => import('./secrets/secrets-page').then((m) => m.SecretsPage);
+const dynamicSecrets = () =>
+  import('./dynamic-secrets/dynamic-secrets-page').then((m) => m.DynamicSecretsPage);
 
 export const routes: Routes = [
   { path: '', pathMatch: 'full', loadComponent: overview, title: 'Overview — EclipsVault' },
@@ -140,6 +143,20 @@ export const routes: Routes = [
     title: 'New secret — EclipsVault',
   },
   {
+    matcher: detailsPath('Secrets', 'Details'),
+    loadComponent: () => import('./secrets/secret-details-page').then((m) => m.SecretDetailsPage),
+  },
+  {
+    matcher: legacyPath('DynamicSecrets'),
+    loadComponent: dynamicSecrets,
+    title: 'Dynamic secrets — EclipsVault',
+  },
+  {
+    matcher: legacyPath('DynamicSecrets/Index'),
+    loadComponent: dynamicSecrets,
+    title: 'Dynamic secrets — EclipsVault',
+  },
+  {
     matcher: legacyPath('Secrets/SharedByMe'),
     loadComponent: sharedByMe,
     title: 'Shared by me — EclipsVault',
@@ -158,6 +175,11 @@ export const routes: Routes = [
     matcher: legacyPath('AccessRequests/Index'),
     loadComponent: accessRequests,
     title: 'Access requests — EclipsVault',
+  },
+  {
+    matcher: legacyPath('Account/Denied'),
+    loadComponent: denied,
+    title: 'Access denied — EclipsVault',
   },
   {
     matcher: legacyPath('Sessions'),

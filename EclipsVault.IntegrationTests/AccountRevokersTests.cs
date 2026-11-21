@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net;
+using System.Net.Http.Json;
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Authentication;
 using EclipsVault.Core.Application.Users;
@@ -84,21 +85,17 @@ public abstract class AccountRevokersTests(VaultFixture vault)
     public async Task A_secret_step_up_renewal_preserves_the_original_version_and_cannot_outlive_sign_out()
     {
         const string username = "it-version-step-up";
-        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-version-step-up-secret", "it-step-up-value");
+        var details = await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-version-step-up-secret", "it-step-up-value");
         // A trusted address, so the reveal depends on the session alone.
         var owner = await vault.SignInNewAccountAsync(username, IPAddress.Parse("10.52.0.73"));
         var original = SessionApi.PrincipalOf(vault, owner);
         var originalCookie = owner.SessionCookie!.Value;
         var account = await ProfileHttp.AccountAsync(vault, username);
-        var token = VaultFixture.FormTokenOf(await owner.Client.GetStringAsync(details), details);
+        var proof = await UiApiRequest.WriteWithAntiforgeryAsync(owner, HttpMethod.Post, "/api/ui/step-up",
+            JsonContent.Create(new { code = Totp.NextCode(account.TotpSecret!) }));
+        var response = await SecretDetailsApi.RevealAsync(owner.Client, details);
 
-        var response = await owner.Client.PostAsync(details.Replace("/Details/", "/StepUpReveal/", StringComparison.Ordinal),
-            new FormUrlEncodedContent(new Dictionary<string, string>
-            {
-                ["__RequestVerificationToken"] = token,
-                ["code"] = Totp.NextCode(account.TotpSecret!),
-            }));
-
+        Assert.Equal(HttpStatusCode.NoContent, proof.StatusCode);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("it-step-up-value", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
         Assert.NotEqual(originalCookie, owner.SessionCookie!.Value);

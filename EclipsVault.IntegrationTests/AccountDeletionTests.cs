@@ -1,6 +1,7 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Security.Cryptography;
-using System.Text.RegularExpressions;
+using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
@@ -8,7 +9,7 @@ using Xunit;
 namespace EclipsVault.IntegrationTests;
 
 [Collection(VaultCollection.Name)]
-public sealed partial class AccountDeletionTests(VaultFixture vault)
+public sealed class AccountDeletionTests(VaultFixture vault)
 {
     /// <summary>
     /// A session carries its account's clearance and project, so a session that outlived its account
@@ -23,27 +24,23 @@ public sealed partial class AccountDeletionTests(VaultFixture vault)
 
         // A trusted address, so the reveal depends on the session alone.
         var session = await vault.SignInNewAccountAsync(username, IPAddress.Parse("10.52.0.70"));
-        // The page stays open in the browser, so its form token is the one pressed again later.
-        var token = VaultFixture.FormTokenOf(await session.Client.GetStringAsync(details), details);
+        // The page stays open in the browser, so its antiforgery token is the one sent again later.
+        var token = await UiApiRequest.AntiforgeryTokenAsync(session.Client);
         var before = await RevealAsync(session.Client, details, token);
         Assert.Equal(HttpStatusCode.OK, before.StatusCode);
-        Assert.Equal(value, RevealedValue().Match(await before.Content.ReadAsStringAsync()).Groups[1].Value);
+        Assert.Equal(value, (await before.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("value").GetString());
         // Taken now: a refused request clears the session cookie, and the copy below must outlive that.
         var copied = Assert.IsType<Cookie>(session.SessionCookie);
 
         await vault.DeleteAccountAsync(username);
 
         var after = await RevealAsync(session.Client, details, token);
-        Assert.Equal(HttpStatusCode.Redirect, after.StatusCode);
-        Assert.Equal("/Account/Login", after.Headers.Location?.AbsolutePath);
-        Assert.DoesNotContain(value, await after.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        await UiApiFailureContractTests.AssertProblemAsync(after, 401, "unauthenticated");
         Assert.Null(session.SessionCookie);
 
         // Clearing the cookie is only this browser forgetting it: a copy of it is refused too.
         var replayed = vault.CreateSession(copied, IPAddress.Parse("10.52.0.70"));
-        var replay = await replayed.Client.GetAsync(details);
-        Assert.Equal(HttpStatusCode.Redirect, replay.StatusCode);
-        Assert.Equal("/Account/Login", replay.Headers.Location?.AbsolutePath);
+        await UiApiFailureContractTests.AssertProblemAsync(await SecretDetailsApi.GetAsync(replayed.Client, details), 401, "unauthenticated");
     }
 
     [Fact]
@@ -80,12 +77,7 @@ public sealed partial class AccountDeletionTests(VaultFixture vault)
             : throw new InvalidOperationException($"Creating {name} answered {(int)created.StatusCode}, not a redirect to its details.");
     }
 
-    /// <summary>Presses Reveal on the secret's details page, as a browser does.</summary>
+    /// <summary>Presses Reveal on the secret's page, with the token the open page already holds.</summary>
     private static Task<HttpResponseMessage> RevealAsync(HttpClient client, string details, string token)
-        => client.PostAsync(
-            details.Replace("/Details/", "/Reveal/", StringComparison.Ordinal),
-            new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token }));
-
-    [GeneratedRegex("<code class=\"secret-code\" id=\"revealed-value\">([^<]+)</code>")]
-    private static partial Regex RevealedValue();
+        => UiApiRequest.SendWithTokenAsync(client, token, HttpMethod.Post, $"{SecretDetailsApi.PathOf(details)}/reveal");
 }

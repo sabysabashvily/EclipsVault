@@ -1,6 +1,6 @@
 using EclipsVault.Core.Domain.Entities;
 
-namespace EclipsVault.Core.Application.DynamicSecrets;
+namespace EclipsVault.Core.Application.Abstractions;
 
 /// <summary>
 /// Persistence boundary for dynamic-secret roles and their leases. Lease inserts and status

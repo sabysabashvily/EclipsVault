@@ -284,6 +284,43 @@ diagnose the earlier Audit failure, then finish the owner-required Users depende
 Keep the shared Docker lock, .NET 10.0.404
 and Node 24.22.0. The coordinator owns the next action; do not start #165 here.
 
+## Delivery: 7b ticket 1 (#166)
+
+Branch `area-7b-secret-details`, from `94b9eb6` (7a ticket 1 merged with Area 6b; owner override: 7b stacked
+on 7a before 7a merges). Claude Opus 5.5 high implemented the ticket.
+
+Commit: `d142bdd` Record secret refusals as denials and each action as one event.
+
+What changed: lookup by id records nothing (decoys still trip first); a served Legacy details page records
+`SecretMetadataViewed`; a refused by-id action on the Legacy pages and `GET /api/v1/secrets/{id}` records
+`SecretAccessDenied` with the reasons, as do the Legacy share and revoke refusals for a non-sharer; both rows
+fail closed. Restore and managed rotation commit `SecretVersionRestored` and `SecretUpstreamRotated` in the
+change's transaction: `ISecretRepository.RotateAsync` takes the action and saves through the interceptor's
+operation path, which replaces the generic secret row for the secret it names. Managed rotation reports
+"unchanged" only for a certain SQL Server refusal (statement never sent, or errors 15151, 15247, 15114–15118);
+any other failure puts the old password back ignoring cancellation; a store failure is put back only when a
+fresh read shows the archived version did not commit; drift is recorded critical, or logged critical when
+that row fails. `AuditChain.CommitAsync` now ends its transaction when the commit fails. The audit-failure
+vault gets a real SQL Server login target (`VaultFixture.HasManagedTarget`; a PostgreSQL run starts one
+SQL Server for it). No model change, so no migrations or database scripts.
+
+For the coordinator's merges: `SecretsController.cs` is also changed by #164 (here only the by-id actions
+and `CheckAccessAsync`); `ISecretRepository.RotateAsync` gained a parameter, so any new fake repository
+from 7a or 7c needs it; `SecretRepository` now takes `AuditSaveChangesInterceptor`.
+
+Verification: F1 and F3 failed first at `94b9eb6` (5 unit tests; 8 of 13 integration tests on PostgreSQL,
+run from a copy of the start code with the new tests). On the final tree `scripts/check.sh` passed (0
+warnings, 948 unit tests), `dotnet format` clean, `scripts/check.sh integration` with the ticket filter
+passed 17 on PostgreSQL. Full integration suites, one at a time: SQL Server 1265 passed before the
+Standards edits; PostgreSQL 1268 passed before the last two comment-only edits. Both pending-model checks,
+the hook tests and every Angular check (555 Vitest) passed. No browser spec changed.
+
+Reviews: security (Opus 5.5 high) found S1, S2 and R2-1..R2-4, all fixed and closed on its third pass.
+Spec (GPT Sol 6.1 xhigh) READY after SPEC-1 (evidence) closed. Standards (GPT Sol 6.1 xhigh) READY after
+STD-1..3 closed across two re-checks. Details: `logs/ticket-166/final-report.md` and `review-ledger.md`
+(ignored). To restart, read this section on `area-7b-secret-details`; ticket 2 (#167) starts after the
+coordinator accepts this one.
+
 ## Delivery: 7a ticket 3 (#165)
 
 #164's blockers closed outside this ticket. The coordinator's distinct ordering gate passed all 279
@@ -314,3 +351,283 @@ The PR body is `logs/ticket-165/pr-body.md`. Details are in `logs/ticket-165/fin
 `review-ledger.md`. To restart, confirm the final head and a clean tracked tree. Next: push, CI on
 the final head and the PR. Those are the coordinator's. 7b is stacked on this branch and has to take
 its final head.
+
+## Delivery: 7b ticket 2 (#167)
+
+Branch `area-7b-secret-details`, from `5ff08c7` (final 7a head `325bab8` merged into 7b by the
+coordinator). Claude Opus 5.5 high implemented the ticket; one Opus usage-limit pause on 17 November
+preserved the work unchanged (`logs/ticket-167/rate-limit-checkpoint.md`).
+
+Commit: `af432b8` Refuse recipients' changes and stale writes; step up sensitive shares.
+
+What changed: rotate, managed rotation, restore and delete need the change right (`SecretChangeRight`:
+administrator, or a member of the secret's project), as sharing already did; a share recipient is refused
+with one fail-closed `SecretAccessDenied` row ("A share grants read access only."). `SecretRepository`
+rotates and shreds only while the stored wrapped data key (and, for a shred, the past expiry) is still what
+was read, checked under the audit chain in the write's own transaction, and numbers the archived version
+inside that write; the loser gets `SecretChangedException`, and managed rotation puts the password back.
+Every write to a managed secret's value takes `IManagedPrincipalLock` (the session locker, keyed by backend
+and principal) without waiting, re-reads the secret under it and holds it through commit or put-back;
+another writer gets `ChangeInProgressException` before the backend is touched. Restoring a managed secret's
+version is refused with `RestoreManagedException` and changes nothing. The lifecycle worker shreds through
+`ISecretService.ShredIfExpiredAsync` and leaves a locked or changed secret for the next sweep. Legacy Grant
+and UI API approve need fresh proof at or above `StepUp:MinimumSensitivity` (`403 step_up_required` on the
+UI API); Access requests opens StepUpDialog and sends the approval once more. No model change.
+
+The Legacy actions answer these refusals as Details flashes with the spec's sentences; the `409` and
+`403 not_permitted` codes arrive with #168's `/api/ui/secrets/{id}` endpoints.
+
+For the coordinator's merges: `ISecretRepository.RotateAsync` takes the read wrapped key, `ShredAsync`
+returns whether it shredded, `ReloadAsync` is new and `CountVersionsAsync` is gone; `SecretService` takes
+`IManagedPrincipalLock`; `SecretRepository` takes `AuditChain`.
+
+Verification: the red proof stays tied to `32740c7` (25 PostgreSQL tests, 12 failing for F2, F4, F5's
+sharing half, the second managed rotation and the managed restore; `logs/ticket-167/`). On the final
+source `scripts/check.sh` passed (978 unit tests), `dotnet format` clean, both pending-model checks and the
+hook tests passed, every Angular check passed (581 Vitest) except `npm audit`, which fails on every branch
+for picomatch GHSA-fc5q-39xc-vjpf (no patched version). The ticket's PostgreSQL filter passed 115 before
+three wording-only edits. Full suites, SQL Server and the browser suite run in CI on `af432b8`.
+
+Reviews: security (Opus 5.5 high) found no critical, high or medium issue and four lows: R1-3 and R1-4
+fixed, R1-1 (a rotation can clear the expiry-notice marker, predates this ticket) left for the owner, R1-2
+(Legacy shows change buttons to a recipient) left to #168; a fresh re-check accepted every resolution. GPT
+reviews the whole part in #170. Details: `logs/ticket-167/final-report.md` and `review-ledger.md`
+(ignored). To restart, read this section; ticket 3 (#168) starts after the coordinator accepts this one.
+
+## Delivery: 7b ticket 3 (#168)
+
+Branch `area-7b-secret-details`, from `274a064` (main `fb39fc2` merged into 7b by the coordinator).
+Claude Opus 5.5 high implemented the ticket, with one Opus 5.5 high delegate for the Angular page.
+
+Commit: `8f11597` Serve a secret's details from the Angular UI and retire the Legacy page.
+
+What changed: `SecretDetailsController` answers `/api/ui/secrets/{id}` (page, reveal, version reveal,
+rotate, managed rotation, restore, share, revoke, delete), no-store, under global antiforgery. Every action
+runs the access check, then the change right for a change; each refusal writes one fail-closed
+`SecretAccessDenied` row; reveal, version reveal and a sensitive share answer `403 step_up_required`; a decoy
+answers exactly as an unknown id and trips the trap. Another secret's version or share answers as missing.
+The managed licence note (`ManagedRotationNote`) only peeks at the evaluation window and leaves the note out
+when the read fails. An existing grant raises `ShareExistsException` (`409 share_exists`).
+`SecretRepository.DeleteAsync` now raises `AuditWriteFailedException` on a failed save, so a delete whose
+audit row cannot be stored answers `503 audit_unavailable` (it answered 500). The Angular page
+(`/Secrets/Details/{id}`) copies the Legacy words, shows change controls only from `canChange` and
+sharing only from `canShare` (#167's R1-2), hides Restore for a managed secret, keeps a revealed value only
+in page memory and opens StepUpDialog when asked. New secret announces the stored secret through router
+state; the 7a flash bridge is gone. The Legacy `SecretsController`, Details view and view models are
+deleted. No model change.
+
+Legacy shell touched: `_Layout.cshtml`'s Sharing links now point at the Angular paths.
+
+Deviations: access_denied opens `/Account/Denied?secretId=` without the reasons in navigation memory,
+because the Denied page stays Legacy until #169; the page's response carries `evaluationKnown` so a failed
+evaluation read leaves the note out; the theme test checks the theme attribute and a screenshot, with no
+`visual parity:` colour checks. Not covered over HTTP: `402 premium_not_licensed` and
+`409 rotation_unavailable`, which the fixtures cannot produce without side effects (Vitest covers the page's
+handling).
+
+Verification on the final source: `scripts/check.sh` passed (981 unit tests), `dotnet format` clean, both
+pending-model checks and the hook tests passed, the Angular checks passed (623 Vitest, lint, build checks,
+`check:api-types`; `npm audit --audit-level=high` passed with 10 moderate findings). The ticket's PostgreSQL filter passed 352 tests (30 classes); after the last test-only
+fix its three cases passed again. Browser specs were written but not run locally (`secret-details.spec.ts`,
+its own Playwright project); they, the full suites and SQL Server run in CI.
+
+Reviews: security (Opus 5.5 high) found no defects; one low (`.First` in the version label) and two
+coverage gaps were fixed. A fresh re-check of the fixes found no defects, one low test gap (fixed and
+re-checked OK) and one non-security label: two simultaneous deletes give the loser 503 rather than 500,
+left as is. GPT reviews the whole part in #170. Details: `logs/ticket-168/final-report.md` and
+`review-ledger.md` (ignored). To restart, read this section; ticket 4 (#169) starts after the coordinator
+accepts this one.
+
+## Delivery: 7b ticket 4 (#169)
+
+Branch `area-7b-secret-details`, from `372aea9`. Claude Opus 5.5 high implemented the ticket. Two #168 CI
+fixes came first, each as its own commit: `7dedfcd` and `66cd930` declare the browser's intended 403 when a
+refused recipient opens a secret.
+
+What changed: the UI API answers `GET /api/ui/access-requests/eligibility?secretId=` (records nothing) and
+`POST /api/ui/access-requests` (204). Filing takes the denial reasons from the vault's own access check and
+refuses an unknown field (400), so a caller cannot supply them. It writes only Area 4's `AccessRequested`
+row; when that cannot be stored it answers 503 `audit_unavailable` and stores nothing. Refusals answer 409
+with `share_cannot_help`, `already_able_to_open`, `already_pending`, `reason_too_short` or
+`secret_not_found`. A decoy trips and answers 404 on both endpoints. The Angular page at `/Account/Denied`
+copies the Legacy words. It lists the policy's reasons only when a refused open hands them over in
+navigation memory (Secret details now does), so a reload shows the generic text. It checks `secretId` as a
+GUID, offers the form or the refusal sentence, shows "Manage trusted networks" from the server's areas, and
+opens Access requests with `filed=1` or `refused=<code>`. No model change.
+
+Deleted: `AccountController.Denied`, `RequestRefusalMessageAsync` and `DenialReasonsTempDataKey`;
+`Views/Account/Denied.cshtml`; `AccessDeniedViewModel`; and the Legacy `AccessRequestsController`
+(`POST /AccessRequests/Create`). `/Account/Denied` stays the cookie's `AccessDeniedPath`, now served by
+Angular, and `MayLeadIntoAccount` still allows it. No Legacy-shell check was touched on this branch. 7c's
+checks that were re-homed to `/Account/Denied` now land on the Angular page, so the merge must re-check them.
+
+Deviations: an unknown secret answers eligibility with 200 `secret_not_found` while a decoy answers 404, as
+Legacy behaved. The owner question is in the ledger for #170. The theme tests check the theme attribute
+and a screenshot, with no `visual parity:` colour checks (override 4).
+
+Verification on the final source: `scripts/check.sh` passed (981 unit tests), `dotnet
+format` clean, both pending-model checks and the hook tests passed. The Angular checks passed: 633 Vitest
+tests, lint, prettier, build checks, `check:api-types` and build; `npm audit --audit-level=high` also passed with 10 moderate findings.
+The ticket's PostgreSQL filter passed 291 tests (14 classes). Browser specs were written but not run locally
+(`access-requests.spec.ts`: Denied with reasons → filing → Access requests, the under-cleared refusal
+sentence, keyboard, both themes, the titled document). They, the full suites and SQL Server run in CI.
+
+Reviews: security (Opus 5.5 high) found no defects. One low (the eligibility comment claimed a decoy and an
+unknown id answer alike; reworded) and one coverage gap (stale cookies on the two new endpoints) were fixed.
+A fresh re-check of the fixes found no defects. GPT reviews the whole part in #170. Details:
+`logs/ticket-169/final-report.md` and `review-ledger.md` (ignored). To restart, read this section; ticket 5
+(#170) starts after the coordinator accepts this one.
+
+## Delivery: 7b ticket 5 (#170)
+
+Branch `area-7b-secret-details`, from `04afbe3`. Claude Opus 5.5 high verified the part and prepared its PR.
+
+Commits:
+- `f2cc2a4` merges `main` `de3a968` (part 7c). `SqlServerBackend`'s nothing-sent callback now receives the
+  failure, so managed rotation reports a certain refusal with its cause. Test vaults have one SQL Server target
+  (7c's `DynamicSecretsTarget`). Each resolution is in `logs/ticket-170/review-ledger.md`.
+- `043733f` and part of `12a2bfb`: `/Account/Denied` is now Angular, so the checks that need a Legacy page
+  open the error page (`/Home/Error?code=404`), the last signed-in Legacy page until Area 9. Browser specs
+  name it once in `e2e/legacy-shell.ts`, which also declares the 404 the browser logs; .NET tests in
+  `VaultFixture.LegacyShell`. Area 9 changes those two lines.
+- `1f06e27`: an unknown secret answers eligibility and filing with the decoy's 404 `not_found`, byte for
+  byte (owner, 20 Nov); `secret_not_found` is gone. A decoy still revokes the session and blocks the range.
+- `12a2bfb` and `fa4278b`: review fixes, and `DecoyMatrixTests`: a secret made a decoy after it has a
+  version, a share and a pending request trips on all nine by-id endpoints, eligibility and filing, each
+  answer equal to an unknown id's, and no secret list shows it.
+- CONTEXT.md, ADR-0017, ADR-0031 and decisions.md match the final code; ADR-0028 already did.
+
+Reviews of `de3a968...HEAD`: GPT Sol 6.1 was out until 22 Nov 17:33, so security, Standards and Spec ran
+on fresh Claude Opus 5.5 high sessions standing in for it. Security approved (two lows fixed); Standards
+1 must-fix and 4 nits (fixed, Legacy-parity comment wording kept); Spec 0 not met, 4 partly met (a browser
+test wrongly moved to the error page, the decoy matrix and doc details fixed; the rest listed for the owner).
+One re-check confirmed every fix; its two new items were fixed in `fa4278b`.
+
+Local checks on the final source: `scripts/check.sh` (unit) and the part's PostgreSQL filter, 632 of 632
+at `12a2bfb`, then `DecoyMatrixTests` with `OverviewApiTests` 28 of 28 at `fa4278b`; `dotnet format`;
+both pending-model checks; the hook tests; Angular lint (with the e2e type check), prettier, 680 Vitest,
+build checks, `check:api-types`, build and `npm audit --audit-level=high`. Browser specs run only in CI;
+early CI 44920519912 on `043733f` found the .NET and browser Legacy-shell failures fixed since.
+
+To restart: read this section and `logs/ticket-170/final-report.md`. The PR body is
+`logs/ticket-170/pr-body.md`; the coordinator fills its final head and CI run, pushes, runs CI with both
+databases, the full browser suite and `e2e:verify-guards`, and opens the PR.
+
+## Delivery: 7c ticket 1 (#171)
+
+#171 started from `fb39fc2` (7a merged, #186). Issuing and revoking dynamic credentials now follow
+ADR-0031 through the still-Legacy Dynamic secrets page. F5 (issue half), F7, F8 and F11 were first shown
+failing against `fb39fc2` (8 red tests, `logs/ticket-171/red-findings-fb39fc2.txt`).
+
+- `ba65fbb` Require fresh proof for credentials and report mint failures truthfully.
+- `054eefe` Issue and revoke a real login on the e2e run's own SQL Server.
+
+What changed:
+
+- A Secret or Top Secret role issues only within the step-up window. A refused role writes
+  `SecretAccessDenied` on it; a step-up refusal writes nothing. Both come before the licence gate.
+- A failed or uncertain mint runs the role's revocation for the known login without the request's
+  cancellation: "Nothing was issued" when that works, the `mint_incomplete` text and a critical log line
+  naming role and login when it does not. A lease that cannot be recorded is undone the same way and
+  still fails closed. A target never reached refuses without cleanup.
+- Leases last at most 1440 minutes; revoke is truthful; `RevocationError` holds fixed notes; the
+  evaluation read fails open. `docs/INCIDENT_RESPONSE.md` has the operator check.
+- Test seams: `SerilogSetup` reads log sinks from services (production registers none), and
+  `VaultFixture.DynamicSecretsTarget` gives a vault a SQL Server target database. `DynamicSecretsFixture`
+  is a new collection that runs alone; `AuditFailureFixture` now has a target too.
+
+Security-reviewer (Opus 5.5 high) found no Critical, High or Medium. Two Low findings were fixed and
+closed on re-check; the third (a non-idempotent revocation relabelled on retry) is spec-accepted. It noted
+one unproven residual risk for the owner: a connection dropped while the server is still running the
+mint batch could let the cleanup run before `CREATE LOGIN`, leaving an unrecorded login with no critical log.
+
+Checks on `054eefe`: locked restore, Release build with 0 warnings, 981 unit tests; both full integration
+suites, 1314 each (SQL Server, then PostgreSQL), plus the 13 dynamic-secret tests on SQL Server after the
+review fixes; the dynamic secrets browser spec with its dependencies, 29 cases; format, both
+pending-model checks, hook tests, and the Angular lint, format, tests, build checks, API types, build
+and audit.
+
+To restart: confirm HEAD and a clean tracked tree; evidence and the final report are in
+`logs/ticket-171/`. Next is ticket 2 (#172), which serves the page from Angular and adds the Secret role's
+step-up browser flow; the e2e target and both roles are ready for it.
+
+## Delivery: 7c ticket 2 (#172)
+
+#172 started from `3121901` (#171's head). The Angular UI now serves `/DynamicSecrets`; the Legacy
+controller, view and view models are gone. This ticket names no new finding, so there was no red-first run.
+
+- `eee3ac7` Serve Dynamic secrets from Angular, asking for proof before issuing.
+- `607fa6c` Compare dynamic lease times at the precision PostgreSQL stores (CI fix, tests only).
+
+What changed:
+
+- `GET /api/ui/dynamic-secrets`, `POST …/issue` and `POST …/leases/{leaseId}/revoke` with the spec's codes,
+  reusing `AdministratorProblemResponse` (code, title, proof, errors). Two deliberate shapes beyond the
+  written contract: `licence` is null when the evaluation read fails, and the revoke answer carries
+  `revocationNote` beside `status`, so a refused revoke states its fixed cause. Stored notes that predate
+  the fixed sentences are answered as `BackendRefusedNote`.
+- The page issues through StepUpDialog, keeps the credential only in page memory and forgets it on
+  departure, pagehide or a lost session; Revoke asks with the Legacy confirmation.
+- Every sidebar page is now the Angular UI's. Browser specs and HTTP tests that used Dynamic secrets as
+  their Legacy page use `/Account/Denied`; 7b moves Denied too, so whichever of 7b and 7c merges second
+  must drop or re-home those Legacy-shell checks. `sign-in.spec.ts` and `e2e/sidebar.ts` are among them.
+- `LegacyDynamicSecrets` became `DynamicSecretsApi` (UI API calls; the target helpers are unchanged).
+
+Checks (local, 17 November rule): locked restore, Release build with 0 warnings, 983 unit tests; PostgreSQL
+integration for every touched class, 328/329 then 31/31 after an ordinal-sort test fix, and 32/32 after the
+review fix; format, both pending-model checks, hook tests; Angular lint, format, 619 Vitest, build checks,
+API types, build. `npm audit --audit-level=high` fails on a new upstream advisory (picomatch,
+GHSA-fc5q-39xc-vjpf, every version, fix only with `--force`) with no package change here; left for the owner.
+CI run 44190362488 on `7e2da26`: integration (SqlServer) green; integration (Postgres) failed three
+`DynamicSecretIssueTests` by under a microsecond (the Linux runner's clock reads 100 ns, PostgreSQL keeps whole
+microseconds). `607fa6c` compares at the stored precision and leaves the lease logic unchanged: the issue
+response's expiry can differ from the stored one by up to 999 ns, which no screen shows (both show whole seconds;
+accepted by the coordinator). CI run 44195066273 on `607fa6c` passed every required check: build-test, integration
+on SQL Server and PostgreSQL, e2e (full browser suite and verify-guards), image, sbom, migrations and
+agent-guardrails. frontend and security-scan are red only on picomatch GHSA-fc5q-39xc-vjpf, under the owner's
+merge exception (#188). The coordinator accepted #172 on 18 November.
+
+Security-reviewer (Opus 5.5 high): no Critical, High or Medium. L1 (raw backend text in notes stored before
+#171) fixed and re-checked; I1 (backend resolved after the licence gate) is pre-existing service order; I2
+accepted under Q10; I3 is the Denied merge point above.
+
+To restart: confirm HEAD and a clean tracked tree; evidence and the final report are in `logs/ticket-172/`.
+Next is ticket 3 (#173), verify the whole part and prepare its PR.
+
+## Delivery: 7c ticket 3 (#173)
+
+#173 started from `ab90e85`, the checkpoint recording #172's CI result. 7b had not merged. Main had moved to
+`1c55064` (redesign batch 1, #187), and the coordinator merges it in before CI.
+
+- No Legacy Dynamic secrets handler remains. `RetiredDynamicSecretsRoutesTests` covers the routes, and
+  `RetiredSelfServiceRoutesTests` pins the Legacy sidebar's `href="/DynamicSecrets"`.
+- `461bb1a` adds browser tests that open Dynamic secrets from both shells' sidebars and palettes. The theme
+  test already covers both palettes.
+- ADR-0017 and ADR-0031 record the Legacy-shell move to Access denied, fixed lease notes, a role id revealing
+  that the role exists, and three review outcomes. Two closes of one lease at once can raise a false
+  RevocationFailed. A lost acknowledgement on the lease insert has two cleanup outcomes. A failed mint's
+  surviving login is named only in a critical log line. CONTEXT.md and ADR-0028 already matched.
+- Reviews of `git diff origin/main...HEAD`, finding by finding, in `logs/ticket-173/review-ledger.md`:
+  - Security-reviewer (Opus 5.5 high): no Critical, High or Medium; all five checks hold.
+  - GPT Sol 6.1 xhigh Standards: 7 Low and 1 Nit. Spec: 2 Medium and 2 Low.
+  - One GPT re-check of the fixes, then a second round fixed exactly as it prescribed (budget rules, 19 Nov).
+- Fix commits:
+  - `5dda697`: Web holds a `LeaseDto`, not the entity.
+  - `98f561a`: page-object locators, and straight Vitest cases.
+  - `9c68925` and the last commit: a production HTTP test of the lapsed-evaluation 402, a literal
+    50-newest lease list, and every failed-cleanup combination.
+  - `dc1f42e`: the lease port moves to Abstractions, history comments go, and the palette loop is split.
+- Left for the owner, also in the PR body:
+  - S1: a critical audit row for a login that may remain, beyond the log line.
+  - S2: the lease concurrency guard.
+  - G-S5 to G-S7: older standards debt in `e2e/sign-in.spec.ts` and `e2e/sidebar.ts`. 7b's #169 rewrites
+    the same lines, and browser specs run only in CI.
+
+Local checks on the final source (17 November rule):
+- `scripts/check.sh` with the PostgreSQL filter: 991 unit and 46 integration tests;
+- `dotnet format`;
+- Angular lint, the e2e type check and the Dynamic secrets Vitest spec (36 tests);
+- `npm audit --audit-level=high`, which passes because the picomatch advisory was withdrawn on 18 November.
+
+The PR body is `logs/ticket-173/pr-body.md`; its final-run line waits for CI. Next: the coordinator merges
+main, pushes, runs CI on the exact head and opens the PR.

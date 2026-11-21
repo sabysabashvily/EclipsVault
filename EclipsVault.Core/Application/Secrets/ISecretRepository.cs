@@ -1,4 +1,5 @@
 using EclipsVault.Core.Domain.Entities;
+using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
 
 namespace EclipsVault.Core.Application.Secrets;
@@ -8,10 +9,11 @@ namespace EclipsVault.Core.Application.Secrets;
 /// with the change (create/update/shred) are audited by the SaveChanges interceptor;
 /// read/share auditing is written separately through <see cref="IAuditSink"/>.
 ///
-/// Every write here is all-or-nothing, including in memory: if one throws, the entity it was given
-/// is left exactly as it was and nothing remains staged for a later write to commit. Callers rely on
-/// this to undo the outside world — putting an upstream password back, say — knowing the value they
-/// still hold is the one that is stored.
+/// Every write here is all-or-nothing: if one throws, nothing remains staged for a later write to
+/// commit, and a write that did not commit leaves the entity it was given as it was. A throw almost
+/// always means no commit, but a commit whose reply is lost throws too. A caller that undoes the outside
+/// world on failure — putting an upstream password back, say — must first read afresh whether its
+/// write is there, as managed rotation does by the id of the version it archived.
 /// </summary>
 public interface ISecretRepository
 {
@@ -46,15 +48,29 @@ public interface ISecretRepository
 
     Task DeleteAsync(Secret secret, CancellationToken ct);
 
-    /// <summary>Persists a rotation: inserts the archived version and updates the secret in one transaction.</summary>
-    Task RotateAsync(Secret secret, SecretVersion archivedVersion, CancellationToken ct);
+    /// <summary>
+    /// Persists a new value, but only while the stored secret is unshredded and its wrapped data key is still
+    /// <paramref name="readWrappedDek"/>: inserts the archived version, numbered inside this write, and
+    /// updates the secret in one transaction, with one audit row recording the change as
+    /// <paramref name="recordedAs"/>.
+    /// </summary>
+    /// <exception cref="SecretChangedException">Another change committed after the value was read; nothing was saved.</exception>
+    /// <exception cref="AuditWriteFailedException">
+    /// The write reported failure. It normally saved nothing, but a commit whose reply was lost throws too.
+    /// </exception>
+    Task RotateAsync(Secret secret, byte[] readWrappedDek, SecretVersion archivedVersion, AuditAction recordedAs, CancellationToken ct);
 
-    /// <summary>Shreds the secret and purges its archived versions (which hold key material) in one transaction.</summary>
-    Task ShredAsync(Secret secret, CancellationToken ct);
+    /// <summary>
+    /// Shreds the secret and purges its archived versions (which hold key material) in one transaction,
+    /// but only while its wrapped data key and expiry are still what was read. False when it changed, so
+    /// nothing was shredded.
+    /// </summary>
+    Task<bool> ShredAsync(Secret secret, byte[] readWrappedDek, DateTimeOffset readExpiresAtUtc, CancellationToken ct);
+
+    /// <summary>Replaces what this request holds of the secret with what is stored now.</summary>
+    Task ReloadAsync(Secret secret, CancellationToken ct);
 
     Task<IReadOnlyList<SecretVersion>> ListVersionsAsync(Guid secretId, CancellationToken ct);
 
     Task<SecretVersion?> FindVersionAsync(Guid secretId, Guid versionId, CancellationToken ct);
-
-    Task<int> CountVersionsAsync(Guid secretId, CancellationToken ct);
 }
