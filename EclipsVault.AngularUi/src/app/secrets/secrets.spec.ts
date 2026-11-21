@@ -270,6 +270,10 @@ describe('New secret', () => {
   it('offers the Legacy form, defaulting to the caller’s own project', async () => {
     const form = await opened();
     expect(text(form.page.querySelector('h1'))).toBe('New secret');
+    expect(form.page.querySelector('a[aria-label="Back to secrets"]')?.getAttribute('href')).toBe(
+      '/Secrets',
+    );
+    expect(text(form.page.querySelector('.form-note'))).toBe('Saved to the audit log.');
     expect(values(form)).toEqual(['', '', 'PHOENIX', '0', 'Development', '1']);
     expect(
       [...form.field<HTMLSelectElement>('Environment').options].map((option) => text(option)),

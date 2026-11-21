@@ -368,4 +368,13 @@ for (const width of [300, 2000] as const) {
     await expect(list.secret('E2E_PRODUCTION_SOON')).toBeVisible();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
   });
+
+  test(`New secret has no sideways scroll at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.context().addCookies(await savedAdministratorCookies());
+    const form = new NewSecretForm(page);
+    await form.open();
+    await expect(form.submit).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  });
 }

@@ -2748,7 +2748,7 @@ ol.steps > li::before {
   color: var(--text-secondary);
 }
 
-/* The Legacy two-column row, its field errors and its form-level summary, for New secret. */
+/* Two-column form rows, field errors and form-level summaries. */
 .field-row {
   display: flex;
   gap: 1rem;
@@ -2762,39 +2762,38 @@ ol.steps > li::before {
   }
 }
 
-.field-error,
-.validation-summary {
+.field-error {
   color: var(--danger);
   font-size: 0.84rem;
 }
 
+.validation-summary {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  background: var(--danger-wash);
+  color: var(--danger);
+  font-size: 0.88rem;
+}
+
 .validation-summary ul {
-  margin: 0.3rem 0 1rem;
+  margin: 0;
   padding-left: 1.2rem;
 }
 
-/* Legacy's form textarea and its clickable list rows, for New secret and Secrets. */
-.field textarea {
-  width: 100%;
-  padding: 0.6rem 0.75rem;
-  background: var(--bg-raised-2);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font-family: var(--font);
-  font-size: 0.92rem;
+textarea {
   line-height: 1.5;
   resize: vertical;
 }
 
-.field textarea:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
 }
-
-.data-table tr[data-href] {
-  cursor: pointer;
+.form-note {
+  font-size: 0.84rem;
 }
 
 input,

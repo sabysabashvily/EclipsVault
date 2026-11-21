@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, DestroyRef, inject, linkedSignal, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { RouterLink } from '@angular/router';
 import { finalize } from 'rxjs';
 import { CurrentAccount } from '../account/current-account';
 import { PAGE_LOCATION } from '../shell/command-palette';
@@ -12,6 +13,7 @@ type Request = components['schemas']['CreateSecretUiRequest'];
 /** New secret, in the caller's own project by default. A stored secret opens on its Legacy details page. */
 @Component({
   selector: 'app-new-secret-page',
+  imports: [RouterLink],
   templateUrl: './new-secret-page.html',
 })
 export class NewSecretPage {
