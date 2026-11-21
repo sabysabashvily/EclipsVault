@@ -19,6 +19,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Serilog.Core;
 using Xunit;
+using Xunit;
 
 namespace EclipsVault.IntegrationTests;
 
@@ -385,6 +386,20 @@ public sealed partial class VaultFixture : IAsyncLifetime
     {
         fields["__RequestVerificationToken"] = FormTokenOf(await client.GetStringAsync(formPage ?? path), formPage ?? path);
         return await client.PostAsync(path, new FormUrlEncodedContent(fields));
+    }
+
+    /// <summary>
+    /// A signed-in page the Legacy layout still draws, sidebar and sign-out form included. The error page
+    /// is the last one until Area 9 retires it; it answers with the status it names.
+    /// </summary>
+    public const string LegacyShell = "/Home/Error?code=404";
+
+    /// <summary>The Legacy shell's HTML, as <paramref name="client"/>'s session sees it.</summary>
+    public static async Task<string> LegacyShellAsync(HttpClient client)
+    {
+        using var response = await client.GetAsync(LegacyShell);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        return await response.Content.ReadAsStringAsync();
     }
 
     /// <summary>The antiforgery token a Legacy UI page renders into its forms, where its own scripts read it.</summary>

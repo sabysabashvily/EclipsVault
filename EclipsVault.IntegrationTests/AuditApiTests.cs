@@ -223,8 +223,7 @@ public sealed class AuditApiTests(VaultFixture vault)
     [Fact]
     public async Task The_Legacy_sidebar_link_keeps_its_destination()
     {
-        // Access denied still renders the Legacy sidebar.
-        var html = await (await vault.AdminClientAsync()).GetStringAsync("/Account/Denied");
+        var html = await VaultFixture.LegacyShellAsync(await vault.AdminClientAsync());
         var link = Assert.Single(Regex.Matches(html, "<a\\b[^>]*>[\\s\\S]*?</a>").Select(match => match.Value),
             anchor => Regex.Replace(anchor, "<[^>]*>", "").Contains("Audit log", StringComparison.Ordinal));
 

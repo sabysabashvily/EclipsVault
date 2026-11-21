@@ -10,9 +10,9 @@ internal static class SecretSharing
 {
     public static async Task<string> CreateSecretAsync(
         HttpClient admin, string name, string value = "it-share-audit-value", string sensitivity = "Internal",
-        string environment = "Development")
+        string environment = "Development", int ttlDays = 0)
     {
-        var response = await SecretsApi.CreateAsync(admin, name, value, "GLOBAL", environment, sensitivity);
+        var response = await SecretsApi.CreateAsync(admin, name, value, "GLOBAL", environment, sensitivity, ttlDays);
         return response.Headers.Location?.OriginalString is { } details && details.StartsWith("/Secrets/Details/", StringComparison.Ordinal)
             ? details
             : throw new InvalidOperationException($"Creating {name} answered {(int)response.StatusCode}, not secret details.");

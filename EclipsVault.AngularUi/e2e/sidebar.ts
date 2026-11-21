@@ -243,10 +243,7 @@ export async function verifySidebar(
   );
   await expect(page).toHaveURL(/\/Access$/);
   await expect(page.locator('.sidenav a.active')).toHaveText('My access');
-  expect(documents.map((url) => new URL(url).pathname)).toEqual([
-    new URL(legacyShell, page.url()).pathname,
-    '/Access',
-  ]);
+  expect(documents.map((url) => new URL(url).pathname)).toEqual(['/Home/Error', '/Access']);
   expect(signInRequests).toEqual([]);
   expect(
     (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')?.value,

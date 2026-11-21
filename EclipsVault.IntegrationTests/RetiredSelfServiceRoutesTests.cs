@@ -12,7 +12,7 @@ public sealed class RetiredSelfServiceRoutesTests(VaultFixture vault)
     {
         var client = await vault.AdminClientAsync();
 
-        var page = await client.GetStringAsync("/Account/Denied");
+        var page = await VaultFixture.LegacyShellAsync(client);
 
         Assert.Contains("href=\"/Sessions\"", page, StringComparison.Ordinal);
         Assert.Contains("href=\"/Data\"", page, StringComparison.Ordinal);

@@ -222,21 +222,18 @@ public sealed class AccessRequestFilingTests(VaultFixture vault)
         var decoyId = await DecoyAsync("it-denied-decoy-equal-secret");
         var unknownId = Guid.NewGuid();
         var filerToken = await UiApiRequest.AntiforgeryTokenAsync(decoyFiler.Client);
+        var unknownEligibility = await AccessRequestsApi.EligibilityAsync(asker.Client, unknownId);
+        var unknownFiling = await AccessRequestsApi.FileAsync(asker.Client, unknownId);
+        var before = await AuditTrail.HeadAsync(vault);
 
-        await AssertSameAnswerAsync(
-            await AccessRequestsApi.EligibilityAsync(asker.Client, unknownId),
-            await AccessRequestsApi.EligibilityAsync(decoyAsker.Client, decoyId));
-        await AssertSameAnswerAsync(
-            await AccessRequestsApi.FileAsync(asker.Client, unknownId),
-            await AccessRequestsApi.FileWithTokenAsync(decoyFiler.Client, filerToken, decoyId));
-    }
+        var decoyEligibility = await AccessRequestsApi.EligibilityAsync(decoyAsker.Client, decoyId);
+        var decoyFiling = await AccessRequestsApi.FileWithTokenAsync(decoyFiler.Client, filerToken, decoyId);
 
-    private static async Task AssertSameAnswerAsync(HttpResponseMessage unknown, HttpResponseMessage decoy)
-    {
-        await SecretsApi.AssertProblemAsync(unknown, 404, "not_found");
-        Assert.Equal(decoy.StatusCode, unknown.StatusCode);
-        Assert.Equal(decoy.Content.Headers.ContentType, unknown.Content.Headers.ContentType);
-        Assert.Equal(await decoy.Content.ReadAsByteArrayAsync(), await unknown.Content.ReadAsByteArrayAsync());
+        await SecretsApi.AssertSameAnswerAsync(unknownEligibility, decoyEligibility);
+        await SecretsApi.AssertSameAnswerAsync(unknownFiling, decoyFiling);
+        Assert.Equal(
+            [AuditAction.HoneyTokenTripped, AuditAction.HoneyTokenTripped],
+            (await AuditTrail.RowsAfterAsync(vault, before)).Select(row => row.Action));
     }
 
     private async Task<Guid> ConfidentialSecretAsync(string name)

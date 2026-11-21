@@ -54,7 +54,7 @@ public sealed class AccessRequestsController(
     }
 
     /// <summary>
-    /// Files a request. It records only Area 4's <c>AccessRequested</c> row. A decoy trips and answers 404, and a
+    /// Files a request. It records only its <c>AccessRequested</c> row. A decoy trips and answers 404, and a
     /// secret that does not exist answers exactly the same.
     /// </summary>
     [HttpPost]

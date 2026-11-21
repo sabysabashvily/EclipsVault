@@ -37,6 +37,6 @@ request), likewise started from 7a's branch before 7a merged, by the owner's dec
 secrets, branches from `main` after 7a merges; it touches code unrelated to 7b, so it may run beside
 7b. Each part has its own security review. Dynamic secrets was the Legacy sidebar's last page, so 7c moves the browser
 checks that needed a Legacy page to Access denied, which 7b then serves from Angular; whichever of the
-two merges second drops or re-homes those checks. 7b merged second and re-homed them to the error page,
-the last signed-in page on the Legacy layout until Area 9; the browser specs name it in one place,
-`e2e/legacy-shell.ts`.
+two merges second drops or re-homes those checks. 7b, the second, re-homes them to the error page, the
+last signed-in page on the Legacy layout until Area 9; the browser specs name it once in
+`e2e/legacy-shell.ts`, the integration tests in `VaultFixture.LegacyShell`.

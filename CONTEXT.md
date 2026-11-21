@@ -153,7 +153,7 @@ _Avoid_: Audit key, master key (that wraps data keys)
 ### Sharing
 
 **Share**:
-Read access to one secret, given to one vault account by another, optionally until an expiry. Its recipient may view and reveal the secret, never change, share or delete it. Its issuer can revoke it, and it outlives the issuer's account.
+Read access to one secret, given to one vault account by another, optionally until an expiry. Its recipient may view and reveal the secret, never change, share or delete it. Its issuer can revoke it, as can an administrator or a member of the secret's project, and it outlives the issuer's account.
 _Avoid_: Grant, permission
 
 **Issuer**:

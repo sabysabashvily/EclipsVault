@@ -227,7 +227,7 @@ for (const theme of ['dark', 'light']) {
 
 test('Denied is served as the titled Angular document', async ({ page }) => {
   await page.context().addCookies(requesterCookies);
-  const response = await page.goto(legacyShell);
+  const response = await page.goto('/Account/Denied');
   await expect(new Denied(page).generic).toBeVisible();
   await expect(page).toHaveTitle('Access denied — EclipsVault');
   expect(response?.headers()['content-security-policy']).toContain(

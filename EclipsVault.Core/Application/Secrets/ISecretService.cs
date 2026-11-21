@@ -37,7 +37,7 @@ public interface ISecretService
     /// on its backend, and stores the result — so the stored value and the live credential move
     /// together instead of an operator changing one and pasting the other. Throws
     /// <c>VaultAdminException</c> if the secret is not bound to a backend principal,
-    /// <c>UpstreamRotationRefusedException</c> if the backend refuses, and
+    /// <c>UpstreamRotationRefusedException</c> if the backend refuses,
     /// <c>UpstreamRotationDriftedException</c> if the login and the stored value may now disagree,
     /// <c>ChangeInProgressException</c> before touching the backend if another writer holds the login, and
     /// <c>SecretChangedException</c>, after putting the password back, if another change committed first.
