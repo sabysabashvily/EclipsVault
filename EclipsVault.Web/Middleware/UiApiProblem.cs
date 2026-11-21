@@ -27,6 +27,9 @@ public static class UiApiProblem
     public static Task NotFoundAsync(HttpContext context)
         => WriteAsync(context, StatusCodes.Status404NotFound, NotFoundCode, NotFoundTitle);
 
+    /// <summary><see cref="NotFoundAsync"/> as an action result, for an action whose filter would answer otherwise.</summary>
+    public static ActionResult NotFound() => new Result(NotFoundAsync);
+
     public const string NotFoundCode = "not_found";
 
     public const string NotFoundTitle = "Not found.";

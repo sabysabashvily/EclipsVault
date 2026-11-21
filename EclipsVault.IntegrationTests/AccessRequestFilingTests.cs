@@ -210,14 +210,33 @@ public sealed class AccessRequestFilingTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task The_page_is_told_a_secret_that_no_longer_exists_is_gone()
+    public async Task An_unknown_secret_answers_both_questions_exactly_as_a_decoy()
     {
-        var requester = await vault.SignInNewAccountAsync(
-            "it-denied-gone", IPAddress.Parse("203.0.113.242"), ClearanceLevel.Elevated, "IT-FILING");
+        // Each decoy trips, ending its requester's sessions and blocking its range, so each has its own.
+        var asker = await vault.SignInNewAccountAsync(
+            "it-denied-unknown", IPAddress.Parse("203.0.113.242"), ClearanceLevel.Elevated, "IT-FILING");
+        var decoyAsker = await vault.SignInNewAccountAsync(
+            "it-denied-decoy-ask", IPAddress.Parse("100.99.97.10"), ClearanceLevel.Elevated, "IT-FILING");
+        var decoyFiler = await vault.SignInNewAccountAsync(
+            "it-denied-decoy-file", IPAddress.Parse("100.99.96.10"), ClearanceLevel.Elevated, "IT-FILING");
+        var decoyId = await DecoyAsync("it-denied-decoy-equal-secret");
+        var unknownId = Guid.NewGuid();
+        var filerToken = await UiApiRequest.AntiforgeryTokenAsync(decoyFiler.Client);
 
-        var answer = await EligibilityOfAsync(requester.Client, Guid.NewGuid());
+        await AssertSameAnswerAsync(
+            await AccessRequestsApi.EligibilityAsync(asker.Client, unknownId),
+            await AccessRequestsApi.EligibilityAsync(decoyAsker.Client, decoyId));
+        await AssertSameAnswerAsync(
+            await AccessRequestsApi.FileAsync(asker.Client, unknownId),
+            await AccessRequestsApi.FileWithTokenAsync(decoyFiler.Client, filerToken, decoyId));
+    }
 
-        Assert.Equal((false, "secret_not_found", "That secret no longer exists."), answer);
+    private static async Task AssertSameAnswerAsync(HttpResponseMessage unknown, HttpResponseMessage decoy)
+    {
+        await SecretsApi.AssertProblemAsync(unknown, 404, "not_found");
+        Assert.Equal(decoy.StatusCode, unknown.StatusCode);
+        Assert.Equal(decoy.Content.Headers.ContentType, unknown.Content.Headers.ContentType);
+        Assert.Equal(await decoy.Content.ReadAsByteArrayAsync(), await unknown.Content.ReadAsByteArrayAsync());
     }
 
     private async Task<Guid> ConfidentialSecretAsync(string name)

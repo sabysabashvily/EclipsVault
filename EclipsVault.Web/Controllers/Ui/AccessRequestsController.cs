@@ -26,12 +26,13 @@ public sealed class AccessRequestsController(
     IStepUpService stepUp, IUserRepository users, IAuthorizationService authorization, TimeProvider clock) : ControllerBase
 {
     /// <summary>
-    /// Whether the Denied page offers the request form for a secret. It records nothing. A decoy still
-    /// trips and answers 404 <c>not_found</c>, as on every secret endpoint; a secret that no longer exists
-    /// is a refusal the page shows, as Legacy's Denied page did.
+    /// Whether the Denied page offers the request form for a secret. It records nothing. A decoy trips and
+    /// answers 404 <c>not_found</c>, as on every secret endpoint, and a secret that does not exist answers
+    /// exactly the same, so the answer cannot tell which ids are decoys.
     /// </summary>
     [HttpGet("eligibility")]
     [ProducesResponseType<AccessRequestEligibilityResponse>(StatusCodes.Status200OK, "application/json")]
+    [ProducesResponseType<AccessRequestProblemResponse>(StatusCodes.Status404NotFound, "application/problem+json")]
     public async Task<ActionResult<AccessRequestEligibilityResponse>> Eligibility([FromQuery] Guid secretId, CancellationToken ct)
     {
         var callerId = User.GetUserId();
@@ -48,13 +49,17 @@ public sealed class AccessRequestsController(
         }
         catch (SecretNotFoundException)
         {
-            return new AccessRequestEligibilityResponse(false, "secret_not_found", AccessRequestProblems.SecretGoneMessage);
+            return UiApiProblem.NotFound();
         }
     }
 
-    /// <summary>Files a request. It records only Area 4's <c>AccessRequested</c> row; a decoy trips and answers 404.</summary>
+    /// <summary>
+    /// Files a request. It records only Area 4's <c>AccessRequested</c> row. A decoy trips and answers 404, and a
+    /// secret that does not exist answers exactly the same.
+    /// </summary>
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<AccessRequestProblemResponse>(StatusCodes.Status404NotFound, "application/problem+json")]
     [ProducesResponseType<AccessRequestProblemResponse>(StatusCodes.Status409Conflict, "application/problem+json")]
     public async Task<IActionResult> File([FromBody] AccessRequestFilingRequest filing, CancellationToken ct)
     {
@@ -75,7 +80,7 @@ public sealed class AccessRequestsController(
         }
         catch (SecretNotFoundException)
         {
-            return AccessRequestProblems.SecretGone();
+            return UiApiProblem.NotFound();
         }
 
         return result.Refusal is { } refusal ? AccessRequestProblems.FilingRefused(refusal) : NoContent();

@@ -552,7 +552,6 @@ describe('AccessRequestsPage', () => {
     ],
     ['already_pending', 'You already have a pending request for this secret.'],
     ['reason_too_short', 'Add a short reason so a reviewer can decide.'],
-    ['secret_not_found', 'That secret no longer exists.'],
   ])('announces the refusal %s as an error', async (code, message) => {
     const { page } = await loaded(empty, { refused: code });
     expect(announced(page)).toEqual({ success: '', error: message });

@@ -372,7 +372,7 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task Filing_for_a_secret_that_no_longer_exists_is_refused_as_secret_not_found()
+    public async Task Filing_for_a_secret_that_no_longer_exists_answers_not_found()
     {
         var requester = await vault.SignInNewAccountAsync("it-arapi-gone", IPAddress.Parse("198.18.101.44"), ClearanceLevel.Elevated, "IT-ARAPI");
         var secretId = SecretSharing.SecretIdOf(await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-arapi-gone"));
@@ -385,8 +385,7 @@ public sealed class AccessRequestsApiTests(VaultFixture vault)
 
         var response = await AccessRequestsApi.FileAsync(requester.Client, secretId);
 
-        var problem = await SecretsApi.AssertProblemAsync(response, 409, "secret_not_found");
-        Assert.Equal("That secret no longer exists.", problem.GetProperty("title").GetString());
+        await SecretsApi.AssertProblemAsync(response, 404, "not_found");
         Assert.False(await HasRequestAsync(secretId));
     }
 

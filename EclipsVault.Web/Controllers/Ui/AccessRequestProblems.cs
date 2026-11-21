@@ -37,10 +37,6 @@ public static class AccessRequestProblems
         _ => FilingRefused(CodeOf(refusal), AccessRequestRules.ExplainToRequester(refusal)),
     };
 
-    public static JsonResult SecretGone() => FilingRefused("secret_not_found", SecretGoneMessage);
-
-    public const string SecretGoneMessage = "That secret no longer exists.";
-
     /// <summary>The code of a refusal the requester can be told before filing.</summary>
     public static string CodeOf(AccessRequestRefusal refusal) => refusal switch
     {

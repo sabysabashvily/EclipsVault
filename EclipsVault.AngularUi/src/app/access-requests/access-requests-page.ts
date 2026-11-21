@@ -30,7 +30,6 @@ const refusals = new Map<string, string>([
   ],
   ['already_pending', 'You already have a pending request for this secret.'],
   ['reason_too_short', 'Add a short reason so a reviewer can decide.'],
-  ['secret_not_found', 'That secret no longer exists.'],
 ]);
 
 const decisionAnnouncements: Record<Decision, string> = {

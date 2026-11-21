@@ -66,6 +66,15 @@ export interface paths {
                         "application/json": components["schemas"]["AccessRequestEligibilityResponse"];
                     };
                 };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AccessRequestProblemResponse"];
+                    };
+                };
             };
         };
         put?: never;
@@ -125,6 +134,15 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AccessRequestProblemResponse"];
+                    };
                 };
                 /** @description Conflict */
                 409: {

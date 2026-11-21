@@ -57,6 +57,9 @@ high-sensitivity secret, needed no fresh proof, though revealing a secret of the
   or whether it is a decoy.
 - The Denied page names the secret's project and sensitivity to anyone holding its id, never its name,
   so the person knows what to fix and whom to ask.
+- Asking whether a request can be filed, or filing one, for an id that matches no secret answers
+  `404 not_found`, byte for byte as a decoy does, so the answer cannot tell which ids are decoys. The
+  decoy still ends the session and blocks its range, so the asker's next request differs.
 - Someone holding a dynamic role's id learns whether it exists, and its name when refused
   (`404 role_not_found` against `403 access_denied`), as the Legacy page told them.
 - The trail grows by one `SecretAccessDenied` row per refused attempt. This is the record PCI DSS v4.0
