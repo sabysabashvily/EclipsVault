@@ -314,3 +314,122 @@ The PR body is `logs/ticket-165/pr-body.md`. Details are in `logs/ticket-165/fin
 `review-ledger.md`. To restart, confirm the final head and a clean tracked tree. Next: push, CI on
 the final head and the PR. Those are the coordinator's. 7b is stacked on this branch and has to take
 its final head.
+
+## Delivery: 7c ticket 1 (#171)
+
+#171 started from `fb39fc2` (7a merged, #186). Issuing and revoking dynamic credentials now follow
+ADR-0031 through the still-Legacy Dynamic secrets page. F5 (issue half), F7, F8 and F11 were first shown
+failing against `fb39fc2` (8 red tests, `logs/ticket-171/red-findings-fb39fc2.txt`).
+
+- `ba65fbb` Require fresh proof for credentials and report mint failures truthfully.
+- `054eefe` Issue and revoke a real login on the e2e run's own SQL Server.
+
+What changed:
+
+- A Secret or Top Secret role issues only within the step-up window. A refused role writes
+  `SecretAccessDenied` on it; a step-up refusal writes nothing. Both come before the licence gate.
+- A failed or uncertain mint runs the role's revocation for the known login without the request's
+  cancellation: "Nothing was issued" when that works, the `mint_incomplete` text and a critical log line
+  naming role and login when it does not. A lease that cannot be recorded is undone the same way and
+  still fails closed. A target never reached refuses without cleanup.
+- Leases last at most 1440 minutes; revoke is truthful; `RevocationError` holds fixed notes; the
+  evaluation read fails open. `docs/INCIDENT_RESPONSE.md` has the operator check.
+- Test seams: `SerilogSetup` reads log sinks from services (production registers none), and
+  `VaultFixture.DynamicSecretsTarget` gives a vault a SQL Server target database. `DynamicSecretsFixture`
+  is a new collection that runs alone; `AuditFailureFixture` now has a target too.
+
+Security-reviewer (Opus 5.5 high) found no Critical, High or Medium. Two Low findings were fixed and
+closed on re-check; the third (a non-idempotent revocation relabelled on retry) is spec-accepted. It noted
+one unproven residual risk for the owner: a connection dropped while the server is still running the
+mint batch could let the cleanup run before `CREATE LOGIN`, leaving an unrecorded login with no critical log.
+
+Checks on `054eefe`: locked restore, Release build with 0 warnings, 981 unit tests; both full integration
+suites, 1314 each (SQL Server, then PostgreSQL), plus the 13 dynamic-secret tests on SQL Server after the
+review fixes; the dynamic secrets browser spec with its dependencies, 29 cases; format, both
+pending-model checks, hook tests, and the Angular lint, format, tests, build checks, API types, build
+and audit.
+
+To restart: confirm HEAD and a clean tracked tree; evidence and the final report are in
+`logs/ticket-171/`. Next is ticket 2 (#172), which serves the page from Angular and adds the Secret role's
+step-up browser flow; the e2e target and both roles are ready for it.
+
+## Delivery: 7c ticket 2 (#172)
+
+#172 started from `3121901` (#171's head). The Angular UI now serves `/DynamicSecrets`; the Legacy
+controller, view and view models are gone. This ticket names no new finding, so there was no red-first run.
+
+- `eee3ac7` Serve Dynamic secrets from Angular, asking for proof before issuing.
+- `607fa6c` Compare dynamic lease times at the precision PostgreSQL stores (CI fix, tests only).
+
+What changed:
+
+- `GET /api/ui/dynamic-secrets`, `POST …/issue` and `POST …/leases/{leaseId}/revoke` with the spec's codes,
+  reusing `AdministratorProblemResponse` (code, title, proof, errors). Two deliberate shapes beyond the
+  written contract: `licence` is null when the evaluation read fails, and the revoke answer carries
+  `revocationNote` beside `status`, so a refused revoke states its fixed cause. Stored notes that predate
+  the fixed sentences are answered as `BackendRefusedNote`.
+- The page issues through StepUpDialog, keeps the credential only in page memory and forgets it on
+  departure, pagehide or a lost session; Revoke asks with the Legacy confirmation.
+- Every sidebar page is now the Angular UI's. Browser specs and HTTP tests that used Dynamic secrets as
+  their Legacy page use `/Account/Denied`; 7b moves Denied too, so whichever of 7b and 7c merges second
+  must drop or re-home those Legacy-shell checks. `sign-in.spec.ts` and `e2e/sidebar.ts` are among them.
+- `LegacyDynamicSecrets` became `DynamicSecretsApi` (UI API calls; the target helpers are unchanged).
+
+Checks (local, 17 November rule): locked restore, Release build with 0 warnings, 983 unit tests; PostgreSQL
+integration for every touched class, 328/329 then 31/31 after an ordinal-sort test fix, and 32/32 after the
+review fix; format, both pending-model checks, hook tests; Angular lint, format, 619 Vitest, build checks,
+API types, build. `npm audit --audit-level=high` fails on a new upstream advisory (picomatch,
+GHSA-fc5q-39xc-vjpf, every version, fix only with `--force`) with no package change here; left for the owner.
+CI run 44190362488 on `7e2da26`: integration (SqlServer) green; integration (Postgres) failed three
+`DynamicSecretIssueTests` by under a microsecond (the Linux runner's clock reads 100 ns, PostgreSQL keeps whole
+microseconds). `607fa6c` compares at the stored precision and leaves the lease logic unchanged: the issue
+response's expiry can differ from the stored one by up to 999 ns, which no screen shows (both show whole seconds;
+accepted by the coordinator). CI run 44195066273 on `607fa6c` passed every required check: build-test, integration
+on SQL Server and PostgreSQL, e2e (full browser suite and verify-guards), image, sbom, migrations and
+agent-guardrails. frontend and security-scan are red only on picomatch GHSA-fc5q-39xc-vjpf, under the owner's
+merge exception (#188). The coordinator accepted #172 on 18 November.
+
+Security-reviewer (Opus 5.5 high): no Critical, High or Medium. L1 (raw backend text in notes stored before
+#171) fixed and re-checked; I1 (backend resolved after the licence gate) is pre-existing service order; I2
+accepted under Q10; I3 is the Denied merge point above.
+
+To restart: confirm HEAD and a clean tracked tree; evidence and the final report are in `logs/ticket-172/`.
+Next is ticket 3 (#173), verify the whole part and prepare its PR.
+
+## Delivery: 7c ticket 3 (#173)
+
+#173 started from `ab90e85`, the checkpoint recording #172's CI result. 7b had not merged. Main had moved to
+`1c55064` (redesign batch 1, #187), and the coordinator merges it in before CI.
+
+- No Legacy Dynamic secrets handler remains. `RetiredDynamicSecretsRoutesTests` covers the routes, and
+  `RetiredSelfServiceRoutesTests` pins the Legacy sidebar's `href="/DynamicSecrets"`.
+- `461bb1a` adds browser tests that open Dynamic secrets from both shells' sidebars and palettes. The theme
+  test already covers both palettes.
+- ADR-0017 and ADR-0031 record the Legacy-shell move to Access denied, fixed lease notes, a role id revealing
+  that the role exists, and three review outcomes. Two closes of one lease at once can raise a false
+  RevocationFailed. A lost acknowledgement on the lease insert has two cleanup outcomes. A failed mint's
+  surviving login is named only in a critical log line. CONTEXT.md and ADR-0028 already matched.
+- Reviews of `git diff origin/main...HEAD`, finding by finding, in `logs/ticket-173/review-ledger.md`:
+  - Security-reviewer (Opus 5.5 high): no Critical, High or Medium; all five checks hold.
+  - GPT Sol 6.1 xhigh Standards: 7 Low and 1 Nit. Spec: 2 Medium and 2 Low.
+  - One GPT re-check of the fixes, then a second round fixed exactly as it prescribed (budget rules, 19 Nov).
+- Fix commits:
+  - `5dda697`: Web holds a `LeaseDto`, not the entity.
+  - `98f561a`: page-object locators, and straight Vitest cases.
+  - `9c68925` and the last commit: a production HTTP test of the lapsed-evaluation 402, a literal
+    50-newest lease list, and every failed-cleanup combination.
+  - `dc1f42e`: the lease port moves to Abstractions, history comments go, and the palette loop is split.
+- Left for the owner, also in the PR body:
+  - S1: a critical audit row for a login that may remain, beyond the log line.
+  - S2: the lease concurrency guard.
+  - G-S5 to G-S7: older standards debt in `e2e/sign-in.spec.ts` and `e2e/sidebar.ts`. 7b's #169 rewrites
+    the same lines, and browser specs run only in CI.
+
+Local checks on the final source (17 November rule):
+- `scripts/check.sh` with the PostgreSQL filter: 991 unit and 46 integration tests;
+- `dotnet format`;
+- Angular lint, the e2e type check and the Dynamic secrets Vitest spec (36 tests);
+- `npm audit --audit-level=high`, which passes because the picomatch advisory was withdrawn on 18 November.
+
+The PR body is `logs/ticket-173/pr-body.md`; its final-run line waits for CI. Next: the coordinator merges
+main, pushes, runs CI on the exact head and opens the PR.

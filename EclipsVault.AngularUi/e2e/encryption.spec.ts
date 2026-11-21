@@ -165,7 +165,7 @@ for (const width of [300, 2000]) {
 test('the Legacy sidebar opens Encryption keys', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const encryption = new EncryptionKeys(page);
-  await encryption.fromSidebar('/DynamicSecrets');
+  await encryption.fromSidebar('/Account/Denied');
   await expect(encryption.heading).toBeVisible();
   await expect(page).toHaveURL(/\/Encryption$/);
 });
@@ -181,7 +181,7 @@ test('the Angular sidebar opens Encryption keys', async ({ page }) => {
 test('the palette in the Legacy shell opens Encryption keys', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const encryption = new EncryptionKeys(page);
-  await encryption.fromPalette('/DynamicSecrets');
+  await encryption.fromPalette('/Account/Denied');
   await expect(encryption.heading).toBeVisible();
 });
 

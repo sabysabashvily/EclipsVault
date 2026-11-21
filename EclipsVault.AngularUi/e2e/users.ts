@@ -78,13 +78,13 @@ export class Users {
   async verifyCode(): Promise<void> {
     await this.stepUp.getByRole('button', { name: 'Verify and continue' }).click();
   }
-  async fromSidebar(path: '/DynamicSecrets' | '/Access'): Promise<void> {
+  async fromSidebar(path: '/Account/Denied' | '/Access'): Promise<void> {
     await this.page.goto(path);
     // The Angular sidebar folds its administration pages into a group; the Legacy one lists them.
     if (path === '/Access') await new AppShell(this.page).administration.click();
     await this.page.getByRole('link', { name: 'Users', exact: true }).click();
   }
-  async fromPalette(path: '/DynamicSecrets' | '/Access'): Promise<void> {
+  async fromPalette(path: '/Account/Denied' | '/Access'): Promise<void> {
     await this.page.goto(path);
     await openPalette(this.page);
     await this.page.getByRole('combobox').fill('Users');

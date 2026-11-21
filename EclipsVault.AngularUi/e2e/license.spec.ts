@@ -18,7 +18,7 @@ test('License shows that this vault runs unlicensed', async ({ page }) => {
 test('the Legacy licence notice opens License', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const license = new License(page);
-  await page.goto('/DynamicSecrets');
+  await page.goto('/Account/Denied');
   await license.viewLicense.click();
   await expect(license.heading).toBeVisible();
   await expect(page).toHaveURL(/\/License$/);
@@ -36,7 +36,7 @@ test('the Angular licence notice opens License', async ({ page }) => {
 test('the Legacy sidebar opens License', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const license = new License(page);
-  await license.fromSidebar('/DynamicSecrets');
+  await license.fromSidebar('/Account/Denied');
   await expect(license.heading).toBeVisible();
   await expect(page).toHaveURL(/\/License$/);
 });
@@ -52,7 +52,7 @@ test('the Angular sidebar opens License', async ({ page }) => {
 test('the palette in the Legacy shell opens License', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const license = new License(page);
-  await license.fromPalette('/DynamicSecrets');
+  await license.fromPalette('/Account/Denied');
   await expect(license.heading).toBeVisible();
 });
 

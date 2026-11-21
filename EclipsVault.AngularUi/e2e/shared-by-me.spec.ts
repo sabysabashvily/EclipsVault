@@ -208,7 +208,7 @@ test('the palette opens Shared by me without a document load', async ({ page }) 
 });
 
 test('the Legacy sidebar loads Shared by me into Angular', async ({ page }) => {
-  await openAsIssuer(page, '/DynamicSecrets');
+  await openAsIssuer(page, '/Account/Denied');
   const documents: string[] = [];
   page.on('request', (request) => {
     if (request.isNavigationRequest() && request.resourceType() === 'document')
@@ -222,7 +222,7 @@ test('the Legacy sidebar loads Shared by me into Angular', async ({ page }) => {
 });
 
 test('the Legacy palette loads Shared by me into Angular', async ({ page }) => {
-  await openAsIssuer(page, '/DynamicSecrets');
+  await openAsIssuer(page, '/Account/Denied');
   const documents: string[] = [];
   page.on('request', (request) => {
     if (request.isNavigationRequest() && request.resourceType() === 'document')

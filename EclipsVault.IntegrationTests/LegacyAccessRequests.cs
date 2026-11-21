@@ -10,7 +10,7 @@ internal static class LegacyAccessRequests
     // Antiforgery tokens belong to the session, not to one form, and every signed-in account can open
     // this page, so it serves the token for the Denied page's form post.
     public static async Task<string> TokenAsync(HttpClient client)
-        => VaultFixture.FormTokenOf(await client.GetStringAsync("/DynamicSecrets"), "/DynamicSecrets");
+        => VaultFixture.FormTokenOf(await client.GetStringAsync("/Account/Denied"), "/Account/Denied");
 
     /// <summary>Files a request the way the Denied page's form does.</summary>
     public static Task<HttpResponseMessage> FileAsync(HttpClient client, string token, Guid secretId, string reason = "Need this for deployment")

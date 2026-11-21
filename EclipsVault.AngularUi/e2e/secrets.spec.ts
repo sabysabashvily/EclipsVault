@@ -134,9 +134,11 @@ test('the sidebar opens the Secrets list in place, marking the new secret as exp
   expect(documents).toEqual([new URL(page.url()).pathname]);
 });
 
-test('both palettes find the secret by name, and Enter opens its details', async ({ page }) => {
-  await page.context().addCookies(await savedAdministratorCookies());
-  for (const shell of ['/Access', '/DynamicSecrets']) {
+for (const shell of ['/Access', '/Account/Denied']) {
+  test(`the palette on ${shell} finds the secret by name, and Enter opens its details`, async ({
+    page,
+  }) => {
+    await page.context().addCookies(await savedAdministratorCookies());
     await page.goto(shell);
     await openPalette(page);
     expect(await searchSecrets(page, 'E2e_Secrets_Cr')).toEqual({
@@ -146,8 +148,8 @@ test('both palettes find the secret by name, and Enter opens its details', async
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(detailsUrl);
     await expect(new SecretDetails(page, created.name).heading).toBeVisible();
-  }
-});
+  });
+}
 
 const destinations = {
   Overview: {
@@ -162,9 +164,9 @@ const destinations = {
 };
 
 const sidebarLinks = [
-  ['/DynamicSecrets', 'Overview'],
-  ['/DynamicSecrets', 'Secrets'],
-  ['/DynamicSecrets', 'New secret'],
+  ['/Account/Denied', 'Overview'],
+  ['/Account/Denied', 'Secrets'],
+  ['/Account/Denied', 'New secret'],
   ['/Access', 'Overview'],
   ['/Access', 'Secrets'],
 ] as const;
@@ -189,7 +191,7 @@ test('the sidebar on /Access omits New secret', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'New secret', exact: true })).toHaveCount(0);
 });
 
-for (const shell of ['/DynamicSecrets', '/Access']) {
+for (const shell of ['/Account/Denied', '/Access']) {
   for (const [label, { url, landmark }] of Object.entries(destinations)) {
     test(`the palette's Go to ${label} on ${shell} opens it`, async ({ page }) => {
       await page.context().addCookies(await savedAdministratorCookies());

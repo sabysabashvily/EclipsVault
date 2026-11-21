@@ -129,7 +129,7 @@ for (const [name, link] of [
   });
 }
 
-for (const shell of ['/DynamicSecrets', '/Access'] as const) {
+for (const shell of ['/Account/Denied', '/Access'] as const) {
   test(`the sidebar on ${shell} opens the Audit log`, async ({ page }) => {
     await page.context().addCookies(await savedAdministratorCookies());
     const audit = new AuditLog(page);
