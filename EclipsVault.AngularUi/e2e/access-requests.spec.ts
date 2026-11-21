@@ -465,7 +465,7 @@ test('the palette opens Access requests without a document load', async ({ page 
 });
 
 test('the Legacy sidebar loads Access requests into Angular', async ({ page }) => {
-  await openAsRequester(page, '/DynamicSecrets');
+  await openAsRequester(page, '/Account/Denied');
   const documents = recordDocuments(page);
   await page.getByText('Access', { exact: true }).click();
   await page.getByRole('link', { name: 'Access requests', exact: true }).click();
@@ -475,7 +475,7 @@ test('the Legacy sidebar loads Access requests into Angular', async ({ page }) =
 });
 
 test('the Legacy palette loads Access requests into Angular', async ({ page }) => {
-  await openAsRequester(page, '/DynamicSecrets');
+  await openAsRequester(page, '/Account/Denied');
   const documents = recordDocuments(page);
   await openPalette(page);
   await page.getByRole('combobox').fill('Access requests');

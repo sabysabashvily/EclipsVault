@@ -36,21 +36,27 @@ public class SqlServerBackendTargetTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public async Task Minting_refuses_when_no_target_is_configured(string? connectionString)
-    {
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+    public async Task Minting_refuses_when_no_target_is_configured_and_reports_that_nothing_was_sent(string? connectionString)
+        => await Assert.ThrowsAsync<MintRefusedException>(() =>
             Backend(connectionString).MintAsync(
                 Role(), "svc_reporting", "Abc123", DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None));
+
+    [Fact]
+    public async Task Minting_on_an_unreachable_target_reports_that_nothing_was_sent()
+        => await Assert.ThrowsAsync<MintRefusedException>(() =>
+            Backend("Server=tcp:127.0.0.1,1;Connect Timeout=1;Encrypt=False").MintAsync(
+                Role(), "svc_reporting", "Abc123", DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None));
+
+    [Fact]
+    public async Task Revoking_refuses_when_no_target_is_configured()
+    {
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Backend(null).RevokeAsync(Role(), "svc_reporting", CancellationToken.None));
 
         // The message has to tell an operator what to set and why it is not the vault's connection.
         Assert.Contains("TargetConnectionString", ex.Message, StringComparison.Ordinal);
         Assert.Contains("ALTER ANY LOGIN", ex.Message, StringComparison.Ordinal);
     }
-
-    [Fact]
-    public async Task Revoking_refuses_when_no_target_is_configured()
-        => await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            Backend(null).RevokeAsync(Role(), "svc_reporting", CancellationToken.None));
 
     [Fact]
     public async Task Rotating_a_managed_principal_refuses_when_no_target_is_configured()

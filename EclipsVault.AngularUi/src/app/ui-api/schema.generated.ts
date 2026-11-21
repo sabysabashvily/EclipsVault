@@ -645,6 +645,200 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ui/dynamic-secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DynamicSecretsResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/dynamic-secrets/issue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["IssueDynamicCredentialRequest"];
+                    "text/json": components["schemas"]["IssueDynamicCredentialRequest"];
+                    "application/*+json": components["schemas"]["IssueDynamicCredentialRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["IssuedDynamicCredentialResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Payment Required */
+                402: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Bad Gateway */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/dynamic-secrets/leases/{leaseId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    leaseId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RevokedLeaseResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ui/encryption": {
         parameters: {
             query?: never;
@@ -5036,6 +5230,52 @@ export interface components {
             activityCount: number | string;
             notice: string;
         };
+        DynamicLeaseResponse: {
+            /** Format: uuid */
+            leaseId: string;
+            roleName: string;
+            credentialIdentity: string;
+            holder: string;
+            /** Format: date-time */
+            issuedAtUtc: string;
+            /** Format: date-time */
+            expiresAtUtc: string;
+            /** Format: date-time */
+            closedAtUtc: null | string;
+            /** @enum {string} */
+            status: "Active" | "Expired" | "Revoked" | "RevocationFailed";
+            revocationNote: null | string;
+        };
+        DynamicRoleResponse: {
+            /** Format: uuid */
+            roleId: string;
+            name: string;
+            description: string;
+            project: string;
+            /** @enum {string} */
+            environment: "Development" | "Staging" | "Production";
+            /** Format: int32 */
+            sensitivity: number | string;
+            sensitivityLabel: string;
+            /** @enum {string} */
+            backend: "SqlServer";
+            /** Format: int32 */
+            defaultTtlMinutes: number | string;
+            /** Format: int32 */
+            maxTtlMinutes: number | string;
+        };
+        DynamicSecretsLicenceResponse: {
+            licensed: boolean;
+            /** Format: int32 */
+            evaluationDaysRemaining: null | number | string;
+        };
+        DynamicSecretsResponse: {
+            roles: components["schemas"]["DynamicRoleResponse"][];
+            /** @enum {string} */
+            leaseScope: "everyone" | "own";
+            leases: components["schemas"]["DynamicLeaseResponse"][];
+            licence: null | components["schemas"]["DynamicSecretsLicenceResponse"];
+        };
         EmailChangeCapabilityResponse: {
             available: boolean;
             unavailableReason: null | string;
@@ -5075,6 +5315,15 @@ export interface components {
         };
         /** Format: binary */
         IFormFile: string;
+        IssuedDynamicCredentialResponse: {
+            /** Format: uuid */
+            leaseId: string;
+            roleName: string;
+            username: string;
+            password: string;
+            /** Format: date-time */
+            expiresAtUtc: string;
+        };
         IssuedServiceAccountKeyResponse: {
             /** Format: uuid */
             keyId: string;
@@ -5090,6 +5339,12 @@ export interface components {
             createdAtUtc: string;
             /** Format: date-time */
             expiresAtUtc: null | string;
+        };
+        IssueDynamicCredentialRequest: {
+            /** Format: uuid */
+            roleId?: string;
+            /** Format: int32 */
+            ttlMinutes?: null | number | string;
         };
         IssueServiceAccountKeyRequest: {
             /** Format: int32 */
@@ -5359,6 +5614,11 @@ export interface components {
         RevealedValueResponse: {
             label: string;
             value: string;
+        };
+        RevokedLeaseResponse: {
+            /** @enum {string} */
+            status: "Active" | "Expired" | "Revoked" | "RevocationFailed";
+            revocationNote: null | string;
         };
         RotateManagedUiRequest: {
             /** Format: int32 */

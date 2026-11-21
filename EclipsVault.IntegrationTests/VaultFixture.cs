@@ -17,6 +17,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using Serilog.Core;
 using Xunit;
 
 namespace EclipsVault.IntegrationTests;
@@ -77,24 +78,18 @@ public sealed partial class VaultFixture : IAsyncLifetime
     /// <summary>A master key the vault loads only to unwrap data keys still sealed under it.</summary>
     public string? RetiredMasterKey { get; init; }
 
-    /// <summary>Whether the vault gets a SQL Server whose logins it re-passwords for managed rotation.</summary>
-    public bool HasManagedTarget { get; init; }
+    /// <summary>Gives the vault a SQL Server database of its own to mint dynamic credentials on.</summary>
+    public bool DynamicSecretsTarget { get; init; }
 
-    /// <summary>The managed target's administrator connection, for tests that create and check its logins.</summary>
-    public string ManagedTargetConnectionString => _managedTarget
-        ?? throw new InvalidOperationException("This vault has no managed target; set HasManagedTarget.");
+    /// <summary>The database dynamic credentials are minted on, when <see cref="DynamicSecretsTarget"/> is set.</summary>
+    public string? DynamicTargetConnectionString { get; private set; }
 
-    private string? _managedTarget;
+    /// <summary>Every line the vault logs, as its log sinks receive it.</summary>
+    public LogCapture Log { get; } = new();
 
     public async Task InitializeAsync()
     {
         await _database.StartAsync();
-        if (HasManagedTarget)
-        {
-            _managedTarget = await _database.StartManagedTargetAsync();
-            SetEnvironment("DynamicSecrets__TargetConnectionString", _managedTarget);
-        }
-
         if (Mailbox is not null)
         {
             await Mailbox.StartAsync();
@@ -102,6 +97,11 @@ public sealed partial class VaultFixture : IAsyncLifetime
             SetEnvironment("Email__Enabled", "true");
             SetEnvironment("Email__Smtp__Host", Mailbox.Host);
             SetEnvironment("Email__Smtp__Port", Mailbox.Port.ToString(CultureInfo.InvariantCulture));
+        }
+        if (DynamicSecretsTarget)
+        {
+            DynamicTargetConnectionString = await _database.StartDynamicTargetAsync();
+            SetEnvironment("DynamicSecrets__TargetConnectionString", DynamicTargetConnectionString);
         }
 
         using var signingKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
@@ -147,6 +147,7 @@ public sealed partial class VaultFixture : IAsyncLifetime
                 .ConfigureTestServices(services =>
                 {
                     services.AddMvcCore().AddApplicationPart(typeof(VaultFixture).Assembly);
+                    services.AddSingleton<ILogEventSink>(Log);
                     // Keep the real counter, cache and configured thresholds. Freeze only its window;
                     // TOTP, cookie expiry and all other services retain the production clock.
                     services.AddSingleton<IAuthThrottle>(sp => new InMemoryAuthThrottle(

@@ -15,7 +15,11 @@ public interface IDynamicSecretBackend
 {
     DynamicSecretBackend Backend { get; }
 
-    /// <summary>Creates the credential. Throws if the backend refuses — nothing is leased.</summary>
+    /// <summary>
+    /// Creates the credential. Throws <see cref="Domain.Exceptions.MintRefusedException"/> when nothing
+    /// reached the backend, so there is nothing to undo; any other exception means some statements may
+    /// have run.
+    /// </summary>
     Task MintAsync(DynamicSecretRole role, string identity, string password, DateTimeOffset expiresAtUtc, CancellationToken ct);
 
     /// <summary>

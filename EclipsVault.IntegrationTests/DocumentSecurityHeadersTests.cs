@@ -42,6 +42,9 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
     [InlineData("/Data/Index")]
     [InlineData("/data")]
     [InlineData("/DATA/index")]
+    [InlineData("/DynamicSecrets")]
+    [InlineData("/DynamicSecrets/Index")]
+    [InlineData("/dynamicsecrets")]
     [InlineData("/Secrets/SharedByMe")]
     [InlineData("/secrets/sharedbyme")]
     [InlineData("/Secrets/SharedWithMe")]
@@ -72,7 +75,8 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
 
     [Theory]
     [InlineData("/Account/Login", HttpStatusCode.Redirect)]
-    [InlineData("/DynamicSecrets", HttpStatusCode.OK)]
+    // The error page is the last signed-in page on the Legacy layout.
+    [InlineData("/Home/Error?code=404", HttpStatusCode.NotFound)]
     [InlineData("/Access/NotAnAngularRoute", HttpStatusCode.NotFound)]
     [InlineData("/api/ui/me", HttpStatusCode.OK)]
     [InlineData("/css/site.css", HttpStatusCode.OK)]

@@ -12,13 +12,14 @@ public sealed class RetiredSelfServiceRoutesTests(VaultFixture vault)
     {
         var client = await vault.AdminClientAsync();
 
-        var page = await client.GetStringAsync("/DynamicSecrets");
+        var page = await client.GetStringAsync("/Account/Denied");
 
         Assert.Contains("href=\"/Sessions\"", page, StringComparison.Ordinal);
         Assert.Contains("href=\"/Data\"", page, StringComparison.Ordinal);
         Assert.Contains("href=\"/Secrets/SharedByMe\"", page, StringComparison.Ordinal);
         Assert.Contains("href=\"/Secrets/SharedWithMe\"", page, StringComparison.Ordinal);
         Assert.Contains("href=\"/AccessRequests\"", page, StringComparison.Ordinal);
+        Assert.Contains("href=\"/DynamicSecrets\"", page, StringComparison.Ordinal);
     }
 
     [Theory]
