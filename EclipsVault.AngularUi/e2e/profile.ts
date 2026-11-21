@@ -138,8 +138,12 @@ export class ProfilePage {
     return this.page.getByRole('alert').filter({ hasText: text });
   }
 
+  /** Confirms the open decision dialog, whichever object its button names. */
   async confirm(): Promise<void> {
-    await this.confirmation.getByRole('button', { name: 'Continue', exact: true }).click();
+    await this.confirmation
+      .getByRole('button')
+      .filter({ hasNotText: /^Cancel$/ })
+      .click();
   }
 
   async signOutThisBrowser(): Promise<void> {

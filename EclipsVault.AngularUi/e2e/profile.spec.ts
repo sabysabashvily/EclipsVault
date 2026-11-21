@@ -175,65 +175,39 @@ test('the password form refuses mismatched, unchanged and breached choices befor
   expect(prepared).toEqual([]);
 });
 
-test('visual parity: Profile preserves cards and labels in both themes and on a narrow screen', async ({
+test('Profile shows the person and sign-in methods, and nothing scrolls sideways at 300 or 2000px', async ({
   page,
-}, testInfo) => {
+}) => {
   await page.context().addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
   await expect(page.getByRole('heading', { level: 2 })).toHaveText([
-    'Profile picture',
-    'Details',
-    'Access',
-    'Security',
+    'Authenticator',
     'Passkeys',
+    'Recovery codes',
+    'Email',
+    'Password',
+    'Sign out',
   ]);
+  await expect(
+    page.getByText('Every change here is saved to the audit log.', { exact: true }),
+  ).toBeVisible();
   await expect(page.getByLabel('Username', { exact: true })).toBeDisabled();
   await expect(profile.email).toHaveAttribute('readonly', '');
-  await expect(page.getByRole('term')).toHaveText(['Clearance', 'Project']);
   await expect(
     page.getByText(
       'Clearance and project are set by an administrator. Ask one if these need to change.',
       { exact: true },
     ),
   ).toBeVisible();
-  // eslint-disable-next-line playwright/no-raw-locators -- The rows' titles are unlabelled <strong> elements.
-  await expect(page.locator('.settings-row > div > strong')).toHaveText([
-    'Password',
-    'Authenticator (2FA)',
-    'Recovery codes',
-    'Sessions',
-  ]);
   await expect(
-    page.getByText('Argon2id-hashed. Change it if you suspect it has been compromised.'),
+    page.getByText('Change it if you suspect it has been compromised.', { exact: true }),
   ).toBeVisible();
-  const details = await page.getByRole('heading', { name: 'Details', exact: true }).boundingBox();
-  const access = await page.getByRole('heading', { name: 'Access', exact: true }).boundingBox();
-  expect(access!.x).toBeGreaterThan(details!.x + details!.width);
-
-  await page.screenshot({ path: testInfo.outputPath('profile-dark.png'), fullPage: true });
-  await page.getByText('Mailbox Owner', { exact: true }).click();
-  await page.getByRole('menuitem', { name: /Switch to light/ }).click();
-  // eslint-disable-next-line playwright/no-raw-locators -- Theme is a document attribute shared by both shells.
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  await page.screenshot({ path: testInfo.outputPath('profile-light.png'), fullPage: true });
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(profile.displayName).toBeVisible();
-  // Narrowing swaps the sidebar for the drawer, so the cards settle a frame later: poll the layout.
-  const detailsHeading = page.getByRole('heading', { name: 'Details', exact: true });
-  const accessHeading = page.getByRole('heading', { name: 'Access', exact: true });
-  await expect
-    .poll(async () => {
-      const details = await detailsHeading.boundingBox();
-      const access = await accessHeading.boundingBox();
-      return {
-        accessBelowDetails: access!.y > details!.y,
-        sameColumn: Math.abs(access!.x - details!.x) < 2,
-      };
-    })
-    .toEqual({ accessBelowDetails: true, sameColumn: true });
-  await page.screenshot({ path: testInfo.outputPath('profile-narrow.png'), fullPage: true });
+  await expect(page.getByRole('button', { name: 'Remove passkey', exact: true })).toHaveCount(0);
+  for (const width of [300, 2000]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  }
 });
 
 test('Change password shows its fields, hint, meter and a working show/hide in both themes', async ({
@@ -291,7 +265,7 @@ test('display name and avatar update the live shell without changing the email',
   await profile.open();
   const email = await profile.email.inputValue();
   await profile.displayName.fill('Profile Browser Owner');
-  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await page.getByRole('button', { name: 'Save display name', exact: true }).click();
   await expect(
     page.getByRole('status').filter({ hasText: 'Your profile was updated.' }),
   ).toBeVisible();
@@ -311,7 +285,7 @@ test('display name and avatar update the live shell without changing the email',
   );
   expect(avatar.headers()['cache-control']).toContain('no-store');
   expect(avatar.headers()['content-type']).toContain('image/png');
-  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove picture', exact: true }).click();
   await profile.confirm();
   await expect(page.getByText('Your profile picture was removed.', { exact: true })).toBeVisible();
   ownerCookies = await page.context().cookies();
@@ -363,7 +337,7 @@ test('a JPEG avatar is cropped into a metadata-free 256 pixel PNG', async ({ pag
   expect(png.readUInt32BE(16)).toBe(256);
   expect(png.readUInt32BE(20)).toBe(256);
   expect(png.includes(comment)).toBe(false);
-  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove picture', exact: true }).click();
   await profile.confirm();
   await expect(page.getByText('Your profile picture was removed.', { exact: true })).toBeVisible();
   ownerCookies = await page.context().cookies();
@@ -451,7 +425,7 @@ test('real password verification renews the current browser and refuses its copi
   await page.getByRole('link', { name: 'Back to profile', exact: true }).click();
   await expect(profile.heading).toBeVisible();
   await profile.displayName.fill('After Password Renewal');
-  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await page.getByRole('button', { name: 'Save display name', exact: true }).click();
   await expect(page.getByText('Your profile was updated.', { exact: true })).toBeVisible();
   ownerCookies = await page.context().cookies();
 });
@@ -639,7 +613,7 @@ test('a real SMTP outage leaves email inactive and reports delivery failure', as
   await expect(profile.newEmail).toBeVisible();
 });
 
-test('visual parity: ten recovery codes print once and clear on Done, direct visits and refresh', async ({
+test('ten recovery codes print once and clear on Done, direct visits and refresh', async ({
   page,
   browserHealth,
 }, testInfo) => {
@@ -650,7 +624,7 @@ test('visual parity: ten recovery codes print once and clear on Done, direct vis
   const profile = new ProfilePage(page);
   await profile.open();
   profile.releaseSignInBudget();
-  await page.getByRole('button', { name: 'Generate codes', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate recovery codes', exact: true }).click();
   await profile.confirm();
   lastStep = await profile.verifyOwner(password, secret, lastStep);
   await expect(page).toHaveTitle('Recovery codes — EclipsVault');
@@ -748,7 +722,7 @@ test('a UV virtual passkey is added, verifies a frozen change and is removed usi
       if (/\/passkey\/complete$/.test(request.url())) completed.push(request.method());
     });
     await cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled: false });
-    await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
+    await page.getByRole('button', { name: 'Replace recovery codes', exact: true }).click();
     await profile.confirm();
     await profile.verificationMethod.selectOption('Passkey');
     const begun = page.waitForResponse(/\/passkey\/begin$/);
@@ -759,7 +733,7 @@ test('a UV virtual passkey is added, verifies a frozen change and is removed usi
     await page.goBack();
     await expect(profile.heading).toBeVisible();
     await expect(profile.verification).not.toBeVisible();
-    await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
+    await page.getByRole('button', { name: 'Replace recovery codes', exact: true }).click();
     await profile.confirm();
     await profile.verificationMethod.selectOption('PasswordAndAuthenticatorCode');
     await expect(profile.verificationPassword).toHaveValue('');
@@ -769,7 +743,7 @@ test('a UV virtual passkey is added, verifies a frozen change and is removed usi
   });
   const beforeProof = await browserHealth.newContext();
   await beforeProof.addCookies(await page.context().cookies());
-  await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
+  await page.getByRole('button', { name: 'Replace recovery codes', exact: true }).click();
   await profile.confirm();
   await profile.verificationMethod.selectOption('Passkey');
   await profile.verifyAccount.click();
@@ -779,7 +753,7 @@ test('a UV virtual passkey is added, verifies a frozen change and is removed usi
   expect((await beforeProof.request.get('/api/ui/me')).status()).toBe(401);
   const beforeRemoval = await browserHealth.newContext();
   await beforeRemoval.addCookies(await page.context().cookies());
-  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove passkey', exact: true }).click();
   await profile.confirm();
   await expect(profile.verificationMethod).not.toContainText('Passkey');
   lastStep = await profile.verifyOwner(password, secret, lastStep);
@@ -824,7 +798,7 @@ test('session loss clears an outstanding UV registration and refuses its late co
     if (request.url().endsWith('/passkeys/registration/complete')) completed.push(request.method());
   });
   try {
-    await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+    await page.getByRole('button', { name: 'Save display name', exact: true }).click();
     await snapshot;
     await expect(page.getByText('Your profile was updated.', { exact: true })).toBeVisible();
     await page.getByLabel('New passkey name').fill('Discarded after session loss');
@@ -1094,7 +1068,7 @@ test('reset retains a passkey and refuses deleting the last method until Legacy 
     page.on('request', (request) => {
       if (/\/passkey\/complete$/.test(request.url())) completions.push(request.method());
     });
-    await page.getByRole('button', { name: 'Generate codes', exact: true }).click();
+    await page.getByRole('button', { name: 'Generate recovery codes', exact: true }).click();
     await profile.confirm();
     await profile.verificationMethod.selectOption('Passkey');
     await cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled: false });
@@ -1119,8 +1093,10 @@ test('reset retains a passkey and refuses deleting the last method until Legacy 
     await expect(page).toHaveURL(/\/Secrets$/);
     await profile.open();
     await expect(page.getByText('Surviving UV key', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Remove', exact: true })).toBeDisabled();
-    await expect(page.getByRole('button', { name: 'Generate codes', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Remove passkey', exact: true })).toBeDisabled();
+    await expect(
+      page.getByRole('button', { name: 'Generate recovery codes', exact: true }),
+    ).toBeDisabled();
     await expect(profile.resetAuthenticator).toBeDisabled();
 
     profile.releaseSignInBudget();
@@ -1133,7 +1109,7 @@ test('reset retains a passkey and refuses deleting the last method until Legacy 
     lastStep = currentTotpStep();
     await expect(page).toHaveURL(/\/Secrets$/);
     await profile.open();
-    await page.getByRole('button', { name: 'Remove', exact: true }).click();
+    await page.getByRole('button', { name: 'Remove passkey', exact: true }).click();
     await profile.confirm();
     await expect(profile.verificationMethod).not.toContainText('Passkey');
     lastStep = await profile.verifyOwner(password, secret, lastStep);
@@ -1199,7 +1175,7 @@ test('a rejected recovery mutation returns no codes and never replays generation
     text: /status of 503/,
     url: /\/api\/ui\/profile\/recovery-codes$/,
   });
-  await page.getByRole('button', { name: 'Generate codes', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate recovery codes', exact: true }).click();
   await profile.confirm();
   lastStep = await profile.verifyOwner(password, secret, lastStep);
   await expect(

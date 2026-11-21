@@ -42,7 +42,7 @@ describe('ProfilePage authenticator reset', () => {
     expect(changes.querySelector('dialog[role=alertdialog]')?.textContent).toContain(
       "Reset your authenticator? You'll be signed out and set up a new one at next sign-in.",
     );
-    button(changes, 'Continue').click();
+    button(changes, 'Reset authenticator').click();
     const prepare = backend.expectOne({ method: 'POST', url: '/api/ui/profile/operations' });
     expect(prepare.request.body).toEqual({ kind: 'ResetAuthenticator' });
     prepare.flush(resetOperation);
@@ -91,8 +91,8 @@ describe('ProfilePage authenticator reset', () => {
     const { fixture, page, changes } = await render();
     button(page, 'Reset authenticator').click();
     await fixture.whenStable();
-    button(page, 'Regenerate').click();
-    button(changes, 'Continue').click();
+    button(page, 'Replace recovery codes').click();
+    button(changes, 'Reset authenticator').click();
     expect(backend.expectOne('/api/ui/profile/operations').request.body).toEqual({
       kind: 'ResetAuthenticator',
     });
@@ -102,7 +102,7 @@ describe('ProfilePage authenticator reset', () => {
     const { fixture, page, changes } = await render();
     button(page, 'Reset authenticator').click();
     await fixture.whenStable();
-    button(changes, 'Continue').click();
+    button(changes, 'Reset authenticator').click();
     backend.expectOne('/api/ui/profile/operations').flush(
       {
         code: 'authenticator_not_enrolled',
@@ -123,7 +123,7 @@ describe('ProfilePage authenticator reset', () => {
     const { fixture, page, changes } = await render();
     button(page, 'Reset authenticator').click();
     await fixture.whenStable();
-    button(changes, 'Continue').click();
+    button(changes, 'Reset authenticator').click();
     backend.expectOne('/api/ui/profile/operations').flush(resetOperation);
     await fixture.whenStable();
     fill(changes, 'credential-verification-password', 'Wrong-Password');
@@ -151,7 +151,7 @@ describe('ProfilePage authenticator reset', () => {
     const { fixture, page, changes } = await render();
     button(page, 'Reset authenticator').click();
     await fixture.whenStable();
-    button(changes, 'Continue').click();
+    button(changes, 'Reset authenticator').click();
     backend.expectOne('/api/ui/profile/operations').flush(resetOperation);
     await fixture.whenStable();
     fill(changes, 'credential-verification-password', 'Current-Password');

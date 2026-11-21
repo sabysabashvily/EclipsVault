@@ -3268,6 +3268,102 @@ fieldset {
   }
 }
 
+/* ---- License --------------------------------------------------------- */
+/* A long promise has to wrap inside a phone's column. The shared line is a nowrap flex row. */
+app-license-page .trust-line {
+  display: block;
+}
+app-license-page .trust-line svg {
+  display: inline-block;
+  vertical-align: -0.15em;
+  margin-right: 0.35rem;
+}
+
+/* ---- My activity ----------------------------------------------------- */
+.activity-table .cell-main,
+.activity-table .activity-time {
+  overflow-wrap: anywhere;
+}
+
+/* ---- Profile --------------------------------------------------------- */
+/* The person is the header: picture and name on the left, methods stack below as cards. */
+.profile-person {
+  align-items: flex-start;
+}
+.profile-portrait {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+.profile-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--bg-inset);
+}
+.profile-identity {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.profile-identity .field {
+  max-width: 28rem;
+}
+app-profile-page .trust-line,
+app-change-password-page .trust-line {
+  display: block;
+}
+app-profile-page .trust-line svg,
+app-change-password-page .trust-line svg {
+  display: inline-block;
+  vertical-align: -0.15em;
+  margin-right: 0.35rem;
+}
+.profile-portrait .hint,
+.profile-identity .hint {
+  margin: 0;
+}
+.profile-people {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+.profile-people > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  min-width: 0;
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--border);
+}
+.profile-people > li:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.profile-person-name {
+  margin: 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.profile-people .muted {
+  margin: 0.15rem 0 0;
+}
+@media (max-width: 480px) {
+  .profile-people > li {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .profile-people .button {
+    flex: 1 1 100%;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mobile-navigation {
     transform: none;
