@@ -164,3 +164,55 @@ migrations and agent-guardrails. Frontend and security-scan failed only on the u
 advisory GHSA-fc5q-39xc-vjpf, under the owner's merge exception (#188). Security re-check 8 found no
 defect in a passkey challenge begun before a password change or a sign-out everywhere and completed
 after it (`logs/ticket-174/security-review-8.md`).
+
+## Delivery: 8a ticket 2 (#175)
+
+Commits on `7b85cd5`: `3f789ae` serves Login, Totp, RecoveryCode and EnrollTotp as Angular pages at their
+Legacy URLs. Login is anonymous and sends a signed-in visit on to `SignInTarget.Choose`; the
+second-factor pages need the pending sign-in. Each document issues the request token, sends `no-store`
+and carries the Angular CSP. The Legacy sign-in actions, views and passkey script are gone: a signed-in POST
+gets 405 (PasskeyLogin* 404) and anyone else the default-deny redirect to Login. Notices no longer ride TempData. Sign-out everywhere and an own unrecorded
+force logout reach Login as `?signOut=` codes, SSO failures as `?sso=`, and an authenticator reset as a
+one-time cookie that only a GET to Login takes. The coordinator's `13afec7` merges main (`1c55064`, the
+redesign). `7b0b7e1`, `8a5dae1` and `b1971e1` fix the tests CI found (below); this section is the last commit.
+
+Checks on `3f789ae`: `scripts/check.sh` (restore, Release build, 957 unit tests); both pending-model
+checks (no model change); Angular lint, Prettier, 628 Vitest tests, build checks, `check:api-types`,
+build, `npm audit --audit-level=high`. On `13afec7` the coordinator ran lint (with e2e tsc) and build.
+Not run locally on that commit: the PostgreSQL integration filter (the Docker lock was held by #173). No
+browser spec ran locally (owner's rule).
+
+Reviews: `security-reviewer` (Opus 5.5 high) on the whole diff from `7b85cd5` and one re-check
+(`logs/ticket-175/review-ledger.md`). Three nits fixed. Left for the owner and the verify ticket: the
+Angular CSP keeps `form-action 'self'`, which may block the SSO form's redirect to an identity provider
+on another origin, as it did on Legacy; SSO's browser path has no e2e.
+
+Kept signatures: `VaultFixture`, `SignInProof` (adds `SendPasskeyAsync`) and `e2e/account-sign-in.ts`.
+Renamed: `LegacyPasskeyCeremonyTests` to `PasskeyCeremonyTests`.
+
+Restart: ticket 3 deletes the Legacy `/Account/Recover` POST and narrows its exemption. Three guard probes in
+`browser-health.probe.ts` (two inline-script, one uncaught exception) need a Legacy page and run on
+`/Account/Recover`; move them when that page becomes Angular.
+
+CI run 44623642298 on `13afec7` failed 26 integration tests on both databases and the mailbox browser
+spec. The Angular enrollment page starts enrollment with a POST, which ADR-0032's throttle meters, so a
+first sign-in spends three of its address's 11 requests per 120 seconds where Legacy spent two. That is
+by design. `7b0b7e1` gives such sign-ins their own address in the integration tests and clears the run's
+budget in the mailbox, profile and service-accounts specs. It also corrects three of this ticket's
+expectations: anonymous and pending callers get the default-deny redirect from a retired POST,
+`validation_failed` carries `errors`, and Login carries the Angular policy. On `7b0b7e1`,
+`scripts/check.sh integration` on PostgreSQL passed 571 tests across 32 classes, and
+`dotnet format --verify-no-changes` was clean.
+
+CI run 44631918797 on `7b0b7e1`: integration green on both databases; e2e failed one test,
+service-accounts.spec.ts:217. The Angular enrollment page confirms with a fetch, where Legacy posted
+a form, so the spec's next navigation could cancel it before the session cookie arrived. `8a5dae1`
+makes `AuthenticatorEnrollment.confirm` wait for that response.
+
+CI run 44918388291 on `8a5dae1`: the browser suite passed (396); `e2e:verify-guards` failed because
+Angular's ErrorHandler caught the uncaught-exception probe's throw on the now-Angular Login. `b1971e1`
+runs that probe on `/Account/Recover`, a Legacy page, with the inline-script probes.
+
+CI run 44923165874 on `b1971e1`: every job green (migrations, build-test, integration on SQL Server
+and PostgreSQL, frontend, e2e with `e2e:verify-guards`, security-scan, image, sbom, agent-guardrails;
+commit-subjects skipped on a push). The coordinator accepted #175 on that run.
