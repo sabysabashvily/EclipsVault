@@ -160,7 +160,10 @@ async function writeRealm(path, values) {
     realm = realm.replaceAll(token, value);
   }
   if (realm.includes('__')) throw new Error('Realm template still has a placeholder');
-  await writeFile(path, realm, { mode: 0o600 });
+  // Keycloak runs as its own user. On CI that uid is not the runner's, so mode 600 is
+  // unreadable through the bind mount and the import fails with "Permission denied".
+  // The file exists only for this run, under a private temporary directory.
+  await writeFile(path, realm, { mode: 0o644 });
 }
 
 async function trustProxyCertificate(compose, bundlePath) {
