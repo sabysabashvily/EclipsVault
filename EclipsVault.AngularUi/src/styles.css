@@ -3342,6 +3342,7 @@ fieldset {
   font-size: 1.05rem;
   letter-spacing: 0.04em;
   overflow-wrap: anywhere;
+  user-select: all;
 }
 
 @media (prefers-reduced-motion: reduce) {

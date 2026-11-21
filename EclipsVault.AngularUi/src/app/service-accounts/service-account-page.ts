@@ -69,6 +69,8 @@ export class ServiceAccountPage {
     () => (this.id() ? `/api/ui/service-accounts/${this.id()}` : undefined),
   );
   protected readonly issued = signal<string | null>(null);
+  /** Set only when the clipboard refuses the key, so it can be selected by hand. */
+  protected readonly revealed = signal(false);
   protected readonly expiry = signal(0);
   protected readonly ceiling = signal<number | null>(null);
   protected readonly projectScope = signal('');
@@ -97,6 +99,7 @@ export class ServiceAccountPage {
   constructor() {
     this.writes.onClear(() => {
       this.issued.set(null);
+      this.revealed.set(false);
       const box = this.tokenBox()?.nativeElement;
       if (box) box.textContent = '';
       this.pendingConfirmation = null;
@@ -159,6 +162,7 @@ export class ServiceAccountPage {
     this.writes.send(
       () => this.http.post<components['schemas']['IssuedServiceAccountKeyResponse']>(path, request),
       (key) => {
+        this.revealed.set(false);
         this.issued.set(key.apiKey);
         this.saved('API key issued. Copy it now — it will not be shown again.');
       },
@@ -227,6 +231,8 @@ export class ServiceAccountPage {
     try {
       await navigator.clipboard.writeText(apiKey);
     } catch {
+      // The mask is not something a person can paste. Show the key once, in the same place.
+      this.revealed.set(true);
       this.writes.status.set({
         message: 'Could not copy the key. Select it and copy it now.',
         error: true,

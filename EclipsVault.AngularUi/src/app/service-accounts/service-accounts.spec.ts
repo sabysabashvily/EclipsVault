@@ -404,6 +404,58 @@ describe('Service account Details', () => {
     expect(location.href.includes(oneTimeKey)).toBe(false);
     expect(JSON.stringify(TestBed.inject(ServiceAccountNotices)).includes(oneTimeKey)).toBe(false);
   });
+  it('a failed copy shows the full key and the message', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+    });
+    const { page, fixture } = await loadedDetails();
+    await confirmIssue(page, fixture);
+    backend.expectOne(path + '/keys').flush({ keyId, prefix: 'evk_prefix', apiKey: oneTimeKey });
+    await reload(fixture);
+    button(page, 'Copy').click();
+    await fixture.whenStable();
+
+    expect(page.querySelector('#new-token')?.textContent).toBe(oneTimeKey);
+    expect(page.querySelector('app-status-line [role="alert"]')?.textContent).toContain(
+      'Could not copy the key. Select it and copy it now.',
+    );
+    expect(document.cookie.includes(oneTimeKey)).toBe(false);
+    expect(location.href.includes(oneTimeKey)).toBe(false);
+  });
+  it('a successful copy keeps the one-time key masked', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+    const { page, fixture } = await loadedDetails();
+    await confirmIssue(page, fixture);
+    backend.expectOne(path + '/keys').flush({ keyId, prefix: 'evk_prefix', apiKey: oneTimeKey });
+    await reload(fixture);
+    button(page, 'Copy').click();
+    await fixture.whenStable();
+
+    expect(page.querySelector('#new-token')?.textContent).toBe('evk_…only');
+    expect(page.textContent).not.toContain(oneTimeKey);
+  });
+  it('leaving the page clears a key that copy could not take', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+    });
+    const { page, fixture } = await loadedDetails();
+    await confirmIssue(page, fixture);
+    backend.expectOne(path + '/keys').flush({ keyId, prefix: 'evk_prefix', apiKey: oneTimeKey });
+    await reload(fixture);
+    button(page, 'Copy').click();
+    await fixture.whenStable();
+    expect(page.querySelector('#new-token')?.textContent).toBe(oneTimeKey);
+    window.dispatchEvent(new Event('pagehide'));
+
+    expect(page.querySelector('#new-token')?.textContent).toBe('');
+    await fixture.whenStable();
+    expect(page.textContent).not.toContain(oneTimeKey);
+  });
   it.each([
     { event: 'pagehide', target: window },
     { event: 'vault-session-ended', target: document },
