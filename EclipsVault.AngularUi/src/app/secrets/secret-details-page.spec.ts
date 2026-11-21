@@ -136,9 +136,13 @@ describe('SecretDetailsPage', () => {
     };
   }
 
-  async function confirm(fixture: { whenStable(): Promise<unknown> }, page: HTMLElement) {
+  async function confirm(
+    fixture: { whenStable(): Promise<unknown> },
+    page: HTMLElement,
+    label: string,
+  ) {
     await fixture.whenStable();
-    button(confirmation(page), 'Continue').click();
+    button(confirmation(page), label).click();
   }
 
   async function reloaded(
@@ -153,7 +157,7 @@ describe('SecretDetailsPage', () => {
   async function rotate(fixture: { whenStable(): Promise<unknown> }, page: HTMLElement) {
     type(page.querySelector('#newValue')!, 'new-value');
     submit(page.querySelector('form.rotate-form')!);
-    await confirm(fixture, page);
+    await confirm(fixture, page, 'Rotate secret');
   }
 
   afterEach(() => {
@@ -200,16 +204,22 @@ describe('SecretDetailsPage', () => {
     expect(page.textContent).not.toContain('Secret not found.');
   });
 
-  it('shows the header, metadata and history as Legacy did, and names the document', async () => {
+  it('shows the record header, trust line, metadata, shares and history, and names the document', async () => {
     const { page } = await loaded();
 
     expect(page.querySelector('h1')!.textContent).toBe('Deployment_key');
+    expect(page.querySelector('a[aria-label="Back to list"]')?.getAttribute('href')).toBe(
+      '/Secrets',
+    );
+    expect(page.querySelector('.trust-line')?.textContent?.trim()).toBe(
+      'Secret values · every reveal is logged',
+    );
     expect(
       [...page.querySelectorAll('.page-sub .badge')].map((badge) => badge.textContent?.trim()),
     ).toEqual(['Production', 'Confidential', 'GLOBAL']);
     expect(
       [...page.querySelectorAll('.detail-grid dd')].map((value) => value.textContent?.trim()),
-    ).toEqual(['AES-256-GCM (envelope)', '2026-10-20 10:05:00', '—', 'never', '1 archived']);
+    ).toEqual(['AES-256-GCM (envelope)', '2026-10-20 10:05:00', '—', 'Never', '1 archived']);
     expect(page.querySelector('.timeline-head')!.textContent).toBe(
       'Version 1archived 2026-01-05 · by vault-admin',
     );
@@ -218,7 +228,7 @@ describe('SecretDetailsPage', () => {
       'colleague',
       'vault-admin',
       '2026-10-20 10:05',
-      'no expiry',
+      'No expiry',
       'Revoke',
     ]);
     expect(TestBed.inject(Title).getTitle()).toBe('Deployment_key — EclipsVault');
@@ -239,11 +249,11 @@ describe('SecretDetailsPage', () => {
       'Reveal value',
       'Rotate value',
       'Rotate secret',
-      'Delete',
       'Share access',
       'Revoke',
       'Reveal',
       'Restore',
+      'Delete',
     ]);
   });
 
@@ -258,10 +268,10 @@ describe('SecretDetailsPage', () => {
       'Rotate upstream',
       'Rotate value manually',
       'Rotate secret',
-      'Delete',
       'Share access',
       'Revoke',
       'Reveal',
+      'Delete',
     ]);
   });
 
@@ -287,7 +297,7 @@ describe('SecretDetailsPage', () => {
   ])('shows the licence note for %o as "%s"', async (licence, note) => {
     const { page } = await loaded({ ...secret, managed: { principal: 'app_login', ...licence } });
 
-    expect(page.querySelector('p.muted > strong')?.textContent?.trim() ?? '').toBe(note);
+    expect(page.querySelector('.licence-note > strong')?.textContent?.trim() ?? '').toBe(note);
   });
 
   it('reveals the current value with its audit sentence', async () => {
@@ -474,9 +484,12 @@ describe('SecretDetailsPage', () => {
     const { fixture, page } = await loaded({ ...secret, managed });
     type(page.querySelector('input[aria-label="Renew for days"]')!, '7');
     submit(page.querySelector('form.inline-form')!);
-    await confirm(fixture, page);
+    await confirm(fixture, page, 'Rotate upstream');
     expect(confirmation(page).textContent).toContain(
       "Rotate the real password of 'app_login'? Anything still using the old password stops working immediately.",
+    );
+    expect(confirmation(page).querySelector('.dialog-note')?.textContent).toBe(
+      'Saved to the audit log',
     );
 
     const request = backend.expectOne({ method: 'POST', url: `${path}/rotate-managed` });
@@ -508,7 +521,7 @@ describe('SecretDetailsPage', () => {
     async (status, code, title) => {
       const { fixture, page } = await loaded({ ...secret, managed });
       submit(page.querySelector('form.inline-form')!);
-      await confirm(fixture, page);
+      await confirm(fixture, page, 'Rotate upstream');
       backend
         .expectOne(`${path}/rotate-managed`)
         .flush({ code, title }, { status, statusText: 'Refused' });
@@ -521,7 +534,7 @@ describe('SecretDetailsPage', () => {
   it('restores a version after confirmation', async () => {
     const { fixture, page } = await loaded();
     button(page, 'Restore').click();
-    await confirm(fixture, page);
+    await confirm(fixture, page, 'Restore version');
     expect(confirmation(page).textContent).toContain(
       'Restore version 1 as the live value? The current value will be archived first.',
     );
@@ -623,7 +636,7 @@ describe('SecretDetailsPage', () => {
   it('revokes a share after confirmation', async () => {
     const { fixture, page } = await loaded();
     button(page, 'Revoke').click();
-    await confirm(fixture, page);
+    await confirm(fixture, page, 'Revoke access');
     expect(confirmation(page).textContent).toContain(
       "Revoke colleague's access to 'Deployment_key'?",
     );
@@ -640,7 +653,7 @@ describe('SecretDetailsPage', () => {
   it('announces a share that was already gone', async () => {
     const { fixture, page } = await loaded();
     button(page, 'Revoke').click();
-    await confirm(fixture, page);
+    await confirm(fixture, page, 'Revoke access');
     backend
       .expectOne(`${path}/shares/${share.shareId}`)
       .flush(
@@ -656,7 +669,7 @@ describe('SecretDetailsPage', () => {
     const { fixture, page } = await loaded();
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
     button(page, 'Delete').click();
-    await confirm(fixture, page);
+    await confirm(fixture, page, 'Delete secret');
     expect(confirmation(page).textContent).toContain(
       "Delete 'Deployment_key' and its entire version history permanently? This cannot be undone and will be audited.",
     );
@@ -670,7 +683,7 @@ describe('SecretDetailsPage', () => {
   it('announces a refused change by its title', async () => {
     const { fixture, page } = await loaded();
     button(page, 'Delete').click();
-    await confirm(fixture, page);
+    await confirm(fixture, page, 'Delete secret');
     backend.expectOne({ method: 'DELETE', url: path }).flush(
       {
         code: 'not_permitted',

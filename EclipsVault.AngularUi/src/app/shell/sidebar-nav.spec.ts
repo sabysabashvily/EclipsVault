@@ -21,8 +21,13 @@ describe('SidebarNav', () => {
     return { group: page.querySelector('details')!, link };
   }
 
-  it('keeps Secrets active on its Sharing tabs and New secret page', async () => {
-    for (const url of ['/Secrets/SharedWithMe', '/Secrets/SharedByMe', '/Secrets/Create']) {
+  it('keeps Secrets active on its Sharing tabs, New secret and detail pages', async () => {
+    for (const url of [
+      '/Secrets/SharedWithMe',
+      '/Secrets/SharedByMe',
+      '/Secrets/Create',
+      '/Secrets/Details/3f2504e0-4f89-11d3-9a0c-0305e82c3301',
+    ]) {
       TestBed.resetTestingModule();
       const { link } = await renderAt(url);
       expect(link('Secrets').classList).toContain('active');

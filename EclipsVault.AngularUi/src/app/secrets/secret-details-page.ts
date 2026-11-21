@@ -15,7 +15,8 @@ import { Title } from '@angular/platform-browser';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Observable } from 'rxjs';
 import { AdministratorWrites } from '../shared/administrator-writes';
-import { ConfirmationDialog } from '../shared/confirmation-dialog';
+import { ConfirmationDialog, DecisionOptions } from '../shared/confirmation-dialog';
+import { expiry } from '../shared/expiry';
 import { relativeTime } from '../shared/relative-time';
 import { StatusLine } from '../shared/status-line';
 import { StepUpDialog } from '../shared/step-up-dialog';
@@ -29,10 +30,10 @@ type Revealed = components['schemas']['RevealedValueResponse'];
 /** The form whose fields a refusal's field messages belong to. */
 type Form = 'rotate' | 'managed' | 'share';
 
-/** How long Legacy's Copy button read "Copied ✓", in milliseconds. */
+/** How long the Copy button reads "Copied ✓", in milliseconds. */
 const copiedFor = 1_600;
 
-/** One secret: its value, metadata, sharing and version history, as Legacy's Details page. */
+/** One secret: its value, metadata, sharing and version history. */
 @Component({
   selector: 'app-secret-details-page',
   imports: [DatePipe, RouterLink, StatusLine, StepUpDialog, ConfirmationDialog],
@@ -74,6 +75,19 @@ export class SecretDetailsPage {
   protected readonly managedRenewDays = signal('');
   protected readonly recipient = signal('');
   protected readonly shareDays = signal('0');
+  protected readonly secretExpiry = computed(() =>
+    this.details.hasValue() ? expiry(this.details.value().expiresAtUtc, new Date()) : null,
+  );
+  protected readonly expiryVerdict = computed<{ label: string; tone: 'danger' | 'warn' } | null>(
+    () => {
+      const current = this.secretExpiry();
+      if (!current?.tone) return null;
+      return {
+        label: current.text.startsWith('Expired') ? 'Expired' : 'Expiring soon',
+        tone: current.tone,
+      };
+    },
+  );
 
   constructor() {
     const navigation = this.router.currentNavigation();
@@ -121,7 +135,7 @@ export class SecretDetailsPage {
     return this.sentFrom() === form ? (this.writes.errors()[field]?.[0] ?? '') : '';
   }
 
-  /** Legacy's licence note under a managed secret; none when licensed or the evaluation is unreadable. */
+  /** Display-only licence note under a managed secret; none when licensed or the evaluation is unreadable. */
   protected licenceNote(managed: Managed): 'none' | 'not-started' | 'evaluating' | 'ended' {
     if (managed.licensed || !managed.evaluationKnown) return 'none';
     if (managed.evaluationDaysRemaining === null) return 'not-started';
@@ -137,10 +151,15 @@ export class SecretDetailsPage {
     return `archived ${relativeTime(version.archivedAtUtc, new Date())} · by ${version.archivedBy}`;
   }
 
+  protected shareExpiry(expiresAtUtc: string | null) {
+    return expiry(expiresAtUtc, new Date());
+  }
+
   protected reveal(opener: HTMLButtonElement, version: Version | null = null): void {
     const path = version
       ? `${this.path()}/versions/${version.versionId}/reveal`
       : `${this.path()}/reveal`;
+    const subject = version ? `version ${version.versionNumber}` : 'the current value';
     this.send(
       opener,
       () => this.http.post<Revealed>(path, null),
@@ -148,6 +167,8 @@ export class SecretDetailsPage {
         this.copyLabel.set('Copy');
         this.revealed.set(revealed);
       },
+      null,
+      `Confirming decrypts ${subject} for this response only and records the reveal in the audit log.`,
     );
   }
 
@@ -165,6 +186,7 @@ export class SecretDetailsPage {
 
   protected askRotate(event: Event, rotation: HTMLDetailsElement, opener: HTMLButtonElement): void {
     event.preventDefault();
+    const name = this.details.value()?.name ?? '';
     // An empty renewal keeps the current expiry; the browser refuses a fractional or out-of-range one.
     const renewTtlDays = this.renewDays().trim() === '' ? null : Number(this.renewDays());
     const request: components['schemas']['RotateSecretUiRequest'] = {
@@ -173,7 +195,17 @@ export class SecretDetailsPage {
       renewTtlDays,
     };
     this.ask(
-      `Rotate '${this.details.value()?.name}'? The current value is archived to history and replaced.`,
+      `Rotate '${name}'? The current value is archived to history and replaced.`,
+      {
+        title: 'Rotate secret value?',
+        confirm: 'Rotate secret',
+        tone: 'primary',
+        facts: [
+          ['Secret', name],
+          ['Renewal', renewTtlDays === null ? 'Keep current expiry' : `${renewTtlDays} days`],
+        ],
+        note: 'Saved to the audit log',
+      },
       () =>
         this.send(
           opener,
@@ -196,11 +228,25 @@ export class SecretDetailsPage {
 
   protected askRotateManaged(event: Event, managed: Managed, opener: HTMLButtonElement): void {
     event.preventDefault();
+    const name = this.details.value()?.name ?? '';
+    const renewTtlDays =
+      this.managedRenewDays().trim() === '' ? null : Number(this.managedRenewDays());
     const request: components['schemas']['RotateManagedUiRequest'] = {
-      renewTtlDays: this.managedRenewDays().trim() === '' ? null : Number(this.managedRenewDays()),
+      renewTtlDays,
     };
     this.ask(
       `Rotate the real password of '${managed.principal}'? Anything still using the old password stops working immediately.`,
+      {
+        title: 'Rotate upstream password?',
+        confirm: 'Rotate upstream',
+        tone: 'danger',
+        facts: [
+          ['Secret', name],
+          ['Principal', managed.principal],
+          ['Renewal', renewTtlDays === null ? 'Keep current expiry' : `${renewTtlDays} days`],
+        ],
+        note: 'Saved to the audit log',
+      },
       () =>
         this.send(
           opener,
@@ -217,8 +263,19 @@ export class SecretDetailsPage {
   }
 
   protected askRestore(version: Version, opener: HTMLButtonElement): void {
+    const name = this.details.value()?.name ?? '';
     this.ask(
       `Restore version ${version.versionNumber} as the live value? The current value will be archived first.`,
+      {
+        title: `Restore version ${version.versionNumber}?`,
+        confirm: 'Restore version',
+        tone: 'primary',
+        facts: [
+          ['Secret', name],
+          ['Version', `Version ${version.versionNumber}`],
+        ],
+        note: 'Saved to the audit log',
+      },
       () =>
         this.send(
           opener,
@@ -248,22 +305,49 @@ export class SecretDetailsPage {
         this.changed(`Access to '${name}' was shared with ${request.recipient}.`);
       },
       'share',
+      `Confirming grants ${request.recipient} read access to '${name}' and records the share in the audit log.`,
     );
   }
 
   protected askRevoke(share: Share, opener: HTMLButtonElement): void {
-    this.ask(`Revoke ${share.recipient}'s access to '${this.details.value()?.name}'?`, () =>
-      this.send(
-        opener,
-        () => this.http.delete<void>(`${this.path()}/shares/${share.shareId}`),
-        () => this.changed('Access revoked.'),
-      ),
+    const name = this.details.value()?.name ?? '';
+    this.ask(
+      `Revoke ${share.recipient}'s access to '${name}'?`,
+      {
+        title: `Revoke ${share.recipient}'s access?`,
+        confirm: 'Revoke access',
+        tone: 'danger',
+        facts: [
+          ['Secret', name],
+          ['Recipient', share.recipient],
+        ],
+        note: 'Saved to the audit log',
+      },
+      () =>
+        this.send(
+          opener,
+          () => this.http.delete<void>(`${this.path()}/shares/${share.shareId}`),
+          () => this.changed('Access revoked.'),
+        ),
     );
   }
 
   protected askDelete(opener: HTMLButtonElement): void {
+    const secret = this.details.value();
+    const name = secret?.name ?? '';
+    const versions = secret?.versions.length ?? 0;
     this.ask(
-      `Delete '${this.details.value()?.name}' and its entire version history permanently? This cannot be undone and will be audited.`,
+      `Delete '${name}' and its entire version history permanently? This cannot be undone and will be audited.`,
+      {
+        title: 'Delete secret permanently?',
+        confirm: 'Delete secret',
+        tone: 'danger',
+        facts: [
+          ['Secret', name],
+          ['Versions', `${versions} archived`],
+        ],
+        note: 'Saved to the audit log',
+      },
       () =>
         this.send(
           opener,
@@ -286,10 +370,10 @@ export class SecretDetailsPage {
     if (this.opener) this.writes.verified(verified, this.opener);
   }
 
-  private ask(message: string, action: () => void): void {
+  private ask(message: string, options: DecisionOptions, action: () => void): void {
     if (this.locked()) return;
     this.awaitingConfirmation = action;
-    this.confirmation().open(message);
+    this.confirmation().open(message, options);
   }
 
   /** Sends a request once, and once more after fresh proof when the server asks for it. */
@@ -298,13 +382,14 @@ export class SecretDetailsPage {
     request: () => Observable<T>,
     saved: (value: T) => void,
     form: Form | null = null,
+    stepUpDetail = '',
   ): void {
     this.opener = opener;
     this.sentFrom.set(form);
-    this.writes.send(request, saved, (proof) => this.stepUp().open(proof));
+    this.writes.send(request, saved, (proof) => this.stepUp().open(proof, stepUpDetail));
   }
 
-  /** Legacy showed the page afresh after a change, so a revealed value does not outlive it. */
+  /** A revealed value never outlives a change to the secret. */
   private changed(message: string): void {
     this.revealed.set(null);
     this.writes.status.set({ message, error: false });
