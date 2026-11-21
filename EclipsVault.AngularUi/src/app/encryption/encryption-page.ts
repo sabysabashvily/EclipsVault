@@ -51,7 +51,7 @@ export function roleOf(
     ? {
         tone: 'warn',
         label: 'Retired',
-        role: 'Loaded so its items can be read until they are re-wrapped',
+        role: 'Loaded so its items can be read · re-wrap moves them to the current key',
       }
     : {
         tone: 'muted',

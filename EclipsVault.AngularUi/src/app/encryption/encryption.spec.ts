@@ -307,7 +307,7 @@ describe('Encryption keys', () => {
       ['kek-1a2b3c4d', 'Wraps every new secret', 'Current', '12', '3'],
       [
         'kek-5e6f7a8b',
-        'Loaded so its items can be read until they are re-wrapped',
+        'Loaded so its items can be read · re-wrap moves them to the current key',
         'Retired',
         '4',
         '1',
