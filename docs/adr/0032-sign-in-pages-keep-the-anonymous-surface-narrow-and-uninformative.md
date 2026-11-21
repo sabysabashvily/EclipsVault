@@ -14,6 +14,11 @@ Angular sign-in pages are reached and what they may reveal.
   `/Account/RecoveryCode` and `/Account/EnrollTotp` are served only with the pending sign-in cookie.
   The calls under `/api/ui/auth/` are the UI API's only anonymous or pending-sign-in actions; the
   allowlist tests name each one. Sign-in pages never call `/api/ui/me`.
+- **Login's forms may leave only for the identity provider.** `form-action` also governs where a
+  form submission redirects, and single sign-on's POST to `/Account/ExternalLogin` answers with a
+  redirect to the identity provider. While SSO is enabled, Login's policy adds the configured
+  authority's origin, its scheme, host and port taken from configuration, never from the request.
+  Every other document keeps `form-action 'self'`.
 - **Antiforgery before a session.** Serving an anonymous sign-in page sets an anonymous request token;
   every call that changes who the browser is (password, second factor, sign-out) issues a fresh one
   for the new identity (ADR-0004).
