@@ -44,6 +44,10 @@ high-sensitivity secret, needed no fresh proof, though revealing a secret of the
   a lease never ask (ADR-0028).
 - **A taken name is a conflict.** Secret names stay unique across the vault; creating one with a taken
   name answers `409 name_taken` and changes nothing.
+- **A lease's note is a fixed sentence per cause.** When a revoke or the sweep cannot destroy a dynamic
+  credential, the lease is closed as RevocationFailed with a fixed sentence; the backend's own error,
+  which can quote a statement or name the target, goes only to the log. A note stored before this rule
+  is answered as the fixed sentence.
 - **Licence lookups on page views fail open.** A failed evaluation-window read leaves the page's licence
   note out and logs a warning; it never stops a page or a reveal, and viewing never starts a window.
 
@@ -53,6 +57,8 @@ high-sensitivity secret, needed no fresh proof, though revealing a secret of the
   or whether it is a decoy.
 - The Denied page names the secret's project and sensitivity to anyone holding its id, never its name,
   so the person knows what to fix and whom to ask.
+- Someone holding a dynamic role's id learns whether it exists, and its name when refused
+  (`404 role_not_found` against `403 access_denied`), as the Legacy page told them.
 - The trail grows by one `SecretAccessDenied` row per refused attempt. This is the record PCI DSS v4.0
   requirement 10.2.1.4 asks for.
 - Share recipients who relied on rotating a shared secret must ask a project member or administrator.
@@ -67,6 +73,15 @@ high-sensitivity secret, needed no fresh proof, though revealing a secret of the
   credential no longer works meanwhile; only the display lags. A lease issued after 7c
   lasts at most 1440 minutes, whatever the role's default or maximum; leases issued before it keep
   their own expiry, which can be longer.
+- Two closes of one lease at once (its holder and an administrator, a revoke and the sweep, or a second
+  click after `503 revoked_unrecorded`) each run the revocation. If the role's recipe cannot run twice,
+  the later one fails and records RevocationFailed, with a critical row, for a credential the first
+  already destroyed. This raises a false alarm; it never reports a live credential as destroyed.
+- If a lease's insert commits but the acknowledgement is lost, the vault treats the lease as unrecorded
+  and runs its cleanup. If the cleanup removes the login, the person gets `503 audit_unavailable`; if it
+  cannot, a critical log line names the role and login, as for a failed mint. Either way the trail shows
+  a credential issued that no one received, and the lease stays Active until the sweep revokes it again,
+  as above.
 - If minting fails part-way and the cleanup that follows also fails, a login the vault never recorded
   may remain on the target. The person is told the cleanup is unconfirmed, a critical log line names
   the role and login, and an operator checks the target (`docs/INCIDENT_RESPONSE.md`). Its password was

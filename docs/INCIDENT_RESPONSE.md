@@ -57,6 +57,31 @@ warning *out*. Before the first real sale, stand up **one** of:
 Record who has bought a license (the MoR gives you buyer emails) so a Critical advisory can reach
 every current operator directly, not just those who happen to check the repo.
 
+## A minted login may remain on the target (operators)
+
+When minting a dynamic credential fails part-way and the vault's cleanup also fails, the person is told
+"…An administrator must check the target." and the vault logs, at critical level:
+
+```text
+A login minted for dynamic role <role> may remain on the target: <login>. Check the target and drop it (docs/INCIDENT_RESPONSE.md)
+```
+
+The same line follows a `503` when a credential was minted, its lease could not be recorded, and
+removing it failed. The vault has no lease for that login, so its sweep will never remove it. Its
+password was never shown or stored, so no one was handed a working credential, but drop it anyway:
+
+1. Connect to the target named by `DynamicSecrets:TargetConnectionString` with a login that holds
+   `ALTER ANY LOGIN`.
+2. Confirm the login exists. Minted logins are named `ev_<role>_<10 characters>`:
+   `SELECT name, create_date FROM sys.server_principals WHERE name = N'<login>';`
+3. Run the role's revocation statements with `{{name}}` replaced by the login, or, for the seeded
+   recipes, in the target database:
+   `DROP USER IF EXISTS [<login>]; IF EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'<login>') DROP LOGIN [<login>];`
+   `DROP LOGIN` fails while the login has open sessions; end them first with `KILL <session_id>`
+   (`SELECT session_id FROM sys.dm_exec_sessions WHERE login_name = N'<login>';`).
+4. Find out why the revocation statements failed (the vault logged the target's error type and number)
+   before the role issues again.
+
 ## Your own trust roots (do not skip in a rush)
 
 Release images are signed **keyless** (Sigstore) by the GitHub Actions release workflow's identity, so

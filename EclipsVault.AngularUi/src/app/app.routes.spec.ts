@@ -13,6 +13,7 @@ import { NewUserPage } from './users/new-user-page';
 import { EditUserPage } from './users/edit-user-page';
 import { UsersPage } from './users/users-page';
 import { AuditPage } from './audit/audit-page';
+import { DynamicSecretsPage } from './dynamic-secrets/dynamic-secrets-page';
 import { EncryptionPage } from './encryption/encryption-page';
 import { NetworksPage } from './networks/networks-page';
 import { OverviewPage } from './overview/overview-page';
@@ -114,6 +115,20 @@ describe('routes', () => {
     expect(await route?.loadComponent?.()).toBe(AuditPage);
   });
   it.each(['/Audit/Verify', '/Audit/CreateCheckpoint', '/Audit/Export'])(
+    'leaves the retired %s unmatched',
+    (url) => {
+      expect(routeFor(url)).toBeUndefined();
+    },
+  );
+  it.each(['/DynamicSecrets', '/dYnAmIcSeCrEtS/iNdEx'])(
+    'opens Dynamic secrets at %s',
+    async (url) => {
+      const route = routeFor(url);
+      expect(route?.title).toBe('Dynamic secrets — EclipsVault');
+      expect(await route?.loadComponent?.()).toBe(DynamicSecretsPage);
+    },
+  );
+  it.each(['/DynamicSecrets/Issue', '/DynamicSecrets/Revoke', '/DynamicSecrets/Index/extra'])(
     'leaves the retired %s unmatched',
     (url) => {
       expect(routeFor(url)).toBeUndefined();
