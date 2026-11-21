@@ -49,6 +49,7 @@ export default defineConfig({
             '**/overview.spec.ts',
             '**/secrets.spec.ts',
             '**/break-glass.spec.ts',
+            '**/sso.spec.ts',
           ],
           use: { ...devices['Desktop Chrome'] },
         },
@@ -85,6 +86,14 @@ export default defineConfig({
           use: { ...devices['Desktop Chrome'] },
         },
         {
+          // Needs the administrator session that sign-in saves. It creates the identity provider's
+          // vault accounts before Users ends that session.
+          name: 'sso',
+          testMatch: '**/sso.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
           // Needs the administrator session that sign-in saves, and makes its own Standard account.
           name: 'overview',
           testMatch: '**/overview.spec.ts',
@@ -114,11 +123,19 @@ export default defineConfig({
         },
         {
           // Users ends with the administrator's own Force logout, which ends the saved session that
-          // Networks, Notifications, License, Encryption keys, the Audit log, the Overview, Secrets and
-          // break-glass reuse, so they run first.
+          // Networks, Notifications, License, Encryption keys, the Audit log, the Overview, Secrets,
+          // break-glass and single sign-on reuse, so they run first.
           name: 'users',
           testMatch: '**/users.spec.ts',
-          dependencies: ['license', 'encryption', 'audit', 'overview', 'secrets', 'break-glass'],
+          dependencies: [
+            'license',
+            'encryption',
+            'audit',
+            'overview',
+            'secrets',
+            'break-glass',
+            'sso',
+          ],
           use: { ...devices['Desktop Chrome'] },
         },
         {
