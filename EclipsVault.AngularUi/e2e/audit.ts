@@ -18,9 +18,7 @@ export class AuditLog {
   readonly verifyProofButton;
   constructor(private readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Audit log', exact: true });
-    this.summary = page.getByText(
-      /Immutable, fail-closed trail — showing the latest \d+ entries\./,
-    );
+    this.summary = page.getByText(/Newest first · \d+ entries\./);
     // eslint-disable-next-line playwright/no-raw-locators -- The notice is an unlabelled banner, as in Legacy; the shell's licence notice is one too.
     this.notice = page.locator('app-audit-page .notice');
     // eslint-disable-next-line playwright/no-raw-locators -- Loading has its own status; this is the shared outcome announcer.

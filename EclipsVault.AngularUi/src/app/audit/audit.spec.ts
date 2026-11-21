@@ -228,20 +228,16 @@ describe('Audit log', () => {
 
   it('shows an empty trail with no rows and no checkpoint yet', async () => {
     const { page } = await loaded(empty);
-    expect(text(page.querySelector('.page-sub'))).toBe(
-      'Immutable, fail-closed trail — showing the latest 0 entries.',
-    );
+    expect(text(page.querySelector('.page-sub'))).toBe('Newest first · 0 entries.');
     expect(rows(page)).toEqual([]);
-    expect(text(page.querySelector('.detail-grid dd'))).toBe(
+    expect(text(page.querySelector('.facts dd'))).toBe(
       'none yet — create one to attest the current trail',
     );
   });
 
   it('lists the entries in the order sent, in the Legacy columns, with relative times and UTC tooltips', async () => {
     const { page } = await loaded();
-    expect(text(page.querySelector('.page-sub'))).toBe(
-      'Immutable, fail-closed trail — showing the latest 3 entries.',
-    );
+    expect(text(page.querySelector('.page-sub'))).toBe('Newest first · 3 entries.');
     expect([...page.querySelectorAll('th')].map((cell) => cell.textContent)).toEqual([
       'When (UTC)',
       'Action',
@@ -252,7 +248,7 @@ describe('Audit log', () => {
     ]);
     expect(rows(page)).toEqual([
       [
-        'just now',
+        '2026-11-13 11:59:30 UTC',
         'Audit log viewed',
         'AuditTrail',
         'saba',
@@ -260,21 +256,21 @@ describe('Audit log', () => {
         'Opened the newest 200 entries',
       ],
       [
-        '2h ago',
+        '2026-11-13 09:15:00 UTC',
         'Honey token',
         'FINANCE_DECOY_KEY',
         'mallory',
         '192.0.2.9',
         'Session revoked; source IP range blacklisted',
       ],
-      ['2026-10-01', 'User created', 'User', 'vault-admin', 'internal', ''],
+      ['2026-10-01 08:00:00 UTC', 'User created', 'User', 'vault-admin', 'internal', ''],
     ]);
     expect(
       [...page.querySelectorAll('tbody td:first-child')].map((cell) => cell.getAttribute('title')),
     ).toEqual(['2026-11-13 11:59:30 UTC', '2026-11-13 09:15:00 UTC', '2026-10-01 08:00:00 UTC']);
   });
 
-  it('visual parity: critical rows are highlighted and each action is badged with its tone', async () => {
+  it('marks a critical row and badges each action with its tone', async () => {
     const { page } = await loaded();
     expect(
       [...page.querySelectorAll('tbody tr')].map((row) => row.classList.contains('row-critical')),
@@ -291,9 +287,9 @@ describe('Audit log', () => {
     expect(text(page.querySelector('.panel-header'))).toContain('Attestation');
     expect(text(page.querySelector('.panel-header'))).toContain('key sk-1a2b3c4d');
     expect(text(page.querySelector('.hint'))).toBe(
-      "The hash chain is tamper-evident to anyone with the database. A signed checkpoint goes further: it binds the chain head with an ECDSA signature, so an outside auditor can prove the trail hasn't been rewritten using only the public key — even against someone who deleted rows and recomputed every hash. Export a bundle and verify it offline with the EclipsVault.AuditVerifier tool.",
+      'Anyone with the database can recompute the hash chain. A signed checkpoint binds the chain head, so an outside auditor can prove the trail with only the public key — even if rows were deleted and the hashes rewritten. Export a bundle and verify it offline with the EclipsVault.AuditVerifier tool.',
     );
-    expect(text(page.querySelector('.detail-grid'))).toBe(
+    expect(text(page.querySelector('.facts'))).toBe(
       'Latest checkpoint sequence 41 · 2026-11-12 18:04 UTC · sk-1a2b3c4d',
     );
   });
@@ -325,22 +321,20 @@ describe('Audit log', () => {
 
   it('shows the anchored notice after Verify without reading the entries again', async () => {
     const { page } = await verified(anchored);
-    expect(text(notice(page))).toContain('✓ Hash chain intact.');
+    expect(text(notice(page))).toContain('Hash chain intact');
     expect(text(notice(page))).toContain(anchored.message);
     backend.expectNone(path);
   });
 
   it('shows the warning notice when no checkpoint covers the chain', async () => {
     const { page } = await verified(unanchored);
-    expect(text(notice(page))).toContain(
-      '✓ Hash chain intact, but no signed checkpoint covers it yet.',
-    );
+    expect(text(notice(page))).toContain('Hash chain intact, with no signed checkpoint yet');
     expect(text(notice(page))).toContain(unanchored.message);
   });
 
   it('shows the critical notice with the reason, the first broken entry and the unchecked checkpoints', async () => {
     const { page } = await verified(tampered);
-    expect(text(notice(page))).toContain('✗ Tampering detected.');
+    expect(text(notice(page))).toContain('Tampering detected');
     expect(text(notice(page))).toContain(tampered.message);
   });
 
@@ -375,7 +369,7 @@ describe('Audit log', () => {
     expect(status(page, 'status')).toBe(
       'Signed checkpoint created at sequence 57 with key sk-1a2b3c4d.',
     );
-    expect(text(page.querySelector('.detail-grid dd'))).toBe(
+    expect(text(page.querySelector('.facts dd'))).toBe(
       'sequence 57 · 2026-11-13 11:59 UTC · sk-1a2b3c4d',
     );
     expect(button(page, 'Verify integrity').disabled).toBe(false);
@@ -393,7 +387,7 @@ describe('Audit log', () => {
       .flush({ status: code, code: name, title }, { status: code, statusText: 'Refused' });
     await alerted(fixture, title);
     expect(status(page, 'alert')).toBe(title);
-    expect(text(page.querySelector('.detail-grid dd'))).toContain('sequence 41');
+    expect(text(page.querySelector('.facts dd'))).toContain('sequence 41');
   });
 
   it('a response that never arrives blocks further writes until the page is reloaded', async () => {

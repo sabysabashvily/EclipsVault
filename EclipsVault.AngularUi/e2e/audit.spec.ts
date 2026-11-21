@@ -55,7 +55,7 @@ test('Verify is anchored by the checkpoint just created', async ({ page }) => {
   );
   await expect(audit.latestCheckpoint).toContainText(`sequence ${sequence} ·`);
   await audit.verify.click();
-  await expect(audit.notice).toContainText('✓ Hash chain intact.');
+  await expect(audit.notice).toContainText('Hash chain intact');
   await expect(audit.notice).toContainText(`The signed checkpoint at sequence ${sequence} matches`);
 });
 
@@ -147,7 +147,7 @@ for (const shell of ['/DynamicSecrets', '/Access'] as const) {
 }
 
 for (const theme of ['dark', 'light'] as const) {
-  test(`visual parity: the Audit log in ${theme} appearance`, async ({ page }, info) => {
+  test(`the Audit log lists entries in ${theme} appearance`, async ({ page }, info) => {
     await page.context().addCookies(await savedAdministratorCookies());
     const audit = new AuditLog(page);
     await audit.open();
