@@ -24,7 +24,7 @@ export class Networks {
     this.trustBadge = this.currentAddress.getByText(/^(Trusted|Not trusted)$/);
     this.range = page.getByRole('textbox', { name: 'IP or CIDR', exact: true });
     this.label = page.getByRole('textbox', { name: 'Label', exact: true });
-    this.trust = page.getByRole('button', { name: 'Trust', exact: true });
+    this.trust = page.getByRole('button', { name: 'Add trusted network', exact: true });
     this.confirmation = page.getByRole('alertdialog');
     this.keepBlock = this.confirmation.getByRole('button', { name: 'Cancel', exact: true });
     this.stepUp = page.getByRole('dialog', { name: "Confirm it's you" });
@@ -42,11 +42,14 @@ export class Networks {
   remove(range: string) {
     return this.row(range).getByRole('button', { name: 'Remove', exact: true });
   }
+  block(range: string) {
+    return this.page.getByRole('listitem').filter({ hasText: range });
+  }
   unblock(range: string) {
-    return this.row(range).getByRole('button', { name: 'Unblock', exact: true });
+    return this.block(range).getByRole('button', { name: 'Lift block', exact: true });
   }
   blockedSince(range: string) {
-    return this.row(range).getByRole('cell').nth(2);
+    return this.block(range).getByText(/^\d{2}-\d{2} \d{2}:\d{2}$/);
   }
   async fromDashboard(): Promise<void> {
     await this.page.goto('/');

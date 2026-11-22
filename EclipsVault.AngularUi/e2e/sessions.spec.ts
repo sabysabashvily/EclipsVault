@@ -169,21 +169,21 @@ for (const theme of ['dark', 'light']) {
       {
         device: 'Chrome on macOS',
         badges: ['This device'],
-        meta: '198.51.100.1 · signed in 2h ago · last active 1h ago',
-        action: 'Current',
+        meta: '198.51.100.1 · signed in 2h ago · last seen 1h ago',
+        action: '',
         tooltip: '2026-10-20 11:00:00 UTC',
       },
       {
         device: 'Safari on iOS',
         badges: [],
-        meta: '198.51.100.2 · signed in 3h ago · last active 2h ago',
+        meta: '198.51.100.2 · signed in 3h ago · last seen 2h ago',
         action: 'Sign out',
         tooltip: '2026-10-20 10:00:00 UTC',
       },
       {
         device: 'curl',
         badges: [],
-        meta: '198.51.100.3 · signed in 1d ago · last active 3h ago',
+        meta: '198.51.100.3 · signed in 1d ago · last seen 3h ago',
         action: 'Sign out',
         tooltip: '2026-10-20 09:00:00 UTC',
       },
@@ -439,6 +439,21 @@ test('signing out all other sessions ends both other browser contexts and announ
   expect((await second.request.get('/api/ui/me')).status()).toBe(401);
   expect((await page.request.get('/api/ui/me')).status()).toBe(200);
 });
+
+for (const width of [300, 2000]) {
+  test(`Signed-in devices does not scroll sideways at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.route('**/api/ui/sessions', (route) =>
+      route.fulfill({ json: { sessions: [phone, current, terminal] } }),
+    );
+    const devices = await openOwner(page);
+
+    await expect(devices.device('Chrome on macOS')).toBeVisible();
+    await expect(devices.rows.first()).toContainText('This device');
+    await expect(devices.signOutOthers).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  });
+}
 
 test('signed out, device bookmarks return through sign-in', async ({ page }) => {
   await page.goto('/Sessions');

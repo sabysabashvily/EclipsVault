@@ -2579,13 +2579,51 @@ ol.steps > li::before {
 }
 
 /* ---- Signed-in devices ------------------------------------------------------- */
-.feed-item.session-current .feed-icon {
-  color: var(--ok);
-  border-color: transparent;
-  background: var(--ok-soft);
+/* This device leads the list; the others wrap their sign-out onto a full row when the card is narrow. */
+.device-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.current-pill {
-  font-size: 0.78rem;
+.device-list > li {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.device-list > li:first-child {
+  padding-top: 0;
+}
+.device-list > li:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.device-name {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.device-meta {
+  margin: 0.2rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+.device-list .button {
+  justify-self: end;
+}
+.attention-icon.tone-ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+@media (max-width: 560px) {
+  .device-list > li {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+  .device-list .button {
+    grid-column: 1 / -1;
+  }
 }
 
 /* Status stays in the page until another action or navigation replaces it. */
@@ -3092,6 +3130,7 @@ details.rotate > summary::-webkit-details-marker {
 .current-ip-value code {
   font-size: 1.3rem;
   font-weight: 500;
+  overflow-wrap: anywhere;
 }
 .current-ip p {
   margin: 0.35rem 0 0;
@@ -3121,6 +3160,7 @@ details.rotate > summary::-webkit-details-marker {
   padding: 0.4rem 0;
   border-bottom: 1px solid var(--border);
   color: var(--text-muted);
+  overflow-wrap: anywhere;
 }
 .cidr-list li:last-child {
   border-bottom: none;
@@ -3374,6 +3414,49 @@ fieldset {
   .feed-action {
     margin-left: auto;
   }
+}
+
+/* ---- Notifications -------------------------------------------------- */
+/* A failed delivery says why beside its pill; the reason wraps inside the scrolling table. */
+.outbox-error {
+  display: block;
+  max-width: 18rem;
+  margin-top: 0.2rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+/* ---- Service accounts -------------------------------------------------- */
+/* The one-time key: its ends stay readable, and Copy is the way to take the whole value. */
+.issued-key {
+  margin-bottom: 1.25rem;
+  padding: 1.1rem 1.3rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+}
+.issued-key-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.issued-key-value {
+  display: block;
+  margin: 0.8rem 0;
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+/* A project scope can be 64 characters with no space; its chip wraps rather than widening the dialog. */
+.issued-key-scope li {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 @media (prefers-reduced-motion: reduce) {

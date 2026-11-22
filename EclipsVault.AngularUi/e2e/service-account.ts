@@ -8,6 +8,7 @@ export class ServiceAccount {
   readonly metadataOnly;
   readonly allowedRanges;
   readonly issue;
+  readonly confirmIssue;
   readonly token;
   readonly copy;
   readonly back;
@@ -15,10 +16,10 @@ export class ServiceAccount {
   readonly disable;
   readonly remove;
   readonly revoke;
+  readonly metadataOnlyKey;
   readonly confirmation;
   readonly stepUp;
   readonly status;
-  readonly scope;
   constructor(
     private readonly page: Page,
     name: string,
@@ -32,6 +33,9 @@ export class ServiceAccount {
     });
     this.allowedRanges = page.getByLabel('Allowed source ranges', { exact: false });
     this.issue = page.getByRole('button', { name: 'Issue new key', exact: true });
+    this.confirmIssue = page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: 'Issue key', exact: true });
     this.token = page.getByLabel('New API key', { exact: true });
     this.copy = page.getByRole('button', { name: 'Copy', exact: true });
     this.back = page.getByRole('link', { name: 'Back', exact: true });
@@ -39,9 +43,7 @@ export class ServiceAccount {
     this.disable = page.getByRole('button', { name: 'Disable', exact: true });
     this.remove = page.getByRole('button', { name: 'Delete', exact: true });
     this.revoke = page.getByRole('button', { name: 'Revoke', exact: true });
-    this.scope = page
-      .getByRole('cell')
-      .filter({ has: page.getByText('metadata-only', { exact: true }) });
+    this.metadataOnlyKey = page.getByRole('row').filter({ hasText: 'metadata-only' });
     this.confirmation = page.getByRole('alertdialog');
     this.stepUp = page.getByRole('dialog', { name: "Confirm it's you" });
     // eslint-disable-next-line playwright/no-raw-locators -- Loading has its own status; this is the shared outcome announcer.
@@ -79,9 +81,7 @@ export class ServiceAccount {
       throw new Error('Access did not return a source address');
     return body.sourceIp;
   }
-  async copiedVisibleKey(): Promise<boolean> {
-    return this.token.evaluate(
-      async (element) => element.textContent === (await navigator.clipboard.readText()),
-    );
+  async clipboard(): Promise<string> {
+    return this.page.evaluate(() => navigator.clipboard.readText());
   }
 }

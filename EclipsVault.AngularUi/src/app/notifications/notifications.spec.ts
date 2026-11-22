@@ -92,13 +92,13 @@ it.each([
     delivery: 'off',
     tone: 'warn',
     notice:
-      '⚠ Delivery is off. Notifications are recorded as suppressed and never sent. Set Email:Enabled=true to dispatch them.',
+      'Delivery is off. Notifications are recorded as suppressed and never sent. Set Email:Enabled=true to dispatch them.',
   },
   {
     delivery: 'smtp',
     tone: 'ok',
     notice:
-      '✓ Delivering via SMTP → mail.example.test:2525. Composed emails are sent to your mail server and recorded below.',
+      'Delivering via SMTP to mail.example.test:2525. Composed emails are sent to your mail server and recorded below.',
   },
   {
     delivery: 'log',
@@ -139,16 +139,14 @@ it('lists each delivery outcome with UTC time and the body and failure tooltips'
     'Your account is ready',
     'UserProvisioned',
     'Smtp',
-    'Sent',
+    'sent',
   ]);
   expect(page.querySelector('td[title="Welcome, Reader"]')?.textContent).toBe(
     'Your account is ready',
   );
-  expect(page.querySelector('.tone-danger')?.textContent).toBe('Failed');
-  expect(
-    page.querySelector('span[title="Mail server refused delivery"]')?.textContent?.trim(),
-  ).toBe('⚠');
-  expect(page.textContent).toContain('Suppressed');
+  expect(page.querySelector('.tone-danger')?.textContent?.trim()).toBe('failed');
+  expect(page.textContent).toContain('Mail server refused delivery');
+  expect(page.textContent).toContain('suppressed');
 });
 it.each([
   { query: 'READER@', subjects: ['Your account is ready'] },
@@ -158,7 +156,7 @@ it.each([
   { query: 'log', subjects: ['Password changed'] },
   { query: 'FAILED', subjects: ['FINANCE_DECOY_KEY expires'] },
   { query: 'suppressed', subjects: ['Password changed'] },
-  { query: '⚠', subjects: ['FINANCE_DECOY_KEY expires'] },
+  { query: 'refused', subjects: ['FINANCE_DECOY_KEY expires'] },
   { query: 'Welcome', subjects: [] },
 ])('filters the visible row text, as Legacy did, with $query', async ({ query, subjects }) => {
   const { page, fixture } = await loaded();
