@@ -22,7 +22,9 @@ export class ServiceAccountsPage {
     if (!this.accounts.hasValue()) return intro;
     const accounts = this.accounts.value().serviceAccounts;
     if (accounts.length === 0) return intro;
-    const live = accounts.filter((account) => Number(account.activeKeys) > 0).length;
+    const live = accounts.filter(
+      (account) => account.enabled && Number(account.activeKeys) > 0,
+    ).length;
     const label = accounts.length === 1 ? 'service account' : 'service accounts';
     return `${accounts.length} ${label} · ${live} with a live key.`;
   });

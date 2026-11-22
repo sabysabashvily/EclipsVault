@@ -167,7 +167,7 @@ describe('Service accounts list', () => {
       .expectOne('/api/ui/service-accounts')
       .flush({ serviceAccounts: [{ ...details, activeKeys: 2, enabled: false }] });
     await fixture.whenStable();
-    expect(page.textContent).toContain('1 service account · 1 with a live key.');
+    expect(page.textContent).toContain('1 service account · 0 with a live key.');
     expect([...page.querySelectorAll('th')].map((cell) => cell.textContent)).toEqual([
       'Name',
       'Clearance',
@@ -187,6 +187,18 @@ describe('Service accounts list', () => {
     expect(page.querySelector('tbody a')?.getAttribute('href')).toBe(
       `/ServiceAccounts/Details/${id}`,
     );
+  });
+  it('counts a live key only on enabled accounts', async () => {
+    const { page, fixture } = render(ServiceAccountsPage);
+    backend.expectOne('/api/ui/service-accounts').flush({
+      serviceAccounts: [
+        { ...details, serviceAccountId: 'enabled-with-keys', activeKeys: 2, enabled: true },
+        { ...details, serviceAccountId: 'disabled-with-keys', activeKeys: 1, enabled: false },
+        { ...details, serviceAccountId: 'enabled-without-keys', activeKeys: 0, enabled: true },
+      ],
+    });
+    await fixture.whenStable();
+    expect(page.textContent).toContain('3 service accounts · 1 with a live key.');
   });
   it('announces deletion once after returning from Details', async () => {
     const { page, fixture } = render(ServiceAccountsPage);
