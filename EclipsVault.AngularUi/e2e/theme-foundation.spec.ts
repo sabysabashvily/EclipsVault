@@ -350,7 +350,10 @@ test.describe('signed-out sign-in', () => {
           .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
           .toBe(width);
         const fits = await ssoButton.evaluate(
-          (el) => el.scrollWidth <= el.clientWidth + 1 && el.getBoundingClientRect().right <= width,
+          (el, viewportWidth) =>
+            el.scrollWidth <= el.clientWidth + 1 &&
+            el.getBoundingClientRect().right <= viewportWidth,
+          width,
         );
         expect(fits).toBe(true);
       });
