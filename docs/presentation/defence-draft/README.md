@@ -9,8 +9,8 @@ unallocated; the supplied C4 guide contains no timing rule.
 პრეზენტაციის დადასტურებული ზედა ზღვარია 30 წუთი. სლაიდებზე დროის ზუსტი განაწილება
 ჯერ დასაზუსტებელია; მოწოდებული C4 გზამკვლევი ხანგრძლივობას არ განსაზღვრავს.
 
-This folder is a draft for a later rehearsal. It does not record a deployment, a recording, or a
-security guarantee. Nothing in it was produced by launching a vault.
+This folder is the rehearsal draft for the 24 November defence. It records one disposable
+Development walk. It does not record a production deployment or a security guarantee.
 
 ## Read in this order
 
@@ -21,45 +21,39 @@ security guarantee. Nothing in it was produced by launching a vault.
 | [diagrams.md](diagrams.md) | Context, container, Web component, reveal code, deployment |
 | [diagrams.html](diagrams.html) | The same five pictures, rendered, with bilingual captions |
 | [security-flows.md](security-flows.md) | Sign-in, access, reveal, keys, checkpoint, dynamic lease |
-| [demo-setup-reset.md](demo-setup-reset.md) | Disposable Development setup and reset. Not run |
+| [demo-setup-reset.md](demo-setup-reset.md) | Disposable Development setup, the walk, and reset |
+| [rehearsal-checklist.md](rehearsal-checklist.md) | One-page run order for the presenter |
 | [questions.md](questions.md) | Likely questions, with the answer the source supports |
+| [screens/](screens/) | Light-theme captures of the live steps. No secret values |
 
-## Revisions this draft was read from
+## Revision this draft was read from
 
 | Name | Commit | What it is |
 |---|---|---|
-| Owner's stated baseline | `4feec8c9dfa94dd439fca19338692fef30ddc6f6` | `main` as named in the ticket. It is the merge-base of today's `main` and Area 6a. |
-| `origin/main` | `0bb59de1e8f64d1b7d04468c303c1b108dd6f04b` | Current `main` when this draft was written, 10 November 2026, 20:35 Asia/Tbilisi. Two commits after the baseline, both test-only (`6382ade`, then the merge `0bb59de`). |
-| Area 6a, PR #147 | `ab7997e14ba98fd37055e6ca77fab4c6c8aba490` | Branch `area-6a-encryption-keys`, 10 November 2026, 20:28 Asia/Tbilisi. Open, not merged. |
+| `origin/main` | `d576dd93a30bc461183ca7b71c89f038adbff446` | Current `main` when this draft was refreshed, 21 November 2026, 22:42 Asia/Tbilisi. Merge of Area 7b secret details. |
 
-`SecretService.cs`, `AuditCheckpointService.cs`, `Program.cs`, `Dockerfile`, and `docker-compose.yml`
-have no diff between `origin/main` and the Area 6a head. The reveal order below is that shared code.
-Area 6a does change master-key rotation and adds an Angular Encryption keys page; that behaviour is
-not on `main` and is not presented here as current.
+The earlier draft was read at `0bb59de` on 10 November 2026. That note is history. The pictures and
+the flows in this folder describe `d576dd9`.
 
-Graphify was not on `PATH`. It was not rebuilt and was not used.
+## Current, and what is still not this UI
 
-## Current and planned
+**Current** means the code on `origin/main` at `d576dd9`. That includes:
 
-**Current** means the code on `origin/main` at `0bb59de`. Where a fact is also true of the Area 6a
-head, the diagram table says so.
+- master-key rotation in resumable batches, and the Angular Encryption keys page (`KekRotationService`, `EncryptionController`, ADR-0029)
+- checkpoint-boundary verification, atomic checkpoint recording, streamed step-up export, `AuditLogViewed`, `AuditChainVerified`, and one-at-a-time Verify and Export (`AuditChainVerifier`, `AuditCheckpointService`, `AuditController`, ADR-0030)
+- Angular Overview, Secrets, New secret, Secret details, Denied, access requests, and Dynamic secrets, with denials recorded as denials and shares that only read (ADR-0031)
 
-**Planned** means Area 6 part 6b, Audit log. The specification is on the unmerged Area 6a branch, in
-`docs/planning/area-6-audit-and-keys/issues/6b/spec.md` and `docs/adr/0030-the-audit-log-claims-only-what-it-proves.md`
-at `ab7997e`. There is no `area-6b-audit-log` implementation in either revision read here. Until that
-work is verified and merged, these are among the planned changes. All of them are specified,
-not merged:
+Verify still does not prove every deletion. Deleting checkpoints, or changing rows after the latest
+checkpoint signed by the current key, can leave it quiet. See [security-flows.md](security-flows.md).
 
-- checkpoint-boundary verification
-- atomic checkpoint recording
-- streamed step-up export
-- a recorded log view (`AuditLogViewed`)
-- a recorded verification (`AuditChainVerified`)
-- one-at-a-time Verify and Export
+**Still the Razor sign-in pages, on this revision:** `AccountController` and `Views/Account/`
+(password, authenticator, enrollment, recovery, passkey). They are not in `AngularUiRoutes`.
 
-The in-app Verify action re-walks the rows that are present. It does not, by itself, prove that every
-deletion or rewrite is detectable no matter where the latest signed checkpoint sits. See
-[security-flows.md](security-flows.md).
+**No invitation flow** is in this revision's source. A search for an invitation type in the C#
+projects finds none.
+
+The signed-out landing page and the shared Razor layouts also remain. The feature pages named in
+`AngularUiRoutes` are the Angular UI.
 
 ## Old-verifier note, kept
 
@@ -78,21 +72,12 @@ The current verifier's refusal of an unknown format, without calling it tamperin
 `AuditBundleVerifier` together with `AuditBundleSchema` (`V1` and `V2`). The 1.0.0 sentence is the
 README's historical note. This draft did not run that old verifier.
 
-## Checks observed for PR #147
-
-`gh pr view 147` on this drafting session showed the PR open, mergeable, and at head `ab7997e`.
-Every check in `statusCheckRollup` was `SUCCESS`. The latest completion in that payload was the `e2e`
-job at 21:41 Asia/Tbilisi on 10 November 2026 (`2026-11-10T17:41:10Z`). The same call returned no
-pull-request reviews and no issue comments, so this draft does not confirm a Thermos review or a GPT
-re-check. Those remain the owner's merge gates. This documentation change did not re-run that CI.
-
 ## What stays unresolved
 
 - Presentation cap: at most 30 minutes, confirmed by the owner. Detailed slide allocation and
   marking criteria remain unconfirmed. The supplied C4 guide requires context/container diagrams
   and PDF export; it gives no timing rule.
-- The local Georgian diploma: not in this checkout. The story follows the summary in the ticket,
-  `CONTEXT.md`, the ADRs on `main`, and the source named below.
-- No vault was started. Setup, reset, rehearsal, and recording are unchecked.
-- `scripts/check.sh` was not run. This change does not modify the program. `markdownlint` and `vale`
-  were not on `PATH`. The five pictures are rendered with `pele` from `render/`.
+- The local Georgian diploma: not in this checkout. The story follows `CONTEXT.md`, the ADRs on
+  `main`, and the source named in the other files.
+- `scripts/check.sh` was not run. This change does not modify the program.
+- The 1.0.0 verifier binary was not executed. The note in the section above is the repository README's.
