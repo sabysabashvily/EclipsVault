@@ -19,12 +19,16 @@ type InvitationState = Pick<User, 'awaitingActivation' | 'invitationExpiresAtUtc
   status?: User['status'];
 };
 
+// Where "HH:MM" sits in utcTimestamp's "YYYY-MM-DD HH:MM:SS UTC".
+const hourStart = 11;
+const minuteEnd = 16;
+
 /** An account's status pill. An invited account shows its link's state until it is disabled. */
 export function accountStatus(user: InvitationState, now = new Date()): Status {
   const status = user.status ?? 'active';
   if (status === 'disabled' || !user.awaitingActivation) return statuses[status];
   if (!user.invitationExpiresAtUtc) return { label: 'Invitation expired', tone: 'tone-danger' };
-  const time = utcTimestamp(user.invitationExpiresAtUtc).slice(11, 16);
+  const time = utcTimestamp(user.invitationExpiresAtUtc).slice(hourStart, minuteEnd);
   return {
     label: `Invited · expires ${pillDate(user.invitationExpiresAtUtc, now)}, ${time} UTC`,
     tone: 'tone-info',

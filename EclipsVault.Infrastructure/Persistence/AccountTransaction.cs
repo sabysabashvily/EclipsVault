@@ -53,8 +53,7 @@ public sealed class AccountTransaction(EclipsVaultDbContext context, IAuditChain
                 context.ChangeTracker.Clear();
             }
 
-            if (failure is DbUpdateConcurrencyException
-                || (failure is DbUpdateException invited && UniqueIndex.IsViolatedBy(invited, AccountInvitationRepository.OnePerAccountIndex)))
+            if (failure is DbUpdateConcurrencyException)
             {
                 throw new AccountChangedException();
             }
@@ -67,6 +66,12 @@ public sealed class AccountTransaction(EclipsVaultDbContext context, IAuditChain
             if (failure is DbUpdateException duplicate && UserRepository.ViolatesUniqueUsername(duplicate))
             {
                 throw new UsernameTakenException();
+            }
+
+            // Checked after the names: SQL Server's message also quotes the duplicate value, which a username could spell.
+            if (failure is DbUpdateException invited && UniqueIndex.IsViolatedBy(invited, AccountInvitationRepository.OnePerAccountIndex))
+            {
+                throw new AccountChangedException();
             }
 
             if (failure is OperationCanceledException or AccountChangedException or EmailAddressTakenException or UsernameTakenException

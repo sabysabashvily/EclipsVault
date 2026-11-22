@@ -387,3 +387,36 @@ Checks (after the Finding 1 fix): `scripts/check.sh` (restore, Release build, 10
 Reviews (`logs/ticket-181/review-ledger.md`): fresh `security-reviewer` (Claude Opus 5.5 high, `claudeAgent`) approved `0ebfb83` with 1 Nit and 2 Notes; fresh re-check (Claude Opus 5.5 high, `claudeAgent`) approved the Finding 1 fix with no new issues. Left for `#182`: optional server-side refusal of resend/address-replacement on a disabled invited account (ADR-0033 says disabling pauses an invitation).
 
 Restart: ticket 4 (#182) verifies the whole Area 8b part after CI is green on this head and prepares the PR.
+
+## Delivery: 8b ticket 4 (#182)
+
+Started from `2aa15df0`. CI run `45070482900` passed nine of ten jobs, including SQL Server and
+e2e. Its one PostgreSQL failure was a 700 ns difference between the returned and stored invitation
+expiry. `main` still pointed to `6db89e59`, already merged by #181.
+
+- `a4e0efcf` allows 1 ms in both invitation-expiry assertions that compare the response with a
+  database read. `dc7911b4` documents how disabling, re-enabling and address replacement affect a link.
+- `55065836` clears the old link's pending seed even when inspection wins the race with resend or
+  address replacement. A competing first resend now gets `409 account_changed`. The failing probes
+  are in `logs/ticket-182/red-f1.log` and `logs/ticket-182/f2-probe.log`.
+- `28923174` declares the activation inspect call's 400 response, regenerates the Angular API types,
+  and corrects README and ADR-0033. `b4c45604` gives each activation-versus-resend commit order its own test.
+- This commit preserves username and email conflict responses on SQL Server, names the UTC status
+  timestamp offsets, corrects the first-resend test title, and covers `201 not_delivered` on create
+  with a failed SMTP delivery. Opus wrote and verified those changes. Codex completed delivery after
+  the rate limit.
+
+Final source checks passed. `scripts/check.sh` ran 1,087 unit tests. The guarded PostgreSQL integration
+filter passed 289 tests, including the paired provider race and upgrade fixtures. Formatting, both EF
+pending-model checks, agent guardrail tests and all Angular gates passed, including 797 Vitest tests
+and the high-severity npm audit gate. Evidence is in `logs/ticket-182/part-pg-final.log`,
+`part-pg-final-detail.log` and `gates-final.log`.
+
+The whole part received an Opus 5.5 high security review and GPT Sol 6.2 xhigh Standards and Spec
+reviews. The Opus re-check approved F1 and F2 and raised one response-code nit, fixed in this commit.
+The GPT re-check requested changes. Its remaining test and UI decisions are in
+`logs/ticket-182/review-ledger.md` under “Open for the owner”.
+
+Restart with CI on the commit that adds this section. The coordinator pushes the branch and records
+the exact-head results for both databases, the full browser suite and `e2e:verify-guards`. The PR body
+is in `logs/ticket-182/pr-body.md` with `<run id>` pending final CI.

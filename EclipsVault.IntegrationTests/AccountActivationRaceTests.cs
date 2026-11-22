@@ -112,7 +112,7 @@ public abstract class AccountActivationRaceTests(AccountChangeDatabases database
     }
 
     [Fact]
-    public async Task Two_first_resends_of_an_account_without_an_invitation_send_one_and_refuse_the_other()
+    public async Task Two_first_resends_of_an_account_without_an_invitation_commit_one_and_refuse_the_other()
     {
         var (account, _, _) = await SeedInvitedAccountAsync("it-race-first-resends");
         await using (var migrated = databases.NewRequest())

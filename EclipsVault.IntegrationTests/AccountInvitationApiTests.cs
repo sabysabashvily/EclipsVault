@@ -165,6 +165,34 @@ public sealed class AccountInvitationApiTests(InvitationFixture fixture)
     }
 
     [Fact]
+    public async Task Create_commits_first_and_reports_not_delivered_when_smtp_fails()
+    {
+        var admin = await Vault.AdminClientAsync();
+        var options = Vault.Services.GetRequiredService<IOptions<EmailOptions>>().Value;
+        var originalPort = options.Smtp.Port;
+        var before = await AuditTrail.HeadAsync(Vault);
+        options.Smtp.Port = 1;
+        try
+        {
+            var response = await UserAccounts.CreateAsync(admin, "it-inv-create-smtp-fail", email: "create.smtp.fail@example.test");
+
+            Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal("not_delivered", body.RootElement.GetProperty("invitation").GetString());
+        }
+        finally
+        {
+            options.Smtp.Port = originalPort;
+        }
+
+        var created = await ProfileHttp.AccountAsync(Vault, "it-inv-create-smtp-fail");
+        using var verify = Vault.Services.CreateScope();
+        var db = verify.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+        Assert.NotNull(await db.AccountInvitations.AsNoTracking().SingleOrDefaultAsync(row => row.UserId == created.Id));
+        Assert.Contains(await AuditTrail.RowsAfterAsync(Vault, before), row => row.Action == AuditAction.UserCreated);
+    }
+
+    [Fact]
     public async Task Resend_commits_first_and_reports_not_delivered_when_smtp_fails()
     {
         var admin = await Vault.AdminClientAsync();
