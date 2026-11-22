@@ -100,14 +100,14 @@ test('the sidebar on License opens Your data in the Angular UI', async ({ page }
 });
 
 for (const theme of ['dark', 'light'] as const) {
-  test(`visual parity: License in ${theme} appearance`, async ({ page }, info) => {
+  test(`License shows an unlicensed vault in ${theme} appearance`, async ({ page }, info) => {
     await page.context().addCookies(await savedAdministratorCookies());
     const license = new License(page);
     await license.open();
     await license.useTheme(theme);
     // eslint-disable-next-line playwright/no-raw-locators -- The theme is an attribute of the document element.
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-    await expect(license.status).toHaveClass(/tone-muted/);
+    await expect(license.status).toHaveText('Missing');
     await page.screenshot({ path: info.outputPath(`license-${theme}.png`), fullPage: true });
   });
 }

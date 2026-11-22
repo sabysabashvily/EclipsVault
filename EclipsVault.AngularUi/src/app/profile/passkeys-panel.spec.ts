@@ -60,15 +60,15 @@ describe('ProfilePage passkeys', () => {
 
   it('lists each passkey by name with its creation date in UTC', async () => {
     const { panel } = await render();
-    expect(panel.querySelector('.settings-row strong')?.textContent).toBe('Work laptop');
-    expect(panel.querySelector('.settings-row .muted')?.textContent).toBe('Added 1 Mar 2026 UTC');
+    expect(panel.querySelector('.profile-person-name')?.textContent).toBe('Work laptop');
+    expect(panel.querySelector('.profile-people .muted')?.textContent).toBe('Added 1 Mar 2026 UTC');
   });
 
   it('offers no way to rename a passkey', async () => {
     const { panel } = await render();
     expect(
       [...panel.querySelectorAll('button')].map((control) => control.textContent?.trim()),
-    ).toEqual(['Remove', 'Add a passkey']);
+    ).toEqual(['Remove passkey', 'Add a passkey']);
   });
 
   it('adds a passkey under the name frozen before verification', async () => {
@@ -215,10 +215,10 @@ describe('ProfilePage passkeys', () => {
 
   it('deletes a passkey once when verification is submitted twice', async () => {
     const { fixture, panel, changes } = await render();
-    button(panel, 'Remove').click();
-    button(panel, 'Remove').click();
+    button(panel, 'Remove passkey').click();
+    button(panel, 'Remove passkey').click();
     await fixture.whenStable();
-    button(changes, 'Continue').click();
+    button(changes, 'Remove passkey').click();
     backend.expectOne('/api/ui/profile/operations').flush({ ...operation, kind: 'RemovePasskey' });
     await fixture.whenStable();
     fill(changes, 'credential-verification-password', 'Current-Password');
@@ -245,12 +245,15 @@ describe('ProfilePage passkeys', () => {
 
   it('removes a passkey after confirmation and verification', async () => {
     const { fixture, page, panel, changes } = await render();
-    button(panel, 'Remove').click();
+    button(panel, 'Remove passkey').click();
     await fixture.whenStable();
     expect(changes.querySelector('dialog[role=alertdialog]')?.textContent).toContain(
-      'Remove this passkey? You will no longer be able to sign in with it.',
+      'Remove the passkey “Work laptop”?',
     );
-    button(changes, 'Continue').click();
+    expect(changes.querySelector('dialog[role=alertdialog]')?.textContent).toContain(
+      'You will no longer be able to sign in with it.',
+    );
+    button(changes, 'Remove passkey').click();
     const prepare = backend.expectOne('/api/ui/profile/operations');
     expect(prepare.request.body).toEqual({ kind: 'RemovePasskey', passkeyId: laptop.id });
     prepare.flush({ ...operation, kind: 'RemovePasskey' });
@@ -284,7 +287,7 @@ describe('ProfilePage passkeys', () => {
         },
       ],
     });
-    expect(button(panel, 'Remove').disabled).toBe(true);
+    expect(button(panel, 'Remove passkey').disabled).toBe(true);
     expect(panel.textContent).toContain(
       'Another usable sign-in method must remain after this change.',
     );
@@ -292,9 +295,9 @@ describe('ProfilePage passkeys', () => {
 
   it('shows the server refusal of a stale last-key removal and rereads the passkeys', async () => {
     const { fixture, page, panel, changes } = await render();
-    button(panel, 'Remove').click();
+    button(panel, 'Remove passkey').click();
     await fixture.whenStable();
-    button(changes, 'Continue').click();
+    button(changes, 'Remove passkey').click();
     backend.expectOne('/api/ui/profile/operations').flush({ ...operation, kind: 'RemovePasskey' });
     await verify(fixture, changes);
     backend.expectOne(`/api/ui/profile/passkeys/${laptop.id}`).flush(
@@ -319,7 +322,7 @@ describe('ProfilePage passkeys', () => {
     expect(page.querySelector('[role=alert]')?.textContent).toContain(
       'Removing your last passkey needs another way to sign in that keeps working afterwards.',
     );
-    expect(button(panel, 'Remove').disabled).toBe(true);
+    expect(button(panel, 'Remove passkey').disabled).toBe(true);
   });
 
   it('asks to sign in again when a saved passkey could not keep this browser signed in', async () => {

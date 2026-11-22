@@ -65,17 +65,16 @@ it('retries a failed load and shows the returned status', async () => {
   expect(text(page)).toContain('No license is configured — running unlicensed.');
 });
 it.each([
-  { status: 'Valid', tone: 'ok' },
-  { status: 'Expired', tone: 'warn' },
-  { status: 'Missing', tone: 'muted' },
-  { status: 'Malformed', tone: 'danger' },
-  { status: 'InvalidSignature', tone: 'danger' },
-] satisfies { status: components['schemas']['LicenseResponse']['status']; tone: string }[])(
-  'shows $status with the $tone badge and the startup message',
-  async ({ status, tone }) => {
+  'Valid',
+  'Expired',
+  'Missing',
+  'Malformed',
+  'InvalidSignature',
+] satisfies components['schemas']['LicenseResponse']['status'][])(
+  'shows the %s status beside the title, and the startup message',
+  async (status) => {
     const { page } = await loaded({ ...missing, status, message: 'Startup licence message' });
     expect(page.querySelector('.badge')?.textContent).toBe(status);
-    expect(page.querySelector('.badge')?.classList.contains(`tone-${tone}`)).toBe(true);
     expect(text(page)).toContain('Startup licence message');
   },
 );
@@ -156,10 +155,10 @@ it('explains the actual installation inputs', async () => {
     'Set the ECLIPSVAULT_LICENSE environment variable to your license token, or point License:FilePath at a file that holds the token, then restart. The token is verified offline against the vendor key pinned into this build — it never leaves your infrastructure.',
   );
 });
-it('keeps the Legacy commercial copy word for word', async () => {
+it('states that secrets stay available whatever the licence says', async () => {
   const { page } = await loaded();
   expect(text(page)).toContain(
-    'How this vault is licensed. Licensing is soft — your secrets, and every baseline protection, are never gated.',
+    'Secrets and baseline protection stay available whatever the licence says.',
   );
   expect(text(page)).toContain(
     'See the Pricing & licensing section of the README to buy or renew.',
