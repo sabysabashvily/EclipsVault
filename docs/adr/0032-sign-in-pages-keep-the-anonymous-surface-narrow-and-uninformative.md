@@ -21,6 +21,9 @@ Angular sign-in pages are reached and what they may reveal.
   Every other document keeps `form-action 'self'`. Single sign-on therefore needs the provider's
   authorization endpoint on the authority's origin, as Keycloak's is; one that authorizes elsewhere,
   such as Cognito's hosted UI, would need that endpoint's origin from the discovery document instead.
+  A successful callback ends on a page of the vault's own that goes on at once: the provider's form
+  post makes the whole redirect chain cross-site, and the browser withholds the Strict session and
+  pending sign-in cookies from every hop of it.
 - **Antiforgery before a session.** Serving an anonymous sign-in page sets an anonymous request token;
   every call that changes who the browser is (password, second factor, sign-out) issues a fresh one
   for the new identity (ADR-0004).

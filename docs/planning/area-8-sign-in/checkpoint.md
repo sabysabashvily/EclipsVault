@@ -258,3 +258,48 @@ and PostgreSQL, frontend, security-scan, image, sbom, agent-guardrails) with `e2
 this review-fix commit was cut; full CI on this head is pending coordinator push.
 
 Restart: ticket 4 (#177) starts from this commit. The Legacy shell for tests is `/Home/Error?code=404`.
+
+## Delivery: 8a ticket 5 (#178)
+
+Started on `c5e077e` (#176 accepted). `c5e077e` itself was written by a Gemini session, which AGENTS.md
+does not allow; the whole-part reviews read it like any other change and found it clean.
+
+- `13059f8` fixes S4: Login's single sign-on POST redirects to the identity provider, which
+  `form-action 'self'` blocked (#177, PR #199). While SSO is enabled, Login's policy adds the configured
+  authority's origin (`ISsoAvailability.IdentityProviderOrigin`: scheme, ASCII host and port, from
+  configuration only). Every other document is unchanged; `ExternalLogin` keeps its antiforgery check.
+  The audit-tampering vault now runs with SSO off (`VaultFixture.SsoDisabled`) and pins the unchanged
+  policy. Red on `c5e077e`: 4 Login header cases (`logs/ticket-178/s4-red*.txt`).
+- `4e2f0c3` merges PR #199's branch (`2cc4408`), Cursor's Keycloak spec for #177.
+- `279f0ac` merges `main` `d576dd9`. Nine conflicts, each listed in the commit message: AccountController
+  and AccountViewModels (both sides deleted; the model file goes), VaultFixture (7b's `LegacyShell` kept,
+  the unused Legacy form-post helper dropped), SignInReturnUrlTests and SelfServiceScopingTests (8a's UI
+  API sign-in kept), users.spec.ts, playwright.config.ts, users-page.ts and ADR-0017 (both sides). The
+  merge also gave break-glass.spec.ts and users-page.spec.ts the confirm verb main's dialog needs, and
+  dynamic-secrets.spec.ts the 8a sign-out call. API types regenerated with no diff.
+- `9c338e7` reconciles ADR-0016, ADR-0017 and ADR-0032; `fa8691c` holds the review fixes, and
+  `013792f` drives the Keycloak spec through `AccountSignIn` (Standards T6 and T7).
+- `50ec565` fixes the first real run of `sso.spec.ts` (CI 44948440278 on `9c338e7`): after the IdP's
+  MFA the person landed on Login, because the provider's form post makes the redirect chain cross-site
+  and the browser withheld the Strict session cookie from `/Secrets`. A successful callback now ends on
+  a page of the vault's own whose meta refresh goes on to the target. Refusals still redirect; the
+  cookies stay Strict. ADR-0032 records it.
+
+Public test helpers for 8b: only `VaultFixture.SsoDisabled` was added; no signature changed.
+
+Checks on the final source: `scripts/check.sh integration` on PostgreSQL with the part's filter
+(`logs/ticket-178/integration-filter.txt`, 35 classes) 489 passed; `scripts/check.sh` 1040 unit;
+`OverviewApiTests` 16 passed after the review fixes; after `50ec565`, 1040 unit and EmailIdentitySignIn,
+Mailbox, SelfServiceScoping, SignInPages and CsrfAndSignOut tests on PostgreSQL (71 passed), and after
+the nit fixes 1041 unit and EmailIdentitySignInTests (9 passed); `dotnet format`; both pending-model checks (no
+model change); hook tests; Angular lint, Prettier, 750 Vitest, build checks, `check:api-types`, build,
+`npm audit --audit-level=high`. Browser specs and both full suites run in CI.
+
+Reviews (`logs/ticket-178/review-ledger.md`): `security-reviewer` (Opus 5.5 high) approves with no
+findings. GPT Sol 6.1 was limited until 22 Nov 17:33, so Opus 5.5 high stood in for Standards and Spec;
+one re-check of `fa8691c` and `013792f` approves. A separate `security-reviewer` pass covers `50ec565`
+alone (`logs/ticket-178/security-review-hop.md`): approve, with two test nits fixed in the next commit
+(alias landing asserted; a return URL with quotes and an ampersand appears only encoded). Owner items are in `logs/ticket-178/pr-body.md`.
+
+Restart: the PR body is `logs/ticket-178/pr-body.md`; the coordinator fills in the CI run and the final
+head, then opens the PR. The PR still needs GPT Sol 6.1 and Thermos before the owner merges.
