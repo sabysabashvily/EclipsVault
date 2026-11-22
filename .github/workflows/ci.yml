@@ -80,7 +80,7 @@ jobs:
   # and race tests start both engines themselves, so both legs run those.
   integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
