@@ -3392,6 +3392,10 @@ app-license-page .trust-line svg {
 .activity-table .activity-time {
   overflow-wrap: anywhere;
 }
+.activity-resource {
+  display: block;
+  font-size: 0.76rem;
+}
 
 /* ---- Profile --------------------------------------------------------- */
 /* The person is the header: picture and name on the left, methods stack below as cards. */
