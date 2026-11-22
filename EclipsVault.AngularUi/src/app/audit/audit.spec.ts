@@ -306,6 +306,7 @@ describe('Audit log', () => {
     ['10.8.0', ['AuditTrail']],
     ['user created', ['User']],
     ['2026-10', ['User']],
+    ['2026-11-13 11:59:30 UTC', ['AuditTrail']],
     ['nothing matches this', []],
     ['', ['AuditTrail', 'FINANCE_DECOY_KEY', 'User']],
   ])('filtering by "%s" keeps the rows for %j, ignoring case', async (query, resources) => {
