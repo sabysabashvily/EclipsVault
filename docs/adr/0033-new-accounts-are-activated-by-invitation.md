@@ -14,7 +14,8 @@ credentials after the owner enrolled the same seed.
   `first.last.N@domain` addresses and `Identity:EmailDomain` are retired.
 - **An invitation activates the account.** Creating an account sends a single-use link valid for 72
   hours to that address. The token is 256 random bits, stored only as a SHA-256 hash. Opening the link
-  changes nothing; the page shows the username and a fresh authenticator seed, and one POST sets the
+  spends nothing; the page shows the username and an authenticator seed, made on the first opening and
+  kept until the token is spent or replaced, and one POST sets the
   password (Profile's rules), enrolls the authenticator, spends the token, advances the credential
   generation and writes `AccountActivated`, in one transaction. The person then signs in normally.
 - **Until activation, the account cannot sign in by any route.** The password stage fails as for a

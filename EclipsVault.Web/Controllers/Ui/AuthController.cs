@@ -182,6 +182,7 @@ public sealed class AuthController(
     [AllowAnonymous]
     [HttpPost("activation")]
     [RequestSizeLimit(4096)]
+    [ProducesResponseType<ProfileProblemResponse>(StatusCodes.Status400BadRequest, "application/problem+json")]
     [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status404NotFound, "application/problem+json")]
     [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status429TooManyRequests, "application/problem+json")]
     [ProducesResponseType<ActivationResponse>(StatusCodes.Status200OK, "application/json")]

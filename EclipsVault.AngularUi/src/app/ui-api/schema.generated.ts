@@ -926,6 +926,15 @@ export interface paths {
                         "application/json": components["schemas"]["ActivationResponse"];
                     };
                 };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
                 /** @description Not Found */
                 404: {
                     headers: {
