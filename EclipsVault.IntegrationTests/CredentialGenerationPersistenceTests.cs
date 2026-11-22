@@ -8,26 +8,37 @@ namespace EclipsVault.IntegrationTests;
 
 public abstract class CredentialGenerationPersistenceTests(AccountChangeDatabases databases)
 {
+    /// <summary>
+    /// An existing account starts its durable generation at zero. The later invitation upgrade advances it
+    /// only for a never-used account it invites, so a sign-in begun before the upgrade cannot enroll (#162).
+    /// </summary>
     [Fact]
-    public async Task Upgrading_an_existing_account_starts_its_durable_generation_at_zero()
+    public async Task Upgrading_starts_a_used_account_at_generation_zero_and_advances_a_never_used_account_it_invites()
     {
         await using var upgrade = databases.NewRequest(database: "generation_upgrade");
         var migrator = upgrade.Context.GetService<IMigrator>();
         await migrator.MigrateAsync("AddAccountConcurrencyStamp");
-        var accountId = Guid.NewGuid();
+        var usedId = Guid.NewGuid();
+        var neverUsedId = Guid.NewGuid();
         await upgrade.Context.Database.ExecuteSqlAsync($"""
             INSERT INTO "Users" ("Id", "Username", "DisplayName", "Email", "NormalizedEmail", "PasswordHash",
                 "PasswordSalt", "TotpEnabled", "Clearance", "ProjectKey", "IsDisabled", "FailedAccessCount", "CreatedAtUtc", "ConcurrencyStamp")
-            VALUES ({accountId}, 'generation-upgrade', 'Generation Owner', 'upgrade@example.test', 'UPGRADE@EXAMPLE.TEST',
+            VALUES ({usedId}, 'generation-upgrade', 'Generation Owner', 'upgrade@example.test', 'UPGRADE@EXAMPLE.TEST',
+                {new byte[32]}, {new byte[16]}, {true}, 0, 'GLOBAL', {false}, 0, {DateTimeOffset.UtcNow}, {Guid.NewGuid()}),
+                ({neverUsedId}, 'generation-never-used', 'Never Used', 'never.used@example.test', 'NEVER.USED@EXAMPLE.TEST',
                 {new byte[32]}, {new byte[16]}, {false}, 0, 'GLOBAL', {false}, 0, {DateTimeOffset.UtcNow}, {Guid.NewGuid()})
             """);
 
         await migrator.MigrateAsync();
 
-        var stored = await upgrade.LoadAsync(accountId);
-        Assert.Equal(0, stored.CredentialGeneration);
-        Assert.Equal("Generation Owner", stored.DisplayName);
-        Assert.Equal("upgrade@example.test", stored.Email);
+        var used = await upgrade.LoadAsync(usedId);
+        Assert.Equal(0, used.CredentialGeneration);
+        Assert.False(used.AwaitingActivation);
+        Assert.Equal("Generation Owner", used.DisplayName);
+        Assert.Equal("upgrade@example.test", used.Email);
+        var neverUsed = await upgrade.LoadAsync(neverUsedId);
+        Assert.Equal(1, neverUsed.CredentialGeneration);
+        Assert.True(neverUsed.AwaitingActivation);
     }
 
     [Fact]

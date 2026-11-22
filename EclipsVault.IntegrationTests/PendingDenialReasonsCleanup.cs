@@ -58,17 +58,15 @@ public abstract class PendingDenialReasonsCleanup : IAsyncLifetime
 
     private static async Task InsertRequestsAsync(EclipsVaultDbContext db)
     {
-        var requester = new User
-        {
-            Id = Guid.NewGuid(),
-            Username = "requester",
-            DisplayName = "requester",
-            Email = "requester@example.test",
-            PasswordHash = new byte[32],
-            PasswordSalt = new byte[16],
-            ProjectKey = "ELSEWHERE",
-            CreatedAtUtc = DateTimeOffset.UtcNow,
-        };
+        // Written in SQL because the current model has columns this older schema lacks.
+        var requesterId = Guid.NewGuid();
+        const string requesterUsername = "requester";
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO "Users" ("Id", "Username", "DisplayName", "Email", "NormalizedEmail", "PasswordHash",
+                "PasswordSalt", "TotpEnabled", "Clearance", "ProjectKey", "IsDisabled", "FailedAccessCount", "CreatedAtUtc", "ConcurrencyStamp")
+            VALUES ({requesterId}, {requesterUsername}, {requesterUsername}, 'requester@example.test', 'REQUESTER@EXAMPLE.TEST',
+                {new byte[32]}, {new byte[16]}, {false}, 0, 'ELSEWHERE', {false}, 0, {DateTimeOffset.UtcNow}, {Guid.NewGuid()})
+            """);
         var secret = new Secret
         {
             Id = Guid.NewGuid(),
@@ -80,7 +78,7 @@ public abstract class PendingDenialReasonsCleanup : IAsyncLifetime
             Algorithm = "AES-256-GCM",
             CreatedAtUtc = DateTimeOffset.UtcNow,
         };
-        db.AddRange(requester, secret,
+        db.AddRange(secret,
             RequestIn(AccessRequestStatus.Pending), RequestIn(AccessRequestStatus.Approved),
             RequestIn(AccessRequestStatus.Rejected), RequestIn(AccessRequestStatus.Cancelled));
 
@@ -90,8 +88,8 @@ public abstract class PendingDenialReasonsCleanup : IAsyncLifetime
             SecretId = secret.Id,
             SecretName = secret.Name,
             ProjectKey = secret.ProjectKey,
-            RequesterUserId = requester.Id,
-            RequesterUsername = requester.Username,
+            RequesterUserId = requesterId,
+            RequesterUsername = requesterUsername,
             Reason = "Need this for deployment",
             DeniedReasons = RequesterWrittenText,
             Status = status,
