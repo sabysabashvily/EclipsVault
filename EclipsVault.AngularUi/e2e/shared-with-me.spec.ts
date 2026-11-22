@@ -1,5 +1,6 @@
 import { refreshAdministratorProof } from './administrator-proof';
 import { AccountCreation } from './account-creation';
+import { AppShell } from './app-shell';
 import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -280,17 +281,13 @@ test('the Secrets card tab opens Shared with me in-app while keeping Secrets act
 }) => {
   await openAsRecipient(page, '/Access');
   const documents = recordDocuments(page);
-  const secretsLink = page
-    .getByRole('navigation', { name: 'Main navigation' })
-    .getByRole('link', { name: 'Secrets', exact: true });
-  await secretsLink.click();
-  const tab = page
-    .getByRole('navigation', { name: 'Secrets views' })
-    .getByRole('link', { name: 'Shared with me', exact: true });
+  const shell = new AppShell(page);
+  await shell.secrets.click();
+  const tab = new SecretsList(page).tab('Shared with me');
   await tab.click();
   await expect(new SharedWithMe(page).rows).toHaveCount(2);
   await expect(tab).toHaveAttribute('aria-current', 'page');
-  await expect(secretsLink).toHaveAttribute('aria-current', 'true');
+  await expect(shell.secrets).toHaveAttribute('aria-current', 'true');
   expect(documents).toEqual([]);
 });
 

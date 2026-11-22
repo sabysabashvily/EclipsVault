@@ -3424,6 +3424,38 @@ fieldset {
 .secrets-bar .trust-line {
   margin: 0;
 }
+.tab-strip {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--bg-raised-2);
+  overflow: hidden;
+}
+.tab-strip::before,
+.tab-strip::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+  z-index: 1;
+}
+.tab-strip::before {
+  left: 0;
+  background: linear-gradient(to right, var(--bg-raised-2) 20%, transparent);
+}
+.tab-strip::after {
+  right: 0;
+  background: linear-gradient(to left, var(--bg-raised-2) 20%, transparent);
+}
+.tab-strip.fade-start::before,
+.tab-strip.fade-end::after {
+  opacity: 1;
+}
 .tab-nav {
   display: inline-flex;
   align-items: center;
@@ -3431,9 +3463,9 @@ fieldset {
   padding: 0.25rem;
   max-width: 100%;
   overflow-x: auto;
+  scroll-padding-inline: 2.25rem;
   scrollbar-width: none;
   border-radius: var(--radius-pill);
-  background: var(--bg-raised-2);
 }
 .tab-nav::-webkit-scrollbar {
   display: none;
@@ -3453,6 +3485,10 @@ fieldset {
   transition:
     background var(--dur) var(--ease),
     color var(--dur) var(--ease);
+}
+.tab-link:focus-visible {
+  outline-offset: -2px;
+  border-radius: var(--radius-pill);
 }
 .tab-link:hover {
   color: var(--text);
