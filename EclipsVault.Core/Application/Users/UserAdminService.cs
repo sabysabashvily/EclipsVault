@@ -7,15 +7,12 @@ using EclipsVault.Core.Domain.Exceptions;
 namespace EclipsVault.Core.Application.Users;
 
 /// <summary>
-/// Administrative user lifecycle. New accounts receive an Argon2id hash with a fresh
-/// random salt, an auto-generated unique email, and enroll TOTP at their first
-/// sign-in; role changes, disabling, and deletions are guarded against locking the
-/// vault out of its own administration.
+/// Administrative user lifecycle. New accounts are invited at the person's own email and hold no
+/// credential until the person activates them (ADR-0033); role changes, disabling, and deletions are
+/// guarded against locking the vault out of its own administration.
 /// </summary>
 public sealed class UserAdminService : IUserAdminService
 {
-    private const int MinimumPasswordLength = 12;
-    private const int MaximumPasswordLength = 256;
     private const int MaximumEmailLength = 254;
     private const int MaximumProjectKeyLength = 64;
     private const int MaximumNameLength = 64;
@@ -29,12 +26,8 @@ public sealed class UserAdminService : IUserAdminService
     private readonly IUserRepository _users;
     private readonly IAccountInvitationRepository _invitations;
     private readonly IAccountInvitationDelivery _invitationDelivery;
-    private readonly IPasswordHasher _hasher;
     private readonly ISessionRevocationService _revocation;
     private readonly IMfaRecoveryCodeRepository _recoveryCodes;
-    private readonly IBreachedPasswordScreen _breachScreen;
-    private readonly UserDirectoryOptions _directory;
-    private readonly INotificationService _notifications;
     private readonly IAuditSink _audit;
     private readonly IAccountChangeCommitter _changes;
     private readonly IAuditContext _actor;
@@ -44,12 +37,8 @@ public sealed class UserAdminService : IUserAdminService
         IUserRepository users,
         IAccountInvitationRepository invitations,
         IAccountInvitationDelivery invitationDelivery,
-        IPasswordHasher hasher,
         ISessionRevocationService revocation,
         IMfaRecoveryCodeRepository recoveryCodes,
-        IBreachedPasswordScreen breachScreen,
-        UserDirectoryOptions directory,
-        INotificationService notifications,
         IAuditSink audit,
         IAccountChangeCommitter changes,
         IAuditContext actor,
@@ -58,12 +47,8 @@ public sealed class UserAdminService : IUserAdminService
         _users = users;
         _invitations = invitations;
         _invitationDelivery = invitationDelivery;
-        _hasher = hasher;
         _revocation = revocation;
         _recoveryCodes = recoveryCodes;
-        _breachScreen = breachScreen;
-        _directory = directory;
-        _notifications = notifications;
         _audit = audit;
         _changes = changes;
         _actor = actor;
@@ -101,12 +86,13 @@ public sealed class UserAdminService : IUserAdminService
         var first = request.FirstName.Trim();
         var last = request.LastName.Trim();
         var displayName = $"{first} {last}";
-        CheckNewAccount(request, username, first, last, displayName);
+        CheckNewAccount(username, first, last, displayName);
+        var email = CheckedEmail(request.Email);
         CheckClearance(request.Clearance);
         var project = CheckedProjectKey(request.ProjectKey);
-        if (_breachScreen.IsCompromised(request.Password))
+        if (!_invitationDelivery.Available)
         {
-            throw new AccountInputException(nameof(CreateUserRequest.Password), "That password has appeared in a known data breach. Choose a different one.");
+            throw new InvitationsUnavailableException(InvitationsUnavailableMessage);
         }
 
         if (await _users.FindByUsernameAsync(username, ct) is not null)
@@ -114,34 +100,59 @@ public sealed class UserAdminService : IUserAdminService
             throw new UsernameTakenException(username);
         }
 
-        var email = await GenerateEmailAsync(first, last, ct);
-        var hashed = _hasher.Hash(request.Password);
+        // The account is not saved yet, so no account's own address is exempt.
+        if (await _users.IsEmailTakenAsync(email, Guid.Empty, ct))
+        {
+            throw new EmailAddressTakenException();
+        }
+
+        var now = _clock.GetUtcNow();
         var user = new User
         {
             Id = Guid.NewGuid(),
             Username = username,
             DisplayName = displayName,
             Email = email,
-            PasswordHash = hashed.Hash,
-            PasswordSalt = hashed.Salt,
             Clearance = request.Clearance,
             ProjectKey = project,
-            CreatedAtUtc = _clock.GetUtcNow()
+            AwaitingActivation = true,
+            CreatedAtUtc = now
         };
-
-        // Another create for the same person's name can take the generated address first. The account
-        // then takes the next free one, once; losing twice in a row means the name is busy right now.
-        if (!await TryCommitNewAccountAsync(user, ct))
+        var token = InvitationToken.Generate();
+        var expiresAtUtc = now + InvitationToken.Lifetime;
+        _users.StageAddition(user);
+        _invitations.StageAddition(new AccountInvitation
         {
-            user.Email = await GenerateEmailAsync(first, last, ct);
-            if (!await TryCommitNewAccountAsync(user, ct))
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            TokenHash = InvitationToken.Hash(token),
+            CreatedAtUtc = now,
+            ExpiresAtUtc = expiresAtUtc
+        });
+
+        try
+        {
+            await _changes.CommitAsync(user, AdministratorEvent(AuditAction.UserCreated, user,
+                $"Created '{user.Username}' <{user.Email}> (clearance {user.Clearance}, project {user.ProjectKey})"), ct);
+        }
+        catch (UsernameTakenException)
+        {
+            throw new UsernameTakenException(user.Username);
+        }
+        catch (EmailAddressTakenException)
+        {
+            // The same create sent twice at once loses on both indexes, and the database may report the
+            // address first. The username is what the administrator chose, so name it.
+            if (await _users.FindByUsernameAsync(user.Username, ct) is not null)
             {
-                throw new AccountChangedException("Another account for the same name was created at the same moment. Try again.");
+                throw new UsernameTakenException(user.Username);
             }
+
+            throw;
         }
 
-        await _notifications.NotifyUserProvisionedAsync(user.Email, displayName, user.Username, ct);
-        return new CreatedUserDto(user.Id, user.Username, user.Email, displayName);
+        var delivered = await _invitationDelivery.TrySendAsync(user.Email, displayName, user.Username, token, ct);
+        return new CreatedUserDto(user.Id, user.Username, user.Email, displayName, new SentInvitationDto(delivered, expiresAtUtc));
     }
 
     public async Task<SentInvitationDto?> ResendInvitationAsync(Guid userId, CancellationToken ct)
@@ -257,39 +268,11 @@ public sealed class UserAdminService : IUserAdminService
         return trimmed;
     }
 
-    /// <summary>Saves the new account with its UserCreated event.</summary>
-    /// <returns>False when another account took its email address first; nothing was saved.</returns>
-    private async Task<bool> TryCommitNewAccountAsync(User user, CancellationToken ct)
-    {
-        _users.StageAddition(user);
-        try
-        {
-            await _changes.CommitAsync(user, AdministratorEvent(AuditAction.UserCreated, user,
-                $"Created '{user.Username}' <{user.Email}> (clearance {user.Clearance}, project {user.ProjectKey})"), ct);
-            return true;
-        }
-        catch (UsernameTakenException)
-        {
-            throw new UsernameTakenException(user.Username);
-        }
-        catch (EmailAddressTakenException)
-        {
-            // The same username created twice at once also gets the same generated address, and the
-            // database may report that index first. The username is what the administrator chose, so name it.
-            if (await _users.FindByUsernameAsync(user.Username, ct) is not null)
-            {
-                throw new UsernameTakenException(user.Username);
-            }
-
-            return false;
-        }
-    }
-
     /// <summary>
-    /// The New user form's rules for the username, names and password, so callers other than the form are
-    /// held to them too. Clearance and project key have checks of their own, shared with role changes.
+    /// The New user form's rules for the username and names, so callers other than the form are held to
+    /// them too. Email, clearance and project key have checks of their own, shared with other changes.
     /// </summary>
-    private static void CheckNewAccount(CreateUserRequest request, string username, string first, string last, string displayName)
+    private static void CheckNewAccount(string username, string first, string last, string displayName)
     {
         if (!UsernameRules.Allows(username))
         {
@@ -303,16 +286,6 @@ public sealed class UserAdminService : IUserAdminService
         {
             throw new AccountInputException(nameof(CreateUserRequest.LastName),
                 $"First and last name together can be at most {MaximumDisplayNameLength} characters, counting the space between them.");
-        }
-
-        if (request.Password.Length < MinimumPasswordLength)
-        {
-            throw new AccountInputException(nameof(CreateUserRequest.Password), $"Passwords must be at least {MinimumPasswordLength} characters long.");
-        }
-
-        if (request.Password.Length > MaximumPasswordLength)
-        {
-            throw new AccountInputException(nameof(CreateUserRequest.Password), $"Passwords can be at most {MaximumPasswordLength} characters long.");
         }
     }
 
@@ -349,51 +322,6 @@ public sealed class UserAdminService : IUserAdminService
         }
 
         return project.ToUpperInvariant();
-    }
-
-    /// <summary>
-    /// Builds a unique <c>first.last.N@domain</c> email. N is the next free sequence
-    /// for that name, so "Saba Sabashvili" yields saba.sabashvili.1@…, then …2@… .
-    /// </summary>
-    private async Task<string> GenerateEmailAsync(string first, string last, CancellationToken ct)
-    {
-        var prefix = $"{Slug(first)}.{Slug(last)}";
-        var existing = await _users.FindEmailsWithPrefixAsync(prefix, _directory.EmailDomain, ct);
-        var next = existing.Select(e => ParseSequence(e, prefix)).DefaultIfEmpty(0).Max() + 1;
-        // The scan above sees only emails. An older account's username can also be this address,
-        // and the new account is not saved yet, so no account's own address is exempt.
-        var notYetSaved = Guid.Empty;
-        while (await _users.IsEmailTakenAsync(Address(next), notYetSaved, ct))
-        {
-            next++;
-        }
-
-        return Address(next);
-
-        string Address(int sequence) => $"{prefix}.{sequence}@{_directory.EmailDomain}";
-    }
-
-    private static int ParseSequence(string email, string prefix)
-    {
-        var at = email.IndexOf('@');
-        if (at < 0)
-        {
-            return 0;
-        }
-
-        var local = email[..at]; // expected: prefix.N
-        if (!local.StartsWith(prefix + ".", StringComparison.OrdinalIgnoreCase))
-        {
-            return 0;
-        }
-
-        return int.TryParse(local[(prefix.Length + 1)..], out var n) ? n : 0;
-    }
-
-    private static string Slug(string value)
-    {
-        var chars = value.ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray();
-        return chars.Length == 0 ? "user" : new string(chars);
     }
 
     public async Task<bool> SetRoleAsync(Guid userId, ClearanceLevel clearance, string projectKey, CancellationToken ct)

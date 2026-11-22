@@ -2,7 +2,8 @@ import type { BrowserContext } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { test, expect } from './fixtures';
-import { AccountCreation } from './account-creation';
+import { signInNewAccount } from './account-activation';
+import { AccountCreation, emailOf } from './account-creation';
 import { AccountSignIn } from './account-sign-in';
 import { AuthenticatorEnrollment } from './authenticator-enrollment';
 import { Users } from './users';
@@ -27,7 +28,7 @@ const username = 'e2e-users-target';
 
 // The dependent Profile suite takes over ten minutes. This cookie's proof therefore ages naturally;
 // the server's real 403 below, not a route mock or altered clock, decides whether to show the dialog.
-test('a stale administrator creates a user through real authenticator step-up and the new user enrolls', async ({
+test('a stale administrator invites a user through real authenticator step-up and the user activates their account', async ({
   page,
   browserHealth,
 }) => {
@@ -41,26 +42,24 @@ test('a stale administrator creates a user through real authenticator step-up an
   const creation = new AccountCreation(page);
   await creation.open();
   browserHealth.expectConsoleError({ text: /403/, url: /\/api\/ui\/users$/ });
-  await creation.createMailboxOwner(username, password);
+  await creation.createMailboxOwner(username);
   const createProof = new Users(page);
   await expect(createProof.stepUp).toBeVisible();
   await createProof.cancelStepUp();
   await expect(creation.submitButton).toBeFocused();
-  await expect(creation.password).toHaveValue('');
-  await creation.createMailboxOwner(username, password);
+  await creation.createMailboxOwner(username);
   await expect(createProof.stepUp).toBeVisible();
   await createProof.enterCode(
     await freshTotp(administratorSecret, Math.floor(Date.now() / 30_000)),
   );
   await createProof.verifyCode();
-  const users = new Users(page);
-  await expect(users.heading).toBeVisible();
-  await expect(users.status).toContainText(`User '${username}' created with email`);
+  await expect(creation.status).toHaveText(
+    `Invitation sent to ${emailOf(username)}. It expires in 72 hours.`,
+  );
+  await expect(creation.firstName).toBeHidden();
+  await expect(page).toHaveURL(/\/Admin\/CreateUser$/);
   const owner = await (await browserHealth.newContext()).newPage();
-  await new AccountSignIn(owner).open();
-  await new AccountSignIn(owner).submitPassword(username, password);
-  const enrollment = new AuthenticatorEnrollment(owner);
-  await enrollment.confirm(await freshTotp(await enrollment.secret.innerText()));
+  await signInNewAccount(owner, username, password);
   await expect(owner).toHaveURL(/\/Secrets$/);
   ownerCookies = await owner.context().cookies();
   administratorCookies = await page.context().cookies();
@@ -363,17 +362,12 @@ test('an unchanged Unicode role keeps its notice and both open browsers signed i
     firstName: 'Own',
     lastName: 'Role',
     username: 'e2e-own-role',
-    password,
     clearance: 'Top Secret',
     project: 'STRAßE',
   });
-  await expect(new Users(page).heading).toBeVisible();
+  await expect(creation.status).toContainText('Invitation sent to');
   const owner = await (await browserHealth.newContext()).newPage();
-  const signIn = new AccountSignIn(owner);
-  await signIn.open();
-  await signIn.submitPassword('e2e-own-role', password);
-  const enrollment = new AuthenticatorEnrollment(owner);
-  await enrollment.confirm(await freshTotp(await enrollment.secret.innerText()));
+  await signInNewAccount(owner, 'e2e-own-role', password);
   const otherContext = await browserHealth.newContext();
   await otherContext.addCookies(await owner.context().cookies());
   const otherDevice = await otherContext.newPage();

@@ -3,6 +3,8 @@ import { writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { test, expect } from './fixtures';
 import { clearSignInBudget } from './profile-state';
+import { signInNewAccount } from './account-activation';
+import { AccountCreation } from './account-creation';
 import {
   type Activity,
   type ExpectedRow,
@@ -341,29 +343,22 @@ test('visual parity: the administrator and Standard sidebars match Legacy in bot
 
   const username = 'e2e-standard-sidebar';
   const password = `E2e-${randomBytes(24).toString('hex')}`;
-  await test.step('provision a Standard account through the administrator UI', async () => {
-    await page.goto('/Admin/CreateUser');
-    await page.getByLabel('First name').fill('Standard');
-    await page.getByLabel('Last name').fill('Sidebar');
-    await page.getByLabel('Username').fill(username);
-    await page.getByLabel('Initial password', { exact: true }).fill(password);
-    await page.getByLabel('Clearance').selectOption({ label: 'Standard' });
-    await page.getByLabel('Project').fill('GLOBAL');
-    await page.getByRole('button', { name: 'Create user', exact: true }).click();
-    await expect(page).toHaveURL(/\/Admin\/Users$/);
+  await test.step('invite a Standard account through the administrator UI', async () => {
+    const creation = new AccountCreation(page);
+    await creation.open();
+    await creation.create({
+      firstName: 'Standard',
+      lastName: 'Sidebar',
+      username,
+      clearance: 'Standard',
+      project: 'GLOBAL',
+    });
+    await expect(creation.status).toContainText('Invitation sent to');
   });
 
   const standard = await (await browserHealth.newContext()).newPage();
-  await test.step('Standard account signs in with its own password and enrolls MFA', async () => {
-    await standard.goto('/Account/Login');
-    await standard.getByLabel('Username').fill(username);
-    await standard.getByLabel('Password', { exact: true }).fill(password);
-    await standard.getByRole('button', { name: 'Continue', exact: true }).click();
-    await expect(standard).toHaveURL(/\/Account\/EnrollTotp$/);
-    await standard
-      .getByLabel('Confirmation code')
-      .fill(await freshTotp(await standard.locator('.secret-code').innerText()));
-    await standard.getByRole('button', { name: 'Confirm enrollment' }).click();
+  await test.step('Standard account activates with its own password and signs in', async () => {
+    await signInNewAccount(standard, username, password);
     await expect(standard).toHaveURL(/\/Secrets$/);
   });
   await test.step('Standard navigation and visual comparison', async () => {

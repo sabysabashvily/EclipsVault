@@ -59,9 +59,7 @@ public static class DependencyInjection
         services.AddScoped<IStepUpService, StepUpService>();
         services.AddScoped<SecondFactorVerifier>();
 
-        services.AddSingleton(new UserDirectoryOptions(
-            configuration.GetValue<string?>("Identity:EmailDomain") ?? UserDirectoryOptions.Default.EmailDomain,
-            configuration.GetValue<string?>("Identity:PublicUrl")));
+        services.AddSingleton(new UserDirectoryOptions(configuration.GetValue<string?>("Identity:PublicUrl")));
 
         // Persistence — the audit interceptor rides inside every SaveChanges, stamping each
         // audit row into the tamper-evidence hash chain (one shared, serialized chain head).
@@ -213,6 +211,7 @@ public static class DependencyInjection
         services.AddSingleton<ISsoAvailability, SsoAvailability>();
         services.AddSingleton<IEmailTransportStatus, EmailTransportStatus>();
         services.AddScoped<IUserAdminService, UserAdminService>();
+        services.AddScoped<IAccountActivationService, AccountActivationService>();
         services.AddScoped<IProfileService, ProfileService>();
         services.AddScoped<IMfaRecoveryService, MfaRecoveryService>();
         services.AddSingleton<CandidatePasswordHashing>();

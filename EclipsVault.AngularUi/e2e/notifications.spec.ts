@@ -1,18 +1,22 @@
 import { randomBytes } from 'node:crypto';
 import { test, expect } from './fixtures';
-import { AccountCreation } from './account-creation';
+import { signInNewAccount } from './account-activation';
+import { AccountCreation, emailOf } from './account-creation';
 import { savedAdministratorCookies } from './administrator-cookies';
 import { refreshAdministratorProof } from './administrator-proof';
 import { Notifications } from './notifications';
-import { provisioningEmail } from './smtp-capture';
+import { ProfilePage } from './profile';
 import { AppShell } from './app-shell';
 import { YourData } from './data';
 import { SecretsList } from './secrets-list';
 
 test.describe.configure({ mode: 'serial' });
-let delivered = { address: '', subject: '' };
+const recipient = emailOf('e2e-outbox-recipient');
 
-test('the outbox shows the provisioning email this run delivered', async ({ page }) => {
+// The invitation goes straight to the mail server, so the notice is the recipient's only outbox row.
+test('the outbox shows the security notice this run delivered', async ({ page, browserHealth }) => {
+  test.setTimeout(180_000);
+  const password = `E2e-${randomBytes(24).toString('hex')}`;
   await page.context().addCookies(await savedAdministratorCookies());
   await refreshAdministratorProof(page);
   const creation = new AccountCreation(page);
@@ -21,12 +25,18 @@ test('the outbox shows the provisioning email this run delivered', async ({ page
     firstName: 'Outbox',
     lastName: 'Recipient',
     username: 'e2e-outbox-recipient',
-    password: `E2e-${randomBytes(24).toString('hex')}`,
     clearance: 'Standard',
     project: 'GLOBAL',
   });
-  await expect(page).toHaveURL(/\/Admin\/Users$/);
-  delivered = await provisioningEmail('e2e-outbox-recipient');
+  await expect(creation.status).toContainText('Invitation sent to');
+  const owner = await (await browserHealth.newContext()).newPage();
+  const { secret, step } = await signInNewAccount(owner, 'e2e-outbox-recipient', password);
+  const profile = new ProfilePage(owner);
+  await profile.open();
+  await profile.resetAuthenticator.click();
+  await profile.confirm();
+  await profile.verify(password, secret, step);
+  await expect(owner).toHaveURL(/\/Account\/Login$/);
 
   const notifications = new Notifications(page);
   await notifications.open();
@@ -34,17 +44,19 @@ test('the outbox shows the provisioning email this run delivered', async ({ page
     '✓ Delivering via SMTP → smtp:1025.',
     'Composed emails are sent to your mail server and recorded below.',
   ]);
-  await expect(notifications.cells(delivered.address)).toHaveText([
+  await expect(notifications.cells(recipient)).toHaveText([
     /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
-    delivered.address,
-    delivered.subject,
-    'UserProvisioned',
+    recipient,
+    'Your EclipsVault security settings changed',
+    'ResetAuthenticator',
     'Smtp',
     'Sent',
   ]);
-  await expect(notifications.subject(delivered.address, delivered.subject)).toHaveAttribute(
+  await expect(
+    notifications.subject(recipient, 'Your EclipsVault security settings changed'),
+  ).toHaveAttribute(
     'title',
-    /username 'e2e-outbox-recipient'/,
+    "A sensitive change was completed on your EclipsVault account. If this wasn't you, contact an administrator immediately.",
   );
 });
 
@@ -110,7 +122,7 @@ for (const theme of ['dark', 'light'] as const) {
     // eslint-disable-next-line playwright/no-raw-locators -- The theme is an attribute of the document element.
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     await expect(notifications.notice).toHaveClass(/notice-ok/);
-    await expect(notifications.row(delivered.address)).toBeVisible();
+    await expect(notifications.row(recipient)).toBeVisible();
     await page.screenshot({ path: info.outputPath(`notifications-${theme}.png`), fullPage: true });
   });
 
@@ -120,9 +132,9 @@ for (const theme of ['dark', 'light'] as const) {
     await notifications.open();
     await notifications.useTheme(theme);
     await notifications.filter.focus();
-    await page.keyboard.type(delivered.address);
+    await page.keyboard.type(recipient);
     await expect(notifications.rows).toHaveCount(1);
-    await expect(notifications.row(delivered.address)).toBeVisible();
+    await expect(notifications.row(recipient)).toBeVisible();
     await page.keyboard.type('-no-such-recipient');
     await expect(notifications.rows).toHaveCount(0);
   });

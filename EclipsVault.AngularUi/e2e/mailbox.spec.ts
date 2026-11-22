@@ -4,12 +4,11 @@ import type { BrowserContext } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
+import { signInNewAccount } from './account-activation';
 import { AccountCreation } from './account-creation';
-import { AccountSignIn } from './account-sign-in';
-import { AuthenticatorEnrollment } from './authenticator-enrollment';
 import { MailboxProfile } from './mailbox';
 import { mailboxCode } from './smtp-capture';
-import { currentTotpStep, freshTotp } from './totp';
+import { freshTotp } from './totp';
 
 test('a real SMTP code activates only the frozen mailbox and retires a copied session', async ({
   page,
@@ -30,19 +29,11 @@ test('a real SMTP code activates only the frozen mailbox and retires a copied se
   await refreshAdministratorProof(page);
   await creation.open();
   const password = `E2e-${randomBytes(24).toString('hex')}`;
-  await creation.createMailboxOwner('e2e-mailbox-owner', password);
-  await expect(page).toHaveURL(/\/Admin\/Users$/);
+  await creation.createMailboxOwner('e2e-mailbox-owner');
+  await expect(creation.status).toContainText('Invitation sent to');
 
   const owner = await (await browserHealth.newContext()).newPage();
-  const signIn = new AccountSignIn(owner);
-  await signIn.open();
-  await signIn.submitPassword('e2e-mailbox-owner', password);
-  await expect(owner).toHaveURL(/\/Account\/EnrollTotp$/);
-  const enrollment = new AuthenticatorEnrollment(owner);
-  const secret = await enrollment.secret.innerText();
-  const enrollmentCode = await freshTotp(secret);
-  const enrollmentStep = currentTotpStep();
-  await enrollment.confirm(enrollmentCode);
+  const { secret, step } = await signInNewAccount(owner, 'e2e-mailbox-owner', password);
   await expect(owner).toHaveURL(/\/Secrets$/);
   const copied = await browserHealth.newContext();
   await copied.addCookies(await owner.context().cookies());
@@ -55,7 +46,7 @@ test('a real SMTP code activates only the frozen mailbox and retires a copied se
   const verification = await profile.verifyWithAuthenticator(
     operationId,
     password,
-    await freshTotp(secret, enrollmentStep),
+    await freshTotp(secret, step),
   );
   expect(verification.status()).toBe(200);
   expect((await profile.requestCode(operationId)).status()).toBe(200);

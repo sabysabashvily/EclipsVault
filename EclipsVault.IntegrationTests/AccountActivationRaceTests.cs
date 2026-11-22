@@ -1,0 +1,214 @@
+using EclipsVault.Core.Application.Abstractions;
+using EclipsVault.Core.Application.Authentication;
+using EclipsVault.Core.Application.Users;
+using EclipsVault.Core.Domain.Entities;
+using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Core.Domain.Exceptions;
+using EclipsVault.Infrastructure.Persistence.Repositories;
+using EclipsVault.Infrastructure.Security;
+using Microsoft.EntityFrameworkCore;
+using Xunit;
+
+namespace EclipsVault.IntegrationTests;
+
+/// <summary>
+/// An invitation is used by two requests at once, on each database. Both have loaded the account
+/// before either commits, so the account's stamp decides: exactly one change takes effect (#180).
+/// </summary>
+public abstract class AccountActivationRaceTests(AccountChangeDatabases databases)
+{
+    private const string Password = "It-activation-race-password-180";
+    private static readonly TotpService Authenticator = new(TimeProvider.System);
+
+    [Fact]
+    public async Task Two_activations_of_one_invitation_activate_the_account_once()
+    {
+        var (account, token, seed) = await SeedInvitedAccountAsync("it-race-activate-twice");
+        var code = await FreshCodeAsync(seed);
+        using var bothChecked = new Barrier(participantCount: 2);
+        await using var first = databases.NewRequest();
+        await using var second = databases.NewRequest();
+
+        var outcomes = await Task.WhenAll(
+            Task.Run(() => Activation(first, bothChecked).CompleteAsync(token, Password, code, default)),
+            Task.Run(() => Activation(second, bothChecked).CompleteAsync(token, Password, code, default)));
+
+        Assert.Equal([ActivationOutcome.Activated, ActivationOutcome.InvitationInvalid], outcomes.Order());
+        await using var check = databases.NewRequest();
+        var stored = await check.LoadAsync(account.Id);
+        Assert.False(stored.AwaitingActivation);
+        Assert.Equal(1, stored.CredentialGeneration);
+        Assert.NotNull((await InvitationOfAsync(check, account.Id)).SpentAtUtc);
+        Assert.Single(await EventsOfAsync(check, account.Id, AuditAction.AccountActivated));
+    }
+
+    [Fact]
+    public async Task An_activation_against_a_resend_leaves_exactly_one_of_them()
+    {
+        var (account, token, seed) = await SeedInvitedAccountAsync("it-race-activate-resend");
+        var code = await FreshCodeAsync(seed);
+        using var bothLoaded = new Barrier(participantCount: 2);
+        await using var activating = databases.NewRequest();
+        await using var resending = databases.NewRequest();
+
+        var activation = Task.Run(() => Activation(activating, bothLoaded).CompleteAsync(token, Password, code, default));
+        var resend = Task.Run(() => Record.ExceptionAsync(() => Resend(resending, bothLoaded).ResendInvitationAsync(account.Id, default)));
+        var (outcome, resendFailure) = (await activation, await resend);
+
+        await using var check = databases.NewRequest();
+        var stored = await check.LoadAsync(account.Id);
+        var invitation = await InvitationOfAsync(check, account.Id);
+        var activated = await EventsOfAsync(check, account.Id, AuditAction.AccountActivated);
+        var resent = await EventsOfAsync(check, account.Id, AuditAction.InvitationSent);
+        if (outcome == ActivationOutcome.Activated)
+        {
+            Assert.IsType<AccountChangedException>(resendFailure);
+            Assert.False(stored.AwaitingActivation);
+            Assert.True(InvitationToken.Matches(token, invitation.TokenHash));
+            Assert.NotNull(invitation.SpentAtUtc);
+            Assert.Single(activated);
+            Assert.Empty(resent);
+        }
+        else
+        {
+            Assert.Equal(ActivationOutcome.InvitationInvalid, outcome);
+            Assert.Null(resendFailure);
+            Assert.True(stored.AwaitingActivation);
+            Assert.False(InvitationToken.Matches(token, invitation.TokenHash));
+            Assert.Null(invitation.SpentAtUtc);
+            Assert.Empty(activated);
+            Assert.Single(resent);
+        }
+    }
+
+    /// <summary>An invited account whose invitation was inspected: its token and the seed it showed.</summary>
+    private async Task<(User Account, string Token, string Seed)> SeedInvitedAccountAsync(string username)
+    {
+        var account = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = username,
+            DisplayName = username,
+            Email = $"{username}@example.test",
+            ProjectKey = "GLOBAL",
+            AwaitingActivation = true,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+        };
+        var token = InvitationToken.Generate();
+        var seed = Authenticator.GenerateSecret();
+        await using var request = databases.NewRequest();
+        await request.Users.AddAsync(account, default);
+        request.Context.AccountInvitations.Add(new AccountInvitation
+        {
+            Id = Guid.NewGuid(),
+            UserId = account.Id,
+            TokenHash = InvitationToken.Hash(token),
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            ExpiresAtUtc = DateTimeOffset.UtcNow + InvitationToken.Lifetime,
+            PendingTotpSecret = seed,
+        });
+        await request.Context.SaveChangesAsync();
+        return (account, token, seed);
+    }
+
+    /// <summary>A code for the current step, not so close to its end that the vault reads it in the next.</summary>
+    private static async Task<string> FreshCodeAsync(string seed)
+    {
+        if (Totp.SecondsLeftInStep() < 5)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(Totp.SecondsLeftInStep() + 1));
+        }
+
+        return Totp.Code(seed, Totp.CurrentStep());
+    }
+
+    private static Task<AccountInvitation> InvitationOfAsync(AccountRequest request, Guid accountId)
+        => request.Context.AccountInvitations.AsNoTracking().SingleAsync(invitation => invitation.UserId == accountId);
+
+    private static Task<List<AuditLog>> EventsOfAsync(AccountRequest request, Guid accountId, AuditAction action)
+        => request.Context.AuditLogs.AsNoTracking()
+            .Where(row => row.Action == action && (row.UserId == accountId || row.ResourceId == accountId))
+            .ToListAsync();
+
+    private static AccountActivationService Activation(AccountRequest request, Barrier bothReady) => new(
+        new AccountInvitationRepository(request.Context),
+        new HasherThatWaitsForTheOther(bothReady),
+        new CleanBreachScreen(),
+        Authenticator,
+        request.Changes,
+        TimeProvider.System);
+
+    private static UserAdminService Resend(AccountRequest request, Barrier bothReady) => new(
+        request.Users,
+        new AccountInvitationRepository(request.Context),
+        new DeliveryThatWaitsForTheOther(bothReady),
+        new UnusedSessionStore(),
+        request.RecoveryCodes,
+        new UnusedAuditSink(),
+        request.Changes,
+        new Administrator(),
+        TimeProvider.System);
+
+    /// <summary>
+    /// An activation hashes the chosen password after it has loaded the account and checked the code, and
+    /// before it commits, so holding it here until the other request arrives makes both load before either commits.
+    /// </summary>
+    private sealed class HasherThatWaitsForTheOther(Barrier bothReady) : IPasswordHasher
+    {
+        public PasswordHashResult Hash(string password)
+        {
+            Assert.True(bothReady.SignalAndWait(TimeSpan.FromSeconds(10)), "The other request never reached its commit.");
+            return new PasswordHashResult(new byte[32], new byte[16]);
+        }
+
+        public bool Verify(string password, byte[] hash, byte[] salt) => throw new NotSupportedException();
+    }
+
+    /// <summary>A resend asks whether it can deliver after it has loaded the account and before it commits.</summary>
+    private sealed class DeliveryThatWaitsForTheOther(Barrier bothReady) : IAccountInvitationDelivery
+    {
+        public bool Available
+        {
+            get
+            {
+                Assert.True(bothReady.SignalAndWait(TimeSpan.FromSeconds(10)), "The other request never reached its commit.");
+                return true;
+            }
+        }
+
+        public Task<bool> TrySendAsync(string address, string displayName, string username, string token, CancellationToken ct)
+            => Task.FromResult(false);
+    }
+
+    private sealed class CleanBreachScreen : IBreachedPasswordScreen
+    {
+        public bool IsCompromised(string password) => false;
+        public int CorpusSize => 0;
+    }
+
+    private sealed class UnusedSessionStore : ISessionRevocationService
+    {
+        public Task<string> CaptureAsync(Guid userId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<string?> FindAsync(Guid userId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task RevokeAsync(Guid userId, CancellationToken ct = default) => throw new NotSupportedException();
+    }
+
+    /// <summary>A resend is recorded in its own commit, never written to the sink on its own.</summary>
+    private sealed class UnusedAuditSink : IAuditSink
+    {
+        public Task WriteAsync(AuditEntry entry, CancellationToken ct) => throw new NotSupportedException();
+    }
+
+    private sealed class Administrator : IAuditContext
+    {
+        public Guid? UserId => null;
+        public string? Username => "vault-admin";
+        public string? SourceIp => "192.0.2.1";
+    }
+}
+
+[Collection(SqlServerAccountChangeCollection.Name)]
+public sealed class SqlServerAccountActivationRaceTests(SqlServerAccountChangeDatabases databases) : AccountActivationRaceTests(databases);
+
+[Collection(PostgresAccountChangeCollection.Name)]
+public sealed class PostgresAccountActivationRaceTests(PostgresAccountChangeDatabases databases) : AccountActivationRaceTests(databases);

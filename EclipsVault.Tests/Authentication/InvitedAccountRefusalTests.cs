@@ -218,7 +218,6 @@ public class InvitedAccountRefusalTests
         public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult(user.Id == id ? user : null);
         public Task<bool> ReloadAsync(User account, CancellationToken ct) => Task.FromResult(true);
         public Task<bool> IsEmailTakenAsync(string email, Guid accountId, CancellationToken ct) => throw new NotSupportedException();
-        public Task<IReadOnlyList<string>> FindEmailsWithPrefixAsync(string localPrefix, string domain, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<User>> ListAsync(CancellationToken ct) => throw new NotSupportedException();
         public Task<bool> AnyOtherEnabledAdministratorAsync(Guid accountId, CancellationToken ct) => throw new NotSupportedException();
         public Task AddAsync(User account, CancellationToken ct) => throw new NotSupportedException();

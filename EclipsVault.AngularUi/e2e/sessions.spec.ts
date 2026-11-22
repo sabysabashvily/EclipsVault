@@ -1,4 +1,5 @@
 import { refreshAdministratorProof } from './administrator-proof';
+import { signInNewAccount } from './account-activation';
 import { AccountCreation } from './account-creation';
 import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
@@ -60,7 +61,7 @@ async function signInDevice(page: Page): Promise<void> {
   await page.goto('/Sessions');
 }
 
-test('a separate vault account enrolls MFA for its signed-in device scenarios', async ({
+test('a separate vault account activates for its signed-in device scenarios', async ({
   page,
   browserHealth,
 }) => {
@@ -81,27 +82,17 @@ test('a separate vault account enrolls MFA for its signed-in device scenarios', 
     firstName: 'Devices',
     lastName: 'Test',
     username: username,
-    password,
     clearance: 'Standard',
     project: 'GLOBAL',
   });
-  await expect(page).toHaveURL(/\/Admin\/Users$/);
+  await expect(creation.status).toContainText('Invitation sent to');
 
-  // The preceding passkey scenarios spend the shared source's credential budget; start a fresh window.
-  const windowMilliseconds = 120_000;
-  await page.waitForTimeout(windowMilliseconds - (Date.now() % windowMilliseconds) + 1_000);
   const owner = await (await browserHealth.newContext()).newPage();
-  await owner.goto('/Account/Login');
-  await owner.getByLabel('Username').fill(username);
-  await owner.getByLabel('Password', { exact: true }).fill(password);
-  await owner.getByRole('button', { name: 'Continue', exact: true }).click();
-  await expect(owner).toHaveURL(/\/Account\/EnrollTotp$/);
-  // Enrollment is the only place the production vault reveals this throwaway authenticator seed.
-  // eslint-disable-next-line playwright/no-raw-locators -- The seed is displayed as unlabelled text.
-  authenticatorSecret = await owner.locator('.secret-code').innerText();
-  await owner.getByLabel('Confirmation code').fill(await freshTotp(authenticatorSecret));
-  lastStep = Math.floor(Date.now() / 30_000);
-  await owner.getByRole('button', { name: 'Confirm enrollment', exact: true }).click();
+  ({ secret: authenticatorSecret, step: lastStep } = await signInNewAccount(
+    owner,
+    username,
+    password,
+  ));
   await expect(owner).toHaveURL(/\/Secrets$/);
   ownerCookies = await owner.context().cookies();
 });

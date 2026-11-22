@@ -133,7 +133,7 @@ public class InvitationLinkTests
         var delivery = new AccountInvitationDelivery(
             new SmtpEmailSender(emailOptions),
             emailOptions,
-            new UserDirectoryOptions("example.test", publicUrl));
+            new UserDirectoryOptions(publicUrl));
 
         Assert.Equal(expected, delivery.Available);
     }

@@ -138,13 +138,10 @@ public sealed class UsersApiTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task Create_notices_are_returned_once_separately_from_the_list()
+    public async Task Creating_an_account_leaves_no_Users_notice_because_the_form_shows_the_outcome()
     {
         var admin = await vault.AdminClientAsync();
-        await UserAccounts.CreateAsync(admin, "it-users-notice");
-        var account = await ProfileHttp.AccountAsync(vault, "it-users-notice");
-        var notice = await admin.GetFromJsonAsync<UserNoticeResponse>("/api/ui/users/notice");
-        Assert.Equal(new UserNoticeResponse($"User 'it-users-notice' created with email {account.Email}. They can sign in with either and will set up their authenticator on first sign-in.", false), notice);
+        (await UserAccounts.CreateAsync(admin, "it-users-notice")).EnsureSuccessStatusCode();
         Assert.Equal(new UserNoticeResponse(null, false), await admin.GetFromJsonAsync<UserNoticeResponse>("/api/ui/users/notice"));
     }
 

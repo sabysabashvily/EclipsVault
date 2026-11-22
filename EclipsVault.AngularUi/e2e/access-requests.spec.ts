@@ -1,4 +1,5 @@
 import { refreshAdministratorProof } from './administrator-proof';
+import { signInNewAccount } from './account-activation';
 import { AccountCreation } from './account-creation';
 import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
@@ -10,7 +11,6 @@ import { test, expect } from './fixtures';
 import { createSecret, openPalette } from './palette';
 import { SecretsList } from './secrets-list';
 import { SharedWithMe } from './shared-with-me';
-import { freshTotp } from './totp';
 
 test.describe.configure({ mode: 'serial' });
 const requesterUsername = 'e2e-ar-requester';
@@ -91,11 +91,10 @@ test('a requester denied in another project sees the request they filed from the
     firstName: 'Access',
     lastName: 'Requester',
     username: requesterUsername,
-    password,
     clearance: 'Elevated',
     project: 'E2E-AR',
   });
-  await expect(page).toHaveURL(/\/Admin\/Users$/);
+  await expect(creation.status).toContainText('Invitation sent to');
 
   for (const [secret, sensitivity] of [
     [approved, 'Internal'],
@@ -108,17 +107,8 @@ test('a requester denied in another project sees the request they filed from the
     detailsPaths.set(secret, new URL(page.url()).pathname);
   }
 
-  // Two credential posts: the earlier specs leave this window's sign-in budget far from spent.
   const requester = await (await browserHealth.newContext()).newPage();
-  await requester.goto('/Account/Login');
-  await requester.getByLabel('Username').fill(requesterUsername);
-  await requester.getByLabel('Password', { exact: true }).fill(password);
-  await requester.getByRole('button', { name: 'Continue', exact: true }).click();
-  await expect(requester).toHaveURL(/\/Account\/EnrollTotp$/);
-  // eslint-disable-next-line playwright/no-raw-locators -- Enrollment displays the throwaway authenticator seed as unlabelled text.
-  const seed = await requester.locator('.secret-code').innerText();
-  await requester.getByLabel('Confirmation code').fill(await freshTotp(seed));
-  await requester.getByRole('button', { name: 'Confirm enrollment', exact: true }).click();
+  await signInNewAccount(requester, requesterUsername, password);
   await expect(requester).toHaveURL(/\/Secrets$/);
   requesterCookies = await requester.context().cookies();
   const before = await openAsRequester(requester);

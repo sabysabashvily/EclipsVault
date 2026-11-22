@@ -55,6 +55,8 @@ services:
       Email__Sender: Smtp
       Email__Smtp__Host: smtp
       Email__Smtp__Port: '1025'
+      # Invitations need a public URL for their link. Specs read only the link's token, never open it.
+      Identity__PublicUrl: https://vault.example.test
       WebAuthn__Origins__0: ${E2E_BASE_URL:-https://localhost}
       # The access grid must have the same expected result at every hour of the day.
       Abac__ProductionWindowStartUtcHour: '0'

@@ -328,6 +328,8 @@ public sealed class AuthApiTests(VaultFixture vault)
         await UiApiFailureContractTests.AssertProblemAsync(await AuthApi.PostAsync(guesser, "/api/ui/auth/passkey/begin", token, Guess), 429, "throttled");
         await UiApiFailureContractTests.AssertProblemAsync(await AuthApi.PostAsync(guesser, "/api/ui/auth/passkey/complete", token, Guess), 429, "throttled");
         await UiApiFailureContractTests.AssertProblemAsync(await AuthApi.PostAsync(guesser, "/api/ui/auth/recover", token, Guess), 429, "throttled");
+        await UiApiFailureContractTests.AssertProblemAsync(await AuthApi.PostAsync(guesser, "/api/ui/auth/activation", token, ActivationGuess), 429, "throttled");
+        await UiApiFailureContractTests.AssertProblemAsync(await AuthApi.PostAsync(guesser, "/api/ui/auth/activation/complete", token, ActivationGuess), 429, "throttled");
 
         Assert.Equal(HttpStatusCode.OK, (await guesser.Client.GetAsync("/api/ui/auth/options")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await guesser.Client.GetAsync("/Account/Login")).StatusCode);
@@ -460,6 +462,9 @@ public sealed class AuthApiTests(VaultFixture vault)
 
     /// <summary>A body every sign-in call binds, naming no account.</summary>
     private static readonly object Guess = new { username = "it-auth-no-such-account", password = "It-guess-2026!", code = "123456", credential = new { } };
+
+    /// <summary>A well-formed guess at an invitation token, so the throttle, not model validation, answers it.</summary>
+    private static readonly object ActivationGuess = new { token = "it-auth-guessed-invitation-token", password = "It-guess-2026!", code = "123456" };
 
     private int PermitLimit => vault.Services.GetRequiredService<IOptions<AuthThrottleOptions>>().Value.PermitLimit;
 

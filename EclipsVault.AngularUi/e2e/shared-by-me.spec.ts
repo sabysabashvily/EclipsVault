@@ -1,15 +1,14 @@
 import { refreshAdministratorProof } from './administrator-proof';
+import { signInNewAccount } from './account-activation';
 import { AccountCreation } from './account-creation';
 import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
-import { clearSignInBudget } from './profile-state';
 import { createSecret, openPalette } from './palette';
 import { SecretsList } from './secrets-list';
 import { SharedByMe } from './shared-by-me';
 import { SharedWithMe } from './shared-with-me';
-import { freshTotp } from './totp';
 
 test.describe.configure({ mode: 'serial' });
 const recipientUsername = 'e2e-share-recipient';
@@ -44,24 +43,13 @@ test('an issuer shares two real secrets with a colleague outside their project',
     firstName: 'Share',
     lastName: 'Recipient',
     username: recipientUsername,
-    password,
     clearance: 'Standard',
     project: 'E2E-RECIPIENT',
   });
-  await expect(page).toHaveURL(/\/Admin\/Users$/);
+  await expect(creation.status).toContainText('Invitation sent to');
 
-  // Earlier sign-in scenarios use the same proxy source; keep the production limiter enabled.
-  clearSignInBudget();
   const recipient = await (await browserHealth.newContext()).newPage();
-  await recipient.goto('/Account/Login');
-  await recipient.getByLabel('Username').fill(recipientUsername);
-  await recipient.getByLabel('Password', { exact: true }).fill(password);
-  await recipient.getByRole('button', { name: 'Continue', exact: true }).click();
-  await expect(recipient).toHaveURL(/\/Account\/EnrollTotp$/);
-  // eslint-disable-next-line playwright/no-raw-locators -- Enrollment displays the throwaway authenticator seed as unlabelled text.
-  const seed = await recipient.locator('.secret-code').innerText();
-  await recipient.getByLabel('Confirmation code').fill(await freshTotp(seed));
-  await recipient.getByRole('button', { name: 'Confirm enrollment', exact: true }).click();
+  await signInNewAccount(recipient, recipientUsername, password);
   await expect(recipient).toHaveURL(/\/Secrets$/);
   recipientCookies = await recipient.context().cookies();
 

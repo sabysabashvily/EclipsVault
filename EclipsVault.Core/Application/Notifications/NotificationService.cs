@@ -100,16 +100,6 @@ public sealed class NotificationService : INotificationService
             return new Draft(user.Email, subject, body, kind.ToString());
         }, ct);
 
-    public Task NotifyUserProvisionedAsync(string email, string displayName, string username, CancellationToken ct)
-        => SafeSendAsync(() =>
-        {
-            var body = $"Hello {displayName},\n\n" +
-                       "An EclipsVault account has been created for you.\n" +
-                       $"Sign in with the username '{username}' (or this email) and the password an administrator gave you; " +
-                       "you'll enrol an authenticator on first sign-in.\n\n— EclipsVault";
-            return Task.FromResult<Draft?>(new Draft(email, "Your EclipsVault account is ready", body, "UserProvisioned"));
-        }, ct);
-
     public Task<bool> NotifyExpiringSecretAsync(
         Guid ownerUserId, string secretName, DateTimeOffset expiresAtUtc, CancellationToken ct)
         => SafeSendAsync(async () =>

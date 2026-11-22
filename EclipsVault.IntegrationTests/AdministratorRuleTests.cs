@@ -85,7 +85,7 @@ public sealed class AdministratorRuleTests(VaultFixture vault)
         var head = await AuditTrail.HeadAsync(vault);
 
         var response = await UserAccounts.CreateAsync(admin, "it-rules-clearance-7", "Undefined", "Clearance",
-            password: "It-rules-initial-password", clearance: (ClearanceLevel)7);
+            clearance: (ClearanceLevel)7);
 
         await UserFormsApiTests.AssertFieldProblemAsync(response, "clearance", "Choose one of the vault's clearance levels.");
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, head));

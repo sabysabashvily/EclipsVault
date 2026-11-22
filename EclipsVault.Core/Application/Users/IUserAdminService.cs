@@ -20,12 +20,12 @@ public sealed record CreateUserRequest(
     string Username,
     string FirstName,
     string LastName,
-    string Password,
+    string Email,
     ClearanceLevel Clearance,
     string ProjectKey);
 
-/// <summary>Result of provisioning, including the email address generated for the account.</summary>
-public sealed record CreatedUserDto(Guid Id, string Username, string Email, string DisplayName);
+/// <summary>Result of provisioning: the invited account and whether its invitation went out.</summary>
+public sealed record CreatedUserDto(Guid Id, string Username, string Email, string DisplayName, SentInvitationDto Invitation);
 
 /// <summary>Outcome of issuing or resending an account invitation after it has committed.</summary>
 public sealed record SentInvitationDto(bool Delivered, DateTimeOffset ExpiresAtUtc);
@@ -46,7 +46,10 @@ public interface IUserAdminService
 
     Task<UserSummaryDto?> GetAsync(Guid userId, CancellationToken ct);
 
-    /// <summary>Provisions a user, auto-generating a unique <c>first.last.N@domain</c> email.</summary>
+    /// <summary>
+    /// Provisions an account awaiting activation at the person's own email, commits it with its invitation
+    /// and <see cref="AuditAction.UserCreated"/>, then delivers the link through the unrecorded mail path.
+    /// </summary>
     Task<CreatedUserDto> CreateAsync(CreateUserRequest request, CancellationToken ct);
 
     /// <summary>

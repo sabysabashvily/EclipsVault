@@ -3,6 +3,7 @@ import type { BrowserContext } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
+import { signInNewAccount } from './account-activation';
 import { AccountCreation } from './account-creation';
 import { AccountSignIn } from './account-sign-in';
 import { AuthenticatorEnrollment } from './authenticator-enrollment';
@@ -32,7 +33,7 @@ let recoveryProof = '';
 let signInRecoveryCode = '';
 
 // This account belongs only to this flow; sensitive changes never retire another suite's session.
-test('Profile opens through production routes after real enrollment', async ({
+test('Profile opens through production routes after real activation', async ({
   page,
   browserHealth,
 }) => {
@@ -46,21 +47,14 @@ test('Profile opens through production routes after real enrollment', async ({
   await page.context().addCookies(administrator.cookies);
   const creation = new AccountCreation(page);
   const profile = new ProfilePage(page);
-  // The proof and the first sign-in both spend the proxy's one shared credential budget.
+  // The proof spends the proxy's one shared credential budget.
   profile.releaseSignInBudget();
   await refreshAdministratorProof(page);
   await creation.open();
-  await creation.createMailboxOwner('e2e-profile-owner', password);
-  await expect(page).toHaveURL(/\/Admin\/Users$/);
+  await creation.createMailboxOwner('e2e-profile-owner');
+  await expect(creation.status).toContainText('Invitation sent to');
   const owner = await (await browserHealth.newContext()).newPage();
-  const signIn = new AccountSignIn(owner);
-  await signIn.open();
-  await signIn.submitPassword('e2e-profile-owner', password);
-  await expect(owner).toHaveURL(/\/Account\/EnrollTotp$/);
-  const enrollment = new AuthenticatorEnrollment(owner);
-  secret = await enrollment.secret.innerText();
-  await enrollment.confirm(await freshProfileTotp(secret));
-  lastStep = currentTotpStep();
+  ({ secret, step: lastStep } = await signInNewAccount(owner, 'e2e-profile-owner', password));
   await expect(owner).toHaveURL(/\/Secrets$/);
   await new ProfilePage(owner).open('/pRoFiLe/InDeX');
   await expect(owner).toHaveTitle('Profile — EclipsVault');

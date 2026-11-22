@@ -19,4 +19,9 @@ export class AccountSignIn {
     await this.page.getByLabel('Password', { exact: true }).fill(password);
     await this.page.getByRole('button', { name: 'Continue', exact: true }).click();
   }
+
+  async submitCode(code: string): Promise<void> {
+    await this.page.getByLabel('Authenticator code').fill(code);
+    await this.page.getByRole('button', { name: 'Verify and sign in', exact: true }).click();
+  }
 }

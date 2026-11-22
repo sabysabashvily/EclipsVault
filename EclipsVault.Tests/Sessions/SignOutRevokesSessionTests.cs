@@ -161,7 +161,7 @@ public class SignOutRevokesSessionTests
             new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()),
             new Claim(VaultClaimTypes.SessionId, Guid.NewGuid().ToString()));
         var http = legacy.HttpContext;
-        var controller = new AuthController(null!, null!, null!, null!, null!, null!, null!,
+        var controller = new AuthController(null!, null!, null!, null!, null!, null!, null!, null!,
             new AccountSignOut(null!, new WriteFailingRegistry(), null!, NullLogger<AccountSignOut>.Instance),
             new FixedAntiforgery(), NullLogger<AuthController>.Instance)
         {

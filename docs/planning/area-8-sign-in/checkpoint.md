@@ -287,3 +287,41 @@ invitation-row unique violation.
 
 Restart: ticket 2 (#180) starts from this commit. It switches create to the email contract, retires
 generated addresses, and adds the activation endpoints and the `404 invitation_invalid` proof.
+
+## Delivery: 8b ticket 2 (#180)
+
+#179 closed first: its CI failed on two fixtures written before the awaiting-activation column and
+the invitation upgrade. `705dc98` fixes them and pins both sides of the upgrade's generation rule;
+CI 45038755227 on `705dc98` is green on all ten jobs.
+
+The #180 commit switches `POST /api/ui/users` to `{ firstName, lastName, username, email, clearance,
+project }`: the account is created awaiting activation with its invitation, `UserCreated` names the
+entered address, and the 201 reports `invitation` (`sent` / `not_delivered`) and `expiresAtUtc`.
+Generated addresses, `Identity:EmailDomain` and the outbox provisioning email are gone; the README
+says so. `POST /api/ui/auth/activation` shows the seed, generated once and stored only while the token
+is current; `POST /api/ui/auth/activation/complete` sets the password under Profile's rules (now
+shared as `PasswordRules.Refusal`), enrolls the authenticator, spends the token, advances the
+generation and records `AccountActivated` in one commit under the account's stamp. Both are anonymous,
+throttled and on the allowlist; unknown, expired, disabled, used, replaced and readdressed tokens get
+one `404 invitation_invalid`. The New user form takes Email with the decision record's hint and shows
+both outcomes in place of the form, so the create no longer sets a Users notice. F3 and F7 were shown
+failing in `logs/ticket-180/f3-f7-failing.txt` and are now impossible.
+
+Helpers: the integration `SignInNewAccountAsync` and the browser suite's `signInNewAccount` invite,
+read the token from the SMTP capture, activate (spending the previous TOTP step) and sign in with
+password and TOTP. Every `VaultFixture` now has a mailbox and `Identity:PublicUrl`; the unavailable
+case moved to its own small fixture. Changed helper signatures are listed in
+`logs/ticket-180/final-report.md`.
+
+Checks: `scripts/check.sh`, `dotnet format`, both pending-model checks (no model change), hook tests,
+`npm run lint`, `npm test -- --watch=false`, `npm run check:api-types` and `npm run test:build-checks`.
+`check.sh integration` on PostgreSQL in slices (`logs/ticket-180/integration-filters.txt`), the last
+of each green. SQL Server, the full suites and every browser spec run in CI.
+
+Reviews: a fresh `security-reviewer` (Claude Opus 5.5 high), then one re-check
+(`logs/ticket-180/review-ledger.md`). Nothing important. Fixed: N1, a disabled account's invitation is
+unusable. For #182: N2, an unrelated administrator change during activation answers "link invalid";
+N3, an inspect racing a disable can show the seed once; and a line in ADR-0033 that disabling pauses an
+invitation while replacing the address revokes it.
+
+Restart: ticket 3 (#181) starts from this commit.

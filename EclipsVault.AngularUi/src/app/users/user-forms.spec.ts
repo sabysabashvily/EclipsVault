@@ -12,7 +12,7 @@ const clearances = [
   { value: 1, label: 'Standard' },
   { value: 4, label: 'Top Secret' },
 ];
-const metadata = { emailDomain: 'configured.example.test', clearances };
+const metadata = { clearances, invitationsAvailable: true };
 const details = {
   userId: id,
   username: 'ada',
@@ -72,7 +72,13 @@ const newForm: FormCase = {
   failure: 'Could not load new user. Try again.',
   firstLabel: 'First name',
   signInUrl: '/Account/Login?ReturnUrl=%2FAdmin%2FCreateUser',
-  successBody: { userId: id, username: 'ada', email: 'ada.saved.1@configured.example.test' },
+  successBody: {
+    userId: id,
+    username: 'ada',
+    email: 'ada@example.test',
+    invitation: 'sent',
+    expiresAtUtc: '2026-11-25T12:00:00+00:00',
+  },
 };
 const editForm: FormCase = {
   name: 'Edit user',
@@ -241,67 +247,68 @@ describe.each([newForm, editForm])('$name', (form) => {
     expect(page.querySelector('.flash-error')?.textContent).toBe('Confirm again.');
     expect(code.value).toBe('');
   });
-
-  it('a successful write returns to Users', async () => {
-    const { fixture, page, navigate } = await loaded(form);
-    submit(page);
-    backend.expectOne(write).flush(form.successBody);
-    await fixture.whenStable();
-    expect(navigate).toHaveBeenCalledExactlyOnceWith('/Admin/Users');
-  });
 });
 
 describe('New user fields', () => {
-  it('uses the configured domain and preserves field order, labels and initial values', async () => {
+  it('asks for the email in place of a password and preserves field order, labels and initial values', async () => {
     const { page } = await loaded(newForm);
-    expect(page.textContent).toContain('firstname.lastname.N@configured.example.test');
     expect(
       [...page.querySelectorAll('section form label')].map((label) => label.textContent),
-    ).toEqual([
-      'First name',
-      'Last name',
-      'Username',
-      'Initial password',
-      'Clearance level',
-      'Project key',
-    ]);
+    ).toEqual(['First name', 'Last name', 'Username', 'Email', 'Clearance level', 'Project key']);
+    expect(page.textContent).toContain(
+      'The invitation goes here. They choose their own password and set up their authenticator.',
+    );
+    expect(page.querySelector('input[type="password"]')).toBeNull();
     expect(page.querySelector('select')?.value).toBe('1');
     expect(input(page, 'firstName').placeholder).toBe('Saba');
     expect(input(page, 'lastName').placeholder).toBe('Sabashvili');
   });
-  it('debounces breach feedback, shows strength and discards an obsolete verdict', async () => {
-    const { fixture, page } = await loaded(newForm);
-    vi.useFakeTimers();
-    fill(page, 'password', 'Different-Password-456!');
-    fixture.detectChanges();
-    vi.advanceTimersByTime(399);
-    backend.expectNone('/api/ui/passwords/check-breached');
-    vi.advanceTimersByTime(1);
-    const preview = backend.expectOne('/api/ui/passwords/check-breached');
-    expect(preview.request.body).toEqual({ password: 'Different-Password-456!' });
-    preview.flush({ compromised: true });
-    fixture.detectChanges();
-    expect(page.textContent).toContain('This password has appeared in known data breaches');
-    expect(page.textContent).toContain('Very strong');
-    submit(page);
-    backend.expectNone(newForm.write);
-    fill(page, 'password', 'short');
-    fixture.detectChanges();
-    expect(page.textContent).toContain('Too short — 7 more characters needed');
-    expect(page.textContent).not.toContain('This password has appeared in known data breaches');
-    vi.useRealTimers();
-  });
-  it('clears the plaintext password when the session ends', async () => {
-    const { fixture, page } = await loaded(newForm);
-    fill(page, 'password', 'Different-Password-456!');
-    document.dispatchEvent(new Event('vault-session-ended'));
-    await fixture.whenStable();
-    expect(input(page, 'password').value).toBe('');
-    expect(page.querySelector('fieldset')?.disabled).toBe(true);
-  });
+
+  it.each([
+    ['sent', 'Invitation sent to ada@example.test. It expires in 72 hours.', false],
+    [
+      'not_delivered',
+      "The account was created, but the invitation could not be delivered. Resend it from the user's page.",
+      true,
+    ],
+  ])(
+    'posts the email and shows the %s outcome in place of the form',
+    async (invitation, message, error) => {
+      const { fixture, page, navigate } = await loaded(newForm);
+      fill(page, 'firstName', 'Ada');
+      fill(page, 'lastName', 'Lovelace');
+      fill(page, 'username', 'ada');
+      fill(page, 'email', 'ada@example.test');
+      fill(page, 'project', 'OPS');
+      submit(page);
+      const create = backend.expectOne(newForm.write);
+      expect(create.request.body).toEqual({
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        username: 'ada',
+        email: 'ada@example.test',
+        clearance: 1,
+        project: 'OPS',
+      });
+      create.flush({ ...newForm.successBody, invitation });
+      await fixture.whenStable();
+      expect(page.querySelector('section form')).toBeNull();
+      expect(page.querySelector(error ? '.flash-error' : '.flash-success')?.textContent).toBe(
+        message,
+      );
+      expect(navigate).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('Edit user fields', () => {
+  it('a successful write returns to Users', async () => {
+    const { fixture, page, navigate } = await loaded(editForm);
+    submit(page);
+    backend.expectOne(editForm.write).flush(editForm.successBody);
+    await fixture.whenStable();
+    expect(navigate).toHaveBeenCalledExactlyOnceWith('/Admin/Users');
+  });
   it('an unknown account shows User not found with Back to users', async () => {
     const { fixture, page } = render(editForm);
     backend

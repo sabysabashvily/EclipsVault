@@ -186,7 +186,6 @@ public class DashboardServiceTests
         public Task<User?> FindByUsernameOrEmailAsync(string identifier, CancellationToken ct) => throw new NotSupportedException();
         public Task<User?> FindByEmailAsync(string email, CancellationToken ct) => throw new NotSupportedException();
         public Task<bool> IsEmailTakenAsync(string email, Guid accountId, CancellationToken ct) => throw new NotSupportedException();
-        public Task<IReadOnlyList<string>> FindEmailsWithPrefixAsync(string localPrefix, string domain, CancellationToken ct) => throw new NotSupportedException();
         public Task AddAsync(User user, CancellationToken ct) => throw new NotSupportedException();
         public Task UpdateAsync(User user, CancellationToken ct) => throw new NotSupportedException();
         public void StageAddition(User user) => throw new NotSupportedException();

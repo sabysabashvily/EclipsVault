@@ -59,20 +59,6 @@ public sealed class AccountInvitationApiTests(InvitationFixture fixture)
         Assert.True(body.RootElement.GetProperty("invitationsAvailable").GetBoolean());
     }
 
-    [Fact]
-    public async Task Create_still_accepts_today_password_body_and_UserCreated_names_the_address()
-    {
-        var admin = await Vault.AdminClientAsync();
-        var before = await AuditTrail.HeadAsync(Vault);
-
-        var response = await UserAccounts.CreateAsync(admin, "it-inv-legacy-create", "Legacy", "Create",
-            password: "Initial-nonreused-credential-179");
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var saved = await ProfileHttp.AccountAsync(Vault, "it-inv-legacy-create");
-        var createdRow = Assert.Single(await AuditTrail.RowsAfterAsync(Vault, before), row => row.Action == AuditAction.UserCreated);
-        Assert.Contains(saved.Email, createdRow.Details!, StringComparison.Ordinal);
-    }
-
     [Theory]
     [InlineData("POST", Missing + "/invitation", "198.18.120.11")]
     [InlineData("POST", Missing + "/invitation-address", "198.18.120.12")]
@@ -262,7 +248,7 @@ public sealed class AccountInvitationApiTests(InvitationFixture fixture)
     public async Task Invitation_endpoints_refuse_active_accounts_taken_emails_and_invalid_emails()
     {
         var admin = await Vault.AdminClientAsync();
-        (await UserAccounts.CreateAsync(admin, "it-inv-active")).EnsureSuccessStatusCode();
+        await Vault.SignInNewAccountAsync("it-inv-active", IPAddress.Parse("198.18.120.40"));
         var active = await ProfileHttp.AccountAsync(Vault, "it-inv-active");
         var invited = await SeedInvitedAccountAsync("it-inv-conflicts", "conflicts@example.test");
 
@@ -458,13 +444,45 @@ public sealed class AccountInvitationApiTests(InvitationFixture fixture)
     }
 }
 
-[Collection(VaultCollection.Name)]
-public sealed class AccountInvitationUnavailableTests(VaultFixture vault)
+/// <summary>A vault with neither email delivery nor a public address, so it cannot invite anyone.</summary>
+public sealed class UnconfiguredInvitationsFixture : IAsyncLifetime
 {
+    public VaultFixture Vault { get; } = new() { Mailbox = null, PublicUrl = null };
+    public Task InitializeAsync() => Vault.InitializeAsync();
+    public Task DisposeAsync() => Vault.DisposeAsync();
+}
+
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class UnconfiguredInvitationsCollection : ICollectionFixture<UnconfiguredInvitationsFixture>
+{
+    public const string Name = "unconfigured invitations";
+}
+
+[Collection(UnconfiguredInvitationsCollection.Name)]
+public sealed class AccountInvitationUnavailableTests(UnconfiguredInvitationsFixture fixture)
+{
+    private VaultFixture Vault => fixture.Vault;
+
+    [Fact]
+    public async Task Creating_an_account_is_refused_with_invitations_unavailable_and_the_form_says_so()
+    {
+        var admin = await Vault.AdminClientAsync();
+        using (var form = JsonDocument.Parse(await (await admin.GetAsync("/api/ui/users/new")).Content.ReadAsStringAsync()))
+        {
+            Assert.False(form.RootElement.GetProperty("invitationsAvailable").GetBoolean());
+        }
+
+        var refused = await UserAccounts.CreateAsync(admin, "it-inv-unavail-create");
+        await UiApiFailureContractTests.AssertProblemAsync(refused, 409, "invitations_unavailable");
+        using var scope = Vault.Services.CreateScope();
+        Assert.False(await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().Users
+            .AnyAsync(user => user.Username == "it-inv-unavail-create"));
+    }
+
     [Fact]
     public async Task Resend_refuses_with_invitations_unavailable_when_mail_or_public_url_is_not_configured()
     {
-        var admin = await vault.AdminClientAsync();
+        var admin = await Vault.AdminClientAsync();
         var invited = new User
         {
             Id = Guid.NewGuid(),
@@ -478,7 +496,7 @@ public sealed class AccountInvitationUnavailableTests(VaultFixture vault)
             AwaitingActivation = true,
             CreatedAtUtc = DateTimeOffset.UtcNow
         };
-        using (var setup = vault.Services.CreateScope())
+        using (var setup = Vault.Services.CreateScope())
         {
             var db = setup.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
             db.Users.Add(invited);

@@ -22,12 +22,17 @@ public class AuthorizationSurfaceTests
     public void The_local_cookie_branch_has_an_explicit_anonymous_allowlist_entry()
         => Assert.Equal(LocalSignOut.Path, Assert.Single(IntentionallyAnonymousTerminalPaths));
 
-    /// <summary>The UI API's anonymous actions: <c>/api/ui/auth</c>'s options, password, passkey and recovery calls.</summary>
+    /// <summary>
+    /// The UI API's anonymous actions: <c>/api/ui/auth</c>'s options, password, passkey and recovery calls, and
+    /// the two activation calls, which only the emailed invitation token authorizes (ADR-0033).
+    /// </summary>
     // Declared before IntentionallyAnonymous, whose initializer spreads it.
     private static readonly string[] UiApiAnonymous =
     [
         "AuthController.BeginPasskey",
+        "AuthController.CompleteActivation",
         "AuthController.CompletePasskey",
+        "AuthController.InspectActivation",
         "AuthController.Options",
         "AuthController.Password",
         "AuthController.Recover",

@@ -1,15 +1,13 @@
 import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
+import { signInNewAccount } from './account-activation';
 import { AccountCreation } from './account-creation';
-import { AccountSignIn } from './account-sign-in';
 import { savedAdministratorCookies } from './administrator-cookies';
 import { refreshAdministratorProof } from './administrator-proof';
-import { AuthenticatorEnrollment } from './authenticator-enrollment';
 import { test, expect } from './fixtures';
 import { clearSignInBudget } from './profile-state';
 import { NewSecretForm } from './new-secret';
 import { Overview } from './overview';
-import { freshTotp } from './totp';
 
 test.describe.configure({ mode: 'serial' });
 const memberUsername = 'e2e-overview-member';
@@ -90,7 +88,7 @@ test('a non-administrator sees their own activity, the critical count and their 
   const password = `E2e-${randomBytes(24).toString('hex')}`;
   await page.context().addCookies(await savedAdministratorCookies());
   // Sign-in's passkey scenarios spend the shared source's credential budget; start with a full one.
-  // Its proof, sign-in and enrollment are three posts, which leave the next project's budget intact.
+  // The proof is one post; the member's activation and sign-in clear the budget again.
   clearSignInBudget();
   await refreshAdministratorProof(page);
   const creation = new AccountCreation(page);
@@ -99,30 +97,24 @@ test('a non-administrator sees their own activity, the critical count and their 
     firstName: 'Overview',
     lastName: 'Member',
     username: memberUsername,
-    password,
     clearance: 'Standard',
     project,
   });
-  await expect(page).toHaveURL(/\/Admin\/Users$/);
+  await expect(creation.status).toContainText('Invitation sent to');
   const newSecret = new NewSecretForm(page);
   await newSecret.open();
   await newSecret.create({ name: expiring, project, sensitivity: 'Internal', ttlDays: '1' });
   await expect(page.getByRole('heading', { name: expiring, exact: true })).toBeVisible();
 
   const member = await (await browserHealth.newContext()).newPage();
-  const signIn = new AccountSignIn(member);
-  await signIn.open();
-  await signIn.submitPassword(memberUsername, password);
-  await expect(member).toHaveURL(/\/Account\/EnrollTotp$/);
-  const enrollment = new AuthenticatorEnrollment(member);
-  await enrollment.confirm(await freshTotp(await enrollment.secret.innerText()));
+  await signInNewAccount(member, memberUsername, password);
   await expect(member).toHaveURL(/\/Secrets$/);
   memberCookies = await member.context().cookies();
 
   const overview = new Overview(member);
   await overview.open();
   await expect(overview.ownActivity).toBeVisible();
-  await expect(overview.activity.filter({ hasText: 'TOTP enrolled' })).toContainText(
+  await expect(overview.activity.filter({ hasText: 'Account activated' })).toContainText(
     memberUsername,
   );
   await expect(overview.notice).toHaveText(

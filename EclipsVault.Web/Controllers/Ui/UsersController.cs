@@ -15,7 +15,7 @@ namespace EclipsVault.Web.Controllers.Ui;
 [Authorize(AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme, Policy = VaultPolicies.AdminOnly)]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 [TypeFilter(typeof(AdministratorProblemFilter))]
-public sealed class UsersController(IUserAdminService users, AdministratorStepUp stepUp, UserDirectoryOptions directory) : Controller
+public sealed class UsersController(IUserAdminService users, AdministratorStepUp stepUp) : Controller
 {
     [HttpGet("notice")]
     [ProducesResponseType<UserNoticeResponse>(StatusCodes.Status200OK, "application/json")]
@@ -40,7 +40,7 @@ public sealed class UsersController(IUserAdminService users, AdministratorStepUp
 
     [HttpGet("new")]
     [ProducesResponseType<NewUserResponse>(StatusCodes.Status200OK, "application/json")]
-    public ActionResult<NewUserResponse> New() => new NewUserResponse(directory.EmailDomain, Clearances, users.InvitationsAvailable);
+    public ActionResult<NewUserResponse> New() => new NewUserResponse(Clearances, users.InvitationsAvailable);
 
     [HttpGet("{userId:guid}")]
     [ProducesResponseType<UserDetailsResponse>(StatusCodes.Status200OK, "application/json")]
@@ -70,9 +70,10 @@ public sealed class UsersController(IUserAdminService users, AdministratorStepUp
             return required;
         }
         var created = await users.CreateAsync(new CreateUserRequest(request.Username ?? "", request.FirstName ?? "", request.LastName ?? "",
-            request.Password ?? "", (ClearanceLevel)(request.Clearance ?? 0), request.Project ?? ""), ct);
-        Success($"User '{created.Username}' created with email {created.Email}. They can sign in with either and will set up their authenticator on first sign-in.");
-        return Created($"/api/ui/users/{created.Id}", new CreatedUserResponse(created.Id, created.Username, created.Email));
+            request.Email ?? "", (ClearanceLevel)(request.Clearance ?? 0), request.Project ?? ""), ct);
+        // The New user page shows the invitation's outcome itself, so no Users notice repeats it.
+        return Created($"/api/ui/users/{created.Id}", new CreatedUserResponse(created.Id, created.Username, created.Email,
+            created.Invitation.Delivered ? "sent" : "not_delivered", created.Invitation.ExpiresAtUtc));
     }
 
     [HttpPost("{userId:guid}/invitation")]

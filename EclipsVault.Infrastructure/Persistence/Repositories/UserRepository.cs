@@ -60,16 +60,6 @@ public sealed class UserRepository : IUserRepository
             .SingleAsync(ct);
     }
 
-    public async Task<IReadOnlyList<string>> FindEmailsWithPrefixAsync(string localPrefix, string domain, CancellationToken ct)
-    {
-        var pattern = EmailIdentity.Normalize($"{localPrefix}.%@{domain}");
-        return await _context.Users
-            .AsNoTracking()
-            .Where(u => EF.Functions.Like(u.NormalizedEmail, pattern))
-            .Select(u => u.NormalizedEmail)
-            .ToListAsync(ct);
-    }
-
     public Task<User?> FindByIdAsync(Guid id, CancellationToken ct)
         => _context.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
 

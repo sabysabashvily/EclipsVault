@@ -62,12 +62,18 @@ public sealed partial class VaultFixture : IAsyncLifetime
     private string? _adminAuthenticatorSecret;
     private DateTimeOffset _adminAuthenticatedAt;
     private readonly SemaphoreSlim _administratorProof = new(1, 1);
+    private int _activationSources;
 
     public bool TrustIdpMfa { get; init; }
 
-    public SmtpCapture? Mailbox { get; init; }
+    /// <summary>
+    /// The SMTP capture the vault delivers to. Every vault has one unless a test sets it to null, because new
+    /// accounts are activated through the invitation it receives (ADR-0033).
+    /// </summary>
+    public SmtpCapture? Mailbox { get; init; } = new SmtpCapture();
 
-    public string? PublicUrl { get; init; }
+    /// <summary>The address invitation links are built from; null leaves invitations unavailable.</summary>
+    public string? PublicUrl { get; init; } = "https://vault.example.test";
 
     public string? RedisConfiguration { get; init; }
 
@@ -249,24 +255,67 @@ public sealed partial class VaultFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// A new Standard-clearance vault account, created by the administrator and signed in through the
-    /// real first sign-in. For tests that end their session: revoking one never touches the administrator's.
-    /// Every client shares one address unless the test gives it a <paramref name="source"/> of its own,
-    /// and the vault allows each address only a few sign-in steps per window.
+    /// A new Standard-clearance vault account, invited by the administrator, activated through the emailed
+    /// link with <paramref name="password"/> and a new authenticator, then signed in with both. For tests that
+    /// end their session: revoking one never touches the administrator's. Every client shares one address
+    /// unless the test gives it a <paramref name="source"/> of its own, and the vault allows each address only
+    /// a few sign-in steps per window; activation uses an address of its own, so it spends none of them.
     /// </summary>
     public async Task<VaultSession> SignInNewAccountAsync(
         string username, IPAddress? source = null, ClearanceLevel clearance = ClearanceLevel.Standard, string project = "GLOBAL",
         string? password = null)
     {
         password ??= "It-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
-        var created = await UserAccounts.CreateAsync(await AdminClientAsync(), username,
-            password: password, clearance: clearance, project: project);
+        var created = await UserAccounts.CreateAsync(await AdminClientAsync(), username, clearance: clearance, project: project);
         created.EnsureSuccessStatusCode();
 
+        // A code about to expire may reach the vault in the next step, so wait for a fresh one.
+        if (Totp.SecondsLeftInStep() < 5)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(Totp.SecondsLeftInStep() + 1));
+        }
+
+        // Activation spends the previous step, so the sign-in below spends the current one, as an enrollment
+        // at first sign-in did: a test's next code is then the next step's.
+        var step = Totp.CurrentStep();
+        var secret = await ActivateAsync(UserAccounts.EmailOf(username), password, step - 1);
         var session = CreateSession(source: source);
-        await SignInFirstTimeAsync(session.Client, username, password);
+        await SignInWithAuthenticatorAsync(session.Client, username, password, Totp.Code(secret, Totp.StepStillAccepted(DateTimeOffset.UtcNow, step - 1)));
         session.ProfileOwner = new ProfileAccount(session, await ProfileHttp.AccountAsync(this, username), password);
         return session;
+    }
+
+    /// <summary>
+    /// Activates the invited account at <paramref name="email"/> through the latest invitation the mailbox
+    /// received: inspects the link's token, then chooses <paramref name="password"/> and confirms the shown
+    /// authenticator with its code for <paramref name="step"/>. Returns the authenticator secret. Each call
+    /// comes from an address of its own, so it spends no test's sign-in budget.
+    /// </summary>
+    public async Task<string> ActivateAsync(string email, string password, long step)
+    {
+        var mailbox = Mailbox ?? throw new InvalidOperationException("Activating an account needs the vault's mailbox.");
+        var (_, _, _, token) = await mailbox.LatestInvitationForAsync(email);
+        var n = Interlocked.Increment(ref _activationSources);
+        var client = CreateSession(source: new IPAddress([100, 120, (byte)(n / 250), (byte)(n % 250 + 1)])).Client;
+
+        var inspected = await UiApiRequest.SendWithTokenAsync(client, await SignInDocument.TokenAsync(client), HttpMethod.Post,
+            "/api/ui/auth/activation", JsonContent.Create(new { token }));
+        var secret = inspected.IsSuccessStatusCode
+            ? (await inspected.Content.ReadFromJsonAsync<EclipsVault.Web.Models.Ui.ActivationResponse>())?.SecretBase32
+            : null;
+        if (secret is null)
+        {
+            throw new InvalidOperationException($"The invitation for {email} showed no authenticator secret ({(int)inspected.StatusCode}).");
+        }
+
+        var completed = await UiApiRequest.SendWithTokenAsync(client, await SignInDocument.TokenAsync(client), HttpMethod.Post,
+            "/api/ui/auth/activation/complete", JsonContent.Create(new { token, password, code = Totp.Code(secret, step) }));
+        if (completed.StatusCode != HttpStatusCode.NoContent)
+        {
+            throw new InvalidOperationException($"Activating {email} did not complete ({(int)completed.StatusCode}).");
+        }
+
+        return secret;
     }
 
     /// <summary>
@@ -377,6 +426,28 @@ public sealed partial class VaultFixture : IAsyncLifetime
             throw new InvalidOperationException($"Enrollment did not create a session ({(int)response.StatusCode}).");
         }
         return secret;
+    }
+
+    /// <summary>A sign-in of an activated account through the Angular sign-in pages' calls: the password, then its authenticator code.</summary>
+    private static async Task SignInWithAuthenticatorAsync(HttpClient client, string username, string password, string code)
+    {
+        var afterPassword = await UiApiRequest.SendWithTokenAsync(client, await SignInDocument.TokenAsync(client), HttpMethod.Post,
+            "/api/ui/auth/password", JsonContent.Create(new { username, password }));
+        var next = afterPassword.IsSuccessStatusCode
+            ? (await afterPassword.Content.ReadFromJsonAsync<EclipsVault.Web.Models.Ui.PasswordStageResponse>())?.Next
+            : null;
+        if (next != "totp")
+        {
+            throw new InvalidOperationException(
+                $"The password step went to '{next}' ({(int)afterPassword.StatusCode}), not to the authenticator code.");
+        }
+
+        var response = await UiApiRequest.SendWithTokenAsync(client, SignInDocument.TokenOf(afterPassword), HttpMethod.Post,
+            "/api/ui/auth/totp", JsonContent.Create(new { code }));
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            throw new InvalidOperationException($"The authenticator code did not create a session ({(int)response.StatusCode}).");
+        }
     }
 
     /// <summary>The antiforgery token a Legacy UI page renders into its forms, where its own scripts read it.</summary>

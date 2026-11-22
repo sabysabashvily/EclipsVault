@@ -160,19 +160,9 @@ public sealed class ProfileOperationPreparation(
 
     private void RejectWeakPassword(string? password)
     {
-        if (password is null || password.Length < PasswordRules.MinimumLength)
+        if (PasswordRules.Refusal(password, breachScreen) is { } refusal)
         {
-            throw Invalid("newPassword", $"Your new password must be at least {PasswordRules.MinimumLength} characters long.");
-        }
-
-        if (password.Length > PasswordRules.MaximumLength)
-        {
-            throw Invalid("newPassword", $"Your new password must be at most {PasswordRules.MaximumLength} characters long.");
-        }
-
-        if (breachScreen.IsCompromised(password))
-        {
-            throw Invalid("newPassword", "This password has appeared in a known data breach. Choose a different one.");
+            throw Invalid("newPassword", refusal);
         }
     }
 

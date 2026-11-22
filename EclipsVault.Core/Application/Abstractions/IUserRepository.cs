@@ -24,9 +24,6 @@ public interface IUserRepository
     /// </summary>
     Task<bool> IsEmailTakenAsync(string email, Guid accountId, CancellationToken ct);
 
-    /// <summary>Returns the normalized emails whose local part is <c>localPrefix.*</c> at the given domain — used to pick the next unique sequence.</summary>
-    Task<IReadOnlyList<string>> FindEmailsWithPrefixAsync(string localPrefix, string domain, CancellationToken ct);
-
     Task<User?> FindByIdAsync(Guid id, CancellationToken ct);
 
     /// <summary>Replaces the values of <paramref name="user"/> with the account as it is stored now.</summary>

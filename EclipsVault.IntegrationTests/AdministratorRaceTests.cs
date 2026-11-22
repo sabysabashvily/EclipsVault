@@ -111,13 +111,8 @@ public abstract class AdministratorRaceTests(AccountChangeDatabases databases)
         request.Users,
         new AccountInvitationRepository(request.Context),
         new UnavailableInvitationDelivery(),
-        new UnusedHasher(),
         new UnusedSessionStore(),
         request.RecoveryCodes,
-        new UnusedBreachScreen(),
-        UserDirectoryOptions.Default,
-        new NotificationService(new LoggingEmailSender(NullLogger<LoggingEmailSender>.Instance),
-            new EmailLogRepository(request.Context), request.Users, new NotificationOptions(false), TimeProvider.System),
         new UnusedAuditSink(),
         new CommitterThatWaitsForTheOtherChange(request.Changes, bothReady),
         new SignedIn(signedInAs),
@@ -166,18 +161,6 @@ public abstract class AdministratorRaceTests(AccountChangeDatabases databases)
         public Guid? UserId => accountId;
         public string? Username => "it-race-administrator";
         public string? SourceIp => "192.0.2.1";
-    }
-
-    private sealed class UnusedHasher : IPasswordHasher
-    {
-        public PasswordHashResult Hash(string password) => throw new NotSupportedException();
-        public bool Verify(string password, byte[] hash, byte[] salt) => throw new NotSupportedException();
-    }
-
-    private sealed class UnusedBreachScreen : IBreachedPasswordScreen
-    {
-        public bool IsCompromised(string password) => throw new NotSupportedException();
-        public int CorpusSize => 0;
     }
 
     private sealed class UnusedSessionStore : ISessionRevocationService

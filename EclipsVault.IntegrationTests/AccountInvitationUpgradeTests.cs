@@ -277,14 +277,8 @@ public abstract class AccountInvitationUpgradeTests(AccountInvitationUpgradeData
             new UserRepository(audited, TimeProvider.System),
             new AccountInvitationRepository(audited),
             delivery,
-            hasher,
             new FixedRevocation("rev-1"),
             new MfaRecoveryCodeRepository(audited),
-            new CleanBreachScreen(),
-            new UserDirectoryOptions("eclipsvault.local", "https://vault.example.test"),
-            new NotificationService(new LoggingEmailSender(NullLogger<LoggingEmailSender>.Instance),
-                new EmailLogRepository(audited), new UserRepository(audited, TimeProvider.System),
-                new NotificationOptions(false), TimeProvider.System),
             new RecordingAuditSink(),
             new AccountChangeCommitter(audited, interceptor, new AccountTransaction(audited, databases.ChainLocker())),
             actor,
@@ -373,12 +367,6 @@ public abstract class AccountInvitationUpgradeTests(AccountInvitationUpgradeData
         public Task RevokeAsync(Guid userId, CancellationToken ct) => Task.CompletedTask;
         public Task<string?> FindAsync(Guid userId, CancellationToken ct) => Task.FromResult<string?>(version);
         public Task<string> CaptureAsync(Guid userId, CancellationToken ct) => Task.FromResult(version);
-    }
-
-    private sealed class CleanBreachScreen : IBreachedPasswordScreen
-    {
-        public int CorpusSize => 0;
-        public bool IsCompromised(string password) => false;
     }
 
     private sealed class TestAdminActor(Guid id) : IAuditContext
