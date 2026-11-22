@@ -44,40 +44,49 @@ test('creates a service account and issues a scoped key through real proof, then
   await expect(details.status).toContainText(
     `Service account '${name}' created. Issue an API key to let it authenticate.`,
   );
-  await details.scoped(await details.sourceIp());
+  const sourceIp = await details.sourceIp();
+  await details.scoped(sourceIp);
   browserHealth.expectConsoleError({ text: /403/, url: /\/api\/ui\/service-accounts\/.*\/keys$/ });
   await details.issue.click();
+  await expect(details.confirmation).toContainText('Metadata only');
+  await expect(details.confirmation).toContainText('At most Standard');
+  await expect(details.confirmation).toContainText('Expires in 7 days');
+  await details.confirmIssue.click();
   await expect(details.stepUp).toBeVisible();
   await details.cancelProof();
   await expect(details.issue).toBeFocused();
   await expect(details.token).toHaveCount(0);
   await details.issue.click();
+  await details.confirmIssue.click();
   await details.prove(await freshTotp(secret, currentTotpStep()));
   await expect(details.status).toContainText(
     'API key issued. Copy it now — it will not be shown again.',
   );
   await expect(details.token).toBeVisible();
-  const apiKey = await details.token.innerText();
+  await expect(details.token).toContainText('…');
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await details.copy.click();
+  const apiKey = await details.clipboard();
   expect(apiKey.startsWith('evk_')).toBe(true);
+  expect(await details.token.innerText()).not.toContain(apiKey);
   expect(page.url().includes(apiKey)).toBe(false);
   const leaked = await page.evaluate(
     (value) =>
-      [document.cookie, JSON.stringify(localStorage), JSON.stringify(sessionStorage)].some(
-        (store) => store.includes(value),
-      ),
+      [
+        document.body.innerText,
+        document.cookie,
+        JSON.stringify(localStorage),
+        JSON.stringify(sessionStorage),
+      ].some((store) => store.includes(value)),
     apiKey,
   );
   expect(leaked).toBe(false);
   expect(
     (await page.request.get('/api/v1/secrets', { headers: { 'X-Api-Key': apiKey } })).status(),
   ).toBe(200);
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
-  await details.copy.click();
-  expect(await details.copiedVisibleKey()).toBe(true);
-  await expect(details.scope).toContainText('metadata-only');
-  await expect(details.scope).toContainText('at most Standard');
-  await expect(details.scope).toContainText('GLOBAL');
-  await expect(details.scope).toContainText('1 network');
+  await expect(details.metadataOnlyKey).toContainText('at most Standard');
+  await expect(details.metadataOnlyKey).toContainText('GLOBAL');
+  await expect(details.metadataOnlyKey).toContainText(sourceIp);
   await details.revoke.click();
   await expect(details.confirmation).toContainText(
     'Any caller using it will stop working immediately.',
@@ -216,6 +225,28 @@ for (const theme of themes) {
     await page.keyboard.press('Escape');
     await expect(details.remove).toBeFocused();
     await expect(details.heading).toBeVisible();
+  });
+}
+
+const longestProjectScope = 'PAYMENTS_SETTLEMENT_RECONCILIATION_EUROPE_WEST_PRODUCTION_BATCH1';
+for (const width of [300, 2000]) {
+  test(`the issue-key confirmation with the longest project scope does not scroll sideways at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.context().addCookies(administratorCookies);
+    await page.goto(detailsUrl);
+    const details = new ServiceAccount(page, name);
+    await details.projectScope.fill(longestProjectScope);
+    await details.issue.click();
+    await expect(details.confirmation).toContainText(`Project ${longestProjectScope}`);
+    await expect
+      .poll(() =>
+        details.confirmation.evaluate((dialog) => dialog.scrollWidth > dialog.clientWidth),
+      )
+      .toBe(false);
+    await details.cancel();
+    await expect(details.confirmation).not.toBeVisible();
   });
 }
 

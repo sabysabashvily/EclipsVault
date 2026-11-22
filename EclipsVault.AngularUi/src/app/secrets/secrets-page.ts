@@ -1,60 +1,75 @@
-import { formatDate } from '@angular/common';
 import { httpResource } from '@angular/common/http';
-import { Component, computed, inject, LOCALE_ID, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { EmptyState } from '../shared/empty-state';
+import { expiry } from '../shared/expiry';
 import { StatusLine } from '../shared/status-line';
 import { TableFilter } from '../shared/table-filter';
-import { PAGE_LOCATION } from '../shell/command-palette';
 import type { components } from '../ui-api/schema.generated';
-
-const week = 7 * 24 * 3_600_000;
+import { SecretsTabs } from './secrets-tabs';
 
 /** The secrets the caller could open now. Opening one goes to its details page. */
 @Component({
   selector: 'app-secrets-page',
-  imports: [EmptyState, RouterLink, StatusLine, TableFilter],
+  imports: [EmptyState, RouterLink, SecretsTabs, StatusLine, TableFilter],
   templateUrl: './secrets-page.html',
-  // Legacy's rows open their secret on a click anywhere but a control; the Open link is the keyboard's way.
   host: { '(click)': 'openRow($event)' },
 })
 export class SecretsPage {
-  private readonly locale = inject(LOCALE_ID);
-  private readonly location = inject(PAGE_LOCATION);
   protected readonly deleted: boolean;
   protected readonly secrets = httpResource<components['schemas']['SecretsResponse']>(
     () => '/api/ui/secrets',
   );
   protected readonly query = signal('');
+
+  /** Soonest-expiring first, secrets with no expiry last; the server's order breaks ties. */
   private readonly rows = computed(() => {
     if (!this.secrets.hasValue()) return [];
-    const now = Date.now();
-    return this.secrets.value().secrets.map((secret) => ({
-      ...secret,
-      expires: secret.expiresAtUtc
-        ? formatDate(secret.expiresAtUtc, 'yyyy-MM-dd HH:mm', this.locale, 'UTC')
-        : '—',
-      soon: secret.expiresAtUtc !== null && new Date(secret.expiresAtUtc).getTime() <= now + week,
-    }));
+    const now = new Date();
+    return [...this.secrets.value().secrets]
+      .sort(
+        (a, b) =>
+          (a.expiresAtUtc ? Date.parse(a.expiresAtUtc) : Infinity) -
+          (b.expiresAtUtc ? Date.parse(b.expiresAtUtc) : Infinity),
+      )
+      .map((secret) => ({
+        ...secret,
+        expiry: expiry(secret.expiresAtUtc, now),
+      }));
   });
+
   protected readonly count = computed(() => this.rows().length);
-  // One binding, so the paragraph holds only this text, as Legacy's did.
-  protected readonly introduction = computed(
-    () =>
-      `${this.count()} active secret${this.count() === 1 ? '' : 's'}. Opening one records an audit entry.`,
+  protected readonly expiringCount = computed(
+    () => this.rows().filter((row) => row.expiry.tone !== null).length,
   );
-  // Legacy's filter matched a row's text, so it matches what the row shows.
+  protected readonly urgentTone = computed<'danger' | 'warn' | null>(() => {
+    const rows = this.rows();
+    if (rows.some((row) => row.expiry.tone === 'danger')) return 'danger';
+    if (rows.some((row) => row.expiry.tone === 'warn')) return 'warn';
+    return null;
+  });
+
+  protected readonly introduction = computed(() => {
+    const total = this.count();
+    const soon = this.expiringCount();
+    const countText = `${total} active secret${total === 1 ? '' : 's'}`;
+    const soonText =
+      soon > 0 ? ` · ${soon} ${soon === 1 ? 'expires' : 'expire'} within 7 days` : '';
+    return `${countText}${soonText}. Opening one records an audit entry.`;
+  });
+
   protected readonly filtered = computed(() => {
     const query = this.query().trim().toLowerCase();
+    if (!query) return this.rows();
     return this.rows().filter((row) =>
       [
         row.name,
         row.project,
         row.environment,
         row.sensitivityLabel,
-        row.expires,
-        row.soon ? 'soon' : '',
-        'Open',
+        row.expiry.text,
+        row.expiry.title ?? '',
+        row.expiry.tone ? 'soon' : '',
       ]
         .join(' ')
         .toLowerCase()
@@ -75,10 +90,10 @@ export class SecretsPage {
     });
   }
 
+  // A titled pill sits above .row-link::after so its tooltip works; clicking it follows the same link.
   protected openRow(event: MouseEvent): void {
     const target = event.target as Element;
     if (target.closest('a, button, form, input, details')) return;
-    const details = target.closest('tr[data-href]')?.getAttribute('data-href');
-    if (details) this.location.assign(details);
+    target.closest('tr')?.querySelector<HTMLAnchorElement>('a.row-link')?.click();
   }
 }

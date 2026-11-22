@@ -121,7 +121,8 @@ test('rotating archives the old value, which its version reveals', async ({ page
   await expect(details.confirmation).toContainText(
     `Rotate '${changed}'? The current value is archived to history and replaced.`,
   );
-  await details.confirm();
+  await expect(details.confirmation).toContainText('Saved to the audit log');
+  await details.confirm('Rotate secret');
 
   await expect(details.announcement(rotated)).toBeVisible();
   await expect(details.version(1)).toContainText('e2e rotation');
@@ -136,7 +137,7 @@ test('restoring a version makes it the live value again', async ({ page }) => {
   await expect(details.confirmation).toContainText(
     'Restore version 1 as the live value? The current value will be archived first.',
   );
-  await details.confirm();
+  await details.confirm('Restore version');
 
   await expect(
     details.announcement(
@@ -158,7 +159,7 @@ test('sharing lists the recipient, who can reveal but change nothing', async ({
   await expect(
     details.announcement(`Access to '${shared}' was shared with ${recipientUsername}.`),
   ).toBeVisible();
-  await expect(details.share(recipientUsername)).toContainText('no expiry');
+  await expect(details.share(recipientUsername)).toContainText('No expiry');
 
   const recipient = await (await browserHealth.newContext()).newPage();
   await recipient.context().addCookies(recipientCookies);
@@ -181,7 +182,7 @@ test('revoking the share removes it from the list', async ({ page }) => {
   await expect(details.confirmation).toContainText(
     `Revoke ${recipientUsername}'s access to '${shared}'?`,
   );
-  await details.confirm();
+  await details.confirm('Revoke access');
 
   await expect(details.announcement('Access revoked.')).toBeVisible();
   await expect(details.announcement('This secret is not shared with anyone.')).toBeVisible();
@@ -215,14 +216,15 @@ test('deleting returns to the list, which says so', async ({ page }) => {
   await expect(details.confirmation).toContainText(
     `Delete '${deleted}' and its entire version history permanently? This cannot be undone and will be audited.`,
   );
-  await details.confirm();
+  await details.confirm('Delete secret');
 
   await expect(page).toHaveURL(/\/Secrets$/);
-  await expect(new SecretsList(page).heading).toBeVisible();
+  const list = new SecretsList(page);
+  await expect(list.heading).toBeVisible();
   await expect(
     page.getByText('Secret deleted. The action was recorded in the audit trail.', { exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole('cell', { name: deleted, exact: true })).toHaveCount(0);
+  await expect(list.secret(deleted)).toHaveCount(0);
 });
 
 for (const theme of ['dark', 'light']) {
@@ -239,5 +241,17 @@ for (const theme of ['dark', 'light']) {
     const path = info.outputPath(`${theme}-secret-details.png`);
     await page.screenshot({ path, fullPage: true });
     await info.attach(`${theme}-secret-details`, { path, contentType: 'image/png' });
+  });
+}
+
+for (const width of [300, 2000] as const) {
+  test(`Secret details has no sideways scroll at ${width}px with a revealed value`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const details = await openAsAdministrator(page, changed);
+    await details.revealValue.click();
+    await expect(details.revealed('current value')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
   });
 }

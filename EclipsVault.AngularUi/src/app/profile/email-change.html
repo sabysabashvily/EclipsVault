@@ -5,7 +5,9 @@
 @if (!profile().changes.changeEmail.available) {
   <p class="hint muted">{{ profile().changes.changeEmail.explanation }}</p>
 } @else if (profile().pendingEmail; as pending) {
-  <p role="status">Pending email: {{ pending.address }}. Your current email is still active.</p>
+  <p class="notice notice-warn" role="status">
+    Pending email: {{ pending.address }}. Your current email is still active.
+  </p>
   <p class="hint muted">
     Mailbox codes are valid for 15 minutes after delivery. Account verification lasts five minutes;
     verify again if it expires.

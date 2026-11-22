@@ -31,6 +31,7 @@ export default defineConfig({
         {
           name: 'chromium',
           testIgnore: [
+            '**/activity.spec.ts',
             '**/sessions.spec.ts',
             '**/data.spec.ts',
             '**/shared-by-me.spec.ts',
@@ -133,6 +134,13 @@ export default defineConfig({
           use: { ...devices['Desktop Chrome'] },
         },
         {
+          // Needs the administrator session that sign-in saves.
+          name: 'activity',
+          testMatch: '**/activity.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
           name: 'audit',
           testMatch: '**/audit.spec.ts',
           dependencies: ['chromium'],
@@ -141,10 +149,12 @@ export default defineConfig({
         {
           // Users ends with the administrator's own Force logout, which ends the saved session that
           // Networks, Notifications, License, Encryption keys, the Audit log, the Overview, Secrets,
-          // Secret details, Dynamic secrets, break-glass and single sign-on reuse, so they run first.
+          // Secret details, Dynamic secrets, My activity, break-glass and single sign-on reuse.
+          // Run those projects before Users so they can still use the saved session.
           name: 'users',
           testMatch: '**/users.spec.ts',
           dependencies: [
+            'activity',
             'license',
             'encryption',
             'audit',

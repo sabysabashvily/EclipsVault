@@ -3,7 +3,7 @@ import { HttpClient, httpResource } from '@angular/common/http';
 import { Component, DOCUMENT, computed, inject, signal, viewChild } from '@angular/core';
 import { AdministratorWrites } from '../shared/administrator-writes';
 import { attachmentName, saveAttachment } from '../shared/attachment';
-import { relativeTime, utcTimestamp } from '../shared/relative-time';
+import { utcTimestamp } from '../shared/relative-time';
 import { StatusLine } from '../shared/status-line';
 import { StepUpDialog } from '../shared/step-up-dialog';
 import { TableFilter } from '../shared/table-filter';
@@ -45,17 +45,15 @@ export class AuditPage {
   );
   protected readonly entries = computed(() => {
     if (!this.audit.hasValue()) return [];
-    const now = new Date();
     return this.audit.value().entries.map((entry) => ({
       ...entry,
-      ago: relativeTime(entry.timestampUtc, now),
       exact: utcTimestamp(entry.timestampUtc),
     }));
   });
   protected readonly filtered = computed(() => {
     const query = this.query().trim().toLowerCase();
     return this.entries().filter((entry) =>
-      [entry.ago, entry.actionLabel, entry.resource, entry.actor, entry.sourceIp, entry.details]
+      [entry.exact, entry.actionLabel, entry.resource, entry.actor, entry.sourceIp, entry.details]
         .join(' ')
         .toLowerCase()
         .includes(query),

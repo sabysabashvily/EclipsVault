@@ -1,13 +1,10 @@
 # Diagrams / დიაგრამები
 
-These are C4 views of the revision named in each table. Every box names its C4 type in brackets.
+These are C4 views of `origin/main` at `d576dd93a30bc461183ca7b71c89f038adbff446`
+(21 November 2026, 22:42 Asia/Tbilisi). Every box names its C4 type in brackets.
 A container box is `[Container: technology]` plus a short technology line. A component box is
 `[Component]` plus a short technology line. People, the software system, and external systems carry
 the type only.
-
-**Current** is `origin/main` at `0bb59de1e8f64d1b7d04468c303c1b108dd6f04b`. **Same on Area 6a** means
-the named file has no diff against `ab7997e14ba98fd37055e6ca77fab4c6c8aba490`. **Planned** is not
-drawn as a box that exists.
 
 The Angular UI is a container that runs in the browser; section 2 draws it. Core and
 Infrastructure are components inside the Web application, drawn in section 3, not containers of
@@ -48,26 +45,26 @@ integration is configured. / EclipsVault ერთი პროგრამუ�
 სისტემაა და საჯარო API-ს API გასაღებით იძახებს. იდენტობის მომწოდებელი, SMTP და Vault Transit
 მხოლოდ მაშინ არსებობენ, როცა ეს ინტეგრაცია კონფიგურირებულია.
 
-| Element | Source at `0bb59de` | State |
-|---|---|---|
-| Vault account in a browser `[Person]` | `CONTEXT.md` vault account, session, second factor | current vocabulary |
-| Application using a service account `[External system]` | `CONTEXT.md`: a service account is a non-interactive identity for an application. It never has a session | current vocabulary |
-| EclipsVault `[Software System]` | ADR-0008: one origin, one process serves the UI and both APIs | current |
-| Session-cookie edge | ADR-0002; `Program.cs` cookie `EclipsVault.Session` | current, same on Area 6a |
-| Person to the system | `AccountController.Login` then `SessionIssuer.SignInAsync` | current |
-| That application to the Public API | `SecretsApiController` route `api/v1/secrets`; `ApiKeyAuthenticationHandler` | current |
-| Identity provider `[External system]`, when enabled | `Program.cs` wires OpenID Connect only when `SsoOptions.Enabled`; ADR-0002: the IdP proves identity and the vault decides admission | current |
-| SMTP server `[External system]`, when selected | `DependencyInjection` uses `SmtpEmailSender` only when `Email:Sender` is `Smtp`; committed default in `appsettings.json` is `Log` | current |
-| Vault Transit `[External system]`, when selected | `appsettings.json` `Crypto:Engine` is `AesGcmLocal`; `VaultTransitCryptoEngine` is used when the engine is `VaultTransit` | current |
-| Angular UI, not a second software system | ADR-0008: Web serves it from the same origin. It is a container inside this system, drawn in section 2 | current. Not a box in this picture |
-| Database and Redis | Drawn in section 2. `DependencyInjection` selects one `Database:Provider`. `appsettings.json` sets `Redis:Enabled` false | current. Not boxes in this picture |
+| Element | Source at `d576dd9` |
+|---|---|
+| Vault account in a browser `[Person]` | `CONTEXT.md` vault account, session, second factor |
+| Application using a service account `[External system]` | `CONTEXT.md`: a service account is a non-interactive identity for an application. It never has a session |
+| EclipsVault `[Software System]` | ADR-0008: one origin, one process serves the UI and both APIs |
+| Session-cookie edge | ADR-0002; `Program.cs` cookie `EclipsVault.Session` |
+| Person to the system | `AccountController.Login` then `SessionIssuer.SignInAsync`. Sign-in pages are still Razor |
+| That application to the Public API | `SecretsApiController` route `api/v1/secrets`; `ApiKeyAuthenticationHandler` |
+| Identity provider `[External system]`, when enabled | `Program.cs` wires OpenID Connect only when `SsoOptions.Enabled`; ADR-0002: the IdP proves identity and the vault decides admission |
+| SMTP server `[External system]`, when selected | `DependencyInjection` uses `SmtpEmailSender` only when `Email:Sender` is `Smtp`; committed default in `appsettings.json` is `Log` |
+| Vault Transit `[External system]`, when selected | `appsettings.json` `Crypto:Engine` is `AesGcmLocal`; `VaultTransitCryptoEngine` is used when the engine is `VaultTransit` |
+| Angular UI, not a second software system | ADR-0008: Web serves it from the same origin. It is a container inside this system, drawn in section 2 |
+| Database and Redis | Drawn in section 2. `DependencyInjection` selects one `Database:Provider`. `appsettings.json` sets `Redis:Enabled` false |
 
 ## 2. Container
 
 Runtime containers inside the one software system. The people and external systems from section 1
 stay outside the boundary. Image-build stages are not runtime containers; section 5 names them and
-does not draw them. Core, Infrastructure, the Legacy pages, and the hosted workers are components
-of the Web application; section 3 draws those.
+does not draw them. Core, Infrastructure, the remaining Razor sign-in pages, and the hosted workers
+are components of the Web application; section 3 draws those.
 
 ```mermaid
 %%{init: {"flowchart": {"wrappingWidth": 560}} }%%
@@ -98,33 +95,33 @@ flowchart TB
 Caption / წარწერა: The Angular UI, the Web application, and one database are runtime containers.
 Redis is a fourth container only when it is enabled. The Angular UI runs in the browser and calls
 the UI API with the session cookie. The Web application serves the Angular files, the UI API, the
-Public API, and the Legacy pages that remain. The person and the external systems stay outside the
-boundary. / Angular UI, Web აპლიკაცია და ერთი ბაზა გაშვების კონტეინერებია. Redis მეოთხე
-კონტეინერია მხოლოდ მაშინ, როცა ჩართულია. Angular UI ბრაუზერში ეშვება და UI API-ს სესიის ქუქით
-იძახებს. Web აპლიკაცია Angular-ის ფაილებს, UI API-ს, საჯარო API-ს და დარჩენილ Legacy გვერდებს
-აწვდის. პიროვნება და გარე სისტემები საზღვრის გარეთ რჩებიან.
+Public API, and the Razor sign-in pages that remain. The person and the external systems stay
+outside the boundary. / Angular UI, Web აპლიკაცია და ერთი ბაზა გაშვების კონტეინერებია. Redis
+მეოთხე კონტეინერია მხოლოდ მაშინ, როცა ჩართულია. Angular UI ბრაუზერში ეშვება და UI API-ს სესიის
+ქუქით იძახებს. Web აპლიკაცია Angular-ის ფაილებს, UI API-ს, საჯარო API-ს და დარჩენილ Razor-ის
+შესვლის გვერდებს აწვდის. პიროვნება და გარე სისტემები საზღვრის გარეთ რჩებიან.
 
-| Element | Source at `0bb59de` | State |
-|---|---|---|
-| Vault account in a browser `[Person]` | `CONTEXT.md` vault account; outside the system boundary | current vocabulary |
-| Application using a service account `[External system]` | `CONTEXT.md` service account; outside the system boundary | current vocabulary |
-| Identity provider, SMTP server, Vault Transit | Same configuration gates as section 1. Each arrow leaves the Web application and ends at that external system. Web is the container that calls them | current |
-| EclipsVault `[Software System]` boundary | ADR-0008: one system, one origin | current |
-| Angular UI `[Container: Angular, runs in the browser]` | ADR-0008 and `Dockerfile` `ui` stage: the built files run in the browser. `AngularUiRoutes` serves the document from Web | current |
-| Arrow from Angular UI to Web, session cookie and UI API | ADR-0002; ADR-0005; `Program.cs` cookie `EclipsVault.Session` | current, same on Area 6a |
-| Web application `[Container: ASP.NET Core, .NET 10]` | `Dockerfile` runtime stage, `ENTRYPOINT` `EclipsVault.Web.dll`. It serves the Angular files, `/api/ui/`, `/api/v1/`, and the Legacy pages still absent from `AngularUiRoutes` | current, same on Area 6a |
-| Database `[Container: PostgreSQL or SQL Server]` | `DependencyInjection` reads `Database:Provider` once; `DatabaseProvider.UseVaultDatabase` | current, same on Area 6a |
-| Redis `[Container: Redis]`, when enabled | `appsettings.json` `Redis:Enabled` false; `DependencyInjection` registers Redis implementations only when it is true | current |
-| Core, Infrastructure, Legacy pages, hosted workers | Not boxes here. Section 3 draws them inside the Web application | current |
-| Node and .NET SDK build stages | Not boxes here. `Dockerfile` stages `ui` and `build`. Section 5 records them as image build, not runtime | current, same on Area 6a |
+| Element | Source at `d576dd9` |
+|---|---|
+| Vault account in a browser `[Person]` | `CONTEXT.md` vault account; outside the system boundary |
+| Application using a service account `[External system]` | `CONTEXT.md` service account; outside the system boundary |
+| Identity provider, SMTP server, Vault Transit | Same configuration gates as section 1. Each arrow leaves the Web application and ends at that external system |
+| EclipsVault `[Software System]` boundary | ADR-0008: one system, one origin |
+| Angular UI `[Container: Angular, runs in the browser]` | ADR-0008 and `Dockerfile` `ui` stage: the built files run in the browser. `AngularUiRoutes` and `HomeController.Index` serve the document from Web |
+| Arrow from Angular UI to Web, session cookie and UI API | ADR-0002; ADR-0005; `Program.cs` cookie `EclipsVault.Session` |
+| Web application `[Container: ASP.NET Core, .NET 10]` | `Dockerfile` runtime stage, `ENTRYPOINT` `EclipsVault.Web.dll`. It serves the Angular files, `/api/ui/`, `/api/v1/`, and the Razor paths absent from `AngularUiRoutes` |
+| Database `[Container: PostgreSQL or SQL Server]` | `DependencyInjection` reads `Database:Provider` once; `DatabaseProvider.UseVaultDatabase` |
+| Redis `[Container: Redis]`, when enabled | `appsettings.json` `Redis:Enabled` false; `DependencyInjection` registers Redis implementations only when it is true |
+| Core, Infrastructure, sign-in pages, hosted workers | Not boxes here. Section 3 draws them inside the Web application |
+| Node and .NET SDK build stages | Not boxes here. `Dockerfile` stages `ui` and `build`. Section 5 records them as image build, not runtime |
 
 ## 3. Web component
 
 Components inside the Web application container from section 2. The vault account reaches the
-Angular files, the Legacy pages, and the UI API from outside. An application that uses a service
-account is the only caller of the Public API. The database stays outside the boundary.
-SecretService and AuditSink reach it through EF Core. Controllers stay thin; the access rule
-lives in Core.
+Angular files and the UI API from outside, and the Razor sign-in pages before a session exists.
+An application that uses a service account is the only caller of the Public API. The database
+stays outside the boundary. SecretService and AuditSink reach it through EF Core. Controllers stay
+thin; the access rule lives in Core.
 
 ```mermaid
 %%{init: {"flowchart": {"wrappingWidth": 560}} }%%
@@ -135,88 +132,84 @@ flowchart TB
 
   subgraph web ["Web application<br/>[Container: ASP.NET Core, .NET 10]"]
     static["Angular bundles and index<br/>[Component]<br/>static files"]
-    legacy["Legacy pages<br/>[Component]<br/>Razor"]
+    legacy["Sign-in pages<br/>[Component]<br/>Razor"]
     uiapi["UI API /api/ui<br/>[Component]<br/>ASP.NET Core"]
     publicapi["Public API /api/v1<br/>[Component]<br/>ASP.NET Core"]
     cookies["Cookie authentication<br/>[Component]<br/>ASP.NET Core"]
     apikey["ApiKeyAuthenticationHandler<br/>[Component]<br/>ASP.NET Core"]
+    details["SecretDetailsController<br/>[Component]<br/>ASP.NET Core"]
     secretsApi["SecretsApiController<br/>[Component]<br/>ASP.NET Core"]
-    secrets["SecretsController<br/>[Component]<br/>ASP.NET Core"]
     auditpage["AuditController<br/>[Component]<br/>ASP.NET Core"]
     handler["SecretAccessHandler<br/>[Component]<br/>C#"]
     policy["SecretAccessPolicy<br/>[Component]<br/>C#"]
     secretSvc["SecretService<br/>[Component]<br/>C#"]
+    checkpoints["AuditCheckpointService<br/>[Component]<br/>C#"]
     sink["AuditSink<br/>[Component]<br/>C#"]
     engine["Crypto engine<br/>[Component]<br/>C#"]
     workers["Hosted workers<br/>[Component]<br/>IHostedService"]
   end
 
   person -->|uses| static
-  person -->|uses| legacy
-  person -->|session cookie| uiapi
-  app -->|API key| publicapi
-  legacy -->|session cookie| cookies
-  cookies -->|Legacy pages| secrets
+  person -->|password, then second factor| legacy
+  static -->|session cookie| uiapi
+  legacy -->|issues the session| cookies
   uiapi -->|session cookie| cookies
+  app -->|API key| publicapi
+  cookies -->|secret pages| details
+  cookies -->|AdminOnly| auditpage
   publicapi --> apikey
   apikey --> secretsApi
+  details -->|SecretAccess| handler
   secretsApi -->|SecretAccess| handler
-  secretsApi -->|RevealAsync, after allow| secretSvc
-  secrets --> handler
   handler --> policy
-  secrets --> secretSvc
+  details -->|RevealAsync, after allow| secretSvc
+  secretsApi -->|RevealAsync, after allow| secretSvc
   secretSvc --> sink
   secretSvc --> engine
-  cookies --> auditpage
+  auditpage --> checkpoints
+  checkpoints --> sink
   workers --- sink
   secretSvc -->|EF Core| db
   sink -->|EF Core| db
 ```
 
-Caption / წარწერა: The vault account reaches the Angular files, the Legacy pages, and the UI API.
-The UI API arrow ends at cookie authentication and does not call `SecretsController`, because the
-secret pages are not Angular routes yet. The Legacy pages reach `SecretsController` through that
-cookie authentication. The Public API reaches `SecretsApiController` through the API key handler.
-That controller asks `SecretAccessHandler`, and `SecretAccessPolicy` only answers allow or deny.
-After allow, `SecretsApiController` calls `RevealAsync`, as `SecretsController` does.
-SecretService and AuditSink persist through EF Core to the database outside the Web application. /
-საცავის ანგარიში აღწევს Angular-ის ფაილებს, Legacy გვერდებს და UI API-ს. UI API-ს ისარი ქუქის
-ავთენტიფიკაციაზე ჩერდება და `SecretsController`-ს არ იძახებს, რადგან საიდუმლოს გვერდები ჯერ
-Angular-ის მარშრუტები არ არის. Legacy გვერდები `SecretsController`-ს იმ ქუქის ავთენტიფიკაციით
-აღწევენ. საჯარო API `SecretsApiController`-ს API გასაღების დამმუშავებლით აღწევს. ეს კონტროლერი
-`SecretAccessHandler`-ს ეკითხება, და `SecretAccessPolicy` მხოლოდ უფლებას ან უარს პასუხობს.
-უფლების შემდეგ `SecretsApiController` იძახებს `RevealAsync`-ს, როგორც `SecretsController`.
-SecretService და AuditSink მონაცემებს EF Core-ით წერენ ბაზაში, რომელიც Web აპლიკაციის გარეთ დგას.
+Caption / წარწერა: The vault account loads the Angular files. Those pages call the UI API with the
+session cookie. Secret details, the audit log, and Encryption keys are Angular routes.
+`SecretDetailsController` asks `SecretAccessHandler`, records `Viewed` only after allow, and calls
+`RevealAsync` only after a later allow. The Public API reaches `SecretsApiController` through the
+API key handler and uses the same policy. Sign-in is still the Razor pages. `AuditController` is
+the audit log and is `AdminOnly`. SecretService and AuditSink persist through EF Core. /
+საცავის ანგარიში Angular-ის ფაილებს ტვირთავს. ეს გვერდები UI API-ს სესიის ქუქით იძახებენ.
+საიდუმლოს დეტალები, აუდიტის ჟურნალი და Encryption keys Angular-ის მარშრუტებია.
+`SecretDetailsController` ეკითხება `SecretAccessHandler`-ს, `Viewed`-ს მხოლოდ ნებართვის შემდეგ
+წერს და `RevealAsync`-ს მხოლოდ მომდევნო ნებართვის შემდეგ იძახებს. საჯარო API
+`SecretsApiController`-ს API გასაღების დამმუშავებლით აღწევს და იმავე წესს იყენებს. შესვლა ჯერ
+Razor-ის გვერდებია. `AuditController` აუდიტის ჟურნალია და `AdminOnly`-ა. SecretService და
+AuditSink მონაცემებს EF Core-ით წერენ.
 
-| Element | Source at `0bb59de` | State |
-|---|---|---|
-| Vault account in a browser `[Person]` | `CONTEXT.md` vault account; ADR-0002: the browser holds the session cookie and no access token | current |
-| Angular bundles and index `[Component]` | `AngularUiRoutes`: document outside `wwwroot`, bundles under `wwwroot/ui`. These are files the section 2 Angular UI container loads | current |
-| Route table, session or `AdminOnly` | `AngularUiRoutes.Paths` and `administratorPaths` | current. `/Audit` is not in the list |
-| UI API and Public API `[Component]` | ADR-0005: neither accepts the other's credential | current |
-| UI API problem responses | ADR-0006; `Program.cs` `MapFallback("/api/ui/{**path}")` | current |
-| Cookie authentication `[Component]` | `Program.cs` `EclipsVault.Session`, `EclipsVault.MfaPending`, `HttpOnly`, `Secure`, `SameSite=Strict` | current, same on Area 6a |
-| `ApiKeyAuthenticationHandler` `[Component]` | `ApiKeyAuthenticationHandler` | current |
-| `SecretsApiController` to `SecretAccessHandler`, then `RevealAsync` | `SecretsApiController` on `api/v1/secrets` asks `SecretAccess` and, after allow, calls `SecretService.RevealAsync`. `SecretAccessPolicy` only answers allow or deny. It is not `SecretsController` | current |
-| `SecretsController` `[Component]` | `SecretsController`. Reached from the Legacy pages through cookie authentication. The UI API arrow stops at cookie authentication | current |
-| `SecretAccessHandler` and `SecretAccessPolicy` `[Component]` | `SecretAccessHandler` delegates to `SecretAccessPolicy`, which answers allow or deny and does not call `SecretService` | current |
-| `SecretService` `[Component]` | `SecretService` | current, same on Area 6a |
-| `AuditSink` `[Component]` | `AuditSink`; `AuditGroupCommitter` | current |
-| Crypto engine `[Component]` | `CryptoEngineFactory`; `AesGcmCryptoEngine`; `VaultTransitCryptoEngine` | current |
-| `AuditController` `[Component]` | `AuditController` with `VaultPolicies.AdminOnly` | current. Area 6b plans an Angular page; not built |
-| Hosted workers `[Component]` | `Program.cs` registers `SecretLifecycleWorker`, `DynamicLeaseWorker`, and `LicenseStartupCheck`; `DependencyInjection` hosts `AuditGroupCommitter`. Threads in the Web application, not containers | current |
-| Server decides what the UI may show | ADR-0012 | current |
-| Web application boundary `[Container: ASP.NET Core, .NET 10]` | Same container as section 2. The components below are inside it | current |
-| Vault account to Angular files, Legacy pages, and the UI API | `Program.cs` `UseStaticFiles`; `AngularUiRoutes.ServeIndex`; default controller route for paths absent from `AngularUiRoutes`. No arrow to the Public API | current |
-| Legacy pages and the UI API through the session cookie | `Program.cs` cookie scheme; ADR-0002 | current |
-| Application using a service account `[External system]` | `CONTEXT.md` service account. The only caller of `Public API /api/v1` in this picture | current |
-| Public API through the API key handler to `SecretsApiController` | `SecretsApiController` `[Authorize(AuthenticationSchemes = AuthSchemes.ApiKey)]`; ADR-0005. No arrow from the API key handler to `SecretsController` | current |
-| Database `[Container: PostgreSQL or SQL Server]`, outside Web | `DependencyInjection` `AddDbContext`; `DatabaseProvider.UseVaultDatabase`. Same container as section 2 | current, same on Area 6a |
-| SecretService and AuditSink to the database, EF Core | `SecretService` writes through its repository; `AuditSink` commits through `AuditGroupCommitter`. Both use the EF Core `EclipsVaultDbContext` | current |
-| Secrets controller to handler, handler to policy | `SecretsController.CheckAccessAsync`; `SecretAccessHandler` | current |
-| Secrets controller to `SecretService`, then sink and engine | `SecretService.RevealAsync` | current, same on Area 6a |
-| Session to audit page | `AuditController` `AdminOnly` | current |
-| Hosted committer to the sink | `DependencyInjection` hosts `AuditGroupCommitter`; `AuditSink` waits on it | current |
+| Element | Source at `d576dd9` |
+|---|---|
+| Vault account in a browser `[Person]` | `CONTEXT.md` vault account; ADR-0002: the browser holds the session cookie and no access token |
+| Angular bundles and index `[Component]` | `AngularUiRoutes`: document outside `wwwroot`, bundles under `wwwroot/ui`. `HomeController.Index` serves the same document for `/` once a session exists |
+| Route table | `AngularUiRoutes.Paths` includes `/Secrets`, `/Secrets/Details/{id}`, `/DynamicSecrets`, `/Account/Denied`. `administratorPaths` includes `/Audit` and `/Encryption` |
+| Sign-in pages `[Component]` | `Views/Account/Login.cshtml`, `Totp.cshtml`, `EnrollTotp.cshtml`, `Recover.cshtml`, `RecoveryCode.cshtml`. These paths are absent from `AngularUiRoutes` |
+| UI API and Public API `[Component]` | ADR-0005: neither accepts the other's credential |
+| UI API problem responses | ADR-0006; `Program.cs` `MapFallback("/api/ui/{**path}")` |
+| Cookie authentication `[Component]` | `Program.cs` `EclipsVault.Session`, `EclipsVault.MfaPending`, `HttpOnly`, `Secure`, `SameSite=Strict` |
+| `ApiKeyAuthenticationHandler` `[Component]` | `ApiKeyAuthenticationHandler` |
+| `SecretDetailsController` `[Component]` | `SecretDetailsController` on `api/ui/secrets/{id}`. `OpenAsync` loads details, then `VaultPolicies.SecretAccess`. `Get` calls `RecordViewedAsync` only after allow. `Reveal` calls `RevealAsync` only after allow and, when required, step-up |
+| `SecretsApiController` to handler, then `RevealAsync` | `SecretsApiController.Get` on `api/v1/secrets/{id}` asks `SecretAccess`, records `SecretAccessDenied` on refusal, and calls `RevealAsync` after allow |
+| `SecretAccessHandler` and `SecretAccessPolicy` `[Component]` | `SecretAccessHandler` delegates to `SecretAccessPolicy.Evaluate`, which answers allow or deny and does not call `SecretService` |
+| `SecretService` `[Component]` | `SecretService`. `GetDetailsAsync` writes no audit row. `RevealAsync` commits `SecretRevealed` before `DecryptToDtoAsync` |
+| UI secrets list, not drawn | `SecretsController` on `api/ui/secrets`. The comment on the class: the list writes no audit row and shows only rows the caller could open |
+| `AuditSink` `[Component]` | `AuditSink`; `AuditGroupCommitter` |
+| `AuditCheckpointService` `[Component]` | `AuditCheckpointService.VerifyAsync` and `ExportAsync`; `AuditChainVerifier.VerifyAsync` |
+| `AuditController` `[Component]` | `AuditController` on `api/ui/audit`, `VaultPolicies.AdminOnly`. `Get` writes `AuditLogViewed` before listing |
+| Crypto engine `[Component]` | `CryptoEngineFactory`; `AesGcmCryptoEngine`; `VaultTransitCryptoEngine`. `IKekRotationService` is `KekRotationService`, reached from `EncryptionController` |
+| Hosted workers `[Component]` | `Program.cs` registers `SecretLifecycleWorker`, `DynamicLeaseWorker`, and `LicenseStartupCheck`; `DependencyInjection` hosts `AuditGroupCommitter`. Threads in the Web application, not containers |
+| Server decides what the UI may show | ADR-0012 |
+| Database `[Container: PostgreSQL or SQL Server]`, outside Web | `DependencyInjection` `AddDbContext`; `DatabaseProvider.UseVaultDatabase` |
+| SecretService and AuditSink to the database, EF Core | `SecretService` writes through its repository; `AuditSink` commits through `AuditGroupCommitter`. Both use the EF Core `EclipsVaultDbContext`. `AuditSaveChangesInterceptor` stamps every audit insert into the hash chain |
 
 ## 4. Focused code: reveal
 
@@ -228,52 +221,61 @@ as `C#`.
 ```mermaid
 sequenceDiagram
   participant Account as Vault account in a browser<br/>[Person]
-  participant Controller as SecretsController.Reveal<br/>[Component]<br/>ASP.NET Core
-  participant Details as SecretService.GetDetailsAsync<br/>[Component]<br/>C#35;
+  participant Page as SecretDetailsController<br/>[Component]<br/>ASP.NET Core
+  participant Open as OpenAsync<br/>[Component]<br/>C#35;
+  participant LoadedEnvelope as GetDetailsAsync<br/>[Component]<br/>C#35;
   participant Access as SecretAccessHandler<br/>[Component]<br/>C#35;
   participant Policy as SecretAccessPolicy<br/>[Component]<br/>C#35;
-  participant Reveal as SecretService.RevealAsync<br/>[Component]<br/>C#35;
+  participant View as RecordViewedAsync<br/>[Component]<br/>C#35;
+  participant Reveal as RevealAsync<br/>[Component]<br/>C#35;
   participant Sink as AuditSink<br/>[Component]<br/>C#35;
-  participant Crypto as ICryptoEngine.UnsealAsync<br/>[Component]<br/>C#35;
+  participant Crypto as UnsealAsync<br/>[Component]<br/>C#35;
 
-  Account->>Controller: POST reveal
-  Controller->>Details: load envelope
-  Details->>Sink: commit Viewed
-  Controller->>Access: CheckAccessAsync
+  Account->>Page: GET /api/ui/secrets/{id}
+  Page->>Open: OpenAsync
+  Open->>LoadedEnvelope: load envelope, no audit row
+  Open->>Access: Authorize SecretAccess
   Access->>Policy: Evaluate
   Policy-->>Access: allow
-  Access-->>Controller: allow
-  Controller->>Reveal: RevealAsync
+  Access-->>Page: allow
+  Page->>View: RecordViewedAsync
+  View->>Sink: commit Viewed
+  Page-->>Account: Angular details, Reveal value
+  Account->>Page: POST reveal
+  Page->>Open: OpenAsync again
+  Open->>Access: allow
+  Page->>Reveal: RevealAsync
   Reveal->>Sink: commit SecretRevealed
   Sink-->>Reveal: committed
   Reveal->>Crypto: unwrap data key and open value
-  Crypto-->>Controller: plaintext
-  Controller-->>Account: Legacy details page
+  Crypto-->>Account: plaintext, shown once
 ```
 
-Caption / წარწერა: `SecretRevealed` is committed before `UnsealAsync`. The earlier `Viewed` row is
-the details load, and it is written before the access decision. / `SecretRevealed` ფიქსირდება
-`UnsealAsync`-მდე. უფრო ადრეული `Viewed` დეტალების ჩატვირთვაა და წვდომის გადაწყვეტამდე იწერება.
+Caption / წარწერა: Opening the details page checks access before it commits `Viewed`. Reveal
+checks access again, commits `SecretRevealed`, and only then calls `UnsealAsync`. The Angular page
+shows the plaintext once. / დეტალების გვერდის გახსნა წვდომას `Viewed`-ის დაფიქსირებამდე ამოწმებს.
+გახსნა წვდომას თავიდან ამოწმებს, აფიქსირებს `SecretRevealed`-ს და მხოლოდ შემდეგ იძახებს
+`UnsealAsync`-ს. Angular-ის გვერდი ღია ტექსტს ერთხელ აჩვენებს.
 
-| Element | Source at `0bb59de` | State |
-|---|---|---|
-| Vault account in a browser `[Person]` | `CONTEXT.md` vault account; `VaultController` `[Authorize(Policy = VaultPolicies.Session)]` | current |
-| `SecretsController.Reveal` `[Component]` | `SecretsController.Reveal` calls `GetDetailsAsync` then `CheckAccessAsync` | current, same on Area 6a |
-| `GetDetailsAsync` `[Component]` | `SecretService.GetDetailsAsync` audits `SecretMetadataViewed` | current, same on Area 6a |
-| Label `Viewed` | `AuditDisplay` | current |
-| `SecretAccessHandler` and `SecretAccessPolicy` `[Component]` | `SecretsController.CheckAccessAsync`; `SecretAccessPolicy.Evaluate` | current |
-| Denial redirects and does not call `RevealAsync` | `CheckAccessAsync` returns a redirect | current |
-| Step-up skipped below Secret | `appsettings.json` `StepUp:MinimumSensitivity` `Secret`; `SecretsController.Reveal` | current |
-| `RevealAsync` then `AuditSink` `[Component]` | `SecretService.RevealAsync` awaits `AuditSink` before `DecryptToDtoAsync` | current, same on Area 6a |
-| Sink waits for commit | `AuditSink` | current |
-| Failure type | `AuditWriteFailedException` from `AuditSink` | current. Area 6a touches the exception file; the reveal call order does not change |
-| `UnsealAsync` `[Component]` | `AesGcmCryptoEngine.UnsealAsync` unwraps the data key with the master key, then opens the payload | current |
-| Screen label `Revealed` | `AuditDisplay` for `AuditAction.SecretRevealed` | current |
-| Plaintext returns to `SecretsController.Reveal`, then the vault account | `SecretsController.Reveal` returns the Legacy details view with `revealed.Value` | current. Do not record that screen |
+| Element | Source at `d576dd9` |
+|---|---|
+| Vault account in a browser `[Person]` | `CONTEXT.md` vault account. The page is `secret-details-page`, route `/Secrets/Details/{id}` |
+| `SecretDetailsController` `[Component]` | `SecretDetailsController.Get` and `Reveal` |
+| `OpenAsync` `[Component]` | `SecretDetailsController.OpenAsync` calls `GetDetailsAsync`, then `IAuthorizationService.AuthorizeAsync` with `VaultPolicies.SecretAccess` |
+| `GetDetailsAsync` `[Component]` | `SecretService.GetDetailsAsync` loads the envelope and trips a honey-token if the row is one. It writes no audit row. ADR-0031 |
+| `RecordViewedAsync` `[Component]` | `SecretService.RecordViewedAsync` writes `SecretMetadataViewed`, and only from `Get` after allow |
+| Label `Viewed` | `AuditDisplay` for `AuditAction.SecretMetadataViewed` |
+| Denial writes `SecretAccessDenied` and does not reveal | `OpenAsync` calls `RecordAccessDeniedAsync` and returns 403 `access_denied`. `Reveal` is not called |
+| Step-up skipped below Secret | `appsettings.json` `StepUp:MinimumSensitivity` `Secret`; `SecretDetailsController.StepUpRequiredAsync` |
+| `RevealAsync` then `AuditSink` `[Component]` | `SecretService.RevealAsync` awaits `AuditSecretAsync` for `SecretRevealed` before `DecryptToDtoAsync` |
+| Sink waits for commit | `AuditSink` throws `AuditWriteFailedException` rather than returning an unaudited success |
+| `UnsealAsync` `[Component]` | `AesGcmCryptoEngine.UnsealAsync` unwraps the data key with the master key, then opens the payload. `DecryptToDtoAsync` zeroes the buffer |
+| Screen label `Revealed` | `AuditDisplay` for `AuditAction.SecretRevealed` |
+| Plaintext on the Angular page, once | `secret-details-page.html`: "The value is shown once — reload to hide it." Do not record that screen |
 
 Honey-token trips are not in this sequence. `GetDetailsAsync` and `RevealAsync` call
-`TripHoneyTokenIfNeededAsync` before their audit write. The talk never uses that path. The decoy
-names are in the demo draft so they can be avoided.
+`TripHoneyTokenIfNeededAsync` before any audit write on that path. The talk never uses that path.
+The decoy names are in the demo draft so they can be avoided.
 
 ## 5. Deployment
 
@@ -335,25 +337,24 @@ PostgreSQL-ია. Production Web იმიჯს Docker ჰოსტზე უ�
 ბაზის კვანძი შეიძლება იყოს PostgreSQL ან SQL Server. დემონსტრაცია Development-ის ერთი ერთჯერადი
 გაშვებაა, არა სხვა განთავსება.
 
-| Element | Source at `0bb59de` | State |
-|---|---|---|
-| Developer browser `[Deployment node]` and Angular UI container | ADR-0008: the Angular UI runs in the browser. Same container as section 2 | current |
-| Developer machine `[Deployment node]` and Web application container | `README.md` `dotnet run --project EclipsVault.Web`. Web is not a compose service; ADR-0008 | current |
-| Docker host `[Deployment node: Docker Engine]` | `docker-compose.yml` header: laptop, loopback ports, not a deployment of Web | current, same on Area 6a |
-| Compose project `[Deployment node: Docker Compose]` | `docker-compose.yml` services `db` and `redis`. Also starts `vault`, `mailpit`, and `keycloak`, which this picture does not draw | current. Present does not mean the process uses them |
-| Development database `[Container: PostgreSQL]` | Compose service `db` is PostgreSQL only. SQL Server is not started by this Compose file | current, same on Area 6a |
-| Development Redis container, when enabled | Compose service `redis`; `appsettings.json` `Redis:Enabled` false | current |
-| TLS reverse proxy `[Deployment node]` | `docs/INSTALL.md`: TLS terminates at the proxy; the image serves plain HTTP on 8080 | current |
-| Application host `[Deployment node: Docker Engine]` and Web application container | `Dockerfile` runtime stage, `ASPNETCORE_HTTP_PORTS=8080`; `docs/INSTALL.md` | current |
-| Redis host `[Deployment node]`, when enabled | `docs/INSTALL.md` treats Redis as optional configuration, not part of the Web image. Section 2 container | current |
-| Database server `[Deployment node]` and database container | `docs/INSTALL.md` section 2: least-privilege login, TLS on the connection. Same engine choice as section 2 | current. Values are the operator's, not in this draft |
-| Demonstration, not drawn | [demo-setup-reset.md](demo-setup-reset.md): a disposable Development run, not a third deployment. Not executed | draft |
-| Node image-build stage, not drawn | `Dockerfile` `AS ui`, `npm run build` | build stage, not a runtime container. Same on Area 6a |
-| .NET SDK image-build stage, not drawn | `Dockerfile` `AS build`, `dotnet publish` | build stage, not a runtime container. Same on Area 6a |
-| Production bootstraps one administrator and no sample secrets | `DbSeeder` production path; `DbSeederTests` names that behaviour | current |
-| Production does not migrate unless `Database:MigrateOnStartup` | `DatabaseMigrator`; `docs/INSTALL.md` | current |
-| Production provider, connection, KEK, audit signing key, key ring | `docs/INSTALL.md` section 2 | current. Values are the operator's, not in this draft |
-| Browser end-to-end stack | `AGENTS.md` browser section: production image, SQL Server, Redis, SMTP capture, TLS proxy | a test harness, not the talk and not production |
+| Element | Source at `d576dd9` |
+|---|---|
+| Developer browser `[Deployment node]` and Angular UI container | ADR-0008: the Angular UI runs in the browser. Same container as section 2 |
+| Developer machine `[Deployment node]` and Web application container | `README.md` `dotnet run --project EclipsVault.Web`. Web is not a compose service; ADR-0008 |
+| Docker host `[Deployment node: Docker Engine]` | `docker-compose.yml` header: laptop, loopback ports, not a deployment of Web |
+| Compose project `[Deployment node: Docker Compose]` | `docker-compose.yml` services `db` and `redis`. Also starts `vault`, `mailpit`, and `keycloak`, which this picture does not draw. Present does not mean the process uses them |
+| Development database `[Container: PostgreSQL]` | Compose service `db` is PostgreSQL only. SQL Server is not started by this Compose file |
+| Development Redis container, when enabled | Compose service `redis`; `appsettings.json` `Redis:Enabled` false |
+| TLS reverse proxy `[Deployment node]` | `docs/INSTALL.md`: TLS terminates at the proxy; the image serves plain HTTP on 8080 |
+| Application host `[Deployment node: Docker Engine]` and Web application container | `Dockerfile` runtime stage, `ASPNETCORE_HTTP_PORTS=8080`; `docs/INSTALL.md` |
+| Redis host `[Deployment node]`, when enabled | `docs/INSTALL.md` treats Redis as optional configuration, not part of the Web image |
+| Database server `[Deployment node]` and database container | `docs/INSTALL.md` section 2: least-privilege login, TLS on the connection. Values are the operator's, not in this draft |
+| Demonstration, not a third deployment | [demo-setup-reset.md](demo-setup-reset.md): one disposable Development run on this revision |
+| Node image-build stage, not drawn | `Dockerfile` `AS ui`, `npm run build` |
+| .NET SDK image-build stage, not drawn | `Dockerfile` `AS build`, `dotnet publish` |
+| Production bootstraps one administrator and no sample secrets | `DbSeeder` production path; `DbSeederTests` names that behaviour |
+| Production does not migrate unless `Database:MigrateOnStartup` | `DatabaseMigrator`; `docs/INSTALL.md` |
+| Production provider, connection, KEK, audit signing key, key ring | `docs/INSTALL.md` section 2. Values are the operator's, not in this draft |
+| Browser end-to-end stack | `AGENTS.md` browser section: production image, SQL Server, Redis, SMTP capture, TLS proxy. A test harness, not the talk and not production |
 
-The end-to-end harness is omitted. It is a Playwright shape, not Development and not production,
-and it was not started.
+The end-to-end harness is omitted. It is a Playwright shape, not Development and not production.

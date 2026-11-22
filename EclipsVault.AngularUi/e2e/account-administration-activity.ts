@@ -11,7 +11,7 @@ export class AccountAdministrationActivity {
   entry(title: string) {
     return this.page
       .getByRole('main')
-      .getByRole('listitem')
+      .getByRole('row')
       .filter({ has: this.page.getByText(title, { exact: true }) })
       .first();
   }

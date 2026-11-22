@@ -4,6 +4,7 @@ export class SharedWithMe {
   readonly heading;
   readonly introduction;
   readonly context;
+  readonly tabs;
   readonly columns;
   readonly rows;
   readonly emptyHeading;
@@ -19,6 +20,7 @@ export class SharedWithMe {
       { exact: true },
     );
     this.context = page.getByText(/^\d+ secrets? shared with you · /);
+    this.tabs = page.getByRole('navigation', { name: 'Secrets views' });
     this.columns = page.getByRole('columnheader');
     // Each listed share's row is a link to the secret; the header row has none.
     this.rows = page.getByRole('row').filter({ has: page.getByRole('link') });
@@ -37,6 +39,10 @@ export class SharedWithMe {
 
   async open(path = '/Secrets/SharedWithMe'): Promise<void> {
     await this.page.goto(path);
+  }
+
+  tab(name: 'All secrets' | 'Shared with me' | 'Shared by me') {
+    return this.tabs.getByRole('link', { name, exact: true });
   }
 
   secret(name: string) {

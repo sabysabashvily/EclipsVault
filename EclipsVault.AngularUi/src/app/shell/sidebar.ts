@@ -45,16 +45,6 @@ const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)
       link('overview', 'Overview', '/', 'overview', true),
       link('secrets', 'Secrets', '/Secrets', 'secrets', true),
       link('dynamic-secrets', 'Dynamic secrets', '/DynamicSecrets', 'dynamic-secrets', true),
-      // Sharing becomes tabs on the Secrets card once the Secrets list is an Angular page; until
-      // then its two pages keep a group of their own here.
-      {
-        label: 'Sharing',
-        icon: 'shared-with-me',
-        children: [
-          link('shared-with-me', 'Shared with me', '/Secrets/SharedWithMe', 'shared-with-me', true),
-          link('shared-by-me', 'Shared by me', '/Secrets/SharedByMe', 'shared-by-me', true),
-        ],
-      },
       link('access-requests', 'Access requests', '/AccessRequests', 'access-requests', true),
     ],
   },
@@ -97,9 +87,14 @@ const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)
 ];
 
 /**
- * The palette offers creation as a shortcut; sidebar links name destinations.
+ * Destinations that live on the Secrets card or its header button rather than the sidebar itself,
+ * kept reachable from the command palette for accounts the server authorized.
  */
-const shortcuts: readonly AreaLink[] = [link('secrets', 'New secret', '/Secrets/Create')];
+const shortcuts: readonly AreaLink[] = [
+  link('secrets', 'New secret', '/Secrets/Create', 'secrets', true),
+  link('shared-with-me', 'Shared with me', '/Secrets/SharedWithMe', 'shared-with-me', true),
+  link('shared-by-me', 'Shared by me', '/Secrets/SharedByMe', 'shared-by-me', true),
+];
 
 /** Maps only recognized, server-authorized Areas, in sidebar order, omitting empty groups and sections. */
 export function sidebarFor(areas: readonly string[]): readonly SidebarSection[] {

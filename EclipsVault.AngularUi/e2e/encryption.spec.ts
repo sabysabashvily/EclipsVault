@@ -98,6 +98,7 @@ test('while a re-wrap runs its button says so and is disabled, then the outcome 
       exact: true,
     }),
   ).toBeVisible();
+  await page.unrouteAll({ behavior: 'wait' });
 });
 
 test('a re-wrap already running elsewhere changes nothing and says so', async ({
@@ -127,6 +128,8 @@ test('a re-wrap already running elsewhere changes nothing and says so', async ({
   ).toBeVisible();
   await expect(encryption.verdict).toHaveText('Re-wrap pending');
   await expect(encryption.rotate).toBeEnabled();
+  // The page reloads the mocked figures after the refusal; let that fetch finish before the test ends.
+  await page.unrouteAll({ behavior: 'wait' });
 });
 
 test('on a phone the re-wrap confirmation is a bottom sheet', async ({ page }) => {

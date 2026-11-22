@@ -880,22 +880,92 @@ body:has(.mobile-navigation[open]) {
   max-width: 660px;
 }
 
-/* Copied from the Legacy site.css, for the Denied page's list of the policy's reasons. */
-.denial-reasons {
-  margin: 0.6rem 0 1rem;
-  padding-left: 1.3rem;
+/* ---- Access denied ------------------------------------------------ */
+.denial-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+  padding: 1rem 1.15rem;
+  border-radius: var(--radius);
+  background: var(--danger-wash);
 }
-
-.denial-reasons li {
-  margin: 0.4rem 0;
+.denial-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
   color: var(--danger);
+}
+.denial-icon svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.denial-body {
+  flex: 1;
+  min-width: 0;
+}
+.denial-lead {
+  margin: 0;
+  color: var(--text);
+  font-weight: 500;
+  line-height: 1.5;
+}
+.denial-reasons {
+  margin: 0.55rem 0 0.7rem;
+  padding-left: 1.25rem;
+}
+.denial-reasons li {
+  margin: 0.35rem 0;
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+.denial-audit {
+  margin: 0;
+  font-size: 0.86rem;
+}
+.denial-actions {
+  margin-top: 1.1rem;
+  flex-wrap: wrap;
+}
+.denial-ineligible {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius);
+  background: var(--bg-raised-2);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
 }
 
 .panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
   margin-bottom: 1rem;
+}
+.panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.panel-lede {
+  margin: -0.25rem 0 1.1rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+.all-link {
+  margin-top: 1rem;
 }
 
 .two-col {
@@ -927,60 +997,58 @@ body:has(.mobile-navigation[open]) {
   }
 }
 
-/* ---- Stat cards -------------------------------------------------- */
+/* ---- Figures ----------------------------------------------------- */
+/* One card whose tiles are divided by hairlines (the grid's gap shows its border colour), one tile
+   per figure. Label on top, the number, then its context; two columns on a phone, one below 380px. */
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
-  gap: 1rem;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 1px;
+  overflow: hidden;
   margin-bottom: 1.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--border);
+  box-shadow: var(--shadow-card);
 }
 
 .stat-card {
   background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 1.2rem 1.35rem;
+  padding: 1.1rem 1.3rem;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
   min-width: 0;
   color: var(--text);
-  box-shadow: var(--shadow-card);
-  transition:
-    transform var(--dur-press) ease-out,
-    border-color var(--dur) var(--ease),
-    background var(--dur) var(--ease);
+  transition: background var(--dur) var(--ease);
 }
 
-/* Only the linked cards respond: the response is the affordance that says this one goes
-   somewhere, so moving a plain stat would be a promise the card cannot keep. */
+/* Only the linked tiles respond: the response is the affordance that says this one goes
+   somewhere, so moving a plain figure would be a promise the tile cannot keep. */
 a.stat-card:hover {
-  border-color: var(--border-strong);
   background: var(--bg-hover);
   color: var(--text);
   text-decoration: none;
 }
-a.stat-card:active {
-  transform: scale(0.98);
-}
 .stat-card.attention {
-  border-color: transparent;
-  background: var(--warn-soft);
+  background: linear-gradient(var(--warn-soft), var(--warn-soft)), var(--bg-raised);
 }
 .stat-card.alert {
-  border-color: transparent;
-  background: var(--danger-wash);
+  background: linear-gradient(var(--danger-wash), var(--danger-wash)), var(--bg-raised);
 }
 
 /* Big numbers at regular weight: size carries the hierarchy, not boldness. */
 .stat-value {
-  font-size: clamp(1.9rem, 1.5rem + 1.2vw, 2.6rem);
+  font-size: 3rem;
   font-weight: 400;
   line-height: 1.1;
   letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
 }
 .stat-label {
-  font-size: 0.86rem;
+  order: -1;
+  font-size: 0.8125rem;
   color: var(--text-muted);
   font-weight: 400;
 }
@@ -988,45 +1056,18 @@ a.stat-card:active {
   font-size: 0.8rem;
   color: var(--text-muted);
 }
-
-/* Figures: one card whose tiles are divided by hairlines (the grid's gap shows its border colour).
-   Label on top, the number, then its context; two columns on a phone, one below 380px. */
-.stat-grid.figures {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--border);
-  box-shadow: var(--shadow-card);
-}
-.figures .stat-card {
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-  padding: 1.1rem 1.3rem;
-}
-.figures .stat-card.attention {
-  background: linear-gradient(var(--warn-soft), var(--warn-soft)), var(--bg-raised);
-}
-.figures .stat-card.alert {
-  background: linear-gradient(var(--danger-wash), var(--danger-wash)), var(--bg-raised);
-}
-.figures .stat-label {
-  order: -1;
-  font-size: 0.8125rem;
-}
-.figures .stat-value {
-  font-size: 3rem;
-  font-variant-numeric: tabular-nums;
-}
 @media (max-width: 767px) {
-  .stat-grid.figures {
+  .stat-grid {
+    grid-auto-flow: row;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* An odd last figure takes the whole row rather than leaving a hairline-coloured gap. */
+  .stat-card:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
   }
 }
 @media (max-width: 379px) {
-  .stat-grid.figures {
+  .stat-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -1905,6 +1946,7 @@ tr:has(.row-link:focus-visible) {
 tr:has(.row-link) [title] {
   position: relative;
   z-index: 1;
+  cursor: pointer;
 }
 .row-code {
   display: block;
@@ -2198,7 +2240,8 @@ tr:has(.row-link) [title] {
 .activity-item {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.7rem;
   padding: 0.6rem 0.2rem;
   border-bottom: 1px solid var(--border);
   font-size: 0.88rem;
@@ -2207,13 +2250,33 @@ tr:has(.row-link) [title] {
   border-bottom: none;
 }
 .activity-item.critical {
-  background: var(--danger-soft);
+  background: var(--danger-wash);
   border-radius: var(--radius-sm);
   padding-left: 0.55rem;
   padding-right: 0.55rem;
 }
+/* A critical event says so in words and an icon, not only by the row's red tint. */
+.critical-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--danger);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.critical-mark svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .activity-target {
-  flex: 1;
+  flex: 1 1 8rem;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2236,17 +2299,14 @@ tr:has(.row-link) [title] {
   flex-direction: column;
   gap: 0.12rem;
   padding: 0.8rem 1rem;
-  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text);
-  background: var(--bg-inset);
+  background: var(--bg-raised-2);
   transition:
-    border-color var(--dur) var(--ease),
     background var(--dur) var(--ease),
     transform var(--dur) var(--ease);
 }
 .quick-action:hover {
-  border-color: var(--accent-line);
   background: var(--bg-hover);
   color: var(--text);
   text-decoration: none;
@@ -2369,7 +2429,7 @@ tr:has(.row-link) [title] {
   align-items: stretch;
   container: strip / inline-size;
 }
-.action-strip .stat-grid.figures {
+.action-strip .stat-grid {
   margin-bottom: 0;
 }
 @media (max-width: 1100px) {
@@ -2579,13 +2639,51 @@ ol.steps > li::before {
 }
 
 /* ---- Signed-in devices ------------------------------------------------------- */
-.feed-item.session-current .feed-icon {
-  color: var(--ok);
-  border-color: transparent;
-  background: var(--ok-soft);
+/* This device leads the list; the others wrap their sign-out onto a full row when the card is narrow. */
+.device-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.current-pill {
-  font-size: 0.78rem;
+.device-list > li {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.device-list > li:first-child {
+  padding-top: 0;
+}
+.device-list > li:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.device-name {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.device-meta {
+  margin: 0.2rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+.device-list .button {
+  justify-self: end;
+}
+.attention-icon.tone-ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+@media (max-width: 560px) {
+  .device-list > li {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+  .device-list .button {
+    grid-column: 1 / -1;
+  }
 }
 
 /* Status stays in the page until another action or navigation replaces it. */
@@ -2754,7 +2852,7 @@ ol.steps > li::before {
   color: var(--text-secondary);
 }
 
-/* The Legacy two-column row, its field errors and its form-level summary, for New secret. */
+/* Two-column form rows, field errors and form-level summaries. */
 .field-row {
   display: flex;
   gap: 1rem;
@@ -2768,39 +2866,129 @@ ol.steps > li::before {
   }
 }
 
-.field-error,
-.validation-summary {
+.field-error {
   color: var(--danger);
   font-size: 0.84rem;
 }
 
+.validation-summary {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  background: var(--danger-wash);
+  color: var(--danger);
+  font-size: 0.88rem;
+}
+
 .validation-summary ul {
-  margin: 0.3rem 0 1rem;
+  margin: 0;
   padding-left: 1.2rem;
 }
 
-/* Legacy's form textarea and its clickable list rows, for New secret and Secrets. */
-.field textarea {
-  width: 100%;
-  padding: 0.6rem 0.75rem;
-  background: var(--bg-raised-2);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font-family: var(--font);
-  font-size: 0.92rem;
+textarea {
   line-height: 1.5;
   resize: vertical;
 }
 
-.field textarea:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+.form-note {
+  font-size: 0.84rem;
 }
 
-.data-table tr[data-href] {
-  cursor: pointer;
+/* ---- Dynamic secrets ---------------------------------------------- */
+.licence-note {
+  margin: 0 0 1.1rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius);
+  background: var(--info-wash);
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.licence-note strong {
+  color: var(--text);
+  font-weight: 500;
+}
+.licence-note-warn {
+  background: var(--warn-wash);
+}
+.role-description {
+  margin-top: 0.15rem;
+  font-size: 0.84rem;
+}
+.lease-note {
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.inline-form {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.inline-form input {
+  width: 5.5rem;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: var(--radius-pill);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.credential-table th {
+  width: 11rem;
+}
+.credential-table td {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 1199px) {
+  .inline-form input {
+    min-height: 2.75rem;
+  }
+}
+@container rows (width < 880px) {
+  .row-cards .inline-form {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .row-cards .cell-verb:has(.inline-form) {
+    order: 4;
+    flex-basis: 100%;
+    margin-left: 0;
+    margin-top: 0.35rem;
+  }
+  .row-cards .inline-form .button {
+    flex: 1;
+  }
+}
+@media (max-width: 520px) {
+  .credential-table,
+  .credential-table tbody,
+  .credential-table tr,
+  .credential-table th,
+  .credential-table td {
+    display: block;
+    width: auto;
+    height: auto;
+  }
+  .credential-table tr {
+    padding: 0.65rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .credential-table tr:last-child {
+    border-bottom: none;
+  }
+  .credential-table th,
+  .credential-table td {
+    padding: 0.15rem 0;
+    border-bottom: none;
+  }
 }
 
 input,
@@ -2980,33 +3168,61 @@ select:focus {
   font-size: 0.82rem;
 }
 
-/* Copied from the Legacy site.css, so Secret details keeps the Legacy page's look. */
+/* ---- Secret details (record page) --------------------------------- */
+.record-title {
+  overflow-wrap: anywhere;
+}
+.record-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
 .secret-code {
   display: block;
   background: var(--bg-inset);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 0.75rem 0.9rem;
   font-family: var(--mono);
   font-size: 0.88rem;
   word-break: break-all;
-  margin: 0.4rem 0 1rem;
+  overflow-wrap: anywhere;
+  margin: 0.5rem 0 0.85rem;
 }
 .revealed-box {
-  border: 1px solid var(--accent-line);
   border-radius: var(--radius);
   padding: 1rem 1.15rem;
-  background: linear-gradient(180deg, var(--accent-soft), transparent 75%);
+  background: var(--bg-raised-2);
 }
 .revealed-head {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: 0.5rem;
   margin-bottom: 0.4rem;
 }
+.revealed-note {
+  margin: 0;
+  font-size: 0.84rem;
+}
 .input-narrow {
-  flex: 0 0 auto;
+  flex: 1 1 7.5rem;
   max-width: 150px;
+  min-width: 0;
+}
+.managed-rotate-form {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  margin-top: 0.5rem;
+}
+.managed-rotate-form input {
+  width: auto;
+  min-width: 8.5rem;
+  max-width: 150px;
+  text-align: left;
 }
 details.rotate > summary {
   list-style: none;
@@ -3017,7 +3233,7 @@ details.rotate > summary::-webkit-details-marker {
   display: none;
 }
 .rotate-form {
-  margin-top: 0.9rem;
+  margin-top: 1rem;
 }
 .timeline {
   list-style: none;
@@ -3028,7 +3244,10 @@ details.rotate > summary::-webkit-details-marker {
   position: relative;
   display: flex;
   gap: 0.9rem;
-  padding: 0 0 1.1rem 0;
+  padding: 0 0 1.15rem 0;
+}
+.timeline-item:last-child {
+  padding-bottom: 0;
 }
 .timeline-item:not(:last-child) .timeline-dot::after {
   content: '';
@@ -3068,11 +3287,13 @@ details.rotate > summary::-webkit-details-marker {
 .timeline-note {
   margin: 0.2rem 0 0;
   font-size: 0.85rem;
+  overflow-wrap: anywhere;
 }
 .timeline-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
-  margin-top: 0.5rem;
+  margin-top: 0.55rem;
 }
 
 /* Networks keeps the Legacy page's layout while both UIs serve administrators. */
@@ -3092,6 +3313,7 @@ details.rotate > summary::-webkit-details-marker {
 .current-ip-value code {
   font-size: 1.3rem;
   font-weight: 500;
+  overflow-wrap: anywhere;
 }
 .current-ip p {
   margin: 0.35rem 0 0;
@@ -3121,6 +3343,7 @@ details.rotate > summary::-webkit-details-marker {
   padding: 0.4rem 0;
   border-bottom: 1px solid var(--border);
   color: var(--text-muted);
+  overflow-wrap: anywhere;
 }
 .cidr-list li:last-child {
   border-bottom: none;
@@ -3229,10 +3452,108 @@ fieldset {
   color: var(--ok);
 }
 
+/* Pill navigation bar on the Secrets card: links for sibling URLs, with the trust line beside it. */
+.secrets-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-bottom: 1.15rem;
+}
+.secrets-bar .trust-line {
+  margin: 0;
+}
+.tab-strip {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--bg-raised-2);
+  overflow: hidden;
+}
+.tab-strip::before,
+.tab-strip::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+  z-index: 1;
+}
+.tab-strip::before {
+  left: 0;
+  background: linear-gradient(to right, var(--bg-raised-2) 20%, transparent);
+}
+.tab-strip::after {
+  right: 0;
+  background: linear-gradient(to left, var(--bg-raised-2) 20%, transparent);
+}
+.tab-strip.fade-start::before,
+.tab-strip.fade-end::after {
+  opacity: 1;
+}
+.tab-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.25rem;
+  max-width: 100%;
+  overflow-x: auto;
+  scroll-padding-inline: 2.25rem;
+  scrollbar-width: none;
+  border-radius: var(--radius-pill);
+}
+.tab-nav::-webkit-scrollbar {
+  display: none;
+}
+.tab-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.95rem;
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+.tab-link:focus-visible {
+  outline-offset: -2px;
+  border-radius: var(--radius-pill);
+}
+.tab-link:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+.tab-link.active {
+  background: var(--nav-active-bg);
+  color: var(--nav-active-text);
+  box-shadow: var(--shadow-sm);
+}
+
 .table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem 1rem;
   margin-bottom: 1rem;
 }
+.table-toolbar app-table-filter {
+  flex: 1 1 220px;
+  min-width: 0;
+}
 .table-search {
+  width: 100%;
   max-width: 340px;
 }
 
@@ -3490,7 +3811,8 @@ input.code-input {
     padding: 1rem 1.5rem;
   }
   .button.small,
-  .menu-item {
+  .menu-item,
+  .tab-link {
     min-height: 2.75rem;
     min-width: 2.75rem;
   }
@@ -3559,6 +3881,149 @@ input.code-input {
   .feed-action {
     margin-left: auto;
   }
+}
+
+/* ---- License --------------------------------------------------------- */
+/* A long promise has to wrap inside a phone's column. The shared line is a nowrap flex row. */
+app-license-page .trust-line {
+  display: block;
+}
+app-license-page .trust-line svg {
+  display: inline-block;
+  vertical-align: -0.15em;
+  margin-right: 0.35rem;
+}
+
+/* ---- My activity ----------------------------------------------------- */
+.activity-table .cell-main,
+.activity-table .activity-time {
+  overflow-wrap: anywhere;
+}
+.activity-resource {
+  display: block;
+  font-size: 0.76rem;
+}
+
+/* ---- Profile --------------------------------------------------------- */
+/* The person is the header: picture and name on the left, methods stack below as cards. */
+.profile-person {
+  align-items: flex-start;
+}
+.profile-portrait {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+.profile-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--bg-inset);
+}
+.profile-identity {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.profile-identity .field {
+  max-width: 28rem;
+}
+app-profile-page .trust-line,
+app-change-password-page .trust-line {
+  display: block;
+}
+app-profile-page .trust-line svg,
+app-change-password-page .trust-line svg {
+  display: inline-block;
+  vertical-align: -0.15em;
+  margin-right: 0.35rem;
+}
+.profile-portrait .hint,
+.profile-identity .hint {
+  margin: 0;
+}
+.profile-people {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+.profile-people > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  min-width: 0;
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--border);
+}
+.profile-people > li:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.profile-person-name {
+  margin: 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.profile-people .muted {
+  margin: 0.15rem 0 0;
+}
+@media (max-width: 480px) {
+  .profile-people > li {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .profile-people .button {
+    flex: 1 1 100%;
+  }
+}
+
+/* ---- Notifications -------------------------------------------------- */
+/* A failed delivery says why beside its pill; the reason wraps inside the scrolling table. */
+.outbox-error {
+  display: block;
+  max-width: 18rem;
+  margin-top: 0.2rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+/* ---- Service accounts -------------------------------------------------- */
+/* The one-time key: its ends stay readable, and Copy is the way to take the whole value. */
+.issued-key {
+  margin-bottom: 1.25rem;
+  padding: 1.1rem 1.3rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+}
+.issued-key-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.issued-key-value {
+  display: block;
+  margin: 0.8rem 0;
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+/* A project scope can be 64 characters with no space; its chip wraps rather than widening the dialog. */
+.issued-key-scope li {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 @media (prefers-reduced-motion: reduce) {

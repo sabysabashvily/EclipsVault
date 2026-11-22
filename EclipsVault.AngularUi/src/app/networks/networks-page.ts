@@ -1,7 +1,7 @@
 import { ScrollRegion } from '../shared/scroll-region';
 import { DatePipe } from '@angular/common';
 import { HttpClient, httpResource } from '@angular/common/http';
-import { Component, computed, inject, signal, viewChild } from '@angular/core';
+import { Component, ElementRef, computed, inject, signal, viewChild } from '@angular/core';
 import { Observable, finalize } from 'rxjs';
 import { AdministratorWrites } from '../shared/administrator-writes';
 import { ConfirmationDialog } from '../shared/confirmation-dialog';
@@ -26,6 +26,7 @@ export class NetworksPage {
   private readonly http = inject(HttpClient);
   private readonly stepUp = viewChild.required(StepUpDialog);
   private readonly confirmation = viewChild.required(ConfirmationDialog);
+  private readonly addButton = viewChild<ElementRef<HTMLButtonElement>>('addButton');
   private opener: HTMLButtonElement | null = null;
   private pendingConfirmation: Confirmation | null = null;
   protected readonly writes = inject(AdministratorWrites);
@@ -53,9 +54,14 @@ export class NetworksPage {
     );
   }
 
-  protected add(event: Event, opener: HTMLButtonElement): void {
+  protected add(event: Event): void {
     event.preventDefault();
-    this.opener = opener;
+    const submitter =
+      event instanceof SubmitEvent && event.submitter instanceof HTMLButtonElement
+        ? event.submitter
+        : this.addButton()?.nativeElement;
+    if (!submitter) return;
+    this.opener = submitter;
     const request: components['schemas']['AddNetworkRequest'] = {
       range: this.range(),
       label: this.label(),

@@ -13,6 +13,7 @@ import {
 import { Observable, finalize } from 'rxjs';
 import { AdministratorWrites } from '../shared/administrator-writes';
 import { ConfirmationDialog } from '../shared/confirmation-dialog';
+import { EmptyState } from '../shared/empty-state';
 import { StatusLine } from '../shared/status-line';
 import { StepUpDialog } from '../shared/step-up-dialog';
 import type { components } from '../ui-api/schema.generated';
@@ -27,7 +28,7 @@ const backendRefused = 'The backend refused to destroy the credential; it may st
 
 @Component({
   selector: 'app-dynamic-secrets-page',
-  imports: [DatePipe, StatusLine, StepUpDialog, ConfirmationDialog],
+  imports: [DatePipe, EmptyState, StatusLine, StepUpDialog, ConfirmationDialog],
   providers: [AdministratorWrites],
   templateUrl: './dynamic-secrets-page.html',
 })
@@ -38,7 +39,7 @@ export class DynamicSecretsPage {
   private readonly confirmation = viewChild.required(ConfirmationDialog);
   private readonly issuedPanel = viewChild<ElementRef<HTMLElement>>('issuedPanel');
   private opener: HTMLButtonElement | null = null;
-  private pendingRevoke: Lease | null = null;
+  private pendingAction: (() => void) | null = null;
   protected readonly writes = inject(AdministratorWrites);
   protected readonly page = httpResource<components['schemas']['DynamicSecretsResponse']>(
     () => path,
@@ -51,24 +52,58 @@ export class DynamicSecretsPage {
   protected readonly everyone = computed(
     () => this.page.hasValue() && this.page.value().leaseScope === 'everyone',
   );
+  protected readonly verdict = computed<{ label: string; tone: 'danger' | 'ok' } | null>(() => {
+    if (!this.page.hasValue()) return null;
+    const leases = this.page.value().leases;
+    if (leases.some((lease) => lease.status === 'RevocationFailed')) {
+      return { label: 'Revocation failed', tone: 'danger' };
+    }
+    if (leases.some((lease) => lease.status === 'Active')) {
+      return { label: 'Active leases', tone: 'ok' };
+    }
+    return null;
+  });
 
   constructor() {
     // Leaving the page, a lost session or a lost response forgets the credential with the pending write.
     this.writes.onClear(() => {
       this.issued.set(null);
-      this.pendingRevoke = null;
+      this.pendingAction = null;
     });
   }
 
-  protected issue(event: Event, role: Role, minutes: string, opener: HTMLButtonElement): void {
+  protected askIssue(event: Event, role: Role, minutes: string, opener: HTMLButtonElement): void {
     event.preventDefault();
+    if (this.writesClosed()) return;
+    const ttlMinutes = minutes === '' ? null : Number(minutes);
+    const lease =
+      ttlMinutes === null ? `${role.defaultTtlMinutes} min (default)` : `${ttlMinutes} min`;
+    this.pendingAction = () => this.issue(role, ttlMinutes, opener);
+    this.confirmation().open(
+      `Mint a live credential for '${role.name}' on ${role.backend}? The password is shown once and cannot be recovered.`,
+      {
+        title: 'Issue dynamic credential?',
+        confirm: 'Issue credential',
+        tone: 'primary',
+        facts: [
+          ['Role', role.name],
+          ['Backend', role.backend],
+          ['Lease', lease],
+        ],
+        note: 'Issuance saved to the audit log',
+      },
+    );
+  }
+
+  private issue(role: Role, ttlMinutes: number | null, opener: HTMLButtonElement): void {
     if (this.writesClosed()) return;
     this.opener = opener;
     this.issued.set(null);
     const request: components['schemas']['IssueDynamicCredentialRequest'] = {
       roleId: role.roleId,
-      ttlMinutes: minutes === '' ? null : Number(minutes),
+      ttlMinutes,
     };
+    const detail = `Confirming mints a live credential for '${role.name}' on ${role.backend}. The password is shown once. Issuing the credential is saved to the audit log.`;
     this.writes.send(
       () => this.reloading(this.http.post<Issued>(`${path}/issue`, request)),
       (issued) => {
@@ -77,7 +112,7 @@ export class DynamicSecretsPage {
           injector: this.injector,
         });
       },
-      (proof) => this.stepUp().open(proof),
+      (proof) => this.stepUp().open(proof, detail),
     );
   }
 
@@ -87,16 +122,30 @@ export class DynamicSecretsPage {
 
   protected askRevoke(lease: Lease): void {
     if (this.writesClosed()) return;
-    this.pendingRevoke = lease;
+    this.pendingAction = () => this.revoke(lease);
     this.confirmation().open(
       `Hand back '${lease.credentialIdentity}'? It stops working immediately.`,
+      {
+        title: 'Revoke dynamic credential?',
+        confirm: 'Revoke credential',
+        facts: [
+          ['Role', lease.roleName],
+          ['Username', lease.credentialIdentity],
+          ...(this.everyone() ? ([['Taken by', lease.holder]] as const) : []),
+        ],
+        note: 'Saved to the audit log',
+      },
     );
   }
 
   protected confirmed(confirmed: boolean): void {
-    const lease = this.pendingRevoke;
-    this.pendingRevoke = null;
-    if (!confirmed || !lease) return;
+    const action = this.pendingAction;
+    this.pendingAction = null;
+    if (!confirmed || !action) return;
+    action();
+  }
+
+  private revoke(lease: Lease): void {
     this.writes.send(
       () => this.reloading(this.http.post<Revoked>(`${path}/leases/${lease.leaseId}/revoke`, null)),
       (revoked) =>
