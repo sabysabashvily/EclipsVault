@@ -329,8 +329,22 @@ describe('Audit log', () => {
 
   it('shows the warning notice when no checkpoint covers the chain', async () => {
     const { page } = await verified(unanchored);
-    expect(text(notice(page))).toContain('Hash chain intact, with no signed checkpoint yet');
+    expect(text(notice(page))).toContain(
+      'Hash chain intact, with no verified checkpoint covering it',
+    );
     expect(text(notice(page))).toContain(unanchored.message);
+  });
+
+  it('does not claim there is no checkpoint when the only ones were signed by another key', async () => {
+    const message = `${unanchored.message} 1 checkpoint(s) signed by another key were not checked.`;
+    const { page } = await verified({ ...unanchored, checkpointsNotChecked: 1, message });
+    expect(text(notice(page))).toContain(
+      'Hash chain intact, with no verified checkpoint covering it',
+    );
+    expect(text(notice(page))).toContain(message);
+    expect(text(page.querySelector('.facts'))).toBe(
+      'Latest checkpoint sequence 41 · 2026-11-12 18:04 UTC · sk-1a2b3c4d',
+    );
   });
 
   it('shows the critical notice with the reason, the first broken entry and the unchecked checkpoints', async () => {
