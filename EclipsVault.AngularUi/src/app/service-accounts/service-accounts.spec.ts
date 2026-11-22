@@ -599,33 +599,36 @@ describe('Service account Details', () => {
     expect(button(page, 'Disable').matches(':disabled')).toBe(false);
     expect(page.querySelector('dialog[open]')).toBeNull();
   });
-  it.each([
-    { action: 'Issue new key', enabled: true, endpoint: '/keys' },
-    { action: 'Enable', enabled: false, endpoint: '/enable' },
-  ])(
-    'cancelling $action proof restores its keyboard focus without retrying',
-    async ({ action, enabled, endpoint }) => {
-      const { page, fixture } = await loadedDetails({ ...details, enabled });
-      const opener = button(page, action);
-      opener.focus();
-      opener.click();
-      if (action === 'Issue new key') {
-        await fixture.whenStable();
-        button(openDialog(page), 'Issue key').click();
-      }
-      backend
-        .expectOne(path + endpoint)
-        .flush(
-          { code: 'step_up_required', proof: 'code' },
-          { status: 403, statusText: 'Forbidden' },
-        );
-      await fixture.whenStable();
-      button(page.querySelector('app-step-up-dialog')!, 'Cancel').click();
-      await fixture.whenStable();
-      expect(document.activeElement).toBe(opener);
-      expect(page.querySelector('dialog[open]')).toBeNull();
-    },
-  );
+  it('cancelling issuance proof restores keyboard focus to Issue new key without retrying', async () => {
+    const { page, fixture } = await loadedDetails();
+    const opener = button(page, 'Issue new key');
+    opener.focus();
+    opener.click();
+    await fixture.whenStable();
+    button(openDialog(page), 'Issue key').click();
+    backend
+      .expectOne(path + '/keys')
+      .flush({ code: 'step_up_required', proof: 'code' }, { status: 403, statusText: 'Forbidden' });
+    await fixture.whenStable();
+    button(page.querySelector('app-step-up-dialog')!, 'Cancel').click();
+    await fixture.whenStable();
+    expect(document.activeElement).toBe(opener);
+    expect(page.querySelector('dialog[open]')).toBeNull();
+  });
+  it('cancelling enable proof restores keyboard focus to Enable without retrying', async () => {
+    const { page, fixture } = await loadedDetails({ ...details, enabled: false });
+    const opener = button(page, 'Enable');
+    opener.focus();
+    opener.click();
+    backend
+      .expectOne(path + '/enable')
+      .flush({ code: 'step_up_required', proof: 'code' }, { status: 403, statusText: 'Forbidden' });
+    await fixture.whenStable();
+    button(page.querySelector('app-step-up-dialog')!, 'Cancel').click();
+    await fixture.whenStable();
+    expect(document.activeElement).toBe(opener);
+    expect(page.querySelector('dialog[open]')).toBeNull();
+  });
   it('retries issuance exactly once after shared code proof', async () => {
     const { page, fixture } = await loadedDetails();
     await confirmIssue(page, fixture);
