@@ -81,8 +81,55 @@ public abstract class AccountActivationRaceTests(AccountChangeDatabases database
         }
     }
 
-    /// <summary>An invited account whose invitation was inspected: its token and the seed it showed.</summary>
-    private async Task<(User Account, string Token, string Seed)> SeedInvitedAccountAsync(string username)
+    [Fact]
+    public async Task An_inspection_of_the_old_link_during_a_resend_leaves_no_seed_for_the_new_link()
+    {
+        var (account, oldToken, _) = await SeedInvitedAccountAsync("it-race-inspect-resend", inspected: false);
+        using var noOther = new Barrier(participantCount: 1);
+        await using var inspecting = databases.NewRequest();
+        await using var resending = databases.NewRequest();
+        string? shown = null;
+        // The resend reads the clock after it has loaded the invitation and before it commits.
+        var clock = new ClockThatFirstRuns(() =>
+            shown = Activation(inspecting, noOther).InspectAsync(oldToken, default).GetAwaiter().GetResult()?.SecretBase32);
+
+        await Resend(resending, noOther, clock).ResendInvitationAsync(account.Id, default);
+
+        Assert.NotNull(shown);
+        await using var check = databases.NewRequest();
+        var invitation = await InvitationOfAsync(check, account.Id);
+        Assert.False(InvitationToken.Matches(oldToken, invitation.TokenHash));
+        Assert.Null(invitation.PendingTotpSecret);
+    }
+
+    [Fact]
+    public async Task Two_first_resends_of_an_account_without_an_invitation_send_one_and_refuse_the_other()
+    {
+        var (account, _, _) = await SeedInvitedAccountAsync("it-race-first-resends");
+        await using (var migrated = databases.NewRequest())
+        {
+            // An account the upgrade invited has no invitation until its first resend.
+            await migrated.Context.AccountInvitations.Where(i => i.UserId == account.Id).ExecuteDeleteAsync();
+        }
+
+        using var noOther = new Barrier(participantCount: 1);
+        using var bothLoaded = new Barrier(participantCount: 2);
+        await using var first = databases.NewRequest();
+        await using var second = databases.NewRequest();
+
+        var failures = await Task.WhenAll(
+            Task.Run(() => Record.ExceptionAsync(() => Resend(first, noOther, ClockThatWaitsForTheOther(bothLoaded)).ResendInvitationAsync(account.Id, default))),
+            Task.Run(() => Record.ExceptionAsync(() => Resend(second, noOther, ClockThatWaitsForTheOther(bothLoaded)).ResendInvitationAsync(account.Id, default))));
+
+        Assert.Single(failures, failure => failure is null);
+        Assert.Single(failures, failure => failure is AccountChangedException);
+        await using var check = databases.NewRequest();
+        await InvitationOfAsync(check, account.Id);
+        Assert.Single(await EventsOfAsync(check, account.Id, AuditAction.InvitationSent));
+    }
+
+    /// <summary>An invited account and its invitation, inspected unless told otherwise: its token and the seed it holds or would show.</summary>
+    private async Task<(User Account, string Token, string Seed)> SeedInvitedAccountAsync(string username, bool inspected = true)
     {
         var account = new User
         {
@@ -105,7 +152,7 @@ public abstract class AccountActivationRaceTests(AccountChangeDatabases database
             TokenHash = InvitationToken.Hash(token),
             CreatedAtUtc = DateTimeOffset.UtcNow,
             ExpiresAtUtc = DateTimeOffset.UtcNow + InvitationToken.Lifetime,
-            PendingTotpSecret = seed,
+            PendingTotpSecret = inspected ? seed : null,
         });
         await request.Context.SaveChangesAsync();
         return (account, token, seed);
@@ -138,7 +185,7 @@ public abstract class AccountActivationRaceTests(AccountChangeDatabases database
         request.Changes,
         TimeProvider.System);
 
-    private static UserAdminService Resend(AccountRequest request, Barrier bothReady) => new(
+    private static UserAdminService Resend(AccountRequest request, Barrier bothReady, TimeProvider? clock = null) => new(
         request.Users,
         new AccountInvitationRepository(request.Context),
         new DeliveryThatWaitsForTheOther(bothReady),
@@ -147,7 +194,7 @@ public abstract class AccountActivationRaceTests(AccountChangeDatabases database
         new UnusedAuditSink(),
         request.Changes,
         new Administrator(),
-        TimeProvider.System);
+        clock ?? TimeProvider.System);
 
     /// <summary>
     /// An activation hashes the chosen password after it has loaded the account and checked the code, and
@@ -178,6 +225,22 @@ public abstract class AccountActivationRaceTests(AccountChangeDatabases database
 
         public Task<bool> TrySendAsync(string address, string displayName, string username, string token, CancellationToken ct)
             => Task.FromResult(false);
+    }
+
+    /// <summary>A resend reads the clock after it has loaded the invitation, so both resends load before either commits.</summary>
+    private static ClockThatFirstRuns ClockThatWaitsForTheOther(Barrier bothLoaded) => new(() =>
+        Assert.True(bothLoaded.SignalAndWait(TimeSpan.FromSeconds(10)), "The other request never reached its commit."));
+
+    /// <summary>Runs <paramref name="interleaved"/> the first time the time is read, then tells the real time.</summary>
+    private sealed class ClockThatFirstRuns(Action interleaved) : TimeProvider
+    {
+        private Action? _pending = interleaved;
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            Interlocked.Exchange(ref _pending, null)?.Invoke();
+            return TimeProvider.System.GetUtcNow();
+        }
     }
 
     private sealed class CleanBreachScreen : IBreachedPasswordScreen

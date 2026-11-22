@@ -684,6 +684,10 @@ public class UserAdminServiceTests
             Rows.Add(invitation);
             steps.Add($"stage invitation {invitation.UserId}");
         }
+
+        public void StageReset(AccountInvitation invitation)
+        {
+        }
     }
 
     private sealed class RecordingInvitationDelivery(List<string> steps) : IAccountInvitationDelivery

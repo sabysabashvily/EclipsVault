@@ -198,6 +198,7 @@ public sealed class UserAdminService : IUserAdminService
             existing.ExpiresAtUtc = expiresAtUtc;
             existing.SpentAtUtc = null;
             existing.PendingTotpSecret = null;
+            _invitations.StageReset(existing);
         }
 
         await _changes.CommitAsync(user, AdministratorEvent(AuditAction.InvitationSent, user,
@@ -239,6 +240,7 @@ public sealed class UserAdminService : IUserAdminService
             // Spend the live token in the same transaction so the link already sent cannot activate the account.
             existing.SpentAtUtc = _clock.GetUtcNow();
             existing.PendingTotpSecret = null;
+            _invitations.StageReset(existing);
         }
 
         await _changes.CommitAsync(user,

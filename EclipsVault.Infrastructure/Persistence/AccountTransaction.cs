@@ -53,7 +53,8 @@ public sealed class AccountTransaction(EclipsVaultDbContext context, IAuditChain
                 context.ChangeTracker.Clear();
             }
 
-            if (failure is DbUpdateConcurrencyException)
+            if (failure is DbUpdateConcurrencyException
+                || (failure is DbUpdateException invited && UniqueIndex.IsViolatedBy(invited, AccountInvitationRepository.OnePerAccountIndex)))
             {
                 throw new AccountChangedException();
             }

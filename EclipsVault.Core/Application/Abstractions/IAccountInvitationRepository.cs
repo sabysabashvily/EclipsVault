@@ -21,4 +21,10 @@ public interface IAccountInvitationRepository
 
     /// <summary>Stages adding <paramref name="invitation"/>, to be saved through <see cref="IAccountChangeCommitter"/>.</summary>
     void StageAddition(AccountInvitation invitation);
+
+    /// <summary>
+    /// Stages a resend's or address replacement's reset of <paramref name="invitation"/> so that its pending seed
+    /// and spent marker are written even when they look unchanged: an inspection may have stored a seed since it was read.
+    /// </summary>
+    void StageReset(AccountInvitation invitation);
 }

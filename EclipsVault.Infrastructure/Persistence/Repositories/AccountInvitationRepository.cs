@@ -5,6 +5,9 @@ namespace EclipsVault.Infrastructure.Persistence.Repositories;
 
 public sealed class AccountInvitationRepository(EclipsVaultDbContext context) : IAccountInvitationRepository
 {
+    /// <summary>One invitation per account: two first resends that both found none collide here.</summary>
+    internal const string OnePerAccountIndex = "IX_AccountInvitations_UserId";
+
     public Task<AccountInvitation?> FindByUserIdAsync(Guid userId, CancellationToken ct)
         => context.AccountInvitations.FirstOrDefaultAsync(i => i.UserId == userId, ct);
 
@@ -25,4 +28,11 @@ public sealed class AccountInvitationRepository(EclipsVaultDbContext context) : 
     }
 
     public void StageAddition(AccountInvitation invitation) => context.AccountInvitations.Add(invitation);
+
+    public void StageReset(AccountInvitation invitation)
+    {
+        var entry = context.Entry(invitation);
+        entry.Property(i => i.PendingTotpSecret).IsModified = true;
+        entry.Property(i => i.SpentAtUtc).IsModified = true;
+    }
 }
