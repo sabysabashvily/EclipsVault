@@ -1,11 +1,13 @@
 import { formatDate } from '@angular/common';
 import { HttpClient, httpResource } from '@angular/common/http';
 import {
+  afterNextRender,
   Component,
   computed,
   DestroyRef,
   ElementRef,
   inject,
+  Injector,
   LOCALE_ID,
   signal,
   viewChild,
@@ -18,6 +20,7 @@ import { EmptyState } from '../shared/empty-state';
 import { pillDate } from '../shared/expiry';
 import { relativeTime, utcTimestamp } from '../shared/relative-time';
 import { StatusLine } from '../shared/status-line';
+import { StepUpDialog } from '../shared/step-up-dialog';
 import type { components, paths } from '../ui-api/schema.generated';
 import { UiApiError } from '../ui-api/ui-api-errors';
 
@@ -39,7 +42,6 @@ const refusals = new Map<string, string>([
   ],
   ['already_pending', 'You already have a pending request for this secret.'],
   ['reason_too_short', 'Add a short reason so a reviewer can decide.'],
-  ['secret_not_found', 'That secret no longer exists.'],
 ]);
 
 const decisionAnnouncements: Record<Decision, string> = {
@@ -57,19 +59,23 @@ const badges: Record<FiledRequest['status'], { tone: string; label: string }> = 
 
 @Component({
   selector: 'app-access-requests-page',
-  imports: [ConfirmationDialog, EmptyState, RouterLink, StatusLine],
+  imports: [ConfirmationDialog, EmptyState, RouterLink, StatusLine, StepUpDialog],
   templateUrl: './access-requests-page.html',
 })
 export class AccessRequestsPage {
   private readonly http = inject(HttpClient);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
   private readonly locale = inject(LOCALE_ID);
   private readonly confirmation = viewChild.required('confirmation', { read: ConfirmationDialog });
   private readonly approval = viewChild.required('approval', { read: ConfirmationDialog });
   private readonly days = viewChild.required<ElementRef<HTMLInputElement>>('days');
+  private readonly stepUp = viewChild.required(StepUpDialog);
   private approving: RequestToReview | null = null;
   private awaitingConfirmation: { decision: 'reject' | 'withdraw'; requestId: string } | null =
     null;
+  /** An approval refused for stale proof, kept only in page memory and sent again once proven. */
+  private awaitingProof: (() => void) | null = null;
 
   protected readonly requests = httpResource<AccessRequests>(() => '/api/ui/access-requests');
   protected readonly busy = signal(false);
@@ -147,9 +153,13 @@ export class AccessRequestsPage {
 
   protected askToApprove(request: RequestToReview): void {
     if (this.busy()) return;
-    this.approving = request;
     this.days().nativeElement.value = '0';
     this.endsAfter.set('0');
+    this.showApproval(request);
+  }
+
+  private showApproval(request: RequestToReview): void {
+    this.approving = request;
     this.approval().open(`${request.requester} gets ${request.secretName} as a share.`, {
       title: `Approve ${request.requester}'s request?`,
       confirm: 'Approve and grant access',
@@ -170,9 +180,11 @@ export class AccessRequestsPage {
     if (!confirmed || request === null) return;
     const days = this.days().nativeElement;
     // The field's own rules (whole days, 0 to 3650) refuse before anything is sent, as Legacy's
-    // form did. An empty one is sent as null, which the server refuses as out of range.
+    // form did: the approval stays open with what was typed, and the field says what is wrong.
+    // An empty one is sent as null, which the server refuses as out of range.
     if (!days.checkValidity()) {
-      this.status.set({ message: 'Access must end after 0 to 3650 whole days.', error: true });
+      this.showApproval(request);
+      afterNextRender(() => days.reportValidity(), { injector: this.injector });
       return;
     }
     const expiresInDays = Number.isInteger(days.valueAsNumber) ? days.valueAsNumber : null;
@@ -195,6 +207,12 @@ export class AccessRequestsPage {
     );
   }
 
+  protected proved(verified: boolean): void {
+    const retry = this.awaitingProof;
+    this.awaitingProof = null;
+    if (verified) retry?.();
+  }
+
   protected decide(confirmed: boolean): void {
     const awaiting = this.awaitingConfirmation;
     this.awaitingConfirmation = null;
@@ -211,7 +229,12 @@ export class AccessRequestsPage {
     this.confirmation().open(message, options);
   }
 
-  private send(decision: Decision, requestId: string, body: object | null): void {
+  private send(
+    decision: Decision,
+    requestId: string,
+    body: object | null,
+    mayAskProof = true,
+  ): void {
     if (this.busy()) return;
     this.busy.set(true);
     this.status.set({ message: '', error: false });
@@ -223,14 +246,26 @@ export class AccessRequestsPage {
       )
       .subscribe({
         next: () => this.decided({ message: decisionAnnouncements[decision], error: false }),
-        error: (error: unknown) =>
+        error: (error: unknown) => {
+          // Approving shares the secret, which can need fresh proof; it is asked for once.
+          if (
+            mayAskProof &&
+            error instanceof UiApiError &&
+            error.code === 'step_up_required' &&
+            error.proof
+          ) {
+            this.awaitingProof = () => this.send(decision, requestId, body, false);
+            this.stepUp().open(error.proof);
+            return;
+          }
           this.decided({
             message:
               error instanceof UiApiError
                 ? error.title
                 : 'Could not update the request. Try again.',
             error: true,
-          }),
+          });
+        },
       });
   }
 

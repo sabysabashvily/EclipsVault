@@ -289,13 +289,13 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         const string unknown = "it-scope-authenticated-does-not-exist";
         const string source = "198.51.100.97";
         var signedIn = vault.CreateSession(Assert.IsType<Cookie>(a.SessionCookie), IPAddress.Parse(source));
-        // Login's GET redirects a signed-in caller. A token from Secrets is valid for their
+        // Login's GET redirects a signed-in caller. A token from the Legacy shell is valid for their
         // current identity and proves this unsafe request genuinely carries A's session.
         var response = await PostFormAsync(signedIn.Client, "/Account/Login", new()
         {
             ["Username"] = unknown,
             ["Password"] = "An-intentionally-incorrect-password-57!",
-        }, "/DynamicSecrets");
+        }, VaultFixture.LegacyShell);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("Invalid username or password.", await response.Content.ReadAsStringAsync());
         Assert.NotNull(signedIn.SessionCookie);
@@ -491,7 +491,9 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
     private static async Task<HttpResponseMessage> PostFormAsync(HttpClient client, string path, Dictionary<string, string> fields, string? formPage = null)
     {
         var page = formPage ?? path;
-        fields["__RequestVerificationToken"] = VaultFixture.FormTokenOf(await client.GetStringAsync(page), page);
+        // The Legacy shell answers 404 yet renders its forms; a page without a token still fails here.
+        using var form = await client.GetAsync(page);
+        fields["__RequestVerificationToken"] = VaultFixture.FormTokenOf(await form.Content.ReadAsStringAsync(), page);
         return await client.PostAsync(path, new FormUrlEncodedContent(fields));
     }
 

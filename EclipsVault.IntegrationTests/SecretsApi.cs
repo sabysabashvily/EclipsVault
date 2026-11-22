@@ -39,5 +39,21 @@ internal static class SecretsApi
         return problem;
     }
 
-    private static readonly string[] ProblemMembers = ["code", "detail", "errors", "reasons", "status", "title", "type"];
+    /// <summary>
+    /// An unknown secret's 404 <c>not_found</c>, identical to a decoy's in status, headers, content type and body, so
+    /// the answer cannot tell which ids are decoys.
+    /// </summary>
+    public static async Task AssertSameAnswerAsync(HttpResponseMessage unknown, HttpResponseMessage decoy)
+    {
+        await AssertProblemAsync(unknown, 404, "not_found");
+        Assert.Equal(decoy.StatusCode, unknown.StatusCode);
+        Assert.Equal(HeaderNames(decoy), HeaderNames(unknown));
+        Assert.Equal(decoy.Content.Headers.ContentType, unknown.Content.Headers.ContentType);
+        Assert.Equal(await decoy.Content.ReadAsByteArrayAsync(), await unknown.Content.ReadAsByteArrayAsync());
+    }
+
+    private static IEnumerable<string> HeaderNames(HttpResponseMessage response)
+        => response.Headers.Concat(response.Content.Headers).Select(header => header.Key).Where(key => key != "Date").Order();
+
+    private static readonly string[] ProblemMembers = ["code", "detail", "errors", "proof", "reasons", "status", "title", "type"];
 }

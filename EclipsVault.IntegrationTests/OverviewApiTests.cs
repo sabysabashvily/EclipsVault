@@ -329,10 +329,10 @@ internal static class OverviewSecrets
         VaultFixture vault, string name, string project, string sensitivity = "Internal", string environment = "Development",
         double? expiresInDays = null, bool decoy = false)
     {
-        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), name, sensitivity: sensitivity, environment: environment);
+        var details = await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), name, sensitivity: sensitivity, environment: environment);
         using var scope = vault.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
-        var secret = await db.Secrets.SingleAsync(row => row.Id == LegacySharing.SecretIdOf(details));
+        var secret = await db.Secrets.SingleAsync(row => row.Id == SecretSharing.SecretIdOf(details));
         secret.ProjectKey = project;
         secret.ExpiresAtUtc = expiresInDays is { } days ? DateTimeOffset.UtcNow.AddDays(days) : null;
         secret.IsHoneyToken = decoy;

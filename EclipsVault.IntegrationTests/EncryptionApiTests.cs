@@ -193,7 +193,7 @@ public sealed class EncryptionApiTests(KekRotationFixture fixture)
     [Fact]
     public async Task The_Legacy_sidebar_link_keeps_its_destination()
     {
-        var html = await (await _vault.AdminClientAsync()).GetStringAsync("/DynamicSecrets");
+        var html = await VaultFixture.LegacyShellAsync(await _vault.AdminClientAsync());
         var link = Assert.Single(Regex.Matches(html, "<a\\b[^>]*>[\\s\\S]*?</a>")
             .Select(match => match.Value), anchor => Regex.Replace(anchor, "<[^>]*>", "").Trim() == "Encryption keys");
 

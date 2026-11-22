@@ -134,8 +134,6 @@ public sealed class SecretsApiTests(VaultFixture vault)
         Assert.Equal(TimeSpan.FromDays(30), stored.ExpiresAtUtc!.Value - stored.CreatedAtUtc);
         var row = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before), audit => audit.Username == "it-secrets-create");
         Assert.Equal((AuditAction.SecretCreated, created.SecretId), (row.Action, row.ResourceId));
-        var details = await member.Client.GetStringAsync(response.Headers.Location!.OriginalString);
-        Assert.Contains("Secret &#x27;it-secrets-created&#x27; was envelope-encrypted and stored.", details);
     }
 
     [Theory]
@@ -247,23 +245,6 @@ public sealed class SecretsApiTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.DoesNotContain("not-a-number-secret", await response.Content.ReadAsStringAsync());
         Assert.Null(await StoredAsync("it-secrets-unreadable"));
-    }
-
-    [Fact]
-    public async Task Deleting_on_the_Legacy_details_page_returns_to_the_list_with_its_outcome()
-    {
-        var admin = await vault.AdminClientAsync();
-        var details = await LegacySharing.CreateSecretAsync(admin, "it-secrets-deleted");
-
-        var response = await admin.PostAsync("/Secrets/Delete", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(await admin.GetStringAsync(details), details),
-            ["id"] = LegacySharing.SecretIdOf(details).ToString(),
-        }));
-
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/Secrets?deleted=1", response.Headers.Location?.OriginalString);
-        Assert.Null(await StoredAsync("it-secrets-deleted"));
     }
 
     [Fact]

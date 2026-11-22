@@ -36,6 +36,19 @@ const stranded: Encryption = {
   awaitingRotation: 5,
   onMissingKeys: 2,
 };
+// As the server reports Vault Transit: the environment master key is current, and every transit key
+// version is not loaded here, yet the server counts their items as waiting, not missing.
+const transit: Encryption = {
+  currentKekId: 'kek-1a2b3c4d',
+  loadedKekIds: ['kek-1a2b3c4d'],
+  keys: [
+    { kekId: 'kek-1a2b3c4d', status: 'current', secrets: 0, versions: 0 },
+    { kekId: 'vault:eclipsvault:v1', status: 'not_loaded', secrets: 10, versions: 2 },
+    { kekId: 'vault:eclipsvault:v2', status: 'not_loaded', secrets: 3, versions: 0 },
+  ],
+  awaitingRotation: 15,
+  onMissingKeys: 0,
+};
 const emptied: Encryption = {
   ...settled,
   loadedKekIds: ['kek-1a2b3c4d', 'kek-5e6f7a8b'],
@@ -182,6 +195,32 @@ describe('Encryption keys', () => {
     expect(rewrapButtons(page)).toEqual(['Re-wrap 5 items']);
   });
 
+  it('KMS key versions: counts their items as waiting, not as unreadable', async () => {
+    const { page } = await loaded(transit);
+    expect(verdict(page)).toBe('Re-wrap pending');
+    expect(notices(page)).toEqual([]);
+    expect(
+      [...page.querySelectorAll('.stat-card')].map((figure) => [
+        text(figure.querySelector('.stat-label')),
+        text(figure.querySelector('.stat-value')),
+        text(figure.querySelector('.stat-detail')),
+      ]),
+    ).toEqual([
+      ['Waiting to re-wrap', '15', '13 secrets and 2 versions'],
+      ['On the current key', '0', 'of 15 items in the vault'],
+    ]);
+    expect(rewrapButtons(page)).toEqual(['Re-wrap 15 items']);
+    expect(
+      [...page.querySelectorAll('tbody tr')].map((row) =>
+        [...row.querySelectorAll('.key-role, .badge')].map((cell) => text(cell)),
+      ),
+    ).toEqual([
+      ['Wraps every new secret', 'Current'],
+      ['Held by the key service · a re-wrap moves items to its latest version', 'KMS version'],
+      ['Held by the key service · a re-wrap moves items to its latest version', 'KMS version'],
+    ]);
+  });
+
   it('re-wrapping: the button says so and is disabled while the request is in flight', async () => {
     const { page, fixture } = await loaded(pending);
     const request = await confirmRotation(page, fixture);
@@ -270,7 +309,7 @@ describe('Encryption keys', () => {
       ['kek-1a2b3c4d', 'Wraps every new secret', 'Current', '12', '3'],
       [
         'kek-5e6f7a8b',
-        'Loaded so its items can be read until they are re-wrapped',
+        'Loaded so its items can be read · re-wrap moves them to the current key',
         'Retired',
         '4',
         '1',

@@ -2,6 +2,7 @@ import type { BrowserContext } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { test, expect } from './fixtures';
+import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { AccountCreation } from './account-creation';
 import { AccountSignIn } from './account-sign-in';
 import { AuthenticatorEnrollment } from './authenticator-enrollment';
@@ -215,20 +216,22 @@ test('Dashboard Staff accounts opens Users with a loaded avatar', async ({ page 
   await expect.poll(() => users.avatarLoaded('vault-admin')).toBe(true);
 });
 
-test('both sidebars open Users in Angular', async ({ page }) => {
+test('both sidebars open Users in Angular', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
   await page.context().addCookies(administratorCookies);
   const users = new Users(page);
-  await users.fromSidebar('/DynamicSecrets');
+  await users.fromSidebar(legacyShell);
   await expect(users.heading).toBeVisible();
   await expect(page).toHaveTitle('Users — EclipsVault');
   await users.fromSidebar('/Access');
   await expect(users.heading).toBeVisible();
 });
 
-test('both palettes open Users in Angular', async ({ page }) => {
+test('both palettes open Users in Angular', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
   await page.context().addCookies(administratorCookies);
   const users = new Users(page);
-  await users.fromPalette('/DynamicSecrets');
+  await users.fromPalette(legacyShell);
   await expect(users.heading).toBeVisible();
   await users.fromPalette('/Access');
   await expect(users.heading).toBeVisible();

@@ -2,6 +2,9 @@ import { utcTimestamp } from './relative-time';
 
 const hour = 3_600_000;
 const day = 24 * hour;
+const week = 7 * day;
+/** Closer than this, an expiry is red rather than yellow. */
+const redBelow = 3 * day;
 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** How an expiry reads: a tinted pill when it is close, plain text when it is not. */
@@ -35,11 +38,11 @@ export function expiry(timestampUtc: string | null, now: Date): Expiry {
       title,
     };
   }
-  if (left < 7 * day) {
+  if (left < week) {
     const days = Math.floor(left / day);
     const text = `In ${days} ${days === 1 ? 'day' : 'days'} · ${date}`;
-    return { text, tone: left < 3 * day ? 'danger' : 'warn', title };
+    return { text, tone: left < redBelow ? 'danger' : 'warn', title };
   }
-  // A date in a plain table cell keeps the batch's `yyyy-MM-dd HH:mm` UTC form (owner, 16 Nov).
+  // A date in a plain table cell keeps the `yyyy-MM-dd HH:mm` UTC form the other tables use.
   return { text: title.slice(0, 16), tone: null, title: null };
 }

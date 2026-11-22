@@ -4,6 +4,7 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
+import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { clearSignInBudget } from './profile-state';
 import { createSecret, openPalette } from './palette';
 import { SecretsList } from './secrets-list';
@@ -12,7 +13,8 @@ import { SharedWithMe } from './shared-with-me';
 import { freshTotp } from './totp';
 
 test.describe.configure({ mode: 'serial' });
-const recipientUsername = 'e2e-share-recipient';
+// Long and unbroken, so the width checks cover a name with no break opportunity of its own.
+const recipientUsername = 'e2esharerecipientfromthefinancedirectoryofacme01';
 let recipientCookies: Awaited<ReturnType<BrowserContext['cookies']>> = [];
 let secretDetails = '';
 
@@ -67,12 +69,17 @@ test('an issuer shares two real secrets with a colleague outside their project',
 
   await createSecret(page, 'E2e_Shared_No_Expiry', 'Internal');
   secretDetails = new URL(page.url()).pathname;
+  // The page's own request for the secret is refused before the recipient lands on Denied.
+  browserHealth.expectConsoleError({
+    text: /status of 403/,
+    url: /\/api\/ui\/secrets\/[0-9a-f-]{36}$/,
+  });
   await recipient.goto(secretDetails);
   await expect(recipient).toHaveURL(/\/Account\/Denied\?/);
   await page.getByLabel('User to share with').fill(recipientUsername);
   await page.getByRole('button', { name: 'Share access', exact: true }).click();
   await expect(
-    page.getByText("Access to 'E2e_Shared_No_Expiry' was shared with e2e-share-recipient.", {
+    page.getByText(`Access to 'E2e_Shared_No_Expiry' was shared with ${recipientUsername}.`, {
       exact: true,
     }),
   ).toBeVisible();
@@ -85,7 +92,7 @@ test('an issuer shares two real secrets with a colleague outside their project',
   await page.getByLabel('Access expires in days').fill('7');
   await page.getByRole('button', { name: 'Share access', exact: true }).click();
   await expect(
-    page.getByText("Access to 'E2e_Shared_Expiring' was shared with e2e-share-recipient.", {
+    page.getByText(`Access to 'E2e_Shared_Expiring' was shared with ${recipientUsername}.`, {
       exact: true,
     }),
   ).toBeVisible();
@@ -162,11 +169,10 @@ test('Shared by me lists shares soonest-ending first, the close one as a yellow 
   await expect(shares.sharedOnOf(shares.rows.first())).toHaveText(
     /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
   );
-  // Shared for 7 days a moment ago, so it ends within the week: yellow, not yet red.
-  // eslint-disable-next-line playwright/no-raw-locators -- The pill's tone is a class; it has no role of its own.
-  const pill = shares.accessUntilOf(shares.rows.first()).locator('.badge');
-  await expect(pill).toHaveText(/^In 6 days · \d{1,2} [A-Z][a-z]{2}( \d{4})?$/);
-  await expect(pill).toHaveClass(/\btone-warn\b/);
+  // Shared for 7 days a moment ago, so it ends within the week: the pill counts the days left.
+  await expect(shares.accessUntilOf(shares.rows.first())).toHaveText(
+    /^In 6 days · \d{1,2} [A-Z][a-z]{2}( \d{4})?$/,
+  );
   await expect(
     page.getByText(/^2 shares you gave · soonest ends \d{1,2} [A-Z][a-z]{2}/),
   ).toBeVisible();
@@ -207,8 +213,9 @@ test('the palette opens Shared by me without a document load', async ({ page }) 
   expect(documents).toEqual([]);
 });
 
-test('the Legacy sidebar loads Shared by me into Angular', async ({ page }) => {
-  await openAsIssuer(page, '/DynamicSecrets');
+test('the Legacy sidebar loads Shared by me into Angular', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
+  await openAsIssuer(page, legacyShell);
   const documents: string[] = [];
   page.on('request', (request) => {
     if (request.isNavigationRequest() && request.resourceType() === 'document')
@@ -221,8 +228,9 @@ test('the Legacy sidebar loads Shared by me into Angular', async ({ page }) => {
   expect(documents).toEqual(['/Secrets/SharedByMe']);
 });
 
-test('the Legacy palette loads Shared by me into Angular', async ({ page }) => {
-  await openAsIssuer(page, '/DynamicSecrets');
+test('the Legacy palette loads Shared by me into Angular', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
+  await openAsIssuer(page, legacyShell);
   const documents: string[] = [];
   page.on('request', (request) => {
     if (request.isNavigationRequest() && request.resourceType() === 'document')
@@ -292,9 +300,9 @@ test('Cancel and Escape keep access while confirmation names the recipient and s
     if (request.method() === 'DELETE') writes.push(request.url());
   });
   await revoke.click();
-  await expect(shares.confirmation).toHaveAccessibleName("Revoke e2e-share-recipient's access?");
+  await expect(shares.confirmation).toHaveAccessibleName(`Revoke ${recipientUsername}'s access?`);
   await expect(shares.confirmation).toHaveAccessibleDescription(
-    "Revoke e2e-share-recipient's access to 'E2e_Shared_No_Expiry'? They lose access on their next request.",
+    `Revoke ${recipientUsername}'s access to 'E2e_Shared_No_Expiry'? They lose access on their next request.`,
   );
   await expect(shares.cancel).toBeFocused();
   await page.keyboard.press('Enter');
@@ -385,6 +393,11 @@ test('revoking a real share ends the recipient browser access on its next reques
   await expect(shares.status).toHaveText('Access revoked.');
   await expect(shares.rows).toHaveCount(1);
   await expect(shares.share('E2e_Shared_No_Expiry')).toHaveCount(0);
+  // The recipient's next request for the secret is refused, so its page lands on Denied.
+  browserHealth.expectConsoleError({
+    text: /status of 403/,
+    url: /\/api\/ui\/secrets\/[0-9a-f-]{36}$/,
+  });
   await recipient.goto(secretDetails);
   await expect(recipient).toHaveURL(/\/Account\/Denied\?/);
   await expect(

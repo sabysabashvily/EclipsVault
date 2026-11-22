@@ -2,6 +2,7 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { test, expect } from './fixtures';
+import { expectLegacyShell, legacyShell, legacyShellHeading } from './legacy-shell';
 import { clearSignInBudget } from './profile-state';
 import {
   type Activity,
@@ -98,6 +99,7 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
   context,
   browserHealth,
 }) => {
+  expectLegacyShell(browserHealth);
   const password = process.env['Seed__AdminPassword'];
   if (!password) throw new Error('Run through npm run e2e with Seed__AdminPassword supplied');
 
@@ -243,15 +245,10 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
   await expect(page).toHaveURL(/\/Access$/);
   await expect(page.locator('.access-matrix tbody tr')).toHaveCount(4);
 
-  const legacyDocument = page.waitForResponse((response) =>
-    response.request().isNavigationRequest(),
-  );
-  await page.getByRole('link', { name: 'Dynamic secrets', exact: true }).click();
-  expect((await legacyDocument).headers()['content-security-policy']).not.toContain(
-    'trusted-types',
-  );
-  await expect(page).toHaveURL(/\/DynamicSecrets$/);
-  await expect(page.getByRole('heading', { name: 'Dynamic secrets', exact: true })).toBeVisible();
+  // Every sidebar page is the Angular UI's now; the error page is still a Legacy document.
+  const legacyDocument = await page.goto(legacyShell);
+  expect(legacyDocument?.headers()['content-security-policy']).not.toContain('trusted-types');
+  await expect(page.getByRole('heading', { name: legacyShellHeading, exact: true })).toBeVisible();
   await expect(page.locator('.sidebar')).toContainText('Vault Administrator');
   await page.getByText('Access', { exact: true }).click();
   await page.getByRole('link', { name: 'My access', exact: true }).click();
@@ -336,6 +333,7 @@ test('visual parity: the administrator and Standard sidebars match Legacy in bot
   page,
   browserHealth,
 }, info) => {
+  expectLegacyShell(browserHealth);
   test.setTimeout(180_000);
   // Reuse the real session established above. Extra sign-ins would exhaust the production per-IP
   // password budget before the revocation test; the limiter stays fully enabled.
@@ -411,9 +409,11 @@ test('a denied My access cell explains itself in a side panel, a bottom sheet on
 
 test('both UIs share the theme, and the Angular UI applies it before it starts', async ({
   page,
+  browserHealth,
 }) => {
+  expectLegacyShell(browserHealth);
   await page.context().addCookies(administratorCookies);
-  await page.goto('/DynamicSecrets');
+  await page.goto(legacyShell);
   await page.context().addCookies([
     {
       name: 'EclipsVault.Theme',
@@ -454,7 +454,7 @@ test('both UIs share the theme, and the Angular UI applies it before it starts',
     expect(
       (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Theme')?.value,
     ).toBe('dark');
-    await page.goto('/DynamicSecrets');
+    await page.goto(legacyShell);
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   });
 });
@@ -463,13 +463,14 @@ test("the ⌘K palette offers exactly the sidebar's pages, as the Legacy palette
   page,
   browserHealth,
 }) => {
+  expectLegacyShell(browserHealth);
   expect(standardCookies).not.toHaveLength(0);
   await page.context().addCookies(administratorCookies);
   const standard = await (await browserHealth.newContext()).newPage();
   await standard.context().addCookies(standardCookies);
 
   await test.step(`administrator: Legacy and Angular palettes list the same pages as the sidebar`, async () => {
-    await page.goto('/DynamicSecrets');
+    await page.goto(legacyShell);
     // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
     const legacyChord = await page.locator('.command-trigger kbd').textContent();
     await openPalette(page);
@@ -490,7 +491,7 @@ test("the ⌘K palette offers exactly the sidebar's pages, as the Legacy palette
     await expect(page.locator('style, [style]')).toHaveCount(0);
   });
   await test.step(`standard: Legacy and Angular palettes list the same pages as the sidebar`, async () => {
-    await standard.goto('/DynamicSecrets');
+    await standard.goto(legacyShell);
     // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
     const legacyChord = await standard.locator('.command-trigger kbd').textContent();
     await openPalette(standard);
@@ -680,7 +681,7 @@ test('the palette is driven from the keyboard, traps focus, and hands it back on
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });
 
-  await test.step('Enter opens an Angular UI page in place, and a Legacy UI page with a page load', async () => {
+  await test.step('Enter opens each Angular UI page in place', async () => {
     const documents: string[] = [];
     page.on('request', (request) => {
       if (request.isNavigationRequest() && request.resourceType() === 'document')
@@ -720,7 +721,7 @@ test('the palette is driven from the keyboard, traps focus, and hands it back on
     await expect(options).toHaveText([/Dynamic secrets/]);
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/\/DynamicSecrets$/);
-    expect(documents).toEqual(['/DynamicSecrets']);
+    expect(documents).toEqual([]);
   });
 });
 
@@ -1181,7 +1182,8 @@ function unfamiliarSignIns(): SignIns {
         outcome: 'Success',
         method: 'Passkey',
         title: 'Signed in with a passkey',
-        sourceIp: '2001:db8::7',
+        // A full address, the longest unbroken value a row shows.
+        sourceIp: '2001:db8:1a80:4d00:b8e2:91ff:fe3c:7a10',
         locationFlag: 'FirstSeen',
       },
       {
@@ -1313,13 +1315,12 @@ test('Sign-in history shows its empty state, and an unfamiliar-location attempt 
     // The notice leads, then the figures, then the events.
     const notice = signInNotice(page);
     const top = async (box: Promise<{ y: number } | null>) => (await box)!.y;
-    const order = [
-      await top(notice.boundingBox()),
-      // eslint-disable-next-line playwright/no-raw-locators -- The figures strip has no role or name of its own.
-      await top(page.locator('.stat-grid').boundingBox()),
-      await top(page.getByRole('table').boundingBox()),
-    ];
-    expect(order).toEqual([...order].sort((a, b) => a - b));
+    const noticeTop = await top(notice.boundingBox());
+    // eslint-disable-next-line playwright/no-raw-locators -- The figures strip has no role or name of its own.
+    const figuresTop = await top(page.locator('.stat-grid').boundingBox());
+    const tableTop = await top(page.getByRole('table').boundingBox());
+    expect(noticeTop).toBeLessThan(figuresTop);
+    expect(figuresTop).toBeLessThan(tableTop);
     await expect(notice.getByRole('heading', { level: 2 })).toHaveText(
       "Don't recognise these attempts?",
     );
@@ -1373,7 +1374,7 @@ test('Sign-in history shows its empty state, and an unfamiliar-location attempt 
         'Signed in with a passkey',
         'Passkey',
         'Success',
-        '2001:db8::7',
+        '2001:db8:1a80:4d00:b8e2:91ff:fe3c:7a10',
         'New location',
       ),
       row(

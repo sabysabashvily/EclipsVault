@@ -10,7 +10,7 @@ import type { components } from '../ui-api/schema.generated';
 
 const week = 7 * 24 * 3_600_000;
 
-/** The secrets the caller could open now. Opening one goes to its Legacy details page. */
+/** The secrets the caller could open now. Opening one goes to its details page. */
 @Component({
   selector: 'app-secrets-page',
   imports: [EmptyState, RouterLink, StatusLine, TableFilter],

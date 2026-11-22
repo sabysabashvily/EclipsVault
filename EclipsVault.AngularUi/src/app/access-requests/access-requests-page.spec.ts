@@ -56,6 +56,7 @@ describe('AccessRequestsPage', () => {
     const fixture = TestBed.createComponent(AccessRequestsPage);
     fixture.detectChanges();
     const page = fixture.nativeElement as HTMLElement;
+    // The test DOM has no modal dialogs; each dialog only shows whether it is open.
     for (const dialog of page.querySelectorAll('dialog')) {
       dialog.showModal = () => dialog.setAttribute('open', '');
       dialog.close = () => dialog.removeAttribute('open');
@@ -97,6 +98,18 @@ describe('AccessRequestsPage', () => {
     ].map((cell) => cell.textContent);
   }
 
+  function stepUpDialog(page: HTMLElement): HTMLDialogElement {
+    return [...page.querySelectorAll('dialog')].find(
+      (dialog) => dialog.querySelector('h2')?.textContent === "Confirm it's you",
+    )!;
+  }
+
+  const staleProof = {
+    code: 'step_up_required',
+    title: "Confirm it's you before sharing this secret.",
+    proof: 'code',
+  };
+
   /** Opens the approve dialog, types the expiry, and confirms. */
   async function approve(
     fixture: { whenStable(): Promise<unknown> },
@@ -112,7 +125,6 @@ describe('AccessRequestsPage', () => {
     }
     button(page, 'Approve and grant access').click();
   }
-
   function announced(page: HTMLElement) {
     return {
       success: page.querySelector('.flash-success')?.textContent ?? '',
@@ -382,6 +394,78 @@ describe('AccessRequestsPage', () => {
     expect(page.textContent).toContain('Nothing waiting on you');
   });
 
+  it('asks for an authenticator code when an approval needs fresh proof, then approves once', async () => {
+    const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
+    await approve(fixture, page, '7');
+    backend
+      .expectOne(`${path}/${toReview.requestId}/approve`)
+      .flush(staleProof, { status: 403, statusText: 'Forbidden' });
+    await fixture.whenStable();
+    const dialog = stepUpDialog(page);
+    expect(dialog.hasAttribute('open')).toBe(true);
+    expect(dialog.textContent).toContain('Enter an authenticator code to continue.');
+
+    dialog.querySelector('input')!.value = '123456';
+    dialog.querySelector('form')!.dispatchEvent(new Event('submit'));
+    const proof = backend.expectOne({ method: 'POST', url: '/api/ui/step-up' });
+    expect(proof.request.body).toEqual({ code: '123456' });
+    proof.flush(null, { status: 204, statusText: 'No Content' });
+    await fixture.whenStable();
+    const approval = backend.expectOne(`${path}/${toReview.requestId}/approve`);
+    expect(approval.request.body).toEqual({ expiresInDays: 7 });
+    approval.flush(null, { status: 204, statusText: 'No Content' });
+    fixture.detectChanges();
+    backend.expectOne(path).flush(empty);
+    await fixture.whenStable();
+
+    expect(dialog.hasAttribute('open')).toBe(false);
+    expect(announced(page)).toEqual({
+      success: 'Request approved — a grant was created for the requester.',
+      error: '',
+    });
+  });
+
+  it('approves nothing when the authenticator dialog is cancelled', async () => {
+    const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
+    await approve(fixture, page);
+    backend
+      .expectOne(`${path}/${toReview.requestId}/approve`)
+      .flush(staleProof, { status: 403, statusText: 'Forbidden' });
+    await fixture.whenStable();
+
+    button(stepUpDialog(page), 'Cancel').click();
+    await fixture.whenStable();
+
+    backend.expectNone(`${path}/${toReview.requestId}/approve`);
+    expect(stepUpDialog(page).hasAttribute('open')).toBe(false);
+    expect(announced(page)).toEqual({ success: '', error: '' });
+    expect(button(page, 'Approve').disabled).toBe(false);
+  });
+
+  it('asks for fresh proof only once and announces a second refusal as an error', async () => {
+    const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
+    await approve(fixture, page);
+    backend
+      .expectOne(`${path}/${toReview.requestId}/approve`)
+      .flush(staleProof, { status: 403, statusText: 'Forbidden' });
+    await fixture.whenStable();
+    const dialog = stepUpDialog(page);
+    dialog.querySelector('input')!.value = '123456';
+    dialog.querySelector('form')!.dispatchEvent(new Event('submit'));
+    backend.expectOne('/api/ui/step-up').flush(null, { status: 204, statusText: 'No Content' });
+    await fixture.whenStable();
+
+    backend
+      .expectOne(`${path}/${toReview.requestId}/approve`)
+      .flush(staleProof, { status: 403, statusText: 'Forbidden' });
+    fixture.detectChanges();
+    backend.expectOne(path).flush({ ...empty, toReview: [toReview] });
+    await fixture.whenStable();
+
+    expect(dialog.hasAttribute('open')).toBe(false);
+    expect(announced(page)).toEqual({ success: '', error: staleProof.title });
+  });
+
   it('sends an empty expiry as null, which the server refuses as out of range', async () => {
     const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
     await approve(fixture, page, '');
@@ -398,13 +482,16 @@ describe('AccessRequestsPage', () => {
   });
 
   it.each(['1.5', '-1', '3651'])(
-    'refuses an expiry of %s before anything is sent, as Legacy did',
+    'refuses an expiry of %s before anything is sent, keeping the approval and what was typed',
     async (typed) => {
       const { fixture, page } = await loaded({ ...empty, toReview: [toReview] });
       await approve(fixture, page, typed);
       await fixture.whenStable();
       backend.expectNone(`${path}/${toReview.requestId}/approve`);
-      expect(announced(page).error).toBe('Access must end after 0 to 3650 whole days.');
+      const dialog = page.querySelector('dialog[open]');
+      expect(dialog?.querySelector('h2')?.textContent).toBe("Approve colleague's request?");
+      expect(dialog?.querySelector<HTMLInputElement>('#approval-days')?.value).toBe(typed);
+      expect(announced(page).error).toBe('');
     },
   );
 
@@ -522,7 +609,6 @@ describe('AccessRequestsPage', () => {
     ],
     ['already_pending', 'You already have a pending request for this secret.'],
     ['reason_too_short', 'Add a short reason so a reviewer can decide.'],
-    ['secret_not_found', 'That secret no longer exists.'],
   ])('announces the refusal %s as an error', async (code, message) => {
     const { page } = await loaded(empty, { refused: code });
     expect(announced(page)).toEqual({ success: '', error: message });
