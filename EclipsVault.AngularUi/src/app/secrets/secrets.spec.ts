@@ -213,6 +213,16 @@ describe('Secrets', () => {
     filter.dispatchEvent(new Event('input'));
     await fixture.whenStable();
     expect(rows(page).map(([name]) => name)).toEqual(['Phoenix_Db_PasswordPHOENIX']);
+
+    filter.value = ' SOON ';
+    filter.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    expect(rows(page).map(([name]) => name)).toEqual(['Phoenix_Db_PasswordPHOENIX']);
+
+    filter.value = '2026-11-20';
+    filter.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    expect(rows(page).map(([name]) => name)).toEqual(['Phoenix_Db_PasswordPHOENIX']);
     expect(page.querySelector('.page-sub')?.textContent).toBe(
       '3 active secrets · 1 expires within 7 days. Opening one records an audit entry.',
     );

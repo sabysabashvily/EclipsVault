@@ -62,7 +62,15 @@ export class SecretsPage {
     const query = this.query().trim().toLowerCase();
     if (!query) return this.rows();
     return this.rows().filter((row) =>
-      [row.name, row.project, row.environment, row.sensitivityLabel, row.expiry.text]
+      [
+        row.name,
+        row.project,
+        row.environment,
+        row.sensitivityLabel,
+        row.expiry.text,
+        row.expiry.title ?? '',
+        row.expiry.tone ? 'soon' : '',
+      ]
         .join(' ')
         .toLowerCase()
         .includes(query),
