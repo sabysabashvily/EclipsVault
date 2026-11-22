@@ -257,15 +257,11 @@ public sealed class AdministratorAuditFailureTests(AuditFailureFixture failure)
         using (var setup = vault.Services.CreateScope())
         {
             var db = setup.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
-            db.AccountInvitations.Add(new AccountInvitation
-            {
-                Id = Guid.NewGuid(),
-                UserId = account.Id,
-                TokenHash = originalHash,
-                CreatedAtUtc = DateTimeOffset.UtcNow.AddHours(-48),
-                ExpiresAtUtc = originalExpiry,
-                PendingTotpSecret = "ORIGINALPENDINGSEED"
-            });
+            var invitation = await db.AccountInvitations.SingleAsync(row => row.UserId == account.Id);
+            invitation.TokenHash = originalHash;
+            invitation.CreatedAtUtc = DateTimeOffset.UtcNow.AddHours(-48);
+            invitation.ExpiresAtUtc = originalExpiry;
+            invitation.PendingTotpSecret = "ORIGINALPENDINGSEED";
             await db.SaveChangesAsync();
         }
 
@@ -304,15 +300,11 @@ public sealed class AdministratorAuditFailureTests(AuditFailureFixture failure)
         using (var setup = vault.Services.CreateScope())
         {
             var db = setup.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
-            db.AccountInvitations.Add(new AccountInvitation
-            {
-                Id = Guid.NewGuid(),
-                UserId = account.Id,
-                TokenHash = originalHash,
-                CreatedAtUtc = DateTimeOffset.UtcNow.AddHours(-1),
-                ExpiresAtUtc = DateTimeOffset.UtcNow.AddHours(71),
-                PendingTotpSecret = "LIVEPENDINGSEED"
-            });
+            var invitation = await db.AccountInvitations.SingleAsync(row => row.UserId == account.Id);
+            invitation.TokenHash = originalHash;
+            invitation.CreatedAtUtc = DateTimeOffset.UtcNow.AddHours(-1);
+            invitation.ExpiresAtUtc = DateTimeOffset.UtcNow.AddHours(71);
+            invitation.PendingTotpSecret = "LIVEPENDINGSEED";
             await db.SaveChangesAsync();
         }
 
@@ -344,14 +336,8 @@ public sealed class AdministratorAuditFailureTests(AuditFailureFixture failure)
 
     private async Task<User> CreateInvitedAccountAsync(HttpClient admin, string username, string email)
     {
-        var account = await CreateAccountAsync(admin, username);
-        using var scope = failure.Vault.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
-        var stored = await db.Users.SingleAsync(user => user.Id == account.Id);
-        stored.Email = email;
-        stored.AwaitingActivation = true;
-        await db.SaveChangesAsync();
-        return stored;
+        Assert.Equal(HttpStatusCode.Created, (await UserAccounts.CreateAsync(admin, username, email: email)).StatusCode);
+        return (await FindAccountAsync(username))!;
     }
 
     private async Task<User> CreateAccountAsync(HttpClient admin, string username)

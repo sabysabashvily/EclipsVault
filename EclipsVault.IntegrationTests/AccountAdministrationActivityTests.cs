@@ -19,6 +19,7 @@ public sealed class AccountAdministrationActivityTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var account = await response.Content.ReadFromJsonAsync<CreatedUserResponse>();
         Assert.NotNull(account);
+        await vault.ActivateAsync(account.Email, "It-user-activity-target-2026!", Totp.CurrentStep());
         Assert.Equal(HttpStatusCode.NoContent, (await UserAccounts.EditRoleAsync(administrator.Client, account.UserId, ClearanceLevel.Secret, "ACTIVITY")).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await UserActions.ResetMfaAsync(administrator.Client, account.UserId)).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await UserActions.SetEnabledAsync(administrator.Client, account.UserId, false)).StatusCode);

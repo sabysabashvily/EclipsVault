@@ -278,10 +278,12 @@ public sealed partial class VaultFixture : IAsyncLifetime
         // Activation spends the previous step, so the sign-in below spends the current one, as an enrollment
         // at first sign-in did: a test's next code is then the next step's.
         var step = Totp.CurrentStep();
-        var secret = await ActivateAsync(UserAccounts.EmailOf(username), password, step - 1);
+        var activationSource = NextActivationSource();
+        var secret = await ActivateFromAsync(UserAccounts.EmailOf(username), password, step - 1, activationSource);
         var session = CreateSession(source: source);
         await SignInWithAuthenticatorAsync(session.Client, username, password, Totp.Code(secret, Totp.StepStillAccepted(DateTimeOffset.UtcNow, step - 1)));
         session.ProfileOwner = new ProfileAccount(session, await ProfileHttp.AccountAsync(this, username), password);
+        session.ActivationSource = activationSource;
         return session;
     }
 
@@ -291,12 +293,14 @@ public sealed partial class VaultFixture : IAsyncLifetime
     /// authenticator with its code for <paramref name="step"/>. Returns the authenticator secret. Each call
     /// comes from an address of its own, so it spends no test's sign-in budget.
     /// </summary>
-    public async Task<string> ActivateAsync(string email, string password, long step)
+    public Task<string> ActivateAsync(string email, string password, long step)
+        => ActivateFromAsync(email, password, step, NextActivationSource());
+
+    private async Task<string> ActivateFromAsync(string email, string password, long step, IPAddress source)
     {
         var mailbox = Mailbox ?? throw new InvalidOperationException("Activating an account needs the vault's mailbox.");
         var (_, _, _, token) = await mailbox.LatestInvitationForAsync(email);
-        var n = Interlocked.Increment(ref _activationSources);
-        var client = CreateSession(source: new IPAddress([100, 120, (byte)(n / 250), (byte)(n % 250 + 1)])).Client;
+        var client = CreateSession(source: source).Client;
 
         var inspected = await UiApiRequest.SendWithTokenAsync(client, await SignInDocument.TokenAsync(client), HttpMethod.Post,
             "/api/ui/auth/activation", JsonContent.Create(new { token }));
@@ -456,6 +460,12 @@ public sealed partial class VaultFixture : IAsyncLifetime
             ? WebUtility.HtmlDecode(match.Groups[1].Value)
             : throw new InvalidOperationException($"{path} rendered no antiforgery token.");
 
+    private IPAddress NextActivationSource()
+    {
+        var n = Interlocked.Increment(ref _activationSources);
+        return new IPAddress([100, 120, (byte)(n / 250), (byte)(n % 250 + 1)]);
+    }
+
     private void SetEnvironment(string name, string value)
     {
         _environment.Add(name);
@@ -472,6 +482,7 @@ public sealed partial class VaultFixture : IAsyncLifetime
 public sealed record VaultSession(HttpClient Client, CookieContainer Cookies)
 {
     internal ProfileAccount? ProfileOwner { get; set; }
+    internal IPAddress? ActivationSource { get; set; }
     internal long LastProfileProofStep { get; set; }
 
     public Cookie? SessionCookie => Cookies.GetCookies(Client.BaseAddress!)[VaultFixture.SessionCookie];

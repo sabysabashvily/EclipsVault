@@ -140,9 +140,10 @@ public sealed class UsersApiTests(VaultFixture vault)
     [Fact]
     public async Task Creating_an_account_leaves_no_Users_notice_because_the_form_shows_the_outcome()
     {
-        var admin = await vault.AdminClientAsync();
-        (await UserAccounts.CreateAsync(admin, "it-users-notice")).EnsureSuccessStatusCode();
-        Assert.Equal(new UserNoticeResponse(null, false), await admin.GetFromJsonAsync<UserNoticeResponse>("/api/ui/users/notice"));
+        // A dedicated administrator session avoids any unconsumed notice left on the shared bootstrap client.
+        var admin = await vault.SignInNewAccountAsync("it-users-notice-admin", IPAddress.Parse("198.18.109.16"), ClearanceLevel.TopSecret);
+        (await UserAccounts.CreateAsync(admin.Client, "it-users-notice")).EnsureSuccessStatusCode();
+        Assert.Equal(new UserNoticeResponse(null, false), await admin.Client.GetFromJsonAsync<UserNoticeResponse>("/api/ui/users/notice"));
     }
 
     [Fact]

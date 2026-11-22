@@ -28,8 +28,8 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
 
         using var activity = JsonDocument.Parse(await session.Client.GetStringAsync("/api/ui/activity"));
 
-        Assert.All(activity.RootElement.GetProperty("items").EnumerateArray(),
-            item => Assert.Equal(address, item.GetProperty("sourceIp").GetString()));
+        Assert.Equal([address, address, session.ActivationSource!.ToString()],
+            activity.RootElement.GetProperty("items").EnumerateArray().Select(item => item.GetProperty("sourceIp").GetString()));
     }
 
     [Fact]
@@ -110,16 +110,17 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         using (var activity = JsonDocument.Parse(aResponses[0]))
         {
             AssertActivity(activity.RootElement, 1,
-                ["Signed in", "Set up your authenticator"], [aAddress, aAddress]);
+                ["Signed in", "Proved a sign-in factor", "Activated your account"],
+                [aAddress, aAddress, a.ActivationSource!.ToString()]);
         }
         using (var activity = JsonDocument.Parse(bResponses[0]))
         {
             AssertActivity(activity.RootElement, 6,
                 ["Signed in", "Used a recovery code", "Signed in", "Used a recovery code",
                  "Signed in", "Used a recovery code", "Generated new recovery codes", "Verified your account for a security change", "A sign-in attempt failed",
-                 "Signed in", "Set up your authenticator"],
+                 "Signed in", "Proved a sign-in factor", "Activated your account"],
                 [bOtherAddress, bOtherAddress, bOtherAddress, bOtherAddress, bOtherAddress, bOtherAddress,
-                 bAddress, bAddress, bFailedAddress, bAddress, bAddress]);
+                 bAddress, bAddress, bFailedAddress, bAddress, bAddress, b.ActivationSource!.ToString()]);
         }
         using (var history = JsonDocument.Parse(aResponses[1]))
         {
@@ -217,7 +218,8 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         using (var activity = JsonDocument.Parse(newResponses[0]))
         {
             AssertActivity(activity.RootElement, 1,
-                ["Signed in", "Set up your authenticator"], [newAddress, newAddress]);
+                ["Signed in", "Proved a sign-in factor", "Activated your account"],
+                [newAddress, newAddress, replacement.ActivationSource!.ToString()]);
         }
         using (var history = JsonDocument.Parse(newResponses[1]))
         {
@@ -228,6 +230,7 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         Assert.All(newResponses, body =>
         {
             Assert.DoesNotContain(oldAddress, body);
+            Assert.DoesNotContain(old.ActivationSource!.ToString(), body);
             Assert.DoesNotContain(oldFailedAddress, body);
             Assert.DoesNotContain("Updated your profile", body);
             Assert.DoesNotContain("sign-in attempt failed", body, StringComparison.OrdinalIgnoreCase);
