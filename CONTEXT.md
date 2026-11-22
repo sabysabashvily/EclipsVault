@@ -205,8 +205,12 @@ _Avoid_: Internal API, BFF API, backend
 ### The migration
 
 **Legacy UI**:
-The server-rendered pages being replaced. Shrinks to nothing by the end of the migration.
+The server-rendered pages the Angular UI replaced. None remain after Area 9.
 _Avoid_: Old UI, MVC frontend
+
+**Server page**:
+One of the three pages the vault writes itself, without the Angular UI: access blocked, error and not found. They carry no script.
+_Avoid_: Legacy page, Razor page
 
 **Area**:
 A group of related pages behind one sidebar entry (e.g. Profile, Secrets, Users), named by a stable key such as `users` in `/api/ui/me`. An area migrates as one unit; a migration step may move several at once, as the Administration step moves the administration areas in two parts. At any moment an area belongs wholly to either the Legacy UI or the Angular UI, never both. The one exception was Secrets, which Area 7 moved in parts: from 7a until 7b, its list and New secret were in the Angular UI and Secret details was still Legacy.

@@ -1,0 +1,87 @@
+{
+ "status": "draft",
+ "confirmed": true,
+ "confirmedOn": "2026-11-11",
+ "repository": "sabysabashvily/EclipsVault",
+ "publishAfter": "Area 8's specs are published. 9a ticket 1 is blocked by 8a; ticket 2 and the 9a merge also wait for 7b and 7c. The GPT Sol 6.1 challenge (Q19) was folded in on 2026-11-12. Publish nothing until Area 8 is published.",
+ "placeholders": {
+  "#SPEC": "this part's parent issue number",
+  "#SPEC7B": "part 7b parent issue number",
+  "#SPEC7C": "part 7c parent issue number",
+  "#SPEC8A": "part 8a parent issue number",
+  "#SPEC9A": "part 9a parent issue number",
+  "#SPEC9B": "part 9b parent issue number",
+  "#T<n>": "ticket n of the same part"
+ },
+ "parts": [
+  {
+   "key": "9a",
+   "parent": {
+    "title": "Angular migration — Area 9a: Final cleanup",
+    "file": "9a/spec.md"
+   },
+   "blockedByExternal": [
+    "#SPEC8A"
+   ],
+   "tickets": [
+    {
+     "order": 1,
+     "title": "Area 9a · 1/3: Answer every failure in the caller's format, with server pages",
+     "file": "9a/ticket-1.md",
+     "blockedByOrders": []
+    },
+    {
+     "order": 2,
+     "title": "Area 9a · 2/3: Remove Razor and keep the route table the list of pages",
+     "file": "9a/ticket-2.md",
+     "blockedByOrders": [
+      1
+     ],
+     "blockedByExternal": [
+      "#SPEC7B",
+      "#SPEC7C"
+     ]
+    },
+    {
+     "order": 3,
+     "title": "Area 9a · 3/3: Verify part 9a and prepare its PR",
+     "file": "9a/ticket-3.md",
+     "blockedByOrders": [
+      2
+     ]
+    }
+   ]
+  },
+  {
+   "key": "9b",
+   "parent": {
+    "title": "Angular migration — Area 9b: Refuse to start until Database:Provider is set",
+    "file": "9b/spec.md"
+   },
+   "mergeAfterParts": [
+    "9a"
+   ],
+   "closes": [
+    68
+   ],
+   "tickets": [
+    {
+     "order": 1,
+     "title": "Area 9b · 1/1: Require Database:Provider at startup (Cursor)",
+     "file": "9b/ticket-1.md",
+     "blockedByOrders": []
+    }
+   ]
+  }
+ ],
+ "followUps": [],
+ "notesForCoordinator": [
+  "F2 goes into Area 8a ticket 2 before Area 8 is published: logs/area-9/coordinator-handoff.md in the Area 9 grill worktree.",
+  "A9-1 (owner, 2026-11-12): 9a ticket 1 may start after 8a. Ticket 2 and the 9a merge also wait for 7b and 7c. Ticket 2's blockedByExternal is #SPEC7B and #SPEC7C.",
+  "A9-2 and A9-3 (owner, 2026-11-12) go into 8a ticket 2 before Area 8 is published. The paste replaces the success-only F2 paragraph and is in logs/area-9/coordinator-handoff.md. 9a only checks that no caller of POST /Account/Logout remains.",
+  "A9-4 is folded into ADR-0034, the 9a spec and ticket 2: the endpoint table pins API-key-only Public API endpoints apart from session endpoints, and /local-sign-out keeps its own HTTP check.",
+  "9b is a Cursor ticket the owner starts; it can be built now, its PR merges only after 9a. Claude Opus does it if Cursor cannot.",
+  "Link 9b's spec to #68. #69 stays open and out of the 24 November build.",
+  "ADR-0017 is amended in the Area 7, 8 and 9 worktrees; whichever commits later merges the paragraphs (text-only conflict)."
+ ]
+}

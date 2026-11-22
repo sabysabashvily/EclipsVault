@@ -47,3 +47,11 @@ first sign-in of a new account can be completed by whoever knows the password an
 Sign-in, branches from `main` after 7a merges and may run beside 7b and 7c. Part 8b, Provisioning,
 reuses 8a's anonymous pages, so by the owner's decision it started from 8a's branch before 8a merged.
 Area 9 depends only on 8a. Each part has its own security review.
+
+Area 9 runs in two parts, each with its own spec, branch and PR. Part 9a, Final cleanup, removes what
+is left of the Legacy UI (ADR-0018, ADR-0034); it changes the anonymous surface, antiforgery and error
+handling, so it is security-reviewed, and it branches from `main` after 8a merges. Ticket 2 deletes
+the Razor views, and the part merges, only after 7b and 7c have also merged, because Secrets and
+Dynamic secrets render Razor until then. Ticket 1 may start once 8a has merged. Part 9b requires
+`Database:Provider` (#68); it is startup configuration with no code in common with 9a, so it may be
+built at any time, and merges after 9a so that nothing on `main` breaks v1.x before the cleanup does.
