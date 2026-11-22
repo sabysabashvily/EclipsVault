@@ -21,6 +21,7 @@ const details = {
   clearance: 1,
   project: 'OPS',
   isYou: false,
+  isDisabled: false,
   clearances,
   awaitingActivation: false,
   invitationExpiresAtUtc: null as string | null,
@@ -349,6 +350,12 @@ describe('Edit user invitation', () => {
 
   it('is absent for an active account', async () => {
     const { page } = await loaded(editForm);
+    expect(page.querySelector('#invitation')).toBeNull();
+  });
+  it('is absent for a disabled invited account', async () => {
+    const { fixture, page } = render(editForm);
+    backend.expectOne(editForm.read).flush({ ...invited, isDisabled: true });
+    await fixture.whenStable();
     expect(page.querySelector('#invitation')).toBeNull();
   });
   it('shows the status pill, the stored address and both actions', async () => {

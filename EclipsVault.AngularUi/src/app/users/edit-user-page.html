@@ -20,7 +20,7 @@
     </div>
   </div>
 
-  @if (account.value().awaitingActivation) {
+  @if (account.value().awaitingActivation && !account.value().isDisabled) {
     @let invited = account.value();
     @let status = accountStatus(invited);
     <section

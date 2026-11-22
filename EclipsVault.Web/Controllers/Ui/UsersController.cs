@@ -53,7 +53,8 @@ public sealed class UsersController(IUserAdminService users, AdministratorStepUp
             return AdministratorProblems.UserNotFound();
         }
         return new UserDetailsResponse(account.Id, account.Username, account.DisplayName, account.Email, (int)account.Clearance,
-            account.ProjectKey, account.Id == User.GetUserId(), Clearances, account.AwaitingActivation, account.InvitationExpiresAtUtc);
+            account.ProjectKey, account.Id == User.GetUserId(), account.IsDisabled, Clearances, account.AwaitingActivation,
+            account.InvitationExpiresAtUtc);
     }
 
     [HttpPost]

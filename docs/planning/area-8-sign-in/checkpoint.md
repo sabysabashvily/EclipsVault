@@ -370,3 +370,20 @@ N3, an inspect racing a disable can show the seed once; and a line in ADR-0033 t
 invitation while replacing the address revokes it.
 
 Restart: ticket 3 (#181) starts from this commit.
+
+## Delivery: 8b ticket 3 (#181)
+
+Started from `b301b4e` (#180 accepted, CI 45055941173 green). Commits on `area-8b-invitations`:
+- `406cc2e` merges `origin/main` (`6db89e5`, Area 8a PR #201, redesign batches 3b #192 and 4 #202, and #200) cleanly, keeping `#180`'s `AccountDeletionCollection` isolation and regenerating `schema.generated.ts`.
+- `0ebfb83` exposes `awaitingActivation` and usable `invitationExpiresAtUtc` on the Users list and details responses, serves `/Account/Activate` anonymously through `ServeSignInStep` with the Angular CSP and anonymous antiforgery token, adds the Angular Activation page (fragment-only token scrubbed via `replaceState`, EnrollTotp QR/manual secret, Profile password rules and strength meter, redirect to `/Account/Login?activated=1` with Login's ready sentence), adds New user's `invitationsAvailable: false` explanation, adds Users and Edit user status pills plus ConfirmationDialog + StepUpDialog flows for Resend invitation and address replacement (sending no mail itself), updates Overview's "Provision a user" subtitle, and adds `e2e/invitations.spec.ts` (create → SMTP capture → activate → sign in, resend invalidates old link, address replacement invalidates old link without sending mail and resend delivers to the new address, expired link, dark/light themes, keyboard, 300 px layout). Red runs before the code change are in `logs/ticket-181/red-run.txt`.
+- This final commit fixes security review Finding 1 (exposes `isDisabled` on `UserDetailsResponse`, regenerates `schema.generated.ts`, hides the Edit user Invitation panel on disabled accounts to match the Users list) and records this section.
+
+Model handoff note: Claude Opus 5.5 high (`claudeAgent`) produced `406cc2e` and the backend/Angular/unit/integration implementation before hitting its API rate limit right before the browser spec; the owner switched the thread to Gemini 4 Neon (High) to finish `invitations.spec.ts`, integration shape-test updates, the Finding 1 fix, verification, and delivery. Both security review passes ran on Claude Opus 5.5 high (`claudeAgent`).
+
+Public test helpers: no existing public signatures changed. Additive helpers only: `e2e/activation.ts` (new), `smtp-capture.ts` (`invitationCount`), `users-state.ts` (`expireInvitation`), `users.ts` (`resend`, `replaceInvitationAddress`, `resendButton`), `user-role.ts` (invitation panel locators), `account-sign-in.ts` (`activatedNotice`).
+
+Checks (after the Finding 1 fix): `scripts/check.sh` (restore, Release build, 1087 unit tests), PostgreSQL integration filter (`logs/ticket-181/integration-filter.txt`, 6 classes, 111 passed), `dotnet format --verify-no-changes`, both pending-model checks (no model change), 6 guardrail hook tests, Angular `npm run lint` (ng lint, e2e eslint & tsc, lint-checks), `npm run format:check`, 797 Vitest tests (46 files), 15 build checks, `npm run check:api-types`, production `npm run build`, `npm audit --audit-level=high`. SQL Server, full integration suites and browser specs run in CI (pending coordinator push).
+
+Reviews (`logs/ticket-181/review-ledger.md`): fresh `security-reviewer` (Claude Opus 5.5 high, `claudeAgent`) approved `0ebfb83` with 1 Nit and 2 Notes; fresh re-check (Claude Opus 5.5 high, `claudeAgent`) approved the Finding 1 fix with no new issues. Left for `#182`: optional server-side refusal of resend/address-replacement on a disabled invited account (ADR-0033 says disabling pauses an invitation).
+
+Restart: ticket 4 (#182) verifies the whole Area 8b part after CI is green on this head and prepares the PR.

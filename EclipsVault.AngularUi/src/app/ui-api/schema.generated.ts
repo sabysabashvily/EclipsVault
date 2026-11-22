@@ -6985,6 +6985,7 @@ export interface components {
             clearance: number | string;
             project: string;
             isYou: boolean;
+            isDisabled: boolean;
             clearances: components["schemas"]["ClearanceOptionResponse"][];
             awaitingActivation: boolean;
             /** Format: date-time */
