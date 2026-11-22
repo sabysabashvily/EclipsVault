@@ -111,7 +111,7 @@ for (const width of [300, 2000]) {
     const notifications = new Notifications(page);
     await notifications.open();
     await expect(notifications.row(delivered.address)).toBeVisible();
-    await expect(page.getByText('a delivery record, not a mailbox')).toBeVisible();
+    await expect(notifications.deliveryRecordNote).toBeVisible();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
   });
 }

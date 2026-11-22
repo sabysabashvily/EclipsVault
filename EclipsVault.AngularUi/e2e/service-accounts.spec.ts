@@ -83,10 +83,9 @@ test('creates a service account and issues a scoped key through real proof, then
   expect(
     (await page.request.get('/api/v1/secrets', { headers: { 'X-Api-Key': apiKey } })).status(),
   ).toBe(200);
-  const key = page.getByRole('row').filter({ hasText: 'metadata-only' });
-  await expect(key).toContainText('at most Standard');
-  await expect(key).toContainText('GLOBAL');
-  await expect(key).toContainText(sourceIp);
+  await expect(details.metadataOnlyKey).toContainText('at most Standard');
+  await expect(details.metadataOnlyKey).toContainText('GLOBAL');
+  await expect(details.metadataOnlyKey).toContainText(sourceIp);
   await details.revoke.click();
   await expect(details.confirmation).toContainText(
     'Any caller using it will stop working immediately.',

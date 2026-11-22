@@ -16,6 +16,7 @@ export class ServiceAccount {
   readonly disable;
   readonly remove;
   readonly revoke;
+  readonly metadataOnlyKey;
   readonly confirmation;
   readonly stepUp;
   readonly status;
@@ -42,6 +43,7 @@ export class ServiceAccount {
     this.disable = page.getByRole('button', { name: 'Disable', exact: true });
     this.remove = page.getByRole('button', { name: 'Delete', exact: true });
     this.revoke = page.getByRole('button', { name: 'Revoke', exact: true });
+    this.metadataOnlyKey = page.getByRole('row').filter({ hasText: 'metadata-only' });
     this.confirmation = page.getByRole('alertdialog');
     this.stepUp = page.getByRole('dialog', { name: "Confirm it's you" });
     // eslint-disable-next-line playwright/no-raw-locators -- Loading has its own status; this is the shared outcome announcer.
