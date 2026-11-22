@@ -11,6 +11,14 @@ export class AccountSignIn {
     return this.page.getByLabel('Password', { exact: true });
   }
 
+  get showPassword() {
+    return this.page.getByRole('button', { name: 'Show password', exact: true });
+  }
+
+  get continueButton() {
+    return this.page.getByRole('button', { name: 'Continue', exact: true });
+  }
+
   get themeSwitch() {
     return this.page.getByRole('button', { name: 'Switch color theme', exact: true });
   }

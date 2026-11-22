@@ -11,25 +11,32 @@ type Schemas = components['schemas'];
   host: { class: 'auth-page' },
   template: `
     <section class="auth-card">
-      <div class="step-track" aria-hidden="true">
-        <span class="step done"></span><span class="step active"></span>
+      <div class="auth-step">
+        <div class="step-track" aria-hidden="true">
+          <span class="step done"></span><span class="step active"></span>
+        </div>
+        <span class="auth-step-label">Step 2 of 2</span>
       </div>
       <h1>Set up two-factor authentication</h1>
-      <p class="muted">
-        Multi-factor sign-in is mandatory. Add this account to your authenticator app (Google
-        Authenticator, 1Password, Authy, …) and confirm with a code.
+      <p class="auth-lede">
+        Two-factor sign-in is required. Add this account to your authenticator app and confirm with
+        a 6-digit code.
       </p>
 
       @if (enrollment(); as enrollment) {
         <div class="totp-secret">
-          <p><strong>Scan this QR code with your authenticator app</strong></p>
+          <p class="totp-label">Scan with your authenticator app</p>
           <img
             class="totp-qr"
             [src]="enrollment.qrCodeDataUri"
             alt="QR code containing the authenticator enrollment secret"
           />
-          <p class="muted">Can't scan it? Enter this key manually:</p>
+          <p class="totp-manual-label muted">Can't scan it? Enter this setup key manually:</p>
           <code class="secret-code">{{ enrollment.secretBase32 }}</code>
+        </div>
+      } @else if (!error()) {
+        <div class="totp-secret">
+          <p class="auth-loading" role="status">Preparing your authenticator key…</p>
         </div>
       }
 
@@ -37,6 +44,12 @@ type Schemas = components['schemas'];
         <fieldset [disabled]="busy()">
           @if (error()) {
             <div class="validation-summary" role="alert">
+              <span class="auth-notice-icon auth-notice-icon-danger" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 8v4M12 16h.01" />
+                </svg>
+              </span>
               <ul>
                 <li>{{ error() }}</li>
               </ul>
@@ -52,6 +65,7 @@ type Schemas = components['schemas'];
               inputmode="numeric"
               autocomplete="one-time-code"
               maxlength="6"
+              placeholder="000000"
               required
               appSignInFocus
               [value]="code()"

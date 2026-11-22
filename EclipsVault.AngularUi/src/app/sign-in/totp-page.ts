@@ -12,16 +12,25 @@ type Schemas = components['schemas'];
   host: { class: 'auth-page' },
   template: `
     <section class="auth-card">
-      <div class="step-track" aria-hidden="true">
-        <span class="step done"></span><span class="step active"></span>
+      <div class="auth-step">
+        <div class="step-track" aria-hidden="true">
+          <span class="step done"></span><span class="step active"></span>
+        </div>
+        <span class="auth-step-label">Step 2 of 2</span>
       </div>
       <h1>Two-factor verification</h1>
-      <p class="muted">Step 2 of 2 — enter the 6-digit code from your authenticator app.</p>
+      <p class="auth-lede">Enter the 6-digit code from your authenticator app.</p>
 
       <form (submit)="verify($event)">
         <fieldset [disabled]="busy()">
           @if (error()) {
             <div class="validation-summary" role="alert">
+              <span class="auth-notice-icon auth-notice-icon-danger" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 8v4M12 16h.01" />
+                </svg>
+              </span>
               <ul>
                 <li>{{ error() }}</li>
               </ul>
@@ -37,6 +46,7 @@ type Schemas = components['schemas'];
               inputmode="numeric"
               autocomplete="one-time-code"
               maxlength="6"
+              placeholder="000000"
               required
               appSignInFocus
               [value]="code()"
@@ -48,9 +58,9 @@ type Schemas = components['schemas'];
         </fieldset>
       </form>
 
-      <p class="footnote">
-        Lost your authenticator?
-        <a routerLink="/Account/RecoveryCode" [queryParams]="flow.query()">Use a recovery code</a>.
+      <p class="footnote auth-alt-action">
+        <span>Lost your authenticator?</span>
+        <a routerLink="/Account/RecoveryCode" [queryParams]="flow.query()">Use a recovery code</a>
       </p>
     </section>
   `,

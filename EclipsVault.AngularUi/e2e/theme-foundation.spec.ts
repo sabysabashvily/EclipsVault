@@ -288,4 +288,51 @@ test.describe('signed-out sign-in', () => {
     await page.reload();
     await expect.poll(theme).toBe('light');
   });
+
+  const anonymousPages = [
+    ['/Account/Login', 'Sign in'],
+    ['/Account/Recover', 'Recover access'],
+  ];
+
+  for (const theme of ['dark', 'light']) {
+    for (const width of [300, 2000]) {
+      for (const [route, title] of anonymousPages) {
+        test(`${title} fits ${width}px in ${theme} appearance`, async ({ context, page }) => {
+          await page.setViewportSize({ width, height: 900 });
+          await context.addCookies([
+            {
+              name: 'EclipsVault.Theme',
+              value: theme,
+              url: process.env['E2E_BASE_URL']!,
+              secure: true,
+            },
+          ]);
+          await page.goto(route);
+          await expect(
+            page.getByRole('heading', { name: title, exact: true, level: 1 }),
+          ).toBeVisible();
+          await expect
+            .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+            .toBe(width);
+        });
+      }
+    }
+  }
+
+  test('sign-in controls keep 44px touch targets at 300px', async ({ page }) => {
+    await page.setViewportSize({ width: 300, height: 900 });
+    const signIn = new AccountSignIn(page);
+    await signIn.open();
+
+    const themeSwitch = await signIn.themeSwitch.boundingBox();
+    expect(Math.round(themeSwitch?.height ?? 0)).toBeGreaterThanOrEqual(44);
+    expect(Math.round(themeSwitch?.width ?? 0)).toBeGreaterThanOrEqual(44);
+
+    const reveal = await signIn.showPassword.boundingBox();
+    expect(Math.round(reveal?.height ?? 0)).toBeGreaterThanOrEqual(44);
+    expect(Math.round(reveal?.width ?? 0)).toBeGreaterThanOrEqual(44);
+
+    const submit = await signIn.continueButton.boundingBox();
+    expect(Math.round(submit?.height ?? 0)).toBeGreaterThanOrEqual(44);
+  });
 });

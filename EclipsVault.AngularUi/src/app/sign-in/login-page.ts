@@ -2,7 +2,6 @@ import { HttpClient, HttpXsrfTokenExtractor, httpResource } from '@angular/commo
 import { Component, DestroyRef, DOCUMENT, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { PasskeyProof } from '../profile/passkey-proof';
-import { StatusLine } from '../shared/status-line';
 import type { components } from '../ui-api/schema.generated';
 import { UiApiError } from '../ui-api/ui-api-errors';
 import { SignInFlow, SignInFocus } from './sign-in-flow';
@@ -72,7 +71,7 @@ function known(notices: Readonly<Record<string, LoginNotice>>, code: string | nu
 
 @Component({
   selector: 'app-login-page',
-  imports: [StatusLine, SignInFocus],
+  imports: [SignInFocus],
   templateUrl: './login-page.html',
   host: { class: 'auth-page' },
 })

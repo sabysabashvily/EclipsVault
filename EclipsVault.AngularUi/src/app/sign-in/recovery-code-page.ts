@@ -12,17 +12,29 @@ type Schemas = components['schemas'];
   host: { class: 'auth-page' },
   template: `
     <section class="auth-card">
-      <div class="step-track" aria-hidden="true">
-        <span class="step done"></span><span class="step active"></span>
+      <div class="auth-step">
+        <div class="step-track" aria-hidden="true">
+          <span class="step done"></span>
+          <span class="step" [class.done]="signedIn()" [class.active]="!signedIn()"></span>
+        </div>
+        <span class="auth-step-label">{{ signedIn() ? 'Signed in' : 'Step 2 of 2' }}</span>
       </div>
       <h1>Use a recovery code</h1>
       @if (signedIn(); as result) {
-        <!-- Said here, before leaving: the Legacy UI carried it to the next page (ADR-0032). -->
-        <p class="flash flash-info" role="status">
-          You signed in with a recovery code — that code is now used up.
-          {{ remaining(result.codesRemaining) }} Generate a new set from your profile if you're
-          running low.
-        </p>
+        <!-- Said here, before leaving: the vault has already issued the session cookie (ADR-0032). -->
+        <div class="auth-notice auth-notice-info">
+          <span class="auth-notice-icon auth-notice-icon-info" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 16v-4M12 8h.01" />
+            </svg>
+          </span>
+          <p class="flash-info" role="status">
+            You signed in with a recovery code — that code is now used up.
+            {{ remaining(result.codesRemaining) }} Generate a new set from your profile if you're
+            running low.
+          </p>
+        </div>
         <button
           type="button"
           class="button primary wide"
@@ -32,15 +44,21 @@ type Schemas = components['schemas'];
           Continue
         </button>
       } @else {
-        <p class="muted">
-          Step 2 of 2 — enter one of the single-use recovery codes you saved when you set up MFA.
-          Each code works only once.
+        <p class="auth-lede">
+          Enter one of the single-use recovery codes you saved when you set up MFA. Each code works
+          only once.
         </p>
 
         <form (submit)="verify($event)">
           <fieldset [disabled]="busy()">
             @if (error()) {
               <div class="validation-summary" role="alert">
+                <span class="auth-notice-icon auth-notice-icon-danger" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M12 8v4M12 16h.01" />
+                  </svg>
+                </span>
                 <ul>
                   <li>{{ error() }}</li>
                 </ul>
@@ -52,7 +70,7 @@ type Schemas = components['schemas'];
               <input
                 id="Code"
                 name="Code"
-                class="code-input"
+                class="code-input code-input-recovery"
                 autocomplete="one-time-code"
                 autocapitalize="characters"
                 spellcheck="false"
@@ -69,10 +87,11 @@ type Schemas = components['schemas'];
           </fieldset>
         </form>
 
-        <p class="footnote">
-          Have your authenticator?
-          <a routerLink="/Account/Totp" [queryParams]="flow.query()">Enter a 6-digit code instead</a
-          >.
+        <p class="footnote auth-alt-action">
+          <span>Have your authenticator?</span>
+          <a routerLink="/Account/Totp" [queryParams]="flow.query()"
+            >Enter a 6-digit code instead</a
+          >
         </p>
       }
     </section>
