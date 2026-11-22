@@ -134,6 +134,13 @@ test('the sidebar opens the Secrets list in place, marking the new secret as exp
   await list.openOf(row).click();
   await expect(new SecretDetails(page, created.name).heading).toBeVisible();
   expect(documents).toEqual([new URL(page.url()).pathname]);
+
+  await list.open();
+  const expiringPill = list.expiresOf(list.secret(created.name)).getByText(/^In [23] days · /);
+  await expect(expiringPill).toHaveAttribute('title', /\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC/);
+  await expiringPill.click();
+  await expect(page).toHaveURL(detailsUrl);
+  await expect(new SecretDetails(page, created.name).heading).toBeVisible();
 });
 
 for (const shell of ['/Access', legacyShell]) {

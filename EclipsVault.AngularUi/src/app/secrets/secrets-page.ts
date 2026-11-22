@@ -13,6 +13,7 @@ import { SecretsTabs } from './secrets-tabs';
   selector: 'app-secrets-page',
   imports: [EmptyState, RouterLink, SecretsTabs, StatusLine, TableFilter],
   templateUrl: './secrets-page.html',
+  host: { '(click)': 'openRow($event)' },
 })
 export class SecretsPage {
   protected readonly deleted: boolean;
@@ -79,5 +80,12 @@ export class SecretsPage {
       queryParamsHandling: 'merge',
       replaceUrl: true,
     });
+  }
+
+  // A titled pill sits above .row-link::after so its tooltip works; clicking it follows the same link.
+  protected openRow(event: MouseEvent): void {
+    const target = event.target as Element;
+    if (target.closest('a, button, form, input, details')) return;
+    target.closest('tr')?.querySelector<HTMLAnchorElement>('a.row-link')?.click();
   }
 }

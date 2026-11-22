@@ -13,6 +13,7 @@ type SharedWithMe =
   selector: 'app-shared-with-me-page',
   imports: [EmptyState, RouterLink, SecretsTabs],
   templateUrl: './shared-with-me-page.html',
+  host: { '(click)': 'openRow($event)' },
 })
 export class SharedWithMePage {
   protected readonly shares = httpResource<SharedWithMe>(() => '/api/ui/shared-with-me');
@@ -39,5 +40,12 @@ export class SharedWithMePage {
 
   protected expiry(accessUntilUtc: string | null) {
     return expiry(accessUntilUtc, new Date());
+  }
+
+  // A titled pill sits above .row-link::after so its tooltip works; clicking it follows the same link.
+  protected openRow(event: MouseEvent): void {
+    const target = event.target as Element;
+    if (target.closest('a, button, form, input, details')) return;
+    target.closest('tr')?.querySelector<HTMLAnchorElement>('a.row-link')?.click();
   }
 }

@@ -1946,6 +1946,7 @@ tr:has(.row-link:focus-visible) {
 tr:has(.row-link) [title] {
   position: relative;
   z-index: 1;
+  cursor: pointer;
 }
 .row-code {
   display: block;

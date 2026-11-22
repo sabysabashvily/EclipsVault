@@ -163,6 +163,18 @@ describe('Secrets', () => {
     expect(page.querySelector('.page-actions a')?.getAttribute('href')).toBe('/Secrets/Create');
   });
 
+  it('keeps the expiry tooltip while opening the secret when the expiry pill is clicked', async () => {
+    const { page } = await loaded([expiringSoon]);
+    const link = page.querySelector<HTMLAnchorElement>('tbody a.row-link')!;
+    const clicked = vi.fn((event: Event) => event.preventDefault());
+    link.addEventListener('click', clicked);
+
+    const pill = page.querySelector<HTMLElement>('tbody .badge.tone-warn')!;
+    expect(pill.getAttribute('title')).toBe('2026-11-20 09:30:00 UTC');
+    pill.click();
+    expect(clicked).toHaveBeenCalledOnce();
+  });
+
   it('shows a deletion once and drops it from the address', async () => {
     configure();
     const harness = await RouterTestingHarness.create('/Secrets?deleted=1');
