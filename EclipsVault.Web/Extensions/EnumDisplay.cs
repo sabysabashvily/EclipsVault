@@ -1,5 +1,4 @@
 using EclipsVault.Core.Domain.Enums;
-using Microsoft.AspNetCore.Mvc.Rendering;
 
 namespace EclipsVault.Web.Extensions;
 
@@ -32,17 +31,4 @@ public static class EnumDisplay
         SensitivityLevel.TopSecret => "Top Secret",
         _ => level.ToString()
     };
-
-    /// <summary>
-    /// Clearance options for a <c>&lt;select&gt;</c>, labelled with the display name and valued by
-    /// the underlying number — the same value shape <c>Html.GetEnumSelectList&lt;T&gt;</c> produces,
-    /// so an <c>asp-for</c> binding still pre-selects the model's current value and round-trips it.
-    /// </summary>
-    public static IEnumerable<SelectListItem> ClearanceSelectList()
-        => Enum.GetValues<ClearanceLevel>()
-            .Select(c => new SelectListItem(c.ToDisplayName(), ((int)c).ToString()));
-
-    public static IEnumerable<SelectListItem> SensitivitySelectList()
-        => Enum.GetValues<SensitivityLevel>()
-            .Select(s => new SelectListItem(s.ToDisplayName(), ((int)s).ToString()));
 }

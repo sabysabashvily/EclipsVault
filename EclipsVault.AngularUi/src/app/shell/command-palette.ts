@@ -18,7 +18,7 @@ import { Router } from '@angular/router';
 import { catchError, debounce, map, of, Subject, switchMap, timer } from 'rxjs';
 import type { SidebarLink } from './sidebar';
 
-/** Where a chosen Legacy UI page is opened: the browser's own location, replaceable in tests. */
+/** Where a full page load starts: the browser's own location, replaceable in tests. */
 export const PAGE_LOCATION = new InjectionToken<Pick<Location, 'assign'>>('PAGE_LOCATION', {
   factory: () => inject(DOCUMENT).location,
 });
@@ -27,8 +27,6 @@ export interface PaletteCommand {
   readonly kind: 'Go to' | 'Secret';
   readonly label: string;
   readonly url: string;
-  /** The Angular UI owns the page, so the router opens it without a page load. */
-  readonly angular: boolean;
   readonly meta?: string;
   readonly sensitivity?: number;
   readonly sensitivityName?: string;
@@ -54,16 +52,10 @@ export function paletteCommands(
     kind: 'Go to',
     label: link.textContent?.trim() ?? '',
     url: link.getAttribute('href')!,
-    angular: link.hasAttribute('data-command-angular'),
   }));
   return [
     ...pages,
-    ...shortcuts.map(({ label, url, angular }): PaletteCommand => ({
-      kind: 'Go to',
-      label,
-      url,
-      angular,
-    })),
+    ...shortcuts.map(({ label, url }): PaletteCommand => ({ kind: 'Go to', label, url })),
   ];
 }
 
@@ -126,7 +118,6 @@ export function secretsFrom(response: HttpResponse<string>, origin: string): Pal
     kind: 'Secret',
     label: hit.name,
     url: hit.url,
-    angular: false,
     meta: `${hit.project} · ${hit.environment}`,
     sensitivity: hit.sensitivity,
     sensitivityName: hit.sensitivityName,
@@ -157,7 +148,6 @@ export class CommandPalette {
   private readonly document = inject(DOCUMENT);
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
-  private readonly location = inject(PAGE_LOCATION);
   private readonly injector = inject(Injector);
   private readonly field = viewChild<ElementRef<HTMLInputElement>>('field');
   private readonly queries = new Subject<string>();
@@ -289,7 +279,6 @@ export class CommandPalette {
     const command = this.results()[index];
     if (!command) return;
     this.close();
-    if (command.angular) void this.router.navigateByUrl(command.url);
-    else this.location.assign(command.url);
+    void this.router.navigateByUrl(command.url);
   }
 }

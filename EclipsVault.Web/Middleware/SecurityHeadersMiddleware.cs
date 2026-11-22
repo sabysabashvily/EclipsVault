@@ -14,19 +14,19 @@ public sealed class SecurityHeadersMiddleware
         "frame-src 'none'; " +       // the app embeds no iframes
         "frame-ancestors 'none'; " + // and refuses to be embedded (clickjacking)
         "form-action 'self'; " +
-        "base-uri 'self'";
-
-    // Only the Angular document handler opts in: legacy site.js still writes innerHTML (ADR-0013).
-    internal const string AngularContentSecurityPolicy = ContentSecurityPolicy +
-        "; require-trusted-types-for 'script'; trusted-types angular angular#bundler";
+        "base-uri 'self'; " +
+        // Trusted Types on every response (ADR-0013, ADR-0034): only Angular's own policies may
+        // turn text into script or markup.
+        "require-trusted-types-for 'script'; " +
+        "trusted-types angular angular#bundler";
 
     /// <summary>
-    /// The Angular policy for a document whose form may redirect to <paramref name="origin"/>:
+    /// The policy for a document whose form may redirect to <paramref name="origin"/>:
     /// form-action also governs a submission's redirects, so single sign-on's hop to the identity
     /// provider needs it. The origin comes from configuration, never from the request.
     /// </summary>
-    internal static string AngularContentSecurityPolicyWithFormTarget(string origin) =>
-        AngularContentSecurityPolicy.Replace("form-action 'self';", $"form-action 'self' {origin};", StringComparison.Ordinal);
+    internal static string ContentSecurityPolicyWithFormTarget(string origin) =>
+        ContentSecurityPolicy.Replace("form-action 'self';", $"form-action 'self' {origin};", StringComparison.Ordinal);
 
     private static readonly PathString ApiPath = new("/api");
 

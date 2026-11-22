@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
-using System.Text.RegularExpressions;
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
@@ -391,34 +390,12 @@ public sealed partial class VaultFixture : IAsyncLifetime
         return secret;
     }
 
-    /// <summary>
-    /// A signed-in page the Legacy layout still draws, sidebar and sign-out form included. The error page
-    /// is the last one until Area 9 retires it; it answers with the status it names.
-    /// </summary>
-    public const string LegacyShell = "/Home/Error?code=404";
-
-    /// <summary>The Legacy shell's HTML, as <paramref name="client"/>'s session sees it.</summary>
-    public static async Task<string> LegacyShellAsync(HttpClient client)
-    {
-        using var response = await client.GetAsync(LegacyShell);
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        return await response.Content.ReadAsStringAsync();
-    }
-
-    /// <summary>The antiforgery token a Legacy UI page renders into its forms, where its own scripts read it.</summary>
-    public static string FormTokenOf(string page, string path)
-        => AntiforgeryField().Match(page) is { Success: true } match
-            ? WebUtility.HtmlDecode(match.Groups[1].Value)
-            : throw new InvalidOperationException($"{path} rendered no antiforgery token.");
-
     private void SetEnvironment(string name, string value)
     {
         _environment.Add(name);
         Environment.SetEnvironmentVariable(name, value);
     }
 
-    [GeneratedRegex("name=\"__RequestVerificationToken\" type=\"hidden\" value=\"([^\"]+)\"")]
-    private static partial Regex AntiforgeryField();
 
 
 }

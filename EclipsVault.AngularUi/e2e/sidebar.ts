@@ -2,7 +2,6 @@ import type { Page, TestInfo } from '@playwright/test';
 import { expect } from './fixtures';
 import { verifyMyAccess } from './access';
 import { AppShell } from './app-shell';
-import { legacyShell, legacyShellHeading } from './legacy-shell';
 
 /**
  * Inventory every authorized destination, including folded links. Expansion is checked separately.
@@ -56,9 +55,13 @@ const expectedNavigation = {
   administrator: { sections: ['Vault'], items: [...everyone, ...administration] },
 };
 
-/**
- * The account identity and destinations remain shared by both shells.
- */
+/** The account identity each account's menu shows: display name, then clearance. */
+const identity = {
+  standard: ['Standard Sidebar', 'Standard'],
+  administrator: ['Vault Administrator', 'Top Secret'],
+};
+
+/** The account menu's identity and entries, opened and closed again. */
 async function accountMenu(page: Page) {
   const footer = page.locator('.sidebar-footer');
   await footer.locator('summary.user-card').click();
@@ -86,7 +89,7 @@ async function notices(page: Page) {
   );
 }
 
-/** Crop to navigation content; the account menu is compared structurally, and the palette is compared in palette.ts. */
+/** Crop to navigation content; the account menu is checked structurally, and the palette in palette.ts. */
 async function screenshot(page: Page, info: TestInfo, name: string) {
   await page.evaluate(() => document.fonts.ready);
   const clip = await page.locator('.sidenav').evaluate((nav) => {
@@ -99,7 +102,7 @@ async function screenshot(page: Page, info: TestInfo, name: string) {
   await info.attach(name, { path, contentType: 'image/png' });
 }
 
-/** Check the Angular sidebar against the Legacy UI on the same session, in each theme, then cross over. */
+/** Check the sidebar, account menu and notices on the same session, in each theme, then navigate in-app. */
 export async function verifySidebar(
   page: Page,
   info: TestInfo,
@@ -112,7 +115,7 @@ export async function verifySidebar(
   );
   expect(session).toBeDefined();
 
-  for (const theme of ['dark', 'light']) {
+  for (const theme of ['dark', 'light'] as const) {
     await page.context().addCookies([
       {
         name: 'EclipsVault.Theme',
@@ -121,36 +124,14 @@ export async function verifySidebar(
         secure: true,
       },
     ]);
-    const legacy = await page.goto(legacyShell);
-    expect(legacy?.headers()['content-security-policy']).not.toContain('trusted-types');
-    // The error page is in no sidebar entry, so the Legacy document marks none active.
-    await expect(page.locator('.sidenav a.active')).toHaveCount(0);
-    // Compare the Legacy styles in the same selected state as My access. The real active states
-    // of both documents are asserted separately; the deleted Razor page is no longer a reference.
-    await page.locator('.sidenav').evaluate((nav) => {
-      nav
-        .querySelectorAll('.active, .has-active')
-        .forEach((item) => item.classList.remove('active', 'has-active'));
-      nav.querySelectorAll('details').forEach((group) => group.removeAttribute('open'));
-      const access = nav.querySelector('a[href="/Access"]')!;
-      access.classList.add('active');
-      access.closest('details')!.setAttribute('open', '');
-      access.closest('details')!.querySelector('summary')!.classList.add('has-active');
-    });
-    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-    const referenceMenu = await accountMenu(page);
-    const referenceNotices = await notices(page);
-    await screenshot(page, info, `${account}-${theme}-legacy`);
-
     const angular = await page.goto('/aCcEsS/INDEX');
     expect(angular?.headers()['content-security-policy']).toContain(
       "require-trusted-types-for 'script'",
     );
     await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
-    // The boot script applied the theme from the cookie the Legacy UI reads.
+    // The boot script applied the theme from the cookie.
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     await expect(page.locator('.sidenav a.active')).toHaveAttribute('aria-current', 'page');
-    // The Angular sidebar groups its pages differently from the Legacy one, by design.
     expect(await navigation(page)).toEqual(expectedNavigation[account]);
     const shell = new AppShell(page);
     await expect(shell.youGroup).toHaveAttribute('open', '');
@@ -167,11 +148,21 @@ export async function verifySidebar(
     await expect(shell.youGroup.getByRole('link')).toHaveCount(0);
     await shell.you.click();
     await expect(shell.myAccess).toBeVisible();
-    expect(await accountMenu(page)).toEqual(referenceMenu);
-    expect(await notices(page)).toEqual(referenceNotices);
+    const [name, clearance] = identity[account];
+    expect(await accountMenu(page)).toEqual({
+      title: `Your account — ${clearance} clearance`,
+      avatar: expect.any(String),
+      who: [name, clearance],
+      items: [
+        { label: 'Profile', href: '/Profile' },
+        { label: `Switch to ${theme === 'dark' ? 'light' : 'dark'}`, href: null },
+        { label: 'Sign out', href: null },
+      ],
+    });
+    const shown = await notices(page);
     if (account === 'standard') {
       // Only someone who can act on the licence is told about it, and the server decides who.
-      expect(referenceNotices).toEqual([]);
+      expect(shown).toEqual([]);
       expect(await page.content()).not.toMatch(/unlicensed|notice-warn/i);
       await expect(page.locator('.sidenav')).not.toContainText('Administration');
       await expect(page.locator('.sidenav a')).toHaveCount(10);
@@ -195,9 +186,7 @@ export async function verifySidebar(
         'License',
       ]);
       await shell.administration.click();
-      expect(referenceNotices).toEqual([
-        expect.stringMatching(/^Running unlicensed\. .+ View license$/),
-      ]);
+      expect(shown).toEqual([expect.stringMatching(/^Running unlicensed\. .+ View license$/)]);
       await expect(page.locator('.sidenav a')).toHaveCount(17);
     }
     await expect(page.locator('style, [style]')).toHaveCount(0);
@@ -220,21 +209,6 @@ export async function verifySidebar(
   await expect(page.locator('.sidenav a.active')).toHaveText('My access');
   expect(documents).toEqual([]);
 
-  // A Legacy document's sidebar link replaces the document. The return reuses the same session.
-  const legacyDocument = await page.goto(legacyShell);
-  expect(legacyDocument?.headers()['content-security-policy']).not.toContain('trusted-types');
-  await expect(page.getByRole('heading', { name: legacyShellHeading, exact: true })).toBeVisible();
-  await page.getByText('Access', { exact: true }).click();
-  const angularDocument = page.waitForResponse((response) =>
-    response.request().isNavigationRequest(),
-  );
-  await page.getByRole('link', { name: 'My access', exact: true }).click();
-  expect((await angularDocument).headers()['content-security-policy']).toContain(
-    "require-trusted-types-for 'script'",
-  );
-  await expect(page).toHaveURL(/\/Access$/);
-  await expect(page.locator('.sidenav a.active')).toHaveText('My access');
-  expect(documents.map((url) => new URL(url).pathname)).toEqual(['/Home/Error', '/Access']);
   expect(signInRequests).toEqual([]);
   expect(
     (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')?.value,

@@ -70,6 +70,7 @@ public sealed class UiApiFailureContractTests(VaultFixture vault)
         Assert.Null(response.Headers.Location);
         Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
         Assert.True(response.Headers.CacheControl?.NoStore, "The page is not no-store");
+        Assert.Contains("require-trusted-types-for 'script'", Assert.Single(response.Headers.GetValues("Content-Security-Policy")));
         var text = WebUtility.HtmlDecode(body);
         Assert.Contains($"<title>{heading} — EclipsVault</title>", text);
         Assert.Contains($"<h1>{status} — {heading}</h1>", text);
@@ -267,6 +268,7 @@ public sealed class UiApiFailureContractTests(VaultFixture vault)
 
             Assert.Equal(StatusCodes.Status403Forbidden, page.Response.StatusCode);
             Assert.StartsWith("text/html", page.Response.ContentType);
+            Assert.Contains("require-trusted-types-for 'script'", page.Response.Headers.ContentSecurityPolicy.ToString());
             var html = await new StreamReader(page.Response.Body).ReadToEndAsync();
             Assert.Contains("<title>Access blocked — EclipsVault</title>", html);
             Assert.Contains("<h1>Access blocked</h1>", html);

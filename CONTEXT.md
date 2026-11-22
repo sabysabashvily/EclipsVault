@@ -199,7 +199,7 @@ The versioned API service accounts call with an API key. A published contract th
 _Avoid_: REST API, external API
 
 **UI API**:
-The endpoints the Angular UI calls, through a session. Never reachable with an API key. Until the Legacy UI is gone, its command palette also calls the secret search here.
+The endpoints the Angular UI calls, through a session. Never reachable with an API key.
 _Avoid_: Internal API, BFF API, backend
 
 ### The migration

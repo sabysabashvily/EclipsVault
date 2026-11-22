@@ -84,11 +84,7 @@ export async function verifySignInHistory(page: Page, info: TestInfo, theme: str
     .addCookies([
       { name: 'EclipsVault.Theme', value: theme, url: new URL('/', page.url()).href, secure: true },
     ]);
-  const served = await page.goto('/SignIns');
-  // The Angular UI serves the page, not the Legacy Razor view at the same URL.
-  expect(served?.headers()['content-security-policy']).toContain(
-    "require-trusted-types-for 'script'",
-  );
+  await page.goto('/SignIns');
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
   await expect(page).toHaveTitle('Sign-in history — EclipsVault');
   await expect(page.getByRole('heading', { name: 'Sign-in history', exact: true })).toBeVisible();

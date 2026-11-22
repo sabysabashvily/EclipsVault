@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Auditing;
 using EclipsVault.Core.Domain.Enums;
@@ -218,16 +217,6 @@ public sealed class AuditApiTests(VaultFixture vault)
         Assert.Contains("require-trusted-types-for 'script'", Assert.Single(document.Headers.GetValues("Content-Security-Policy")));
         // The page's own request for the entries is what records the view.
         Assert.DoesNotContain(await AuditTrail.RowsAfterAsync(vault, before), row => row.Username == administrator);
-    }
-
-    [Fact]
-    public async Task The_Legacy_sidebar_link_keeps_its_destination()
-    {
-        var html = await VaultFixture.LegacyShellAsync(await vault.AdminClientAsync());
-        var link = Assert.Single(Regex.Matches(html, "<a\\b[^>]*>[\\s\\S]*?</a>").Select(match => match.Value),
-            anchor => Regex.Replace(anchor, "<[^>]*>", "").Contains("Audit log", StringComparison.Ordinal));
-
-        Assert.Contains("href=\"/Audit\"", link);
     }
 
     [Theory]

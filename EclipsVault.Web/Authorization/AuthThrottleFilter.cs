@@ -17,7 +17,7 @@ namespace EclipsVault.Web.Authorization;
 /// grant each replica its own budget. It is a filter rather than middleware so the throttled
 /// surface stays declared on the controller it protects, and async so the budget can live in Redis.
 ///
-/// Only unsafe methods other than the two sign-out actions spend the budget. Sign-out must remain
+/// Only unsafe methods other than the sign-out action spend the budget. Sign-out must remain
 /// available when a shared source exhausts its guessing budget, and does not test a credential.
 /// The brute-force surface is the POST that submits a
 /// password, TOTP, recovery code, or passkey assertion — a GET renders a form or is the SSO
@@ -29,7 +29,6 @@ public sealed class AuthThrottleFilter : IAsyncActionFilter
 {
     private static readonly MethodInfo[] SignOutActions =
     [
-        typeof(AccountController).GetMethod(nameof(AccountController.Logout), [typeof(CancellationToken)])!,
         typeof(AuthController).GetMethod(nameof(AuthController.SignOutSession), [typeof(CancellationToken)])!,
     ];
 

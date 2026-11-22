@@ -53,6 +53,7 @@ export default defineConfig({
             '**/dynamic-secrets.spec.ts',
             '**/break-glass.spec.ts',
             '**/sso.spec.ts',
+            '**/not-found.spec.ts',
           ],
           use: { ...devices['Desktop Chrome'] },
         },
@@ -104,6 +105,13 @@ export default defineConfig({
           use: { ...devices['Desktop Chrome'] },
         },
         {
+          // Needs the administrator session that sign-in saves.
+          name: 'not-found',
+          testMatch: '**/not-found.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
           // Needs the administrator session that sign-in saves. It blocks the address every browser
           // in the run shares, and recovery lifts it before the next project starts.
           name: 'break-glass',
@@ -149,7 +157,8 @@ export default defineConfig({
         {
           // Users ends with the administrator's own Force logout, which ends the saved session that
           // Networks, Notifications, License, Encryption keys, the Audit log, the Overview, Secrets,
-          // Secret details, Dynamic secrets, My activity, break-glass and single sign-on reuse.
+          // Secret details, Dynamic secrets, My activity, break-glass, single sign-on and the
+          // not-found page reuse.
           // Run those projects before Users so they can still use the saved session.
           name: 'users',
           testMatch: '**/users.spec.ts',
@@ -164,6 +173,7 @@ export default defineConfig({
             'dynamic-secrets',
             'break-glass',
             'sso',
+            'not-found',
           ],
           use: { ...devices['Desktop Chrome'] },
         },

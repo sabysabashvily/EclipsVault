@@ -36,8 +36,7 @@ public class AuthorizationSurfaceTests
     /// <summary>
     /// The complete set of actions reachable without a session, as <c>Controller.Action</c>.
     /// Every one of them by definition runs before a session exists: the SSO redirect and its
-    /// callback from the identity provider, the landing page, the error page, and the UI API's sign-in
-    /// calls (ADR-0032): the password, the passkey ceremony's two legs, break-glass recovery for a
+    /// callback from the identity provider, and the UI API's sign-in calls (ADR-0032): the password, the passkey ceremony's two legs, break-glass recovery for a
     /// locked-out administrator, and the Login page's options.
     /// Adding a name here is a decision that an unauthenticated stranger may reach it.
     /// </summary>
@@ -45,8 +44,6 @@ public class AuthorizationSurfaceTests
     [
         "AccountController.ExternalCallback",
         "AccountController.ExternalLogin",
-        "HomeController.Error",
-        "HomeController.Index",
         .. UiApiAnonymous,
     ];
 
@@ -227,7 +224,7 @@ public class AuthorizationSurfaceTests
     {
         var controllers = new Dictionary<string, Type>
         {
-            ["overview"] = typeof(HomeController),
+            ["overview"] = typeof(EclipsVault.Web.Controllers.Ui.OverviewController),
             ["secrets"] = typeof(EclipsVault.Web.Controllers.Ui.SecretsController),
             ["dynamic-secrets"] = typeof(EclipsVault.Web.Controllers.Ui.DynamicSecretsController),
             ["shared-with-me"] = typeof(EclipsVault.Web.Controllers.Ui.SharedWithMeController),

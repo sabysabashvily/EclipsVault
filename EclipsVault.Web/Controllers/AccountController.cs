@@ -15,41 +15,31 @@ using Microsoft.AspNetCore.WebUtilities;
 namespace EclipsVault.Web.Controllers;
 
 /// <summary>
-/// What sign-in still serves from the Legacy UI: single sign-on's two server redirects, the Error
-/// page's sign-out and the Denied page. The Angular UI serves the sign-in pages themselves, break-glass
-/// recovery included, on the UI API's calls (ADR-0032).
+/// Single sign-on's two server redirects, at the URLs identity providers are configured with. The
+/// Angular UI serves the sign-in pages themselves, break-glass recovery included, on the UI API's
+/// calls (ADR-0032).
 /// </summary>
 // Default-deny at the class, opened per action, so every anonymous action here is declared where it is.
 [Authorize]
 [ServiceFilter(typeof(AuthThrottleFilter))]
 public sealed class AccountController : Controller
 {
-    private readonly AccountSignOut _signOut;
     private readonly ISsoSignInService _sso;
     private readonly SessionIssuer _issuer;
     private readonly ILogger<AccountController> _logger;
 
     public AccountController(
-        AccountSignOut signOut,
         ISsoSignInService sso,
         SessionIssuer issuer,
         ILogger<AccountController> logger)
     {
-        _signOut = signOut;
         _sso = sso;
         _issuer = issuer;
         _logger = logger;
     }
 
-    /// <summary>The Error page's sign-out; the UI API's sign-out runs the same implementation.</summary>
-    [HttpPost]
-    public async Task<IActionResult> Logout(CancellationToken ct)
-        => await _signOut.ThisSessionAsync(HttpContext, ct)
-            ? RedirectToAction("Index", "Home")
-            : LocalRedirect("/Account/Login?signOut=sign_out_incomplete");
-
     /// <summary>Hands off to the identity provider. Nothing is decided here.</summary>
-    [HttpPost]
+    [HttpPost("/Account/ExternalLogin")]
     [AllowAnonymous]
     [ValidateAntiForgeryToken]
     public IActionResult ExternalLogin(string? returnUrl)
@@ -62,7 +52,7 @@ public sealed class AccountController : Controller
     /// may in — and whether they are finished authenticating — is the vault's call, made in Core by
     /// <see cref="ISsoSignInService"/> and audited there, refusals included.
     /// </summary>
-    [HttpGet]
+    [HttpGet("/Account/ExternalCallback")]
     [AllowAnonymous]
     public async Task<IActionResult> ExternalCallback(string? returnUrl, CancellationToken ct)
     {

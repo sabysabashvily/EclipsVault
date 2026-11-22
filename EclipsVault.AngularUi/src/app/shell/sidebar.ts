@@ -2,7 +2,6 @@ export interface SidebarLink {
   readonly label: string;
   readonly icon: string;
   readonly url: string;
-  readonly angular: boolean;
 }
 
 export interface SidebarGroup {
@@ -26,13 +25,12 @@ interface AreaGroup {
   readonly children: readonly AreaLink[];
 }
 
-const link = (
-  area: string,
-  label: string,
-  url: string,
-  icon = area,
-  angular = false,
-): AreaLink => ({ area, label, url, icon, angular });
+const link = (area: string, label: string, url: string, icon = area): AreaLink => ({
+  area,
+  label,
+  url,
+  icon,
+});
 
 // Presentation only: the server has already authorized each Area. Clearance is never an input.
 // Profile is offered in the account menu. The command palette reads the rendered sidebar links.
@@ -42,10 +40,10 @@ const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)
   {
     label: 'Vault',
     items: [
-      link('overview', 'Overview', '/', 'overview', true),
-      link('secrets', 'Secrets', '/Secrets', 'secrets', true),
-      link('dynamic-secrets', 'Dynamic secrets', '/DynamicSecrets', 'dynamic-secrets', true),
-      link('access-requests', 'Access requests', '/AccessRequests', 'access-requests', true),
+      link('overview', 'Overview', '/', 'overview'),
+      link('secrets', 'Secrets', '/Secrets', 'secrets'),
+      link('dynamic-secrets', 'Dynamic secrets', '/DynamicSecrets', 'dynamic-secrets'),
+      link('access-requests', 'Access requests', '/AccessRequests', 'access-requests'),
     ],
   },
   {
@@ -55,31 +53,25 @@ const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)
         label: 'You',
         icon: 'you',
         children: [
-          link('access', 'My access', '/Access', 'access', true),
-          link('security', 'Security checkup', '/Security', 'security', true),
-          link('sign-ins', 'Sign-in history', '/SignIns', 'sign-ins', true),
-          link('sessions', 'Signed-in devices', '/Sessions', 'sessions', true),
-          link('activity', 'My activity', '/Activity', 'activity', true),
-          link('data', 'Your data', '/Data', 'data', true),
+          link('access', 'My access', '/Access', 'access'),
+          link('security', 'Security checkup', '/Security', 'security'),
+          link('sign-ins', 'Sign-in history', '/SignIns', 'sign-ins'),
+          link('sessions', 'Signed-in devices', '/Sessions', 'sessions'),
+          link('activity', 'My activity', '/Activity', 'activity'),
+          link('data', 'Your data', '/Data', 'data'),
         ],
       },
       {
         label: 'Administration',
         icon: 'administration',
         children: [
-          link('users', 'Users', '/Admin/Users', 'users', true),
-          link(
-            'service-accounts',
-            'Service accounts',
-            '/ServiceAccounts',
-            'service-accounts',
-            true,
-          ),
-          link('networks', 'Networks', '/Admin/Networks', 'networks', true),
-          link('encryption', 'Encryption keys', '/Encryption', 'encryption', true),
-          link('audit', 'Audit log', '/Audit', 'audit', true),
-          link('notifications', 'Notifications', '/Notifications', 'notifications', true),
-          link('license', 'License', '/License', 'license', true),
+          link('users', 'Users', '/Admin/Users', 'users'),
+          link('service-accounts', 'Service accounts', '/ServiceAccounts', 'service-accounts'),
+          link('networks', 'Networks', '/Admin/Networks', 'networks'),
+          link('encryption', 'Encryption keys', '/Encryption', 'encryption'),
+          link('audit', 'Audit log', '/Audit', 'audit'),
+          link('notifications', 'Notifications', '/Notifications', 'notifications'),
+          link('license', 'License', '/License', 'license'),
         ],
       },
     ],
@@ -91,9 +83,9 @@ const sections: readonly { label: string; items: readonly (AreaLink | AreaGroup)
  * kept reachable from the command palette for accounts the server authorized.
  */
 const shortcuts: readonly AreaLink[] = [
-  link('secrets', 'New secret', '/Secrets/Create', 'secrets', true),
-  link('shared-with-me', 'Shared with me', '/Secrets/SharedWithMe', 'shared-with-me', true),
-  link('shared-by-me', 'Shared by me', '/Secrets/SharedByMe', 'shared-by-me', true),
+  link('secrets', 'New secret', '/Secrets/Create', 'secrets'),
+  link('shared-with-me', 'Shared with me', '/Secrets/SharedWithMe', 'shared-with-me'),
+  link('shared-by-me', 'Shared by me', '/Secrets/SharedByMe', 'shared-by-me'),
 ];
 
 /** Maps only recognized, server-authorized Areas, in sidebar order, omitting empty groups and sections. */

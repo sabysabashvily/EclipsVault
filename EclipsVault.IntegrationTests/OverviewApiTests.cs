@@ -209,31 +209,6 @@ public sealed class OverviewApiTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task Signed_out_the_root_serves_the_landing_page()
-    {
-        var landing = await vault.CreateClient().GetAsync("/");
-
-        Assert.Equal(HttpStatusCode.OK, landing.StatusCode);
-        var html = await landing.Content.ReadAsStringAsync();
-        Assert.Contains("Secrets, kept in the shadow.", html);
-        Assert.Contains("href=\"/Account/Login\">Sign in to the vault</a>", html);
-        Assert.DoesNotContain("<app-root>", html);
-    }
-
-    [Fact]
-    public async Task The_error_page_still_answers_with_its_status_and_title()
-    {
-        var error = await vault.CreateClient().GetAsync("/Home/Error?code=404");
-
-        Assert.Equal(HttpStatusCode.NotFound, error.StatusCode);
-        var html = await error.Content.ReadAsStringAsync();
-        Assert.Contains("404 — Not found", html);
-        // Signed out, the Legacy layout's sidebar offers sign-in.
-        Assert.Contains("<a class=\"nav-item\" href=\"/Account/Login\">", html);
-        Assert.DoesNotContain("<app-root>", html);
-    }
-
-    [Fact]
     public async Task A_denial_names_its_secret_to_administrators_and_never_in_the_callers_own_views()
     {
         var member = await vault.SignInNewAccountAsync("it-overview-denied", IPAddress.Parse("10.163.0.5"));

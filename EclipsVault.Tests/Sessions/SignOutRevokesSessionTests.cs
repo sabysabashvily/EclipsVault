@@ -3,7 +3,6 @@ using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Sessions;
 using EclipsVault.Infrastructure.Security;
 using EclipsVault.Web.Authorization;
-using EclipsVault.Web.Controllers;
 using EclipsVault.Web.Controllers.Ui;
 using EclipsVault.Web.Models.Ui;
 using EclipsVault.Web.Services;
@@ -11,9 +10,6 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Abstractions;
-using Microsoft.AspNetCore.Mvc.Routing;
-using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -57,7 +53,7 @@ public class SignOutRevokesSessionTests
 
     private static readonly SessionStamp Stamp = new(0, "current-version");
 
-    private static (AccountController Controller, RecordingAuthentication Auth) SignedInController(
+    private static (AuthController Controller, RecordingAuthentication Auth) SignedInController(
         ISessionRegistry sessions, params Claim[] claims)
     {
         var auth = new RecordingAuthentication();
@@ -67,16 +63,14 @@ public class SignOutRevokesSessionTests
             User = new ClaimsPrincipal(new ClaimsIdentity(claims, "test"))
         };
 
-        // Logout touches only the session registry and the authentication service; the other
-        // collaborators belong to the sign-in flows and are never reached here.
-        var controller = new AccountController(
-            new AccountSignOut(null!, sessions, null!, NullLogger<AccountSignOut>.Instance), null!, null!,
-            NullLogger<AccountController>.Instance)
+        // Sign-out touches only the session registry, the authentication service and antiforgery; the
+        // other collaborators belong to the sign-in flows and are never reached here.
+        var controller = new AuthController(null!, null!, null!, null!, null!, null!, null!,
+            new AccountSignOut(null!, sessions, null!, NullLogger<AccountSignOut>.Instance),
+            new FixedAntiforgery(), NullLogger<AuthController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = http }
         };
-        // RedirectToAction only captures the helper; nothing is routed until the result executes.
-        controller.Url = new UrlHelper(new ActionContext(http, new RouteData(), new ActionDescriptor()));
         return (controller, auth);
     }
 
@@ -92,7 +86,7 @@ public class SignOutRevokesSessionTests
             new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
             new Claim(VaultClaimTypes.SessionId, sessionId.ToString()));
 
-        await controller.Logout(CancellationToken.None);
+        await controller.SignOutSession(CancellationToken.None);
 
         Assert.True(auth.SignedOut);
         Assert.True(await sessions.IsRevokedAsync(userId, sessionId));
@@ -106,10 +100,10 @@ public class SignOutRevokesSessionTests
         var (controller, auth) = SignedInController(sessions,
             new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()));
 
-        var result = await controller.Logout(CancellationToken.None);
+        var result = await controller.SignOutSession(CancellationToken.None);
 
         Assert.True(auth.SignedOut);
-        Assert.IsType<RedirectToActionResult>(result);
+        Assert.IsType<NoContentResult>(result);
     }
 
     [Fact]
@@ -122,27 +116,11 @@ public class SignOutRevokesSessionTests
             new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
             new Claim(VaultClaimTypes.SessionId, sessionId.ToString()));
 
-        var result = await controller.Logout(CancellationToken.None);
+        var result = await controller.SignOutSession(CancellationToken.None);
 
         Assert.True(auth.SignedOut);
         Assert.True(await sessions.IsRevokedAsync(userId, sessionId));
-        Assert.IsType<RedirectToActionResult>(result);
-    }
-
-    [Fact]
-    public async Task When_the_revocation_cannot_be_stored_this_browser_is_signed_out_and_told_so()
-    {
-        // Failing closed here would leave a live session in the browser, on a shared machine the
-        // likelier threat, so the cookie is cleared regardless. A copy of the cookie stays valid until
-        // it expires, so the person is told this browser alone was signed out.
-        var (controller, auth) = SignedInController(new WriteFailingRegistry(),
-            new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()),
-            new Claim(VaultClaimTypes.SessionId, Guid.NewGuid().ToString()));
-
-        var result = await controller.Logout(CancellationToken.None);
-
-        Assert.True(auth.SignedOut);
-        Assert.Equal("/Account/Login?signOut=sign_out_incomplete", Assert.IsType<LocalRedirectResult>(result).Url);
+        Assert.IsType<NoContentResult>(result);
     }
 
     private sealed class FixedAntiforgery : IAntiforgery
@@ -155,18 +133,15 @@ public class SignOutRevokesSessionTests
     }
 
     [Fact]
-    public async Task The_ui_api_sign_out_reports_a_revocation_it_could_not_store_with_the_cookie_cleared()
+    public async Task A_revocation_that_cannot_be_stored_still_clears_this_browsers_cookie_and_says_so()
     {
-        var (legacy, auth) = SignedInController(new WriteFailingRegistry(),
+        // Failing closed here would leave a live session in the browser, on a shared machine the
+        // likelier threat, so the cookie is cleared regardless. A copy of the cookie stays valid until
+        // it expires, so the person is told this browser alone was signed out.
+        var (controller, auth) = SignedInController(new WriteFailingRegistry(),
             new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()),
             new Claim(VaultClaimTypes.SessionId, Guid.NewGuid().ToString()));
-        var http = legacy.HttpContext;
-        var controller = new AuthController(null!, null!, null!, null!, null!, null!, null!,
-            new AccountSignOut(null!, new WriteFailingRegistry(), null!, NullLogger<AccountSignOut>.Instance),
-            new FixedAntiforgery(), NullLogger<AuthController>.Instance)
-        {
-            ControllerContext = new ControllerContext { HttpContext = http }
-        };
+        var http = controller.HttpContext;
 
         var result = Assert.IsType<JsonResult>(await controller.SignOutSession(CancellationToken.None));
 

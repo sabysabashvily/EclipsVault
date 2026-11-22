@@ -13,7 +13,7 @@ public static class UiApiProblem
 {
     private static readonly PathString UiApiPath = new("/api/ui");
 
-    /// <summary>Whether the request is for the UI API. The Legacy UI and the Public API keep their own answers.</summary>
+    /// <summary>Whether the request is for the UI API. Server pages and the Public API keep their own answers.</summary>
     public static bool IsUiApi(HttpRequest request) => request.Path.StartsWithSegments(UiApiPath);
 
     public static Task WriteAsync(HttpContext context, int status, string code, string title, string? detail = null)

@@ -61,7 +61,6 @@ function sidebarElement(pages = [...standardPages, ['Profile', '/Profile']]): HT
     const link = document.createElement('a');
     link.textContent = label;
     link.href = url;
-    if (url === '/Access') link.setAttribute('data-command-angular', '');
     nav.append(link);
   }
   return sidebar;
@@ -76,7 +75,6 @@ describe('paletteCommands', () => {
         ['Profile', '/Profile'],
       ]);
       expect(pages.every((page) => page.kind === 'Go to')).toBe(true);
-      expect(pages.filter((page) => page.angular).map((page) => page.url)).toEqual(['/Access']);
     }
   });
 
@@ -263,6 +261,20 @@ describe('CommandPalette', () => {
     ).toEqual(['Internal', 'Top Secret']);
   });
 
+  it('opens a secret the search found through the router, without a page load', async () => {
+    const { open, type, press, stable } = await render();
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+    await open();
+
+    await type('phoenix');
+    (await searched(stable, 'phoenix')).flush(JSON.stringify([hit]), json);
+    await stable();
+    await press('Enter');
+
+    expect(navigate).toHaveBeenCalledExactlyOnceWith(hit.url);
+    expect(assign).not.toHaveBeenCalled();
+  });
+
   it('cancels a stale search, so an older answer never replaces a newer one', async () => {
     const { open, type, items, stable } = await render();
     await open();
@@ -351,8 +363,9 @@ describe('CommandPalette', () => {
     expect(host.querySelector('.palette-error')).toBeNull();
   });
 
-  it('moves with the arrow keys, opens a Legacy UI page on Enter, and traps Tab in its field', async () => {
+  it('moves with the arrow keys, opens the page in-app on Enter, and traps Tab in its field', async () => {
     const { open, press, items, input } = await render();
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
     await open();
 
     await press('ArrowUp');
@@ -367,10 +380,11 @@ describe('CommandPalette', () => {
     expect(document.activeElement).toBe(input());
 
     await press('Enter');
-    expect(assign).toHaveBeenCalledExactlyOnceWith('/Secrets/Create');
+    expect(navigate).toHaveBeenCalledExactlyOnceWith('/Secrets/Create');
+    expect(assign).not.toHaveBeenCalled();
   });
 
-  it('opens a page the Angular UI owns through the router, without a page load', async () => {
+  it('opens a sidebar page through the router, without a page load', async () => {
     const { open, type, press } = await render();
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
     await open();

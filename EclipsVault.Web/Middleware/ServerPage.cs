@@ -33,11 +33,32 @@ public static class ServerPage
 
     private const string BackToSafety = """<a class="button primary wide" href="/">Back to safety</a>""";
 
+    // Deliberately vague: a honey-token trip must not be distinguishable from any
+    // other network block, or the message itself tells the intruder what happened.
+    private const string BlockedContent = """
+                    <h1>Access blocked</h1>
+                    <p class="muted">
+                        Requests from your network location have been blocked by the vault's
+                        intrusion defence. The event has been reported to the vault administrators.
+                    </p>
+                    {0}
+                    <a class="button primary wide" href="/Account/Recover">Vault administrator? Recover access</a>
+                    <p class="footnote">
+                        Recovery requires full multi-factor administrator credentials and is
+                        audited. Otherwise, ask an administrator to lift the block from the
+                        Networks console.
+                    </p>
+        """;
+
+    private const string DevelopmentHint =
+        """<p class="footnote">Development note: the block list is held in process memory — restarting the application also clears it.</p>""";
+
     /// <summary>
     /// Writes <paramref name="content"/>, which must be fixed markup, into the card. The theme is the
-    /// one the sign-in pages store in their cookie; anything but "light" is dark.
+    /// one the sign-in pages store in their cookie; anything but "light" is dark. Private, so only the
+    /// three pages below decide what goes into the card.
     /// </summary>
-    public static Task WriteAsync(HttpContext context, int status, string title, string content)
+    private static Task WriteAsync(HttpContext context, int status, string title, string content)
     {
         var theme = context.Request.Cookies["EclipsVault.Theme"] == "light" ? "light" : "dark";
         context.Response.StatusCode = status;
@@ -71,6 +92,11 @@ public static class ServerPage
                         {BackToSafety}
             """);
     }
+
+    /// <summary>A request from a blocked network, with break-glass recovery still offered.</summary>
+    public static Task BlockedAsync(HttpContext context, bool development)
+        => WriteAsync(context, StatusCodes.Status403Forbidden, "Access blocked",
+            BlockedContent.Replace("{0}", development ? DevelopmentHint : string.Empty, StringComparison.Ordinal));
 
     /// <summary>A path that is not a page.</summary>
     public static Task NotFoundAsync(HttpContext context)

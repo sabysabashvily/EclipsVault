@@ -18,6 +18,7 @@ public sealed class CsrfAndSignOutTests(VaultFixture vault)
 {
     private const string XsrfCookie = "XSRF-TOKEN";
     private const string TokenHeader = "RequestVerificationToken";
+    private const string SignOut = "/api/ui/auth/sign-out";
 
     [Fact]
     public async Task Me_sets_a_fresh_readable_secure_strict_cookie_on_every_call()
@@ -71,16 +72,16 @@ public sealed class CsrfAndSignOutTests(VaultFixture vault)
         var copied = Assert.IsType<Cookie>(session.SessionCookie);
         var token = XsrfCookieOf(await session.Client.GetAsync("/api/ui/me")).Value.ToString();
 
-        var refused = await session.Client.PostAsync("/Account/Logout", content: null);
-        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        var refused = await session.Client.PostAsync(SignOut, content: null);
+        await UiApiFailureContractTests.AssertProblemAsync(refused, 400, "antiforgery_rejected");
         Assert.Equal(HttpStatusCode.OK, (await session.Client.GetAsync("/api/ui/me")).StatusCode);
 
-        var invalid = await session.Client.SendAsync(PostWithToken("/Account/Logout", "invalid-antiforgery-token"));
-        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        var invalid = await session.Client.SendAsync(PostWithToken(SignOut, "invalid-antiforgery-token"));
+        await UiApiFailureContractTests.AssertProblemAsync(invalid, 400, "antiforgery_rejected");
         Assert.Equal(HttpStatusCode.OK, (await session.Client.GetAsync("/api/ui/me")).StatusCode);
 
-        var signedOut = await session.Client.SendAsync(PostWithToken("/Account/Logout", token));
-        Assert.Equal(HttpStatusCode.Redirect, signedOut.StatusCode);
+        var signedOut = await session.Client.SendAsync(PostWithToken(SignOut, token));
+        Assert.Equal(HttpStatusCode.NoContent, signedOut.StatusCode);
         Assert.Null(session.SessionCookie);
 
         // The browser dropped its cookie, but a copy of it must be dead on the server too.
@@ -103,14 +104,13 @@ public sealed class CsrfAndSignOutTests(VaultFixture vault)
         await SpendCredentialAttemptsAsync(guesser, guessToken, PermitLimit);
         Assert.Equal(HttpStatusCode.TooManyRequests, await GuessAsync(guesser, guessToken));
 
-        Assert.Equal(HttpStatusCode.BadRequest, (await session.Client.PostAsync("/Account/Logout", null)).StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, (await session.Client.SendAsync(PostWithToken("/Account/Logout", "invalid"))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await session.Client.PostAsync(SignOut, null)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await session.Client.SendAsync(PostWithToken(SignOut, "invalid"))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await session.Client.GetAsync("/api/ui/me")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await vault.CreateSession(copied).Client.GetAsync("/api/ui/me")).StatusCode);
 
-        var signedOut = await session.Client.SendAsync(PostWithToken("/Account/Logout", token));
-        Assert.Equal(HttpStatusCode.Redirect, signedOut.StatusCode);
-        Assert.Equal("/", signedOut.Headers.Location?.OriginalString);
+        var signedOut = await session.Client.SendAsync(PostWithToken(SignOut, token));
+        Assert.Equal(HttpStatusCode.NoContent, signedOut.StatusCode);
         Assert.Null(session.SessionCookie);
         await UiApiFailureContractTests.AssertProblemAsync(
             await vault.CreateSession(copied).Client.GetAsync("/api/ui/me"), 401, "unauthenticated");
@@ -130,20 +130,10 @@ public sealed class CsrfAndSignOutTests(VaultFixture vault)
         Assert.All(statuses, status => Assert.Equal(HttpStatusCode.BadRequest, status));
         var token = XsrfCookieOf(await session.Client.GetAsync("/api/ui/me")).Value.ToString();
 
-        Assert.Equal(HttpStatusCode.Redirect, (await session.Client.SendAsync(PostWithToken("/Account/Logout", token))).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await session.Client.SendAsync(PostWithToken(SignOut, token))).StatusCode);
         Assert.Null(session.SessionCookie);
         Assert.Equal(HttpStatusCode.BadRequest, await GuessAsync(guesser, guessToken));
         Assert.Equal(HttpStatusCode.TooManyRequests, await GuessAsync(guesser, guessToken));
-    }
-
-    [Fact]
-    public async Task Sign_out_still_requires_a_session_and_post()
-    {
-        var anonymous = vault.CreateClient();
-        Assert.Equal(HttpStatusCode.Redirect, (await anonymous.PostAsync("/Account/Logout", null)).StatusCode);
-        var session = await vault.SignInNewAccountAsync("it-sign-out-post", IPAddress.Parse("198.51.100.94"));
-        Assert.Equal(HttpStatusCode.MethodNotAllowed, (await session.Client.GetAsync("/Account/Logout")).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await session.Client.GetAsync("/api/ui/me")).StatusCode);
     }
 
     private static async Task<HttpStatusCode[]> SpendCredentialAttemptsAsync(HttpClient client, string token, int count)

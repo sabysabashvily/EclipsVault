@@ -1,9 +1,0 @@
-@using EclipsVault.Web.Extensions
-@if (TempData[FlashExtensions.MessageKey] is string message)
-{
-    var type = TempData[FlashExtensions.TypeKey] as string ?? "info";
-    <div class="flash flash-@type" data-flash role="status">
-        <span>@message</span>
-        <button type="button" class="flash-close" data-flash-close aria-label="Dismiss">&times;</button>
-    </div>
-}

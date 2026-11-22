@@ -173,7 +173,7 @@ public sealed class AuthController(
     }
 
     /// <summary>
-    /// Revokes this browser's session, then clears its cookie, as the Legacy sign-out does. Not
+    /// Revokes this browser's session, then clears its cookie. Not
     /// throttled: it tests no credential and must work when a shared network has spent its budget.
     /// </summary>
     [HttpPost("sign-out")]

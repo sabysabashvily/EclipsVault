@@ -7,12 +7,11 @@ namespace EclipsVault.IntegrationTests;
 public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
 {
     // Deliberately independent of the implementation: pin every directive in both complete variants.
-    private const string LegacyPolicy =
+    // Trusted Types is in the policy of every response (ADR-0034).
+    private const string Policy =
         "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
         "font-src 'self'; connect-src 'self'; object-src 'none'; frame-src 'none'; " +
-        "frame-ancestors 'none'; form-action 'self'; base-uri 'self'";
-
-    private const string AngularPolicy = LegacyPolicy +
+        "frame-ancestors 'none'; form-action 'self'; base-uri 'self'" +
         "; require-trusted-types-for 'script'; trusted-types angular angular#bundler";
 
     // This vault offers single sign-on, whose form on Login redirects to the identity provider.
@@ -62,13 +61,13 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
     [InlineData("/ACCESSREQUESTS/index")]
     [InlineData("/Account/Denied")]
     [InlineData("/account/denied?secretId=6d1b2c55-0000-4000-8000-000000000001")]
-    public async Task Angular_documents_add_only_the_two_Trusted_Types_directives(string path)
+    public async Task Angular_documents_carry_the_complete_policy(string path)
     {
         var client = await vault.AdminClientAsync();
         using var get = await client.GetAsync(path);
         Assert.Equal(HttpStatusCode.OK, get.StatusCode);
         Assert.Equal("text/html", get.Content.Headers.ContentType?.MediaType);
-        Assert.Equal(AngularPolicy, Assert.Single(get.Headers.GetValues("Content-Security-Policy")));
+        Assert.Equal(Policy, Assert.Single(get.Headers.GetValues("Content-Security-Policy")));
         Assert.True(get.Headers.CacheControl?.NoStore);
         Assert.Contains("<app-root>", await get.Content.ReadAsStringAsync(), StringComparison.Ordinal);
 
@@ -76,24 +75,23 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
         using var head = await client.SendAsync(headRequest);
         Assert.Equal(HttpStatusCode.OK, head.StatusCode);
         Assert.Equal("text/html", head.Content.Headers.ContentType?.MediaType);
-        Assert.Equal(AngularPolicy, Assert.Single(head.Headers.GetValues("Content-Security-Policy")));
+        Assert.Equal(Policy, Assert.Single(head.Headers.GetValues("Content-Security-Policy")));
         Assert.True(head.Headers.CacheControl?.NoStore);
     }
 
     [Theory]
     [InlineData("/Account/Login", HttpStatusCode.Redirect)]
-    // The error page is the last signed-in page on the Legacy layout.
-    [InlineData("/Home/Error?code=404", HttpStatusCode.NotFound)]
+    // The not-found server page.
     [InlineData("/Access/NotAnAngularRoute", HttpStatusCode.NotFound)]
     [InlineData("/api/ui/me", HttpStatusCode.OK)]
-    [InlineData("/css/site.css", HttpStatusCode.OK)]
-    public async Task Responses_outside_the_Angular_document_handler_keep_the_complete_legacy_policy(
-        string path, HttpStatusCode status)
+    [InlineData("/css/server-page.css", HttpStatusCode.OK)]
+    [InlineData("/ui/missing.js", HttpStatusCode.NotFound)]
+    public async Task Every_other_response_carries_the_same_policy(string path, HttpStatusCode status)
     {
         var client = await vault.AdminClientAsync();
         using var response = await client.GetAsync(path);
         Assert.Equal(status, response.StatusCode);
-        Assert.Equal(LegacyPolicy, Assert.Single(response.Headers.GetValues("Content-Security-Policy")));
+        Assert.Equal(Policy, Assert.Single(response.Headers.GetValues("Content-Security-Policy")));
     }
 
     [Theory]
@@ -103,13 +101,13 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
     [InlineData("/PROFILE/RECOVERYCODES")]
     [InlineData("/Access")]
     [InlineData("/Access/Index")]
-    public async Task Anonymous_Angular_requests_keep_the_legacy_policy_on_the_sign_in_redirect(string path)
+    public async Task Anonymous_Angular_requests_carry_the_policy_on_the_sign_in_redirect(string path)
     {
         using var client = vault.CreateClient();
         using var response = await client.GetAsync(path);
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.StartsWith("https://localhost/Account/Login?ReturnUrl=", response.Headers.Location?.AbsoluteUri);
-        Assert.Equal(LegacyPolicy, Assert.Single(response.Headers.GetValues("Content-Security-Policy")));
+        Assert.Equal(Policy, Assert.Single(response.Headers.GetValues("Content-Security-Policy")));
 
         using var login = await client.GetAsync(response.Headers.Location);
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);

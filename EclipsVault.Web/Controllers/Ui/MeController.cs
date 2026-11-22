@@ -55,7 +55,7 @@ public sealed class MeController(
             clearance.ToDisplayName(),
             project,
             areas,
-            Url.Action("Avatar", "Profile", new { v = User.GetAvatarVersion() })!,
+            Url.Action(nameof(AvatarController.Image), "Avatar", new { v = User.GetAvatarVersion() })!,
             areas.Contains(UiAreas.License) ? LicenseNoticeFor(licenseNudge) : null);
     }
 
