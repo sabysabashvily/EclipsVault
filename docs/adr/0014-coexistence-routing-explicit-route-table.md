@@ -1,5 +1,9 @@
 # During the migration, Angular owns an explicit list of paths at the same URLs
 
-Each migrated area's PR adds its paths to a single server-side route table that serves the Angular UI's `index.html`, and removes the Razor controller that used to answer them. URLs do not change, so bookmarks keep working. Moving between an Angular area and a Razor area is an ordinary full page load on the same session. When the last area moves, the list becomes a catch-all. Mounting Angular under `/app/` until the end was rejected: it breaks every bookmark twice. During the migration both UIs render the same sidebar, copied exactly.
+Each area's PR added its page paths to a single server-side route table that serves the Angular UI's
+`index.html`. Migrated pages kept their URLs so bookmarks kept working. During the migration, moving
+between an Angular page and a Razor page was a full page load on the same session, and both UIs used
+the same sidebar. Mounting Angular under `/app/` would have changed every bookmark twice.
 
-Amended by ADR-0034: the route table stays the explicit list of pages; there is no catch-all.
+ADR-0034 supersedes the original plan to replace this list after the migration. The explicit route
+table still names each page and applies its authorization rule.

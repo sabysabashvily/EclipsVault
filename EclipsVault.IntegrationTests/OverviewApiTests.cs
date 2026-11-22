@@ -195,7 +195,6 @@ public sealed class OverviewApiTests(VaultFixture vault)
     [Theory]
     [InlineData("/", "it-overview-root", "10.163.0.11")]
     [InlineData("/Home", "it-overview-home", "10.163.0.12")]
-    [InlineData("/hOmE/InDeX", "it-overview-home-index", "10.163.0.13")]
     public async Task Signed_in_the_overview_paths_serve_the_Angular_document(string path, string username, string source)
     {
         var member = await vault.SignInNewAccountAsync(username, IPAddress.Parse(source));

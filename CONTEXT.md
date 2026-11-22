@@ -205,7 +205,7 @@ _Avoid_: Internal API, BFF API, backend
 ### The migration
 
 **Legacy UI**:
-The server-rendered pages the Angular UI replaced. None remain after Area 9.
+The Razor pages the Angular UI replaced. Area 9a removed the last of them.
 _Avoid_: Old UI, MVC frontend
 
 **Server page**:
@@ -217,5 +217,5 @@ A group of related pages behind one sidebar entry (e.g. Profile, Secrets, Users)
 _Avoid_: Module, feature, screen
 
 **Angular UI**:
-The browser application replacing the Legacy UI. It acts only through a session, never with a token of its own.
+The browser application that replaced the Legacy UI. It acts only through a session, never with a token of its own.
 _Avoid_: SPA, client, frontend app

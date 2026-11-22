@@ -35,7 +35,6 @@ public static class AngularUiRoutes
         // Overview
         "/",
         "/Home",
-        "/Home/Index",
 
         // My access
         "/Access",

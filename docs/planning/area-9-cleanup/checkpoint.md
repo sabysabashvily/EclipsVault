@@ -138,3 +138,25 @@ this commit's test, N2 left for #197.
 
 To restart: read this section, `logs/ticket-196/ledger.md` and #196. Ticket 3 (#197) starts from this
 branch's head.
+
+## Delivery: 9a ticket 3 (#197)
+
+GPT Sol 6.2 (xhigh) started from `0b477b87` on `area-9a-final-cleanup`. The commit containing this
+section retires `/Home/Index` and updates the Angular router and the migration ADRs. `/Home` remains
+an Overview bookmark. A Production HTTP test covers `/Home/Error`, `/Home/Index` and
+`POST /Account/Logout` in canonical and mixed case. The two `/Home/Index` requests returned 200
+before the route change. The unit suite checks the Web assembly for Razor views. The source and
+Web output scans found no `.cshtml`, `site.js` or `site.css`.
+
+Local gates include `scripts/check.sh`, the part's PostgreSQL filter under the shared Docker lock,
+`dotnet format --verify-no-changes`, the two EF pending-model checks, agent guardrail tests, and the
+Angular lint, format, test, build-check, API types, build and high-severity audit checks. The exact
+filter is in `logs/ticket-197/integration-classes.txt`.
+
+CI run `45075883529` passed all 10 active jobs on `87c2d224`, including the browser suite and its
+guard probes. The verification harness expects the literal `Sign in` in the HTTP body. The built
+Angular document contains `<app-root>`, so the final browser evidence comes from CI on this part's
+final head. The coordinator records the final CI run in the PR body.
+
+To resume, read #194, #197, `logs/ticket-197/final-report.md` and `logs/ticket-197/review-ledger.md`.
+The single PR body is at `logs/ticket-197/pr-body.md`.

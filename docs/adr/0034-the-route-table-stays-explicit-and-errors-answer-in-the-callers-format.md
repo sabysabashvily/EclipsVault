@@ -15,30 +15,33 @@ pending sign-in cookie. This ADR replaces the catch-all and settles what each ca
   today, so the anonymous surface does not grow. `/api/ui/` keeps its Problem Details `404`,
   `/api/v1/` answers `404 { "error": "not_found" }`, and a path with a file extension gets a bare `404`,
   never the Angular document.
+- **Retired routes.** The page not-found fallback answers `/Home/Error`, `/Home/Index` and
+  `POST /Account/Logout` regardless of case. `/Home` is still an Overview bookmark. The Angular UI
+  signs out through `POST /api/ui/auth/sign-out`.
 - **Errors answer in the caller's format, without a redirect.** The UI API keeps Problem Details
   (ADR-0006). The Public API gets `{ "error": "<code>" }` with the real status for every exception the
   middleware maps, and a blocked network gets `403 { "error": "blocked" }`. Every other request gets a
   server page with the real status and the middleware's fixed text for that failure, a request id and
   a link to `/`; never an exception's details. A honey-token trip outside the APIs still signs out and
-  redirects to sign-in. `/Home/Error` is gone.
+  redirects to sign-in.
 - **Server pages.** The vault writes three pages itself: access blocked, error and not found. They
   share one template, carry no script, and link one small static stylesheet that a blocked network can
   still load, because static files are served before the block.
 - **Razor goes, MVC's view features stay.** `AddControllersWithViews` becomes `AddControllers()` plus
-  `AddMvcCore().AddViews()`: no view engine, so nothing can render a view, while the framework's
-  antiforgery filters and TempData stay registered. `AddControllers()` alone would unregister both.
-- **No landing page.** `/` needs a session; a signed-out visitor is sent to sign-in. Only sign-in
-  stays anonymous (ADR-0032). `/local-sign-out` stays reachable with no session: it is the outage
-  branch mapped before authentication, not a page.
+  `AddMvcCore().AddViews()`. This retains the framework's antiforgery filters and TempData without
+  registering the Razor view engine. `AddControllers()` alone would unregister both.
+- **No landing page.** `/` needs a session; a signed-out visitor is sent to sign-in. The sign-in
+  pages are the only anonymous Angular pages (ADR-0032). `/local-sign-out` stays reachable without a
+  session because the outage branch runs before authentication.
 - **Headers.** Trusted Types is in the base Content Security Policy for every response (ADR-0013's
   final step), and every `/api/` response, the Public API's included, is `no-store`.
 - **The surface is pinned on the endpoint table**, not only on controller actions. A test of the
   Production host lists the anonymous endpoints, the pending sign-in endpoints and the administrator
   pages exactly. Every other session endpoint, including the page not-found fallback and `/api/ui/`,
   requires a session. Public API endpoints stay API-key-only and accept no session (ADR-0005). An
-  unknown `/api/v1/` path answers `404 { "error": "not_found" }` and does not challenge with the
-  session cookie. `/local-sign-out` is a branch mapped before authentication, so the endpoint table
-  cannot see it; a separate HTTP check pins that it still clears the cookie with no session.
+  unknown `/api/v1/` path, or a method the path does not accept, answers `404 { "error": "not_found" }`
+  without a session-cookie challenge. A separate HTTP check pins that `/local-sign-out` clears the
+  cookie without a session, since the branch runs outside the endpoint table.
 
 ## Consequences
 

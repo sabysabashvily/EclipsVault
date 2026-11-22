@@ -52,8 +52,8 @@ describe('routes', () => {
     expect(TestBed.inject(Title).getTitle()).toBe('Overview — EclipsVault');
     TestBed.resetTestingModule();
   });
-  it.each(['/Home', '/hOmE/InDeX'])('opens the Overview at %s', async (url) => {
-    expect(await routeFor(url)?.loadComponent?.()).toBe(OverviewPage);
+  it('opens the Overview from a mixed-case Home bookmark', async () => {
+    expect(await routeFor('/hOmE')?.loadComponent?.()).toBe(OverviewPage);
   });
   it.each(['/ServiceAccounts', '/sErViCeAcCoUnTs/InDeX'])(
     'opens Service accounts at %s',

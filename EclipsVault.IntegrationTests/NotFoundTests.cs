@@ -14,7 +14,6 @@ public sealed class NotFoundTests(VaultFixture vault)
     [InlineData("/no-such-page")]
     [InlineData("/Access/NotAnAngularRoute")]
     [InlineData("/Secrets/Details/not-a-guid")]
-    [InlineData("/Home/Error")]
     public async Task Signed_in_an_unknown_path_is_the_not_found_page(string path)
     {
         using var response = await (await vault.AdminClientAsync()).GetAsync(path);
@@ -29,6 +28,24 @@ public sealed class NotFoundTests(VaultFixture vault)
         Assert.Contains("""<a class="button primary wide" href="/">Back to safety</a>""", html, StringComparison.Ordinal);
         Assert.DoesNotContain("<app-root>", html, StringComparison.Ordinal);
         Assert.DoesNotContain("<script", html, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("GET", "/Home/Error")]
+    [InlineData("GET", "/hOmE/eRrOr")]
+    [InlineData("GET", "/Home/Index")]
+    [InlineData("GET", "/hOmE/iNdEx")]
+    [InlineData("POST", "/Account/Logout")]
+    [InlineData("POST", "/aCcOuNt/lOgOuT")]
+    public async Task A_retired_legacy_route_returns_the_not_found_page(string method, string path)
+    {
+        var admin = await vault.AdminClientAsync();
+        var token = await UiApiRequest.AntiforgeryTokenAsync(admin);
+
+        using var response = await UiApiRequest.SendWithTokenAsync(admin, token, new HttpMethod(method), path);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Contains("<h1>404 — Page not found</h1>", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
     }
 
     [Theory]

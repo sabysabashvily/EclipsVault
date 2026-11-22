@@ -1,8 +1,6 @@
 import { Routes, UrlMatcher } from '@angular/router';
 
-// Every path here must also be listed in the server's route table (AngularUiRoutes.cs), which is
-// what serves this app at that URL; the Overview's are served by HomeController.Index instead. Paths
-// keep the Legacy UI's URLs so bookmarks keep working.
+// Keep these paths in AngularUiRoutes.cs too, so a bookmark or reload receives the Angular document.
 
 /**
  * Matches `path` ignoring case, as the server and the Legacy UI's routes do, so a bookmark to
@@ -59,7 +57,6 @@ const dynamicSecrets = () =>
 export const routes: Routes = [
   { path: '', pathMatch: 'full', loadComponent: overview, title: 'Overview — EclipsVault' },
   { matcher: legacyPath('Home'), loadComponent: overview, title: 'Overview — EclipsVault' },
-  { matcher: legacyPath('Home/Index'), loadComponent: overview, title: 'Overview — EclipsVault' },
   {
     matcher: legacyPath('Notifications'),
     loadComponent: notifications,

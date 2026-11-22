@@ -52,6 +52,9 @@ Area 9 runs in two parts, each with its own spec, branch and PR. Part 9a, Final 
 is left of the Legacy UI (ADR-0018, ADR-0034); it changes the anonymous surface, antiforgery and error
 handling, so it is security-reviewed, and it branches from `main` after 8a merges. Ticket 2 deletes
 the Razor views, and the part merges, only after 7b and 7c have also merged, because Secrets and
-Dynamic secrets render Razor until then. Ticket 1 may start once 8a has merged. Part 9b requires
+Dynamic secrets render Razor until then. Ticket 1 may start once 8a has merged. The final cleanup
+removes the Legacy error page and retires the test fixtures that used it. Browser navigation tests
+now start on Angular pages, and the browser-health probes that need a document without Angular
+load the server pages' stylesheet. Part 9b requires
 `Database:Provider` (#68); it is startup configuration with no code in common with 9a, so it may be
 built at any time, and merges after 9a so that nothing on `main` breaks v1.x before the cleanup does.
