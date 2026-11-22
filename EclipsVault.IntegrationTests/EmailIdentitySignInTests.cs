@@ -47,7 +47,9 @@ public sealed class EmailIdentitySignInTests(VaultFixture vault)
         var addressed = await ProvisionAsync("it-email-sso-alias-addressed", "IT-Email-SSO-Alias@Example.Test");
         var head = await AuditTrail.HeadAsync(vault);
 
-        await CallBackFromIdentityProviderAsync("it-email-sso-alias@example.test", "198.51.100.231");
+        var response = await CallBackFromIdentityProviderAsync("it-email-sso-alias@example.test", "198.51.100.231");
+
+        Assert.Equal("/Account/EnrollTotp", await PostIdpAssertion.ContinuesToAsync(response));
 
         var linked = Assert.Single(await AuditTrail.RowsAfterAsync(vault, head), row => row.Action == AuditAction.SsoIdentityLinked);
         Assert.Equal(addressed.Id, linked.UserId);

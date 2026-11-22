@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Encodings.Web;
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Authentication;
 using EclipsVault.Core.Application.Sessions;
@@ -64,6 +65,7 @@ public class SsoSignInRedirectTests
     [InlineData("https://outside.example/", "/Secrets")]
     [InlineData("/Account/Totp", "/Secrets")]
     [InlineData("/Access", "/Access")]
+    [InlineData("/Access?view=a&b=\"c'", "/Access?view=a&b=\"c'")]
     public async Task Sso_that_satisfied_both_factors_lands_on_secrets_unless_given_a_local_target(string? returnUrl, string expected)
     {
         var http = new DefaultHttpContext
@@ -90,8 +92,14 @@ public class SsoSignInRedirectTests
         // Through a page of the vault's own, so the next request leaves the provider's cross-site chain.
         var page = Assert.IsType<ContentResult>(result);
         Assert.Equal("text/html; charset=utf-8", page.ContentType);
-        Assert.Contains($"<meta http-equiv=\"refresh\" content=\"0;url={expected}\" />", page.Content, StringComparison.Ordinal);
-        Assert.Contains($"<a href=\"{expected}\">Continue to the vault</a>", page.Content, StringComparison.Ordinal);
+        var href = HtmlEncoder.Default.Encode(expected);
+        Assert.Contains($"<meta http-equiv=\"refresh\" content=\"0;url={href}\" />", page.Content, StringComparison.Ordinal);
+        Assert.Contains($"<a href=\"{href}\">Continue to the vault</a>", page.Content, StringComparison.Ordinal);
+        // A target with quotes or an ampersand appears only encoded, so it cannot close its attribute.
+        if (href != expected)
+        {
+            Assert.DoesNotContain(expected, page.Content, StringComparison.Ordinal);
+        }
         var signedIn = Assert.Single(attempt.Recorded);
         Assert.Equal(AuditAction.LoginSucceeded, signedIn.Action);
         Assert.Equal("Single sign-on", signedIn.Details);
