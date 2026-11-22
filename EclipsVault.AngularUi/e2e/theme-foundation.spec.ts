@@ -190,7 +190,8 @@ for (const width of [300, 768, 1199]) {
     expect(Math.round(link?.width ?? 0)).toBeGreaterThanOrEqual(44);
     await page.keyboard.press('Escape');
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
-    await page.goto('/Admin/CreateUser');
+    await page.goto('/Profile/ChangePassword');
+    await expect(shell.showPassword).toBeVisible();
     const reveal = await shell.showPassword.boundingBox();
     expect(Math.round(reveal?.height ?? 0)).toBeGreaterThanOrEqual(44);
     expect(Math.round(reveal?.width ?? 0)).toBeGreaterThanOrEqual(44);
