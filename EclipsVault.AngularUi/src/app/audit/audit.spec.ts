@@ -235,7 +235,7 @@ describe('Audit log', () => {
     );
   });
 
-  it('lists the entries in the order sent, in the Legacy columns, with relative times and UTC tooltips', async () => {
+  it('lists the entries in the order sent, in the Legacy columns, at their exact UTC times', async () => {
     const { page } = await loaded();
     expect(text(page.querySelector('.page-sub'))).toBe('Newest first · 3 entries.');
     expect([...page.querySelectorAll('th')].map((cell) => cell.textContent)).toEqual([
