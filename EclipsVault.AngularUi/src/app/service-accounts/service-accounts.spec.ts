@@ -423,6 +423,31 @@ describe('Service account Details', () => {
     expect(document.cookie.includes(oneTimeKey)).toBe(false);
     expect(location.href.includes(oneTimeKey)).toBe(false);
   });
+  it('a copy of an earlier key that fails after a newer key is issued keeps the newer key masked', async () => {
+    let failFirstCopy: (reason: Error) => void = () => undefined;
+    const firstCopy = new Promise<void>((_, reject) => (failFirstCopy = reject));
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: () => firstCopy },
+    });
+    const { page, fixture } = await loadedDetails();
+    await confirmIssue(page, fixture);
+    backend.expectOne(path + '/keys').flush({ keyId, prefix: 'evk_prefix', apiKey: oneTimeKey });
+    await reload(fixture);
+    button(page, 'Copy').click();
+    await confirmIssue(page, fixture);
+    backend
+      .expectOne(path + '/keys')
+      .flush({ keyId: 'second', prefix: 'evk_second', apiKey: 'evk_second-key-never-copied' });
+    await reload(fixture);
+    failFirstCopy(new Error('denied'));
+    // The page's own handler for the failed copy runs before this one.
+    await firstCopy.catch(() => undefined);
+    await fixture.whenStable();
+
+    expect(page.querySelector('#new-token')?.textContent).toBe('evk_…pied');
+    expect(page.textContent).not.toContain('evk_second-key-never-copied');
+  });
   it('a successful copy keeps the one-time key masked', async () => {
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,

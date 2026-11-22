@@ -231,6 +231,8 @@ export class ServiceAccountPage {
     try {
       await navigator.clipboard.writeText(apiKey);
     } catch {
+      // A newer key replaced this one while the clipboard was deciding; never reveal that one.
+      if (this.issued() !== apiKey) return;
       // The mask is not something a person can paste. Show the key once, in the same place.
       this.revealed.set(true);
       this.writes.status.set({
