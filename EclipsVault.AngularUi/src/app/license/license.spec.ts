@@ -65,17 +65,16 @@ it('retries a failed load and shows the returned status', async () => {
   expect(text(page)).toContain('No license is configured — running unlicensed.');
 });
 it.each([
-  { status: 'Valid', tone: 'ok' },
-  { status: 'Expired', tone: 'warn' },
-  { status: 'Missing', tone: 'muted' },
-  { status: 'Malformed', tone: 'danger' },
-  { status: 'InvalidSignature', tone: 'danger' },
-] satisfies { status: components['schemas']['LicenseResponse']['status']; tone: string }[])(
-  'shows $status with the $tone badge and the startup message',
-  async ({ status, tone }) => {
+  'Valid',
+  'Expired',
+  'Missing',
+  'Malformed',
+  'InvalidSignature',
+] satisfies components['schemas']['LicenseResponse']['status'][])(
+  'shows the %s status beside the title, and the startup message',
+  async (status) => {
     const { page } = await loaded({ ...missing, status, message: 'Startup licence message' });
     expect(page.querySelector('.badge')?.textContent).toBe(status);
-    expect(page.querySelector('.badge')?.classList.contains(`tone-${tone}`)).toBe(true);
     expect(text(page)).toContain('Startup licence message');
   },
 );

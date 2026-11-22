@@ -107,7 +107,7 @@ for (const theme of ['dark', 'light'] as const) {
     await license.useTheme(theme);
     // eslint-disable-next-line playwright/no-raw-locators -- The theme is an attribute of the document element.
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-    await expect(license.status).toHaveClass(/tone-muted/);
+    await expect(license.status).toHaveText('Missing');
     await page.screenshot({ path: info.outputPath(`license-${theme}.png`), fullPage: true });
   });
 }

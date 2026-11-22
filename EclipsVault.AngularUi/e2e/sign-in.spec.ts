@@ -270,10 +270,10 @@ test("My activity shows the administrator's own rows in both themes, newest firs
   // The first test's own actions, newest first: the ordinary two-factor sign-in and the accepted
   // code it was issued for, then the sign-in that confirming enrolment completes, then the enrolment.
   const rows: ExpectedRow[] = [
-    { title: 'Signed in', category: 'Sign-in', tone: 'muted' },
-    { title: 'Proved a sign-in factor', category: 'Sign-in', tone: 'muted' },
-    { title: 'Signed in', category: 'Sign-in', tone: 'muted' },
-    { title: 'Set up your authenticator', category: 'Account', tone: 'warn' },
+    { title: 'Signed in', category: 'Sign-in', severity: '' },
+    { title: 'Proved a sign-in factor', category: 'Sign-in', severity: '' },
+    { title: 'Signed in', category: 'Sign-in', severity: '' },
+    { title: 'Set up your authenticator', category: 'Account', severity: 'Notable' },
   ];
   await test.step(`dark theme`, async () => {
     await verifyMyActivity(page, info, 'dark', rows);
@@ -918,7 +918,7 @@ test("My activity's empty state and pager, and paging is in-app with back and fo
         links.map((link) => [link.textContent?.trim(), link.getAttribute('href')]),
       );
 
-  await test.step('the first page shows each row, its accent and badges, and only the older link', async () => {
+  await test.step('the first page shows each row, its severity and kind, and only the older link', async () => {
     await page.getByRole('link', { name: 'My access', exact: true }).click();
     await page.getByRole('link', { name: 'My activity', exact: true }).click();
     await expect(page).toHaveURL(/\/Activity$/);
@@ -928,7 +928,7 @@ test("My activity's empty state and pager, and paging is in-app with back and fo
       {
         title: 'Revealed a secret value',
         kind: 'Secrets',
-        tone: 'tone-warn',
+        severity: 'Notable',
         resource: longName,
         from: '203.0.113.7',
         time: expect.stringMatching(exactTime),
@@ -936,7 +936,7 @@ test("My activity's empty state and pager, and paging is in-app with back and fo
       {
         title: 'A session was force-revoked',
         kind: 'Security',
-        tone: 'tone-critical',
+        severity: 'Critical',
         resource: null,
         from: '203.0.113.8',
         time: expect.stringMatching(exactTime),
@@ -944,7 +944,7 @@ test("My activity's empty state and pager, and paging is in-app with back and fo
       {
         title: 'Signed in',
         kind: 'Sign-in',
-        tone: 'tone-muted',
+        severity: '',
         resource: null,
         from: '203.0.113.7',
         time: expect.stringMatching(exactTime),
@@ -952,7 +952,7 @@ test("My activity's empty state and pager, and paging is in-app with back and fo
       {
         title: 'Shared a secret',
         kind: 'Sharing',
-        tone: 'tone-warn',
+        severity: 'Notable',
         resource: 'Shared_Key',
         from: '2001:db8::5',
         time: expect.stringMatching(exactTime),
@@ -974,7 +974,7 @@ test("My activity's empty state and pager, and paging is in-app with back and fo
       {
         title: 'Created a user',
         kind: 'Admin',
-        tone: 'tone-muted',
+        severity: '',
         resource: null,
         from: '198.51.100.20',
         time: '2026-01-02 03:04:05 UTC',
@@ -982,7 +982,7 @@ test("My activity's empty state and pager, and paging is in-app with back and fo
       {
         title: 'Changed your password',
         kind: 'Account',
-        tone: 'tone-muted',
+        severity: '',
         resource: null,
         from: '198.51.100.20',
         time: '2025-12-31 23:59:59 UTC',
@@ -990,7 +990,7 @@ test("My activity's empty state and pager, and paging is in-app with back and fo
       {
         title: 'Issued an API key',
         kind: 'Automation',
-        tone: 'tone-muted',
+        severity: '',
         resource: null,
         from: 'internal',
         time: '2025-12-30 08:00:00 UTC',
@@ -998,7 +998,7 @@ test("My activity's empty state and pager, and paging is in-app with back and fo
       {
         title: 'Some new action',
         kind: 'Other',
-        tone: 'tone-muted',
+        severity: '',
         resource: null,
         from: 'internal',
         time: '2025-12-29 08:00:00 UTC',

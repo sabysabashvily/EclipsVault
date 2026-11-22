@@ -6,7 +6,7 @@
   },
   "e2e/activity.ts": {
     "playwright/no-raw-locators": {
-      "count": 7
+      "count": 6
     }
   },
   "e2e/palette.ts": {

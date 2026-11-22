@@ -6,39 +6,43 @@ export type Activity =
   paths['/api/ui/activity']['get']['responses'][200]['content']['application/json'];
 export type ActivityItem = Activity['items'][number];
 
-/** One activity row as a person reads it. */
+/** One activity row as a person reads it. A routine row's severity is empty. */
 export interface FeedRow {
   title: string;
   kind: string;
-  tone: string;
+  severity: string;
   resource: string | null;
   from: string;
   time: string;
 }
 
-/** A real row expected on My activity: its title, kind and status-pill tone. */
+/** A real row expected on My activity: its title, kind and severity. */
 export interface ExpectedRow {
   title: string;
   category: string;
-  tone: string;
+  severity: string;
 }
 
 export async function feedRows(page: Page): Promise<FeedRow[]> {
-  return page.locator('.activity-table tbody tr').evaluateAll((rows) =>
-    rows.map((row) => {
-      const resource = row.querySelector('.activity-resource');
-      const badge = row.querySelector('.badge');
-      const time = row.querySelector('time');
-      return {
-        title: row.querySelector('.activity-title')?.textContent?.trim() ?? '',
-        kind: badge?.textContent?.trim() ?? '',
-        tone: [...(badge?.classList ?? [])].find((name) => name.startsWith('tone-')) ?? '',
-        resource: resource?.textContent?.trim() ?? null,
-        from: row.querySelector('td:last-child')?.textContent?.trim() ?? '',
-        time: time?.textContent?.trim() ?? '',
-      };
-    }),
-  );
+  return page
+    .getByRole('main')
+    .getByRole('row')
+    .filter({ has: page.getByRole('cell') })
+    .evaluateAll((rows) =>
+      rows.map((row) => {
+        const [when, action, severity, kind, from] = [...row.children];
+        // The action cell holds the title, then any resource name, as two spans with no role.
+        const [title, resource] = [...(action?.children ?? [])];
+        return {
+          title: title?.textContent?.trim() ?? '',
+          kind: kind?.textContent?.trim() ?? '',
+          severity: severity?.textContent?.trim() ?? '',
+          resource: resource?.textContent?.trim() ?? null,
+          from: from?.textContent?.trim() ?? '',
+          time: when?.textContent?.trim() ?? '',
+        };
+      }),
+    );
 }
 
 /** The row that records `title` for the resource named `resource`. */
@@ -118,7 +122,7 @@ export async function verifyMyActivity(
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
   await expect(page).toHaveTitle('My activity — EclipsVault');
   await expect(page.getByRole('heading', { name: 'My activity', exact: true })).toBeVisible();
-  const notable = rows.filter(({ tone }) => tone !== 'muted').length;
+  const notable = rows.filter(({ severity }) => severity !== '').length;
   const notableSentence = notable === 0 ? '' : `${notable} notable on this page. `;
   await expect(page.locator('.page-sub')).toHaveText(
     `Newest first. ${notableSentence}Only your own actions are listed. This wasn't you? ` +
@@ -138,8 +142,8 @@ export async function verifyMyActivity(
   const activity: Activity = await response.json();
   expect(activity.items).toHaveLength(rows.length);
   const shown = await feedRows(page);
-  expect(shown.map(({ title, kind, tone }) => ({ title, category: kind, tone }))).toEqual(
-    rows.map((row) => ({ ...row, tone: `tone-${row.tone}` })),
+  expect(shown.map(({ title, kind, severity }) => ({ title, category: kind, severity }))).toEqual(
+    rows,
   );
   for (const [i, row] of shown.entries()) {
     expect(row.resource).toBeNull();

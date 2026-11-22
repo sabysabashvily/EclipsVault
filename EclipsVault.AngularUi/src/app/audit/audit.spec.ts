@@ -270,18 +270,6 @@ describe('Audit log', () => {
     ).toEqual(['2026-11-13 11:59:30 UTC', '2026-11-13 09:15:00 UTC', '2026-10-01 08:00:00 UTC']);
   });
 
-  it('marks a critical row and badges each action with its tone', async () => {
-    const { page } = await loaded();
-    expect(
-      [...page.querySelectorAll('tbody tr')].map((row) => row.classList.contains('row-critical')),
-    ).toEqual([false, true, false]);
-    expect([...page.querySelectorAll('tbody .badge')].map((badge) => badge.className)).toEqual([
-      'badge tone-muted',
-      'badge tone-critical',
-      'badge tone-ok',
-    ]);
-  });
-
   it('shows the attestation panel, the signing key and the latest checkpoint in Legacy words', async () => {
     const { page } = await loaded();
     expect(text(page.querySelector('.panel-header'))).toContain('Attestation');
