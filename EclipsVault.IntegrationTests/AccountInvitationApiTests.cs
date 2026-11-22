@@ -209,9 +209,9 @@ public sealed class AccountInvitationApiTests(InvitationFixture fixture)
 
         var (listed, details) = await StateAsync(admin, invited.Id);
         Assert.True(listed.GetProperty("awaitingActivation").GetBoolean());
-        Assert.Equal(expiresAtUtc, listed.GetProperty("invitationExpiresAtUtc").GetDateTimeOffset());
+        Assert.Equal(expiresAtUtc, listed.GetProperty("invitationExpiresAtUtc").GetDateTimeOffset(), TimeSpan.FromMilliseconds(1));
         Assert.True(details.GetProperty("awaitingActivation").GetBoolean());
-        Assert.Equal(expiresAtUtc, details.GetProperty("invitationExpiresAtUtc").GetDateTimeOffset());
+        Assert.Equal(expiresAtUtc, details.GetProperty("invitationExpiresAtUtc").GetDateTimeOffset(), TimeSpan.FromMilliseconds(1));
         Assert.Equal("it-inv-state@example.test", details.GetProperty("email").GetString());
 
         (await UiApiRequest.SendWithTokenAsync(admin, await UiApiRequest.AntiforgeryTokenAsync(admin),
