@@ -28,7 +28,7 @@ export class NotificationsPage {
         email.eventType,
         email.transport,
         this.badges[email.status].label,
-        email.status === 'failed' && email.error ? '⚠' : '',
+        email.error ?? '',
       ]
         .join(' ')
         .toLowerCase()
@@ -36,8 +36,8 @@ export class NotificationsPage {
     );
   });
   protected readonly badges: Record<Notification['status'], { tone: string; label: string }> = {
-    sent: { tone: 'ok', label: 'Sent' },
-    failed: { tone: 'danger', label: 'Failed' },
-    suppressed: { tone: 'muted', label: 'Suppressed' },
+    sent: { tone: 'ok', label: 'sent' },
+    failed: { tone: 'danger', label: 'failed' },
+    suppressed: { tone: 'muted', label: 'suppressed' },
   };
 }

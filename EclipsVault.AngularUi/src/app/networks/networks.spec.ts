@@ -168,33 +168,27 @@ describe('Networks', () => {
     const { page } = await loaded();
     expect(page.querySelector('.current-ip-value .badge')?.textContent).toBe('Not trusted');
     expect(button(page, 'Trust this address')).toBeTruthy();
-    const tables = [...page.querySelectorAll('table')];
-    expect([...tables[0]!.querySelectorAll('th')].map((cell) => cell.textContent)).toEqual([
+    const table = page.querySelector('table');
+    expect([...table!.querySelectorAll('th')].map((cell) => cell.textContent)).toEqual([
       'Range',
       'Label',
       'Added by',
       'Added (UTC)',
       '',
     ]);
-    expect([...tables[0]!.querySelectorAll('td')].map((cell) => cell.textContent?.trim())).toEqual([
+    expect([...table!.querySelectorAll('td')].map((cell) => cell.textContent?.trim())).toEqual([
       '203.0.113.0/24',
       'Office VPN',
       'vault-admin',
       '2026-03-04 05:06',
       'Remove',
     ]);
-    expect([...tables[1]!.querySelectorAll('th')].map((cell) => cell.textContent)).toEqual([
-      'Range',
-      'Reason',
-      'Since (UTC)',
-      '',
-    ]);
-    expect([...tables[1]!.querySelectorAll('td')].map((cell) => cell.textContent?.trim())).toEqual([
-      '192.0.2.9/32',
-      "Honey-token 'FINANCE_DECOY_KEY' tripped",
-      '11-07 22:30',
-      'Unblock',
-    ]);
+    const block = page.querySelector('.attention-list li');
+    expect(block?.textContent).toContain('192.0.2.9/32');
+    expect(block?.textContent).toContain("Honey-token 'FINANCE_DECOY_KEY' tripped");
+    expect(block?.textContent).toContain('11-07 22:30');
+    expect(button(page, 'Lift block')).toBeTruthy();
+    expect(page.querySelectorAll('table')).toHaveLength(1);
   });
 
   it('trusts the current address without confirmation and reloads with the Legacy notice', async () => {
@@ -252,7 +246,7 @@ describe('Networks', () => {
     stepUpRequired(path);
     await reload(fixture);
     expect(page.querySelector('app-step-up-dialog dialog[open]')).not.toBeNull();
-    expect(button(page, 'Trust').matches(':disabled')).toBe(true);
+    expect(button(page, 'Add trusted network').matches(':disabled')).toBe(true);
     enterProof(page, '123456');
     const proof = backend.expectOne('/api/ui/step-up');
     expect(proof.request.body).toEqual({ code: '123456' });
@@ -335,7 +329,7 @@ describe('Networks', () => {
 
   it('lifts a block after the exact confirmation and one proof', async () => {
     const { page, fixture } = await loaded();
-    button(page, 'Unblock').click();
+    button(page, 'Lift block').click();
     await fixture.whenStable();
     expect(page.querySelector('[role="alertdialog"]')?.textContent).toContain(
       'Lift the intrusion-defence block on 192.0.2.9/32?',
@@ -368,7 +362,7 @@ describe('Networks', () => {
     },
   ])('reports a $code lift without claiming it succeeded', async ({ code, title, httpStatus }) => {
     const { page, fixture } = await loaded();
-    button(page, 'Unblock').click();
+    button(page, 'Lift block').click();
     await fixture.whenStable();
     button(page, 'Continue').click();
     backend
@@ -388,8 +382,8 @@ describe('Networks', () => {
       'The response was lost. Reload the page before trying again.',
     );
     expect(button(page, 'Trust this address').matches(':disabled')).toBe(true);
-    expect(button(page, 'Trust').matches(':disabled')).toBe(true);
+    expect(button(page, 'Add trusted network').matches(':disabled')).toBe(true);
     expect(button(page, 'Remove').matches(':disabled')).toBe(true);
-    expect(button(page, 'Unblock').matches(':disabled')).toBe(true);
+    expect(button(page, 'Lift block').matches(':disabled')).toBe(true);
   });
 });

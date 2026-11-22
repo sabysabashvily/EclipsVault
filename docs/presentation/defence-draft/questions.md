@@ -1,22 +1,24 @@
 # Likely questions / სავარაუდო კითხვები
 
-Answer from the source named here, at `origin/main` `0bb59de1e8f64d1b7d04468c303c1b108dd6f04b`.
-If the honest answer is "planned" or "not run", say that and stop.
+Answer from the source named here, at `origin/main` `d576dd93a30bc461183ca7b71c89f038adbff446`
+(21 November 2026, 22:42 Asia/Tbilisi). If the honest answer is "not on this revision" or "not
+rehearsed", say that and stop.
 
-პასუხი აქ დასახელებული წყაროდან გაეცით, `origin/main` `0bb59de`-ზე. თუ პატიოსანი პასუხია
-„დაგეგმილი“ ან „არ გაშვებულა“, ასე თქვით და გაჩერდით.
+პასუხი აქ დასახელებული წყაროდან გაეცით, `origin/main` `d576dd9`-ზე (21 ნოემბერი 2026, 22:42
+Asia/Tbilisi). თუ პატიოსანი პასუხია „ამ რევიზიაზე არ არის“ ან „არ რეპეტირებულა“, ასე თქვით და
+გაჩერდით.
 
 ## The browser decides who can see a secret, doesn't it?
 
 ### English
 
-No. Angular route guards are convenience. `SecretAccessPolicy` runs on the server for the Legacy
+No. Angular route guards are convenience. `SecretAccessPolicy` runs on the server for the UI API
 reveal and for the Public API. ADR-0012 says the UI does not decide from a hard-coded clearance
 check. A hidden link is not the control.
 
 ### ქართული
 
-არა. Angular-ის მარშრუტის მცველები მოხერხებულობაა. `SecretAccessPolicy` სერვერზე ეშვება Legacy
+არა. Angular-ის მარშრუტის მცველები მოხერხებულობაა. `SecretAccessPolicy` სერვერზე ეშვება UI API-ს
 გახსნისთვისაც და საჯარო API-სთვისაც. ADR-0012 ამბობს, რომ ინტერფეისი დაშვებას ჩაშენებული
 შემოწმებით არ წყვეტს. დამალული ბმული კონტროლი არ არის.
 
@@ -60,17 +62,18 @@ That does not belong in a recording. Source: `CONTEXT.md`; ADR-0005; `SecretsApi
 ### English
 
 Yes. This is a server-side vault, not a design where the browser alone can decrypt. After the audit
-row commits, `AesGcmCryptoEngine.UnsealAsync` opens the value in the Web process, and the Legacy
-page renders it. The data key is wrapped by the master key so a database copy of the ciphertext is
-not the plaintext. It is not a claim that the operator's process cannot read a secret it is serving.
+row commits, `AesGcmCryptoEngine.UnsealAsync` opens the value in the Web process, and the Angular
+details page renders it once. The data key is wrapped by the master key so a database copy of the
+ciphertext is not the plaintext. It is not a claim that the operator's process cannot read a secret
+it is serving.
 
 ### ქართული
 
 დიახ. ეს სერვერზე მდგომი საცავია, არა ისეთი დიზაინი, სადაც მხოლოდ ბრაუზერს შეუძლია გაშიფვრა.
 აუდიტის ჩანაწერის დაფიქსირების შემდეგ `AesGcmCryptoEngine.UnsealAsync` მნიშვნელობას Web პროცესში
-ხსნის და Legacy გვერდი მას აჩვენებს. მონაცემთა გასაღები მასტერ-გასაღებითაა შეხვეული, ამიტომ ბაზაში
-მყოფი შიფრული ტექსტი ღია ტექსტი არ არის. ეს არ არის მტკიცება, რომ ოპერატორის პროცესი ვერ კითხულობს
-საიდუმლოს, რომელსაც თავად აწვდის.
+ხსნის და Angular-ის დეტალების გვერდი მას ერთხელ აჩვენებს. მონაცემთა გასაღები მასტერ-გასაღებითაა
+შეხვეული, ამიტომ ბაზაში მყოფი შიფრული ტექსტი ღია ტექსტი არ არის. ეს არ არის მტკიცება, რომ
+ოპერატორის პროცესი ვერ კითხულობს საიდუმლოს, რომელსაც თავად აწვდის.
 
 ## What if the audit write fails?
 
@@ -91,49 +94,44 @@ plug to show it.
 
 ### English
 
-`GetDetailsAsync` writes `SecretMetadataViewed` when the details load. `RevealAsync` writes
-`SecretRevealed` when the value is requested, and that second write is the one ordered before
-decryption. The page labels them `Viewed` and `Revealed`. Source: `SecretService`; `AuditDisplay`.
+After the access check allows the details page, `RecordViewedAsync` writes `SecretMetadataViewed`.
+`GetDetailsAsync` itself writes nothing, so a refusal is `SecretAccessDenied` instead. `RevealAsync`
+writes `SecretRevealed` when the value is requested, and that write is the one ordered before
+decryption. The page labels them `Viewed`, `Access denied`, and `Revealed`. Source:
+`SecretDetailsController.OpenAsync`; `SecretService`; `AuditDisplay`; ADR-0031.
 
 ### ქართული
 
-`GetDetailsAsync` წერს `SecretMetadataViewed`-ს, როცა დეტალები იტვირთება. `RevealAsync` წერს
-`SecretRevealed`-ს, როცა მნიშვნელობაა მოთხოვნილი, და ეს მეორე ჩანაწერია, რომელიც გაშიფვრამდე
-დგას. გვერდი მათ `Viewed` და `Revealed` ეძახის. წყარო: `SecretService`; `AuditDisplay`.
+მას შემდეგ, რაც წვდომის შემოწმება დეტალების გვერდს უშვებს, `RecordViewedAsync` წერს
+`SecretMetadataViewed`-ს. `GetDetailsAsync` თავად არაფერს წერს, ამიტომ უარი `SecretAccessDenied`-ა.
+`RevealAsync` წერს `SecretRevealed`-ს, როცა მნიშვნელობაა მოთხოვნილი, და ეს ჩანაწერია, რომელიც
+გაშიფვრამდე დგას. გვერდი მათ `Viewed`, `Access denied` და `Revealed` ეძახის. წყარო:
+`SecretDetailsController.OpenAsync`; `SecretService`; `AuditDisplay`; ADR-0031.
 
 ## Does Verify prove nobody deleted or rewrote the trail?
 
 ### English
 
 No. Not for every deletion, and not regardless of the latest signed checkpoint.
-`VerifyIntegrityAsync` re-walks the rows that are present. It reports a gap, a broken link, or a
-row whose stored hash no longer matches. It does not load checkpoints. A deleted tail, or a rewrite
-that recomputes every hash, can still look intact. A signed checkpoint proves the head it signed
-only when a check compares them. Today's button does not. `AuditBundleVerifier` does that comparison
-for a bundle it is given. A bundle an auditor already keeps is unchanged by a later edit of the live
-database. Source: `AuditLogReader`; `AuditCheckpointService`; `AuditBundleVerifier`;
-`docs/THREAT_MODEL.md` item 12.
-
-The stronger check, atomic checkpoint row, and streamed step-up export are specified for Area 6b
-and are not merged. Even that specification says a database writer can delete checkpoints, or change
-rows after the latest checkpoint, without that Verify noticing. Source: ADR-0030 on Area 6a head
-`ab7997e`.
+`AuditChainVerifier.VerifyAsync` streams the rows and checks checkpoints signed by the current key.
+It reports a gap, a broken link, a checkpoint that does not match, or a tail missing before the
+latest such checkpoint. Deleting the checkpoints, or changing only the rows after that checkpoint
+and recomputing their hashes, can still leave Verify quiet. `AuditBundleVerifier` checks a bundle
+it is given. A bundle an auditor already keeps is unchanged by a later edit of the live database.
+Source: `AuditChainVerifier`; `AuditCheckpointService.VerifyAsync`; `AuditBundleVerifier`;
+ADR-0030; `docs/THREAT_MODEL.md` item 12.
 
 ### ქართული
 
 არა. არა ყოველი წაშლისთვის და არა ბოლო ხელმოწერილი საკონტროლო წერტილისგან დამოუკიდებლად.
-`VerifyIntegrityAsync` იმ ჩანაწერებს გადის, რომლებიც არსებობს. აჩვენებს რიგითობის წყვეტას, გაწყვეტილ კავშირს
-ან ჩანაწერს, რომლის შენახული ჰეში აღარ ემთხვევა. საკონტროლო წერტილებს არ ტვირთავს. წაშლილმა კუდმა
-ან ყველა ჰეშის თავიდან დათვლით გადაწერამ შეიძლება მაინც მთლიანად გამოიყურებოდეს. ხელმოწერილი
-საკონტროლო წერტილი იმ თავს ამტკიცებს, რომელსაც მოაწერა ხელი, მხოლოდ მაშინ, როცა შემოწმება მათ
-ადარებს. დღევანდელი ღილაკი არ ადარებს. `AuditBundleVerifier` ამ შედარებას აკეთებს მისთვის მიცემული
-შეკვრისთვის. აუდიტორის მიერ უკვე შენახულ შეკვრას ცოცხალი ბაზის გვიანი შესწორება არ ცვლის. წყარო:
-`AuditLogReader`; `AuditCheckpointService`; `AuditBundleVerifier`; `docs/THREAT_MODEL.md` პუნქტი 12.
-
-უფრო ძლიერი შემოწმება, საკონტროლო წერტილის ატომური ჩანაწერი და ნაკადური გაძლიერებული ექსპორტი
-Area 6b-შია სპეციფიცირებული და შერწყმული არ არის. იმ სპეციფიკაციაც ამბობს, რომ ბაზის დამწერს შეუძლია
-წაშალოს საკონტროლო წერტილები ან შეცვალოს ჩანაწერები ბოლო საკონტროლო წერტილის შემდეგ ისე, რომ ამ
-Verify-მ ვერ შეამჩნიოს. წყარო: ADR-0030 Area 6a-ის თავზე `ab7997e`.
+`AuditChainVerifier.VerifyAsync` ჩანაწერებს ნაკადად გადის და ამოწმებს მიმდინარე გასაღებით
+ხელმოწერილ საკონტროლო წერტილებს. აჩვენებს რიგითობის წყვეტას, გაწყვეტილ კავშირს, წერტილს რომელიც არ
+ემთხვევა, ან კუდს რომელიც ბოლო ასეთ წერტილამდე აკლია. საკონტროლო წერტილების წაშლამ, ან მხოლოდ იმ
+წერტილის შემდეგ ჩანაწერების შეცვლამ და მათი ჰეშების თავიდან დათვლამ, შეიძლება მაინც დატოვოს ჩუმი
+Verify. `AuditBundleVerifier` ამოწმებს მისთვის მიცემულ შეკვრას. აუდიტორის მიერ უკვე შენახულ შეკვრას
+ცოცხალი ბაზის გვიანი შესწორება არ ცვლის. წყარო: `AuditChainVerifier`;
+`AuditCheckpointService.VerifyAsync`; `AuditBundleVerifier`; ADR-0030; `docs/THREAT_MODEL.md`
+პუნქტი 12.
 
 ## What about an old verifier?
 
@@ -213,38 +211,36 @@ used only when configuration selects them. Source: [diagrams.md](diagrams.md) se
 
 ### English
 
-No. What you are being shown, if the stack is up at all, is Development's demo seed: two staff
-accounts and sample secrets that production refuses to create. Production bootstraps a single
-administrator from a password the operator supplies, applies schema from a deploy job, and serves
-the image behind TLS. Source: `DbSeeder`; `docs/INSTALL.md`; `Dockerfile`. This draft did not start
-either one.
+No. What you are being shown is Development's demo seed: two staff accounts and sample secrets
+that production refuses to create. Production bootstraps a single administrator from a password
+the operator supplies, applies schema from a deploy job, and serves the image behind TLS. Source:
+`DbSeeder`; `docs/INSTALL.md`; `Dockerfile`. The rehearsal started only the disposable Development
+vault. It did not start the production image.
 
 ### ქართული
 
-არა. რასაც გიჩვენებენ, თუ სტეკი საერთოდ დგას, Development-ის სადემონსტრაციო სამყაროა: ორი თანამშრომლის ანგარიში
-და სანიმუშო საიდუმლოები, რომელთა შექმნაზეც production უარს ამბობს. Production ერთ ადმინისტრატორს
+არა. რასაც გიჩვენებენ, Development-ის სადემონსტრაციო სამყაროა: ორი თანამშრომლის ანგარიში და
+სანიმუშო საიდუმლოები, რომელთა შექმნაზეც production უარს ამბობს. Production ერთ ადმინისტრატორს
 აყენებს ოპერატორის მიერ მოწოდებული პაროლით, სქემას განთავსების სამუშაოდან იყენებს და იმიჯს TLS-ის
-უკან აწვდის. წყარო: `DbSeeder`; `docs/INSTALL.md`; `Dockerfile`. ამ მონახაზმა არც ერთი არ გაუშვა.
+უკან აწვდის. წყარო: `DbSeeder`; `docs/INSTALL.md`; `Dockerfile`. რეპეტიციამ მხოლოდ ერთჯერადი
+Development საცავი გაუშვა. Production იმიჯი არ გაუშვია.
 
-## Did the encryption-keys pull request merge? Did its tests pass?
+## Did the encryption-keys work merge?
 
 ### English
 
-It had not merged when this draft was written. PR #147 was open at `ab7997e`. The check list read
-then was all `SUCCESS`, including `e2e`, which finished at 21:41 Asia/Tbilisi on 10 November 2026.
-The review list on that PR was empty in the same read, so this answer does not include a Thermos or
-GPT approval. The reveal order does not depend on that PR: `SecretService.RevealAsync` is unchanged
-between `main` and that head. The PR's own subject is master-key rotation and the Angular Encryption
-keys page.
+Yes. On this revision `KekRotationService` implements `IKekRotationService`, and `EncryptionController`
+serves `GET api/ui/encryption` behind the Angular page `/Encryption`. ADR-0029 is in `docs/adr/` on
+`main`. The talk does not rotate a key. Rotation moves sealed envelopes in resumable batches and
+does not decrypt a value. This answer does not recite the old PR's review list.
 
 ### ქართული
 
-ამ მონახაზის წერისას ის შერწყმული არ იყო. PR #147 ღია იყო `ab7997e`-ზე. მაშინ წაკითხული შემოწმებების
-სია მთლიანად `SUCCESS` იყო, `e2e`-ს ჩათვლით, რომელიც დასრულდა 10 ნოემბერს 2026, 21:41 Asia/Tbilisi.
-იმავე წაკითხვაში ამ PR-ის განხილვების სია ცარიელი იყო, ამიტომ ეს პასუხი Thermos-ის ან GPT-ის
-დამტკიცებას არ შეიცავს. გახსნის რიგი ამ PR-ზე არ დგას: `SecretService.RevealAsync` `main`-სა და იმ
-თავს შორის უცვლელია. PR-ის საკუთარი თემა მასტერ-გასაღების როტაცია და Angular-ის Encryption keys
-გვერდია.
+დიახ. ამ რევიზიაზე `KekRotationService` ახორციელებს `IKekRotationService`-ს, და
+`EncryptionController` აწვდის `GET api/ui/encryption`-ს Angular-ის გვერდის `/Encryption` უკან.
+ADR-0029 `main`-ის `docs/adr/`-შია. მოხსენება გასაღებს არ ატრიალებს. როტაცია დალუქულ კონვერტებს
+განახლებად პარტიებად გადააქვს და მნიშვნელობას არ შლის. ეს პასუხი ძველი PR-ის განხილვების სიას არ
+იმეორებს.
 
 ## How long is the talk, and what is the marking scheme?
 

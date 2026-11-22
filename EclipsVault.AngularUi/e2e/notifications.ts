@@ -9,6 +9,7 @@ export class Notifications {
   readonly noticeParts;
   readonly filter;
   readonly rows;
+  readonly deliveryRecordNote;
   constructor(private readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Notifications', exact: true });
     // eslint-disable-next-line playwright/no-raw-locators -- The Legacy delivery notice has no role of its own; the shell's licence notice is also a .notice.
@@ -17,6 +18,7 @@ export class Notifications {
     this.noticeParts = this.notice.locator('> *');
     this.filter = page.getByRole('searchbox', { name: 'Filter notifications', exact: true });
     this.rows = page.getByRole('row').filter({ has: page.getByRole('cell') });
+    this.deliveryRecordNote = page.getByText('a delivery record, not a mailbox');
   }
   async open(): Promise<void> {
     await this.page.goto('/Notifications');

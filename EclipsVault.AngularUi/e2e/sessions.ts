@@ -49,11 +49,11 @@ export class SignedInDevices {
     return this.rows.evaluateAll((rows) =>
       rows.map((row) => {
         return {
-          device: row.querySelector('.feed-title')?.textContent?.trim(),
+          device: row.querySelector('.device-name')?.textContent?.trim(),
           badges: [...row.querySelectorAll('.badge')].map((badge) => badge.textContent?.trim()),
-          meta: row.querySelector('.feed-meta')?.textContent?.replace(/\s+/g, ' ').trim(),
-          action: row.querySelector('.feed-action')?.textContent?.trim(),
-          tooltip: row.querySelector('[title]')?.getAttribute('title'),
+          meta: row.querySelector('.device-meta')?.textContent?.replace(/\s+/g, ' ').trim(),
+          action: row.querySelector('button')?.textContent?.trim() ?? '',
+          tooltip: row.querySelector('time')?.getAttribute('title'),
         };
       }),
     );
