@@ -23,6 +23,16 @@ type Schemas = components['schemas'];
         a 6-digit code.
       </p>
 
+      <div role="status" aria-live="polite" aria-atomic="true">
+        @if (loading()) {
+          <div class="totp-secret">
+            <p class="auth-loading">Preparing your authenticator key…</p>
+          </div>
+        } @else if (enrollment()) {
+          <p class="visually-hidden">Authenticator QR code and setup key are ready.</p>
+        }
+      </div>
+
       @if (enrollment(); as enrollment) {
         <div class="totp-secret">
           <p class="totp-label">Scan with your authenticator app</p>
@@ -33,10 +43,6 @@ type Schemas = components['schemas'];
           />
           <p class="totp-manual-label muted">Can't scan it? Enter this setup key manually:</p>
           <code class="secret-code">{{ enrollment.secretBase32 }}</code>
-        </div>
-      } @else if (!error()) {
-        <div class="totp-secret">
-          <p class="auth-loading" role="status">Preparing your authenticator key…</p>
         </div>
       }
 
@@ -82,6 +88,7 @@ type Schemas = components['schemas'];
 export class EnrollTotpPage {
   private readonly http = inject(HttpClient);
   private readonly flow = inject(SignInFlow);
+  protected readonly loading = signal(true);
   protected readonly enrollment = signal<Schemas['TotpEnrollmentResponse'] | null>(null);
   protected readonly code = signal('');
   protected readonly busy = signal(false);
@@ -90,8 +97,14 @@ export class EnrollTotpPage {
   constructor() {
     // A POST: beginning an enrollment chooses a new secret for this pending sign-in.
     this.http.post<Schemas['TotpEnrollmentResponse']>('/api/ui/auth/enrollment', null).subscribe({
-      next: (enrollment) => this.enrollment.set(enrollment),
-      error: (error: unknown) => this.error.set(this.flow.refused(error) ?? ''),
+      next: (enrollment) => {
+        this.loading.set(false);
+        this.enrollment.set(enrollment);
+      },
+      error: (error: unknown) => {
+        this.loading.set(false);
+        this.error.set(this.flow.refused(error) ?? '');
+      },
     });
   }
 

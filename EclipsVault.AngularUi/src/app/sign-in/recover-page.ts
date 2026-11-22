@@ -31,30 +31,40 @@ type Schemas = components['schemas'];
         <span>Break-glass recovery</span>
       </span>
       <h1>Recover access</h1>
+      <div role="status" aria-live="polite" aria-atomic="true">
+        @if (recovered(); as result) {
+          <div class="auth-notice auth-notice-ok">
+            <span class="auth-notice-icon auth-notice-icon-ok" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="9" />
+                <path d="m9 12 2 2 4-4" />
+              </svg>
+            </span>
+            <p id="recover-outcome" class="flash-success">
+              {{
+                result.blockLifted
+                  ? 'The intrusion-defence block on your network was lifted and your session restored.'
+                  : 'Access restored. Your network was not blocked.'
+              }}
+            </p>
+          </div>
+        }
+      </div>
       @if (recovered(); as result) {
-        <div class="auth-notice auth-notice-ok">
-          <span class="auth-notice-icon auth-notice-icon-ok" aria-hidden="true">
-            <svg viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="9" />
-              <path d="m9 12 2 2 4-4" />
-            </svg>
-          </span>
-          <p class="flash-success" role="status">
-            {{
-              result.blockLifted
-                ? 'The intrusion-defence block on your network was lifted and your session restored.'
-                : 'Access restored. Your network was not blocked.'
-            }}
-          </p>
-        </div>
-        <button type="button" class="button primary wide" appSignInFocus (click)="flow.leave('/')">
+        <button
+          type="button"
+          class="button primary wide"
+          aria-describedby="recover-outcome"
+          appSignInFocus
+          (click)="flow.leave('/')"
+        >
           Continue to the vault
         </button>
       } @else {
         <p class="auth-lede">
-          Enter all of your credentials in one step. If they verify and your account holds TopSecret
-          clearance, the intrusion-defence block on your network is lifted and your session
-          restored.
+          Administrator break-glass recovery. Enter all of your credentials in one step. If they
+          verify and your account holds TopSecret clearance, the intrusion-defence block on your
+          network is lifted and your session restored.
         </p>
 
         <form (submit)="recover($event)">
@@ -118,7 +128,9 @@ type Schemas = components['schemas'];
             </div>
 
             <button type="submit" class="button primary wide">Verify and restore access</button>
-            <p class="auth-commit-note muted">Every attempt is saved to the audit log.</p>
+            <p class="auth-commit-note muted">
+              Recovery and any lifted block are saved to the audit log.
+            </p>
           </fieldset>
         </form>
 

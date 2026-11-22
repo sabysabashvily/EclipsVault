@@ -20,24 +20,29 @@ type Schemas = components['schemas'];
         <span class="auth-step-label">{{ signedIn() ? 'Signed in' : 'Step 2 of 2' }}</span>
       </div>
       <h1>Use a recovery code</h1>
+      <div role="status" aria-live="polite" aria-atomic="true">
+        @if (signedIn(); as result) {
+          <!-- Said here, before leaving: the vault has already issued the session cookie (ADR-0032). -->
+          <div class="auth-notice auth-notice-info">
+            <span class="auth-notice-icon auth-notice-icon-info" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 16v-4M12 8h.01" />
+              </svg>
+            </span>
+            <p id="recovery-code-outcome" class="flash-info">
+              You signed in with a recovery code — that code is now used up.
+              {{ remaining(result.codesRemaining) }} Generate a new set from your profile if you're
+              running low.
+            </p>
+          </div>
+        }
+      </div>
       @if (signedIn(); as result) {
-        <!-- Said here, before leaving: the vault has already issued the session cookie (ADR-0032). -->
-        <div class="auth-notice auth-notice-info">
-          <span class="auth-notice-icon auth-notice-icon-info" aria-hidden="true">
-            <svg viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="9" />
-              <path d="M12 16v-4M12 8h.01" />
-            </svg>
-          </span>
-          <p class="flash-info" role="status">
-            You signed in with a recovery code — that code is now used up.
-            {{ remaining(result.codesRemaining) }} Generate a new set from your profile if you're
-            running low.
-          </p>
-        </div>
         <button
           type="button"
           class="button primary wide"
+          aria-describedby="recovery-code-outcome"
           appSignInFocus
           (click)="flow.leave(result.redirect)"
         >

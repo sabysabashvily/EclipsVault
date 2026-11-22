@@ -711,6 +711,11 @@ test('a recovery code entered from the keyboard announces it is spent before Con
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/Account\/RecoveryCode$/);
   await expect(recovery.code).toBeFocused();
+  for (const width of [300, 2000]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.keyboard.type(signInRecoveryCode);
   await page.keyboard.press('Enter');
 
@@ -718,6 +723,11 @@ test('a recovery code entered from the keyboard announces it is spent before Con
     'that code is now used up. You have 9 recovery codes left.',
   );
   await expect(recovery.continue).toBeFocused();
+  for (const width of [300, 2000]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/Secrets$/);
 });

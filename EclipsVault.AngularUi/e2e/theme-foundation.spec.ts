@@ -307,7 +307,14 @@ test.describe('signed-out sign-in', () => {
               secure: true,
             },
           ]);
+          const optionsLoaded =
+            route === '/Account/Login'
+              ? page.waitForResponse(
+                  (response) => new URL(response.url()).pathname === '/api/ui/auth/options',
+                )
+              : null;
           await page.goto(route);
+          if (optionsLoaded) await optionsLoaded;
           await expect(
             page.getByRole('heading', { name: title, exact: true, level: 1 }),
           ).toBeVisible();
@@ -316,6 +323,37 @@ test.describe('signed-out sign-in', () => {
             .toBe(width);
         });
       }
+    }
+  }
+
+  for (const [label, provider] of [
+    ['multi-word', 'North America Corporate Identity Provider Sign-in'],
+    ['unbroken', 'EnterpriseSingleSignOnIdentityProviderWithoutSpacesOrWordBreaks1'],
+  ]) {
+    for (const width of [300, 768]) {
+      test(`a long ${label} SSO provider name wraps inside its button at ${width}px`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width, height: 900 });
+        await page.route('**/api/ui/auth/options', (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ ssoEnabled: true, ssoDisplayName: provider }),
+          }),
+        );
+        const signIn = new AccountSignIn(page);
+        await signIn.open();
+        const ssoButton = signIn.singleSignOnButton(provider);
+        await expect(ssoButton).toBeVisible();
+        await expect
+          .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+          .toBe(width);
+        const fits = await ssoButton.evaluate(
+          (el) => el.scrollWidth <= el.clientWidth + 1 && el.getBoundingClientRect().right <= width,
+        );
+        expect(fits).toBe(true);
+      });
     }
   }
 
