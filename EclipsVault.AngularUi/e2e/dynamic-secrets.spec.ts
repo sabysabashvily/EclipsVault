@@ -45,12 +45,20 @@ test('viewing the page twice starts no evaluation window', async ({ page }) => {
   await expect(dynamicSecrets.generate(dynamicRoles.secret)).toBeVisible();
 });
 
-test('a cancelled proof for the Secret role issues nothing and starts no window', async ({
+test('a cancelled issue dialog or cancelled proof for the Secret role issues nothing and starts no window', async ({
   withExpiredProof: dynamicSecrets,
   browserHealth,
 }) => {
   browserHealth.expectConsoleError(refusedIssue);
   await dynamicSecrets.generate(dynamicRoles.secret).click();
+  await expect(dynamicSecrets.confirmation).toContainText('Issue dynamic credential?');
+  await dynamicSecrets.confirmationCancel.click();
+  await expect(dynamicSecrets.confirmation).toBeHidden();
+  await expect(dynamicSecrets.generate(dynamicRoles.secret)).toBeFocused();
+  await expect(dynamicSecrets.credential).toHaveCount(0);
+
+  await dynamicSecrets.generate(dynamicRoles.secret).click();
+  await dynamicSecrets.confirmationIssue.click();
   await expect(dynamicSecrets.stepUp).toBeVisible();
   await dynamicSecrets.cancelProof();
   await expect(dynamicSecrets.stepUp).toBeHidden();
@@ -69,6 +77,7 @@ test('a real code issues the Secret role once, starts the evaluation and leaves 
   const secret = await readFile(`${directory}/users-administrator-authenticator.txt`, 'utf8');
   browserHealth.expectConsoleError(refusedIssue);
   await dynamicSecrets.generate(dynamicRoles.secret).click();
+  await dynamicSecrets.confirmationIssue.click();
   await dynamicSecrets.prove(await freshTotp(secret, currentTotpStep()));
 
   await expect(dynamicSecrets.credential).toBeFocused();
@@ -89,7 +98,7 @@ test('a real code issues the Secret role once, starts the evaluation and leaves 
   await expect(page.getByText(password)).toHaveCount(0);
 });
 
-test('the Internal role issues by keyboard without a dialog, and reloading forgets it', async ({
+test('the Internal role issues by keyboard through its consequence dialog without step-up, and reloading forgets it', async ({
   page,
 }) => {
   await page.context().addCookies(await savedAdministratorCookies());
@@ -99,6 +108,17 @@ test('the Internal role issues by keyboard without a dialog, and reloading forge
   await page.keyboard.type('30');
   await page.keyboard.press('Tab');
   await expect(dynamicSecrets.generate(dynamicRoles.internal)).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(dynamicSecrets.confirmation).toContainText('Issue dynamic credential?');
+  await expect(dynamicSecrets.confirmation).toContainText(dynamicRoles.internal);
+  await expect(dynamicSecrets.confirmation).toContainText('30 min');
+  await expect(dynamicSecrets.confirmation).toContainText(
+    'The password is shown once and cannot be recovered.',
+  );
+  await expect(dynamicSecrets.confirmation).toContainText('Issuance saved to the audit log');
+  await expect(dynamicSecrets.confirmationCancel).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(dynamicSecrets.confirmationIssue).toBeFocused();
   await page.keyboard.press('Enter');
 
   await expect(dynamicSecrets.issuedPassword).toHaveText(/^[A-Za-z0-9]{40}$/);
@@ -127,7 +147,7 @@ test('Revoke by keyboard asks with the decision dialog and removes the login', a
   await expect(dynamicSecrets.confirmation).toContainText('Saved to the audit log');
   await expect(dynamicSecrets.confirmationCancel).toBeFocused();
   await page.keyboard.press('Tab');
-  await expect(dynamicSecrets.confirmationContinue).toBeFocused();
+  await expect(dynamicSecrets.confirmationRevoke).toBeFocused();
   await page.keyboard.press('Enter');
 
   await expect(dynamicSecrets.status).toHaveText('Credential handed back — it no longer works.');
@@ -145,7 +165,7 @@ test('cancelling Revoke keeps the login, and Revoke credential removes it', asyn
   expect(loginExists(internalLogin)).toBe(true);
 
   await dynamicSecrets.revoke(internalLogin).click();
-  await dynamicSecrets.confirmationContinue.click();
+  await dynamicSecrets.confirmationRevoke.click();
 
   await expect(dynamicSecrets.status).toHaveText('Credential handed back — it no longer works.');
   expect(loginExists(internalLogin)).toBe(false);

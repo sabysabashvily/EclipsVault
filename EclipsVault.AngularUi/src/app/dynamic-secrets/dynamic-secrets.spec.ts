@@ -129,8 +129,19 @@ async function reload(fixture: ComponentFixture<unknown>, answer: DynamicSecrets
   backend.expectOne(path).flush(answer);
   await fixture.whenStable();
 }
+async function confirmIssue(
+  page: HTMLElement,
+  fixture: ComponentFixture<unknown>,
+  role: string,
+  minutes = '',
+) {
+  generate(page, role, minutes);
+  await fixture.whenStable();
+  button(page, 'Issue credential').click();
+  fixture.detectChanges();
+}
 async function issueInternal(page: HTMLElement, fixture: ComponentFixture<unknown>) {
-  generate(page, 'reporting_reader');
+  await confirmIssue(page, fixture, 'reporting_reader');
   backend.expectOne(issuePath).flush(issued);
   await reload(fixture);
 }
@@ -311,9 +322,56 @@ describe('Dynamic secrets', () => {
     expect(page.querySelectorAll('section')[1]!.querySelectorAll('button')).toHaveLength(0);
   });
 
+  it('asks before issuing with consequence, role, lease and audit note, and Cancel sends nothing', async () => {
+    const { page, fixture } = await loaded();
+    const opener = button(rowOf(page, 'reporting_reader'), 'Generate');
+    opener.focus();
+    generate(page, 'reporting_reader');
+    await fixture.whenStable();
+    expect(text(page.querySelector('[role="alertdialog"][open] h2'))).toBe(
+      'Issue dynamic credential?',
+    );
+    expect(text(page.querySelector('[role="alertdialog"][open] p'))).toBe(
+      "Mint a live credential for 'reporting_reader' on SqlServer? The password is shown once and cannot be recovered.",
+    );
+    expect(
+      [...page.querySelectorAll('[role="alertdialog"][open] .facts div')].map((row) => [
+        text(row.querySelector('dt')),
+        text(row.querySelector('dd')),
+      ]),
+    ).toEqual([
+      ['Role', 'reporting_reader'],
+      ['Backend', 'SqlServer'],
+      ['Lease', '15 min (default)'],
+    ]);
+    expect(text(page.querySelector('[role="alertdialog"][open] .dialog-note'))).toBe(
+      'Issuance saved to the audit log',
+    );
+    button(page, 'Cancel').click();
+    await fixture.whenStable();
+    backend.expectNone(issuePath);
+    expect(document.activeElement).toBe(opener);
+
+    generate(page, 'reporting_reader', '45');
+    await fixture.whenStable();
+    expect(
+      [...page.querySelectorAll('[role="alertdialog"][open] .facts div')].map((row) => [
+        text(row.querySelector('dt')),
+        text(row.querySelector('dd')),
+      ]),
+    ).toEqual([
+      ['Role', 'reporting_reader'],
+      ['Backend', 'SqlServer'],
+      ['Lease', '45 min'],
+    ]);
+    button(page, 'Cancel').click();
+    await fixture.whenStable();
+    backend.expectNone(issuePath);
+  });
+
   it('issues with the role’s default lease and shows the credential once, focused, then reloads', async () => {
     const { page, fixture } = await loaded();
-    generate(page, 'reporting_reader');
+    await confirmIssue(page, fixture, 'reporting_reader');
     const request = backend.expectOne(issuePath);
     expect(request.request.body).toEqual({ roleId: internalId, ttlMinutes: null });
     request.flush(issued);
@@ -336,7 +394,7 @@ describe('Dynamic secrets', () => {
 
   it('sends the lease length typed for the role', async () => {
     const { page, fixture } = await loaded();
-    generate(page, 'reporting_reader', '45');
+    await confirmIssue(page, fixture, 'reporting_reader', '45');
     const request = backend.expectOne(issuePath);
     expect(request.request.body).toEqual({ roleId: internalId, ttlMinutes: 45 });
     request.flush(issued);
@@ -345,7 +403,7 @@ describe('Dynamic secrets', () => {
 
   it('asks for a code once for a Secret role, then retries the issue exactly once', async () => {
     const { page, fixture } = await loaded();
-    generate(page, 'billing_admin');
+    await confirmIssue(page, fixture, 'billing_admin');
     backend.expectOne(issuePath).flush(
       {
         code: 'step_up_required',
@@ -376,7 +434,7 @@ describe('Dynamic secrets', () => {
     const { page, fixture } = await loaded();
     const opener = button(rowOf(page, 'billing_admin'), 'Generate');
     opener.focus();
-    generate(page, 'billing_admin');
+    await confirmIssue(page, fixture, 'billing_admin');
     backend
       .expectOne(issuePath)
       .flush(
@@ -394,7 +452,7 @@ describe('Dynamic secrets', () => {
 
   it('ends the stale session before following the sign-in fallback back to Dynamic secrets', async () => {
     const { page, fixture } = await loaded();
-    generate(page, 'billing_admin');
+    await confirmIssue(page, fixture, 'billing_admin');
     backend
       .expectOne(issuePath)
       .flush(
@@ -433,7 +491,7 @@ describe('Dynamic secrets', () => {
     'reports a refused issue (%s) in the status line and shows no credential',
     async (code, httpStatus, title) => {
       const { page, fixture } = await loaded();
-      generate(page, 'reporting_reader');
+      await confirmIssue(page, fixture, 'reporting_reader');
       refuse(issuePath, code, title, httpStatus);
       await reload(fixture);
       expect(status(page, 'alert')).toBe(title);
@@ -445,8 +503,7 @@ describe('Dynamic secrets', () => {
   it('forgets the credential when the next issue starts', async () => {
     const { page, fixture } = await loaded();
     await issueInternal(page, fixture);
-    generate(page, 'reporting_reader');
-    fixture.detectChanges();
+    await confirmIssue(page, fixture, 'reporting_reader');
     expect(credential(page)).toEqual([]);
     refuse(issuePath, 'mint_refused', 'Nothing was issued.', 502);
     await reload(fixture);
