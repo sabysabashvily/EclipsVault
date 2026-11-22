@@ -268,6 +268,7 @@ test('a non-administrator reaches Denied from every service-account bookmark', a
   await signIn.submitPassword('e2e-sa-reader', password);
   const enrollment = new AuthenticatorEnrollment(reader);
   await enrollment.confirm(await freshTotp(await enrollment.secret.innerText()));
+  await expect(reader).toHaveURL(/\/Secrets$/);
   await reader.goto('/ServiceAccounts');
   await expect(reader).toHaveURL(/\/Account\/Denied/);
   await reader.goto('/ServiceAccounts/Index');
