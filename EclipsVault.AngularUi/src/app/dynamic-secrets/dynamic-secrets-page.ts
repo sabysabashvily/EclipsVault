@@ -81,7 +81,7 @@ export class DynamicSecretsPage {
       roleId: role.roleId,
       ttlMinutes: minutes === '' ? null : Number(minutes),
     };
-    const detail = `Confirming mints a live credential for '${role.name}' on ${role.backend}. The password is shown once and saved to the audit log.`;
+    const detail = `Confirming mints a live credential for '${role.name}' on ${role.backend}. The password is shown once. Issuing the credential is saved to the audit log.`;
     this.writes.send(
       () => this.reloading(this.http.post<Issued>(`${path}/issue`, request)),
       (issued) => {

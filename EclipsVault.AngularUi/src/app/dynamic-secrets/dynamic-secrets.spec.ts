@@ -357,7 +357,7 @@ describe('Dynamic secrets', () => {
     await reload(fixture);
     expect(page.querySelector('app-step-up-dialog dialog[open]')).not.toBeNull();
     expect(text(page.querySelector('app-step-up-dialog dialog p'))).toBe(
-      "Confirming mints a live credential for 'billing_admin' on SqlServer. The password is shown once and saved to the audit log.",
+      "Confirming mints a live credential for 'billing_admin' on SqlServer. The password is shown once. Issuing the credential is saved to the audit log.",
     );
     expect(button(rowOf(page, 'billing_admin'), 'Generate').disabled).toBe(true);
     expect(credential(page)).toEqual([]);
