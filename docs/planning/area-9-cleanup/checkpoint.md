@@ -107,3 +107,34 @@ re-homes or drops what uses the shell: `e2e/legacy-shell.ts` and its specs, thre
 `EnumDisplay.ClearanceSelectList` and `SensitivitySelectList`.
 
 To restart: read this section and #195. Ticket 2 (#196) starts from this branch's head.
+
+## Delivery: 9a ticket 2 (#196)
+
+Started 2026-11-23 from `9fc4038e` on `area-9a-final-cleanup`. Claude Opus 5.5 (high). R26 had not merged,
+so `server-page.css` is unchanged.
+
+| Commit | Subject |
+| --- | --- |
+| `87c2d224` | Remove Razor and answer paths that are not pages with a not-found page |
+| this one | Pin the Public API's not-found for a method it does not serve |
+
+F1, F3, F4 and F8 were each shown failing on PostgreSQL, then fixed. With `AddControllers()` alone the
+host did not even start: the WebAuthn ceremony session's `IDistributedCache` had come only from Razor's
+cache tag helper, and is now registered explicitly. With that cache added, the UI API POST and the Users
+notice fail for the missing antiforgery filter. Two more fixes came out of the green runs. The avatar URL
+had resolved only through the conventional route. A GET-only not-found fallback turned every other
+method on an unknown path into 405; the fallback now takes every method, and each page keeps its 405
+through a lower-ranked endpoint.
+
+`/Home` and `/Home/Index` stay Overview bookmarks in the route table. The guard probes open
+`/css/server-page.css`, because the probes run signed out and the not-found page needs a session, and
+they create an `angular` Trusted Types policy so the inline script still meets `script-src`.
+
+Local checks: `scripts/check.sh` (unit 1047); PostgreSQL integration under the Docker lock (720 across
+25 classes, plus the reruns in `logs/ticket-196/`); `dotnet format`; both pending-model checks; the hook
+tests; and the Angular gates (vitest 761, build-checks 15). CI (both databases, the browser suite,
+`e2e:verify-guards`) is run by the coordinator. `security-reviewer` approved with two nits: N1 pinned by
+this commit's test, N2 left for #197.
+
+To restart: read this section, `logs/ticket-196/ledger.md` and #196. Ticket 3 (#197) starts from this
+branch's head.

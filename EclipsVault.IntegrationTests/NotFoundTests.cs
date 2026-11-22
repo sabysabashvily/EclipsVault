@@ -95,6 +95,17 @@ public sealed class NotFoundTests(VaultFixture vault)
         Assert.Equal("""{"error":"not_found"}""", await response.Content.ReadAsStringAsync());
     }
 
+    /// <summary>A method a Public API path does not accept is, like an unknown path, its JSON not-found.</summary>
+    [Fact]
+    public async Task A_public_api_path_with_a_method_it_does_not_accept_is_a_JSON_not_found()
+    {
+        using var response = await vault.CreateClient().DeleteAsync("/api/v1/secrets");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Null(response.Headers.Location);
+        Assert.Equal("""{"error":"not_found"}""", await response.Content.ReadAsStringAsync());
+    }
+
     [Fact]
     public async Task Signed_in_the_root_is_the_overview_document()
     {
