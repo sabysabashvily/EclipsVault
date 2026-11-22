@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using EclipsVault.Core.Application.Sso;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
@@ -96,14 +97,33 @@ public sealed class AccountController : Controller
                 return LocalRedirect(SignInPage("/Account/Login", returnUrl, sso: "failed"));
             }
 
-            return LocalRedirect(SignInTarget.Choose(Url, returnUrl));
+            return ContinueFromVault(SignInTarget.Choose(Url, returnUrl));
         }
 
         // The IdP proved one factor; this vault wants its own. Rejoin the ordinary flow rather than
         // inventing a second one — TOTP, enrollment and recovery codes all already live there.
         var pending = VaultClaimsFactory.CreatePendingMfaPrincipal(user, decision.Stamp);
         await HttpContext.SignInAsync(AuthSchemes.MfaPending, pending);
-        return LocalRedirect(SignInPage(user.TotpEnabled ? "/Account/Totp" : "/Account/EnrollTotp", returnUrl));
+        return ContinueFromVault(SignInPage(user.TotpEnabled ? "/Account/Totp" : "/Account/EnrollTotp", returnUrl));
+    }
+
+    /// <summary>
+    /// Ends the identity provider's redirect chain with a page of the vault's own, which goes on to
+    /// <paramref name="target"/>. The chain began with the provider's cross-site form post, and the browser
+    /// withholds SameSite=Strict cookies, the session and the pending sign-in among them, from every hop of
+    /// it. The page's own navigation starts a same-site one that carries them.
+    /// </summary>
+    private ContentResult ContinueFromVault(string target)
+    {
+        if (!Url.IsLocalUrl(target))
+        {
+            throw new InvalidOperationException("A sign-in target must be a local URL.");
+        }
+
+        var href = HtmlEncoder.Default.Encode(target);
+        return Content(
+            $"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><meta http-equiv="refresh" content="0;url={href}" /><title>Signing in — EclipsVault</title><link rel="icon" type="image/svg+xml" href="/favicon.svg" /></head><body><a href="{href}">Continue to the vault</a></body></html>""",
+            "text/html; charset=utf-8");
     }
 
     /// <summary>A sign-in page of the Angular UI, carrying the return URL on to be judged when sign-in finishes.</summary>

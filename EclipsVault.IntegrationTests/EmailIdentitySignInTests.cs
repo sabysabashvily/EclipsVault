@@ -34,7 +34,7 @@ public sealed class EmailIdentitySignInTests(VaultFixture vault)
         var response = await CallBackFromIdentityProviderAsync(" it.email.sso.case@EXAMPLE.test ", "198.51.100.230");
 
         // This vault does not trust the provider's second factor, so the account enrolls its own.
-        Assert.Equal("/Account/EnrollTotp", response.Headers.Location?.OriginalString);
+        Assert.Equal("/Account/EnrollTotp", await PostIdpAssertion.ContinuesToAsync(response));
         var linked = Assert.Single(await AuditTrail.RowsAfterAsync(vault, head), row => row.Action == AuditAction.SsoIdentityLinked);
         Assert.Equal(account.Id, linked.UserId);
         Assert.Equal("it-email-sso-case", linked.Username);

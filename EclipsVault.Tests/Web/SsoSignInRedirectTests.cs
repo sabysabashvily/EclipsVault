@@ -87,7 +87,11 @@ public class SsoSignInRedirectTests
 
         var result = await controller.ExternalCallback(returnUrl, CancellationToken.None);
 
-        Assert.Equal(expected, Assert.IsType<LocalRedirectResult>(result).Url);
+        // Through a page of the vault's own, so the next request leaves the provider's cross-site chain.
+        var page = Assert.IsType<ContentResult>(result);
+        Assert.Equal("text/html; charset=utf-8", page.ContentType);
+        Assert.Contains($"<meta http-equiv=\"refresh\" content=\"0;url={expected}\" />", page.Content, StringComparison.Ordinal);
+        Assert.Contains($"<a href=\"{expected}\">Continue to the vault</a>", page.Content, StringComparison.Ordinal);
         var signedIn = Assert.Single(attempt.Recorded);
         Assert.Equal(AuditAction.LoginSucceeded, signedIn.Action);
         Assert.Equal("Single sign-on", signedIn.Details);
