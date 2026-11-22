@@ -6,7 +6,7 @@ using Xunit;
 
 namespace EclipsVault.IntegrationTests;
 
-/// <summary>Activating an invited account when the trail refuses its <c>AccountActivated</c> row (#180).</summary>
+/// <summary>Activating an invited account when the trail refuses its <c>AccountActivated</c> row.</summary>
 [Collection(AuditFailureCollection.Name)]
 public sealed class ActivationAuditFailureTests(AuditFailureFixture failure)
 {

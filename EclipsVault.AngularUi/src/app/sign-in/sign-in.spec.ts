@@ -708,7 +708,7 @@ describe('sign-in pages', () => {
       backend.expectNone('/api/ui/auth/activation/complete');
     });
 
-    it('activates with the password and code, then signs in from Login', async () => {
+    it('sends the password and code, then sends the person to Login to sign in', async () => {
       const { page } = await opened();
       fillIn(page);
       submit(page);

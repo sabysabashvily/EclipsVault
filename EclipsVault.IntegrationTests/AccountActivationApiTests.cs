@@ -11,7 +11,7 @@ using Xunit;
 namespace EclipsVault.IntegrationTests;
 
 /// <summary>
-/// Creating an account by invitation and activating it (#180, ADR-0033): the administrator enters the
+/// Creating an account by invitation and activating it (ADR-0033): the administrator enters the
 /// person's mailbox and never holds a credential; only the emailed token reaches the authenticator seed.
 /// </summary>
 [Collection(InvitationCollection.Name)]
@@ -19,9 +19,9 @@ public sealed class AccountActivationApiTests(InvitationFixture fixture)
 {
     private VaultFixture Vault => fixture.Vault;
 
-    /// <summary>F7: the account's email is the mailbox the administrator entered, never one the vault made up.</summary>
+    /// <summary>The account's email is the mailbox the administrator entered, never one the vault made up.</summary>
     [Fact]
-    public async Task F7_create_keeps_the_entered_mailbox_as_the_account_email()
+    public async Task Create_keeps_the_entered_mailbox_as_the_account_email()
     {
         var admin = await Vault.AdminClientAsync();
         const string mailbox = "grace.hopper@example.test";
@@ -47,11 +47,11 @@ public sealed class AccountActivationApiTests(InvitationFixture fixture)
     }
 
     /// <summary>
-    /// F3: whoever creates the account must not be able to pass its password stage and copy the seed the
+    /// Whoever creates the account must not be able to pass its password stage and copy the seed the
     /// owner will later enroll. A password the administrator slips into the create body is not a credential.
     /// </summary>
     [Fact]
-    public async Task F3_the_administrator_cannot_reach_a_new_accounts_authenticator_seed()
+    public async Task The_administrator_cannot_reach_a_new_accounts_authenticator_seed()
     {
         var admin = await Vault.AdminClientAsync();
         const string chosenByAdministrator = "Administrator-chosen-credential-180";

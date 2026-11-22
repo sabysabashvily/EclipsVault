@@ -12,12 +12,12 @@ using Xunit;
 namespace EclipsVault.IntegrationTests;
 
 /// <summary>
-/// An invitation is used by two requests at once, on each database. Both have loaded the account
-/// before either commits, so the account's stamp decides: exactly one change takes effect (#180).
+/// An invitation is used by two requests at once, on each database. One request runs after the other
+/// has loaded the account and before it commits, so the account's stamp decides: exactly one change takes effect.
 /// </summary>
 public abstract class AccountActivationRaceTests(AccountChangeDatabases databases)
 {
-    private const string Password = "It-activation-race-password-180";
+    private const string Password = "It-activation-race-password";
     private static readonly TotpService Authenticator = new(TimeProvider.System);
 
     [Fact]
@@ -43,42 +43,51 @@ public abstract class AccountActivationRaceTests(AccountChangeDatabases database
     }
 
     [Fact]
-    public async Task An_activation_against_a_resend_leaves_exactly_one_of_them()
+    public async Task An_activation_that_commits_inside_a_resends_window_wins_and_the_resend_is_refused()
     {
-        var (account, token, seed) = await SeedInvitedAccountAsync("it-race-activate-resend");
+        var (account, token, seed) = await SeedInvitedAccountAsync("it-race-activate-first");
         var code = await FreshCodeAsync(seed);
-        using var bothLoaded = new Barrier(participantCount: 2);
+        using var noOther = new Barrier(participantCount: 1);
         await using var activating = databases.NewRequest();
         await using var resending = databases.NewRequest();
+        ActivationOutcome? outcome = null;
+        var clock = new ClockThatFirstRuns(() =>
+            outcome = Activation(activating, noOther).CompleteAsync(token, Password, code, default).GetAwaiter().GetResult());
 
-        var activation = Task.Run(() => Activation(activating, bothLoaded).CompleteAsync(token, Password, code, default));
-        var resend = Task.Run(() => Record.ExceptionAsync(() => Resend(resending, bothLoaded).ResendInvitationAsync(account.Id, default)));
-        var (outcome, resendFailure) = (await activation, await resend);
+        var resendFailure = await Task.Run(() => Record.ExceptionAsync(() => Resend(resending, noOther, clock).ResendInvitationAsync(account.Id, default)));
 
+        Assert.Equal(ActivationOutcome.Activated, outcome);
+        Assert.IsType<AccountChangedException>(resendFailure);
         await using var check = databases.NewRequest();
-        var stored = await check.LoadAsync(account.Id);
+        Assert.False((await check.LoadAsync(account.Id)).AwaitingActivation);
         var invitation = await InvitationOfAsync(check, account.Id);
-        var activated = await EventsOfAsync(check, account.Id, AuditAction.AccountActivated);
-        var resent = await EventsOfAsync(check, account.Id, AuditAction.InvitationSent);
-        if (outcome == ActivationOutcome.Activated)
-        {
-            Assert.IsType<AccountChangedException>(resendFailure);
-            Assert.False(stored.AwaitingActivation);
-            Assert.True(InvitationToken.Matches(token, invitation.TokenHash));
-            Assert.NotNull(invitation.SpentAtUtc);
-            Assert.Single(activated);
-            Assert.Empty(resent);
-        }
-        else
-        {
-            Assert.Equal(ActivationOutcome.InvitationInvalid, outcome);
-            Assert.Null(resendFailure);
-            Assert.True(stored.AwaitingActivation);
-            Assert.False(InvitationToken.Matches(token, invitation.TokenHash));
-            Assert.Null(invitation.SpentAtUtc);
-            Assert.Empty(activated);
-            Assert.Single(resent);
-        }
+        Assert.True(InvitationToken.Matches(token, invitation.TokenHash));
+        Assert.NotNull(invitation.SpentAtUtc);
+        Assert.Single(await EventsOfAsync(check, account.Id, AuditAction.AccountActivated));
+        Assert.Empty(await EventsOfAsync(check, account.Id, AuditAction.InvitationSent));
+    }
+
+    [Fact]
+    public async Task A_resend_that_commits_inside_an_activations_window_wins_and_the_activation_is_refused()
+    {
+        var (account, token, seed) = await SeedInvitedAccountAsync("it-race-resend-first");
+        var code = await FreshCodeAsync(seed);
+        using var noOther = new Barrier(participantCount: 1);
+        await using var activating = databases.NewRequest();
+        await using var resending = databases.NewRequest();
+        var hasher = new HasherThatRuns(() =>
+            Resend(resending, noOther).ResendInvitationAsync(account.Id, default).GetAwaiter().GetResult());
+
+        var outcome = await Task.Run(() => Activation(activating, hasher).CompleteAsync(token, Password, code, default));
+
+        Assert.Equal(ActivationOutcome.InvitationInvalid, outcome);
+        await using var check = databases.NewRequest();
+        Assert.True((await check.LoadAsync(account.Id)).AwaitingActivation);
+        var invitation = await InvitationOfAsync(check, account.Id);
+        Assert.False(InvitationToken.Matches(token, invitation.TokenHash));
+        Assert.Null(invitation.SpentAtUtc);
+        Assert.Empty(await EventsOfAsync(check, account.Id, AuditAction.AccountActivated));
+        Assert.Single(await EventsOfAsync(check, account.Id, AuditAction.InvitationSent));
     }
 
     [Fact]
@@ -93,7 +102,7 @@ public abstract class AccountActivationRaceTests(AccountChangeDatabases database
         var clock = new ClockThatFirstRuns(() =>
             shown = Activation(inspecting, noOther).InspectAsync(oldToken, default).GetAwaiter().GetResult()?.SecretBase32);
 
-        await Resend(resending, noOther, clock).ResendInvitationAsync(account.Id, default);
+        await Task.Run(() => Resend(resending, noOther, clock).ResendInvitationAsync(account.Id, default));
 
         Assert.NotNull(shown);
         await using var check = databases.NewRequest();
@@ -177,9 +186,12 @@ public abstract class AccountActivationRaceTests(AccountChangeDatabases database
             .Where(row => row.Action == action && (row.UserId == accountId || row.ResourceId == accountId))
             .ToListAsync();
 
-    private static AccountActivationService Activation(AccountRequest request, Barrier bothReady) => new(
+    private static AccountActivationService Activation(AccountRequest request, Barrier bothReady)
+        => Activation(request, new HasherThatWaitsForTheOther(bothReady));
+
+    private static AccountActivationService Activation(AccountRequest request, IPasswordHasher hasher) => new(
         new AccountInvitationRepository(request.Context),
-        new HasherThatWaitsForTheOther(bothReady),
+        hasher,
         new CleanBreachScreen(),
         Authenticator,
         request.Changes,
@@ -205,6 +217,18 @@ public abstract class AccountActivationRaceTests(AccountChangeDatabases database
         public PasswordHashResult Hash(string password)
         {
             Assert.True(bothReady.SignalAndWait(TimeSpan.FromSeconds(10)), "The other request never reached its commit.");
+            return new PasswordHashResult(new byte[32], new byte[16]);
+        }
+
+        public bool Verify(string password, byte[] hash, byte[] salt) => throw new NotSupportedException();
+    }
+
+    /// <summary>Runs <paramref name="interleaved"/> where an activation hashes: after it has checked the code, before it commits.</summary>
+    private sealed class HasherThatRuns(Action interleaved) : IPasswordHasher
+    {
+        public PasswordHashResult Hash(string password)
+        {
+            interleaved();
             return new PasswordHashResult(new byte[32], new byte[16]);
         }
 

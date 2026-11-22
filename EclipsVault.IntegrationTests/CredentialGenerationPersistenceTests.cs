@@ -10,7 +10,7 @@ public abstract class CredentialGenerationPersistenceTests(AccountChangeDatabase
 {
     /// <summary>
     /// An existing account starts its durable generation at zero. The later invitation upgrade advances it
-    /// only for a never-used account it invites, so a sign-in begun before the upgrade cannot enroll (#162).
+    /// only for a never-used account it invites, so a sign-in begun before the upgrade cannot enroll.
     /// </summary>
     [Fact]
     public async Task Upgrading_starts_a_used_account_at_generation_zero_and_advances_a_never_used_account_it_invites()

@@ -3617,7 +3617,6 @@ fieldset {
 .invitation-panel .badge {
   white-space: normal;
 }
-/* The user page's invitation: Resend on its own line, then the address with its own button. */
 .invitation-panel fieldset {
   display: flex;
   flex-direction: column;

@@ -24,7 +24,7 @@ const resendUsername = 'e2e-inv-resend';
 const replacedAddress = 'e2e-inv-resend-new@example.test';
 let currentToken = '';
 
-test('create, capture email, activate in the Angular page and sign in with the new password and authenticator', async ({
+test('the owner signs in with their own password and authenticator after activating the emailed invitation', async ({
   page,
   browserHealth,
 }) => {

@@ -207,7 +207,6 @@ public abstract class AccountInvitationUpgradeTests(AccountInvitationUpgradeData
         Assert.Equal(2, users[neverUsedAdminId].CredentialGeneration);
         Assert.Null(users[neverUsedAdminId].TotpSecret);
 
-        // The migration writes no audit rows.
         Assert.Equal(4, await post.AuditLogs.CountAsync());
 
         // Pre-migration pending stamp and SSO assertion are refused after migration.
@@ -296,7 +295,7 @@ public abstract class AccountInvitationUpgradeTests(AccountInvitationUpgradeData
     }
 
     [Fact]
-    public async Task When_vault_admin_is_disabled_or_absent_the_earliest_created_enabled_administrator_stays()
+    public async Task When_vault_admin_is_disabled_the_earliest_created_enabled_administrator_stays()
     {
         const string dbName = "preserve-earliest-admin";
         var pre = await databases.CreateBeforeInvitationsAsync(dbName);
