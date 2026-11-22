@@ -1,0 +1,86 @@
+{
+  "realm": "e2e",
+  "enabled": true,
+  "displayName": "EclipsVault end-to-end IdP",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA1",
+  "otpPolicyInitialCounter": 0,
+  "otpPolicyDigits": 6,
+  "otpPolicyLookAheadWindow": 1,
+  "otpPolicyPeriod": 30,
+  "clients": [
+    {
+      "clientId": "eclipsvault-e2e",
+      "name": "EclipsVault",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "__CLIENT_SECRET__",
+      "clientAuthenticatorType": "client-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["__VAULT_ORIGIN__/signin-oidc"],
+      "webOrigins": ["__VAULT_ORIGIN__"],
+      "defaultClientScopes": ["web-origins", "acr", "profile", "roles", "email"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "amr",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-amr-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "sso-mfa",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "e2e-sso-mfa@example.test",
+      "firstName": "Sso",
+      "lastName": "Multifactor",
+      "credentials": [
+        { "type": "password", "value": "__USER_PASSWORD__", "temporary": false },
+        {
+          "type": "otp",
+          "userLabel": "e2e",
+          "secretData": "{\"value\":\"__OTP_SECRET__\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\",\"secretEncoding\":\"BASE32\"}"
+        }
+      ]
+    },
+    {
+      "username": "sso-password",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "e2e-sso-password@example.test",
+      "firstName": "Sso",
+      "lastName": "Passwordonly",
+      "credentials": [{ "type": "password", "value": "__USER_PASSWORD__", "temporary": false }]
+    },
+    {
+      "username": "sso-stranger",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "sso.stranger@eclipsvault.local",
+      "firstName": "Sso",
+      "lastName": "Stranger",
+      "credentials": [{ "type": "password", "value": "__USER_PASSWORD__", "temporary": false }]
+    }
+  ]
+}

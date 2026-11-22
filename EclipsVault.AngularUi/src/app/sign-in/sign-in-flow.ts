@@ -5,7 +5,6 @@ import {
   ElementRef,
   Injectable,
   inject,
-  signal,
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { PAGE_LOCATION } from '../shell/command-palette';
@@ -13,17 +12,14 @@ import { loginUrl, returnUrlOf, UiApiError } from '../ui-api/ui-api-errors';
 
 /**
  * The steps of one sign-in. The pages move between steps inside the app, each call having reissued
- * the request token the next one needs (ADR-0032), and leave with a full page load once the vault
- * has chosen where the sign-in lands.
+ * the request token the next one needs (ADR-0032). Completion and restart load a fresh document.
+ * A restart needs Login's policy so its form can reach the identity provider.
  */
 @Injectable({ providedIn: 'root' })
 export class SignInFlow {
   private readonly router = inject(Router);
   private readonly document = inject(DOCUMENT);
   private readonly location = inject(PAGE_LOCATION);
-
-  /** Why the last sign-in had to start again, for Login to say once. */
-  readonly restarted = signal('');
 
   /** The return URL this sign-in carries to its last step, which alone judges it. */
   returnUrl(): string | null {
@@ -51,8 +47,9 @@ export class SignInFlow {
    */
   refused(error: unknown): string | null {
     if (error instanceof UiApiError && error.code === 'sign_in_restarted') {
-      this.restarted.set(error.title);
-      void this.router.navigateByUrl(loginUrl(this.returnUrl()));
+      const target = new URL(loginUrl(this.returnUrl()), this.document.location.origin);
+      target.searchParams.set('signIn', 'restarted');
+      this.location.assign(target.pathname + target.search);
       return null;
     }
     if (!(error instanceof UiApiError)) return 'The vault could not complete the request.';

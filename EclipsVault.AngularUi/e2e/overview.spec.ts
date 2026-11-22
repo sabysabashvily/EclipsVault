@@ -161,7 +161,7 @@ test('the keyboard reaches the figures in order and Enter opens the Audit log', 
 });
 
 for (const theme of ['dark', 'light'] as const) {
-  test(`visual parity: the Overview keeps its activity list and quick actions in ${theme}`, async ({
+  test(`the Overview shows Expiring soon, activity and Quick actions in ${theme}`, async ({
     page,
   }, info) => {
     await page.setViewportSize({ width: 1440, height: 1200 });
@@ -173,10 +173,8 @@ for (const theme of ['dark', 'light'] as const) {
     // eslint-disable-next-line playwright/no-raw-locators -- The theme is an attribute of the document element.
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     await expect(overview.expiringSoon).toBeVisible();
-    await expect(overview.activityList).toHaveCSS('list-style-type', 'none');
-    await expect(overview.activity.first()).toHaveCSS('display', 'flex');
-    await expect(overview.browseSecrets).toHaveCSS('display', 'flex');
-    await expect(overview.browseSecrets).toHaveCSS('flex-direction', 'column');
+    await expect(overview.activityList).toBeVisible();
+    await expect(overview.browseSecrets).toBeVisible();
     const path = info.outputPath(`${theme}-overview.png`);
     await page.screenshot({ path, fullPage: true });
     await info.attach(`${theme}-overview`, { path, contentType: 'image/png' });
@@ -230,7 +228,7 @@ const highlighted = {
     },
   ],
 };
-test('the Overview counts the expiring secrets and the critical alert, and labels each event and expiry', async ({
+test('the Overview counts the expiring secrets and the critical alert, and marks critical activity with an icon and word', async ({
   page,
 }) => {
   await page.route('**/api/ui/overview', (route) => route.fulfill({ json: highlighted }));
@@ -244,13 +242,30 @@ test('the Overview counts the expiring secrets and the critical alert, and label
     overview.criticalAlertsLink.getByText('Review the audit log →', { exact: true }),
   ).toBeVisible();
   const decoy = overview.activityRow('E2E_DECOY_KEY');
+  await expect(decoy.getByText('Critical', { exact: true })).toBeVisible();
+  await expect(overview.criticalIconOf(decoy)).toBeVisible();
   await expect(decoy.getByText('Honey token', { exact: true })).toBeVisible();
   const denied = overview.activityRow('E2E_DENIED_SECRET');
+  await expect(denied.getByText('Critical', { exact: true })).toHaveCount(0);
   await expect(denied.getByText('Access denied', { exact: true })).toBeVisible();
   const today = overview.expiringRow('E2E_EXPIRING_TODAY');
-  await expect(today.getByText('in 2h', { exact: true })).toBeVisible();
+  await expect(today.getByText(/^In 3 hours · /)).toBeVisible();
   await expect(today.getByText('Production', { exact: true })).toBeVisible();
   const later = overview.expiringRow('E2E_EXPIRING_LATER');
-  await expect(later.getByText('in 3d', { exact: true })).toBeVisible();
+  await expect(later.getByText(/^In 3 days · /)).toBeVisible();
   await expect(later.getByText('Production', { exact: true })).toBeVisible();
 });
+
+for (const width of [300, 2000] as const) {
+  test(`the Overview has no sideways scroll at ${width}px with figures, expiring secrets and critical activity`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.route('**/api/ui/overview', (route) => route.fulfill({ json: highlighted }));
+    await page.context().addCookies(await savedAdministratorCookies());
+    const overview = new Overview(page);
+    await overview.open();
+    await expect(overview.expiringSoon).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  });
+}

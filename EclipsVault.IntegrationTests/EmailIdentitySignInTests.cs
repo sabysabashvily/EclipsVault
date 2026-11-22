@@ -35,7 +35,7 @@ public sealed class EmailIdentitySignInTests(VaultFixture vault)
         var response = await CallBackFromIdentityProviderAsync(" it.email.sso.case@EXAMPLE.test ", "198.51.100.230");
 
         // This vault does not trust the provider's second factor, so the account enrolls its own.
-        Assert.Equal("/Account/EnrollTotp", response.Headers.Location?.OriginalString);
+        Assert.Equal("/Account/EnrollTotp", await PostIdpAssertion.ContinuesToAsync(response));
         var linked = Assert.Single(await AuditTrail.RowsAfterAsync(vault, head), row => row.Action == AuditAction.SsoIdentityLinked);
         Assert.Equal(account.Id, linked.UserId);
         Assert.Equal("it-email-sso-case", linked.Username);
@@ -48,7 +48,9 @@ public sealed class EmailIdentitySignInTests(VaultFixture vault)
         var addressed = await ProvisionAsync("it-email-sso-alias-addressed", "IT-Email-SSO-Alias@Example.Test");
         var head = await AuditTrail.HeadAsync(vault);
 
-        await CallBackFromIdentityProviderAsync("it-email-sso-alias@example.test", "198.51.100.231");
+        var response = await CallBackFromIdentityProviderAsync("it-email-sso-alias@example.test", "198.51.100.231");
+
+        Assert.Equal("/Account/EnrollTotp", await PostIdpAssertion.ContinuesToAsync(response));
 
         var linked = Assert.Single(await AuditTrail.RowsAfterAsync(vault, head), row => row.Action == AuditAction.SsoIdentityLinked);
         Assert.Equal(addressed.Id, linked.UserId);
@@ -130,12 +132,12 @@ public sealed class EmailIdentitySignInTests(VaultFixture vault)
         await ProvisionAsync("it-email-share-alias@example.test", "it-email-share-alias-named@example.test");
         await ProvisionAsync("it-email-share-alias-addressed", "it-email-share-alias@example.test");
         var admin = await vault.AdminClientAsync();
-        var details = await LegacySharing.CreateSecretAsync(admin, "it-email-share-alias-secret");
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-email-share-alias-secret");
 
-        await LegacySharing.ShareAsync(admin, details, "it-email-share-alias@example.test");
+        await SecretDetailsApi.ShareAsync(admin, details, "it-email-share-alias@example.test");
 
         using var scope = vault.Services.CreateScope();
-        var secretId = LegacySharing.SecretIdOf(details);
+        var secretId = SecretSharing.SecretIdOf(details);
         Assert.False(await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().SecretGrants
             .AnyAsync(share => share.SecretId == secretId));
     }

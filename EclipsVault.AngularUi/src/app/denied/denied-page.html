@@ -1,0 +1,80 @@
+<div class="page-header">
+  <div>
+    <div class="title-row">
+      <h1>Access denied</h1>
+      <span class="badge tone-danger">Refused</span>
+    </div>
+    <p class="page-sub">The attribute-based access policy rejected this request.</p>
+  </div>
+</div>
+
+<section class="panel narrow-left">
+  <div class="denial-banner">
+    <span class="denial-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24">
+        <path
+          d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"
+        />
+        <path d="M12 8v4M12 16h.01" />
+      </svg>
+    </span>
+    <div class="denial-body">
+      @if (reasons.length > 0) {
+        <p class="denial-lead">Access was refused because:</p>
+        <ul class="denial-reasons">
+          @for (reason of reasons; track $index) {
+            <li>{{ reason }}</li>
+          }
+        </ul>
+        <p class="muted denial-audit">
+          Access is granted only when every requirement above is satisfied. The attempt has been
+          logged.
+        </p>
+      } @else {
+        <p class="denial-lead">
+          Your clearance, project assignment, the time window, or your network location did not
+          satisfy the resource's requirements. The attempt has been logged.
+        </p>
+      }
+    </div>
+  </div>
+
+  <div class="button-row denial-actions">
+    <a class="button" [class.primary]="!canRequest()" routerLink="/Secrets">Back to secrets</a>
+    @if (managesNetworks()) {
+      <a class="button" routerLink="/Admin/Networks">Manage trusted networks</a>
+    }
+  </div>
+
+  @if (eligibility.hasValue()) {
+    <hr class="divider" />
+    <div class="panel-header"><h2>Request access</h2></div>
+    @if (eligibility.value().eligible) {
+      <p class="panel-lede">
+        Ask a reviewer, an administrator or a member of this secret's project who can open it, to
+        share it with you.
+      </p>
+      <app-status-line [message]="failure()" [error]="true" />
+      <form (submit)="submit($event)">
+        <div class="field">
+          <label for="reason">Reason</label>
+          <textarea
+            id="reason"
+            #reasonInput
+            rows="3"
+            maxlength="500"
+            placeholder="Why do you need this secret?"
+            [value]="reason()"
+            (input)="reason.set(reasonInput.value)"
+          ></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="button primary" [disabled]="busy()">Submit request</button>
+          <span class="muted form-note">Saved to the audit log.</span>
+        </div>
+      </form>
+    } @else {
+      <p class="denial-ineligible">{{ eligibility.value().message }}</p>
+    }
+  }
+</section>

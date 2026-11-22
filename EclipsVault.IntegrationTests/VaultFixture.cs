@@ -17,6 +17,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using Serilog.Core;
 using Xunit;
 
 namespace EclipsVault.IntegrationTests;
@@ -79,11 +80,23 @@ public sealed partial class VaultFixture : IAsyncLifetime
 
     public bool ProductionWindowNeverOpens { get; init; }
 
+    /// <summary>A deployment without single sign-on; every other vault offers it.</summary>
+    public bool SsoDisabled { get; init; }
+
     /// <summary>The token the vault reads from ECLIPSVAULT_LICENSE at startup; none means unlicensed.</summary>
     public string? License { get; init; }
 
     /// <summary>A master key the vault loads only to unwrap data keys still sealed under it.</summary>
     public string? RetiredMasterKey { get; init; }
+
+    /// <summary>Gives the vault a SQL Server database of its own to mint dynamic credentials on.</summary>
+    public bool DynamicSecretsTarget { get; init; }
+
+    /// <summary>The database dynamic credentials are minted on, when <see cref="DynamicSecretsTarget"/> is set.</summary>
+    public string? DynamicTargetConnectionString { get; private set; }
+
+    /// <summary>Every line the vault logs, as its log sinks receive it.</summary>
+    public LogCapture Log { get; } = new();
 
     public async Task InitializeAsync()
     {
@@ -95,6 +108,11 @@ public sealed partial class VaultFixture : IAsyncLifetime
             SetEnvironment("Email__Enabled", "true");
             SetEnvironment("Email__Smtp__Host", Mailbox.Host);
             SetEnvironment("Email__Smtp__Port", Mailbox.Port.ToString(CultureInfo.InvariantCulture));
+        }
+        if (DynamicSecretsTarget)
+        {
+            DynamicTargetConnectionString = await _database.StartDynamicTargetAsync();
+            SetEnvironment("DynamicSecrets__TargetConnectionString", DynamicTargetConnectionString);
         }
 
         if (PublicUrl is not null)
@@ -126,7 +144,7 @@ public sealed partial class VaultFixture : IAsyncLifetime
         SetEnvironment("DynamicSecrets__ReapIntervalSeconds", "86400");
         // Register the production OIDC correlation cookie for HTTP callback scoping tests.
         // Those start after the IdP assertion, so this authority is never contacted.
-        SetEnvironment("Sso__Enabled", "true");
+        SetEnvironment("Sso__Enabled", SsoDisabled ? "false" : "true");
         SetEnvironment("Sso__TrustIdpMultiFactor", TrustIdpMfa.ToString());
         SetEnvironment("Sso__Authority", "https://idp.example.test/realms/integration");
         SetEnvironment("Sso__ClientId", "integration-vault");
@@ -145,6 +163,7 @@ public sealed partial class VaultFixture : IAsyncLifetime
                 .ConfigureTestServices(services =>
                 {
                     services.AddMvcCore().AddApplicationPart(typeof(VaultFixture).Assembly);
+                    services.AddSingleton<ILogEventSink>(Log);
                     // Keep the real counter, cache and configured thresholds. Freeze only its window;
                     // TOTP, cookie expiry and all other services retain the production clock.
                     services.AddSingleton<IAuthThrottle>(sp => new InMemoryAuthThrottle(
@@ -452,6 +471,20 @@ public sealed partial class VaultFixture : IAsyncLifetime
         {
             throw new InvalidOperationException($"The authenticator code did not create a session ({(int)response.StatusCode}).");
         }
+    }
+
+    /// <summary>
+    /// A signed-in page the Legacy layout still draws, sidebar and sign-out form included. The error page
+    /// is the last one until Area 9 retires it; it answers with the status it names.
+    /// </summary>
+    public const string LegacyShell = "/Home/Error?code=404";
+
+    /// <summary>The Legacy shell's HTML, as <paramref name="client"/>'s session sees it.</summary>
+    public static async Task<string> LegacyShellAsync(HttpClient client)
+    {
+        using var response = await client.GetAsync(LegacyShell);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        return await response.Content.ReadAsStringAsync();
     }
 
     /// <summary>The antiforgery token a Legacy UI page renders into its forms, where its own scripts read it.</summary>

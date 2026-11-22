@@ -115,6 +115,7 @@
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
   --dur: 200ms;
   --dur-press: 110ms;
+  --dur-sheet: 420ms;
 
   /* System faces stay behind Geist: font-display:swap paints in them first, and they are
        what renders if the woff2 ever fails to load. */
@@ -780,9 +781,53 @@ body:has(.mobile-navigation[open]) {
 .notice-critical svg {
   color: var(--danger);
 }
+.notice-info {
+  border-color: transparent;
+  background: var(--info-wash);
+}
+.notice-info svg {
+  color: var(--info);
+}
 .notice strong {
   margin-right: 0.15rem;
   font-weight: 500;
+}
+/* A notice with a title and actions: the colour sits in an icon tile beside them. */
+.notice:has(.notice-body) {
+  align-items: flex-start;
+}
+.notice-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+}
+.notice-icon svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.notice-body {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.notice-body h2 {
+  margin: 0 0 0.3rem;
+  font-size: 1rem;
+  font-weight: 500;
+}
+.notice-body p {
+  margin: 0 0 0.9rem;
+}
+@media (max-width: 767px) {
+  .notice-body .button-row > .button {
+    flex: 1 1 100%;
+  }
 }
 
 /* ---- Page header ------------------------------------------------ */
@@ -835,11 +880,92 @@ body:has(.mobile-navigation[open]) {
   max-width: 660px;
 }
 
+/* ---- Access denied ------------------------------------------------ */
+.denial-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+  padding: 1rem 1.15rem;
+  border-radius: var(--radius);
+  background: var(--danger-wash);
+}
+.denial-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.denial-icon svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.denial-body {
+  flex: 1;
+  min-width: 0;
+}
+.denial-lead {
+  margin: 0;
+  color: var(--text);
+  font-weight: 500;
+  line-height: 1.5;
+}
+.denial-reasons {
+  margin: 0.55rem 0 0.7rem;
+  padding-left: 1.25rem;
+}
+.denial-reasons li {
+  margin: 0.35rem 0;
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+.denial-audit {
+  margin: 0;
+  font-size: 0.86rem;
+}
+.denial-actions {
+  margin-top: 1.1rem;
+  flex-wrap: wrap;
+}
+.denial-ineligible {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius);
+  background: var(--bg-raised-2);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
 .panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
   margin-bottom: 1rem;
+}
+.panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.panel-lede {
+  margin: -0.25rem 0 1.1rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+.all-link {
+  margin-top: 1rem;
 }
 
 .two-col {
@@ -871,66 +997,79 @@ body:has(.mobile-navigation[open]) {
   }
 }
 
-/* ---- Stat cards -------------------------------------------------- */
+/* ---- Figures ----------------------------------------------------- */
+/* One card whose tiles are divided by hairlines (the grid's gap shows its border colour), one tile
+   per figure. Label on top, the number, then its context; two columns on a phone, one below 380px. */
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
-  gap: 1rem;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 1px;
+  overflow: hidden;
   margin-bottom: 1.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--border);
+  box-shadow: var(--shadow-card);
 }
 
 .stat-card {
   background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 1.2rem 1.35rem;
+  padding: 1.1rem 1.3rem;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
   min-width: 0;
   color: var(--text);
-  box-shadow: var(--shadow-card);
-  transition:
-    transform var(--dur-press) ease-out,
-    border-color var(--dur) var(--ease),
-    background var(--dur) var(--ease);
+  transition: background var(--dur) var(--ease);
 }
 
-/* Only the linked cards respond: the response is the affordance that says this one goes
-   somewhere, so moving a plain stat would be a promise the card cannot keep. */
+/* Only the linked tiles respond: the response is the affordance that says this one goes
+   somewhere, so moving a plain figure would be a promise the tile cannot keep. */
 a.stat-card:hover {
-  border-color: var(--border-strong);
   background: var(--bg-hover);
   color: var(--text);
   text-decoration: none;
 }
-a.stat-card:active {
-  transform: scale(0.98);
-}
 .stat-card.attention {
-  border-color: transparent;
-  background: var(--warn-soft);
+  background: linear-gradient(var(--warn-soft), var(--warn-soft)), var(--bg-raised);
 }
 .stat-card.alert {
-  border-color: transparent;
-  background: var(--danger-wash);
+  background: linear-gradient(var(--danger-wash), var(--danger-wash)), var(--bg-raised);
 }
 
 /* Big numbers at regular weight: size carries the hierarchy, not boldness. */
 .stat-value {
-  font-size: clamp(1.9rem, 1.5rem + 1.2vw, 2.6rem);
+  font-size: 3rem;
   font-weight: 400;
   line-height: 1.1;
   letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
 }
 .stat-label {
-  font-size: 0.86rem;
+  order: -1;
+  font-size: 0.8125rem;
   color: var(--text-muted);
   font-weight: 400;
 }
 .stat-detail {
   font-size: 0.8rem;
   color: var(--text-muted);
+}
+@media (max-width: 767px) {
+  .stat-grid {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* An odd last figure takes the whole row rather than leaving a hairline-coloured gap. */
+  .stat-card:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 379px) {
+  .stat-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* ---- Buttons ----------------------------------------------------- */
@@ -1394,13 +1533,14 @@ app-command-palette {
 }
 
 /* ---- My access (permission matrix) ------------------------------------ */
+/* Read-only: a tinted tile per verdict, the word beside it while the card has room. */
+.matrix-card {
+  container: matrix / inline-size;
+}
 .access-matrix {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.86rem;
-  /* The same minimum as every scrolling table, so one hint threshold is always right. Its
-     longest cells ("Clearance too low") need about 615px. */
-  min-width: 640px;
 }
 .access-matrix th,
 .access-matrix td {
@@ -1424,36 +1564,69 @@ app-command-palette {
 .access-matrix tbody th {
   font-weight: 500;
 }
-/* A verdict is a small tinted square with its icon; the cell itself stays plain. */
-.cell-mark {
+/* A long reason wraps inside its cell rather than widening the card. */
+.access-matrix td {
+  white-space: normal;
+}
+.matrix-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--text-muted);
+}
+button.matrix-cell {
+  min-height: 44px;
+  padding: 0 0.4rem 0 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+button.matrix-cell:hover .matrix-word {
+  color: var(--text);
+  text-decoration: underline;
+}
+.matrix-tile {
   display: inline-grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   vertical-align: middle;
 }
-.cell-mark svg {
-  width: 15px;
-  height: 15px;
+.matrix-tile svg {
+  width: 18px;
+  height: 18px;
   fill: none;
   stroke: currentColor;
   stroke-width: 2.4;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.cell-allow {
+.matrix-tile.allow {
   color: var(--ok);
   background: var(--ok-soft);
 }
-.cell-deny {
+.matrix-tile.deny {
   color: var(--danger);
   background: var(--danger-soft);
 }
-.cell-reason {
-  margin-left: 0.6rem;
-  vertical-align: middle;
-  color: var(--text-muted);
+/* In a narrow card only the tiles show; the word stays for screen readers and the name. */
+@container matrix (width < 560px) {
+  .access-matrix th,
+  .access-matrix td {
+    padding: 0 0.3rem;
+  }
+  .matrix-word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 .matrix-header {
   flex-wrap: wrap;
@@ -1464,26 +1637,104 @@ app-command-palette {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin: 0;
+  margin: 0 0 0.9rem;
   color: var(--text-muted);
   font-size: 0.82rem;
 }
-.matrix-legend .cell-mark {
+.matrix-legend .matrix-tile {
   width: 20px;
   height: 20px;
   border-radius: 6px;
 }
-.matrix-legend .cell-mark svg {
+.matrix-legend .matrix-tile svg {
   width: 12px;
   height: 12px;
-}
-.matrix-legend .cell-deny {
-  margin-left: 0.6rem;
 }
 .access-hint {
   margin: 0.9rem 0 0;
   font-size: 0.82rem;
   line-height: 1.5;
+}
+
+/* Why a cell is denied: a modal panel docked right, a bottom sheet below 768px. */
+.side-panel {
+  inset: 0 0 0 auto;
+  width: min(420px, 100%);
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 1.4rem 1.5rem;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: none;
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-dialog);
+  overflow-y: auto;
+}
+.side-panel::backdrop {
+  background: transparent;
+}
+.side-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.1rem;
+}
+.side-panel-header h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 1.15rem;
+}
+.side-panel .notice {
+  margin-bottom: 1.1rem;
+}
+.side-panel-footer {
+  justify-content: flex-end;
+  margin-top: 1.2rem;
+}
+.close-circle {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--bg-raised);
+  color: var(--text);
+  cursor: pointer;
+}
+.close-circle svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+@media (max-width: 767px) {
+  .side-panel {
+    inset: auto 0 0 0;
+    width: 100%;
+    height: auto;
+    max-height: calc(100dvh - 40px);
+    padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom));
+    border-left: none;
+    border-top: 1px solid var(--border);
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  }
+  .side-panel::backdrop {
+    background: var(--scrim);
+  }
+  .side-panel-footer .button {
+    flex: 1;
+  }
+}
+@media (min-width: 1920px) {
+  .side-panel {
+    width: 480px;
+  }
 }
 
 /* A notice card: a yellow wash over the card, ink text, and the colour carried by the icon tile. */
@@ -1578,15 +1829,322 @@ app-command-palette {
   text-align: right;
   white-space: nowrap;
 }
-.inline-form {
-  display: inline;
+
+/* A table that must not scroll sideways: below 880px of card its rows become cards. */
+.table-card {
+  container: rows / inline-size;
 }
-/* Legacy put Reject in a form of its own; here it is a button after the Approve form. */
-.cell-actions .inline-form + .button {
-  margin-left: 0.4rem;
+@container rows (width < 880px) {
+  .row-cards thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .row-cards,
+  .row-cards tbody {
+    display: block;
+  }
+  /* Line 1: the name and the verb. Then the meta cells flow like a sentence, then the pills. */
+  .row-cards tbody tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.35rem;
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .row-cards tbody tr:last-child {
+    border-bottom: none;
+  }
+  .row-cards tbody td {
+    display: block;
+    height: auto;
+    padding: 0;
+    border: none;
+  }
+  .row-cards tbody tr:hover td {
+    background: none;
+  }
+  .row-cards .cell-main {
+    flex: 1 1 calc(100% - 7.5rem);
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .row-cards .cell-verb {
+    order: 1;
+    margin-left: auto;
+  }
+  .row-cards .cell-meta {
+    order: 2;
+    min-width: 0;
+    /* A full IPv6 address or a 64-character username has no break opportunity of its own. */
+    overflow-wrap: anywhere;
+    color: var(--text-muted);
+    font-size: 0.86rem;
+  }
+  .row-cards .cell-meta[data-label]::before,
+  .row-cards .cell-pills[data-label]::before,
+  .row-cards .cell-pill[data-label]::before {
+    content: attr(data-label) ' ';
+  }
+  .row-cards .cell-pills[data-label],
+  .row-cards .cell-pill[data-label] {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.86rem;
+  }
+  /* A row with no verb gives its name the whole first line. */
+  .row-cards tbody tr:not(:has(.cell-verb)) .cell-main {
+    flex-basis: 100%;
+  }
+  /* Pills in cells of their own share the second line; the row's meta cells follow on. */
+  .row-cards .cell-pill {
+    order: 2;
+  }
+  .row-cards tr:has(.cell-pill) .cell-meta {
+    order: 3;
+  }
+  /* A cell with nothing to show, such as a known location, leaves no gap in the card. */
+  .row-cards tbody td:empty {
+    display: none;
+  }
+  .row-cards .num {
+    text-align: left;
+  }
+  .row-cards .cell-pills {
+    order: 3;
+    flex-basis: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
 }
-.review-approve input {
-  max-width: 74px;
+
+/* A row whose main link covers it: a click anywhere on the row opens it. */
+tr:has(.row-link) {
+  position: relative;
+}
+.row-link {
+  color: var(--text);
+}
+.row-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+.row-link:focus-visible {
+  outline: none;
+}
+tr:has(.row-link:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+/* A pill's tooltip stays reachable above the row's link. */
+tr:has(.row-link) [title] {
+  position: relative;
+  z-index: 1;
+  cursor: pointer;
+}
+.row-code {
+  display: block;
+  font-size: 0.8rem;
+}
+
+/* A page title and its verdict pill on one line. */
+.title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+.title-row h1 {
+  margin: 0;
+}
+
+/* Back to the list a form came from: a circle left of the title. */
+.back-button {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--bg-raised);
+  color: var(--text);
+}
+.back-button:hover {
+  background: var(--bg-raised-2);
+  color: var(--text);
+}
+.back-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* A short code beside a name, such as a project key. */
+.code-chip {
+  display: inline-block;
+  padding: 0.05rem 0.45rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 400;
+  vertical-align: 0.08em;
+}
+
+/* Items that wait on a decision: a tinted icon tile, what and who, how long, then the verbs. */
+.attention-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  container: attention / inline-size;
+}
+.attention-list > li {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.attention-list > li:first-child {
+  padding-top: 0;
+}
+.attention-list > li:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.attention-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised-2);
+  color: var(--text-secondary);
+}
+.attention-icon.tone-warn {
+  background: var(--warn-soft);
+}
+.attention-icon.tone-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.attention-icon svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.attention-body {
+  min-width: 0;
+}
+.attention-title {
+  margin: 0;
+  font-size: 0.97rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.attention-meta {
+  margin: 0.2rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+.attention-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+/* In a narrow card the chip moves under the text and the verbs take a full-width row. */
+@container attention (width < 560px) {
+  .attention-list > li {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+  .attention-chip {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .attention-actions {
+    grid-column: 1 / -1;
+  }
+  .attention-actions .button {
+    flex: 1;
+    min-height: 44px;
+  }
+}
+
+/* What a decision sends along, as outlined chips with an icon. */
+.scope-title {
+  margin: 0 0 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+.scope-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.scope-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.7rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+.scope-chips svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* How a list is ordered, said beside its title. */
+.sort-note {
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+
+/* A screen's protection, said once and quietly. */
+.trust-line {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.6rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+.trust-line svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* Status pills: a soft tint with a dot, never a solid block, and each colour always means the
@@ -1627,6 +2185,10 @@ app-command-palette {
 }
 .badge.tone-muted {
   color: var(--text-muted);
+}
+.badge.tone-info {
+  color: var(--info);
+  background: var(--info-soft);
 }
 
 .empty-state {
@@ -1678,7 +2240,8 @@ app-command-palette {
 .activity-item {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.7rem;
   padding: 0.6rem 0.2rem;
   border-bottom: 1px solid var(--border);
   font-size: 0.88rem;
@@ -1687,13 +2250,33 @@ app-command-palette {
   border-bottom: none;
 }
 .activity-item.critical {
-  background: var(--danger-soft);
+  background: var(--danger-wash);
   border-radius: var(--radius-sm);
   padding-left: 0.55rem;
   padding-right: 0.55rem;
 }
+/* A critical event says so in words and an icon, not only by the row's red tint. */
+.critical-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--danger);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.critical-mark svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .activity-target {
-  flex: 1;
+  flex: 1 1 8rem;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1716,17 +2299,14 @@ app-command-palette {
   flex-direction: column;
   gap: 0.12rem;
   padding: 0.8rem 1rem;
-  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text);
-  background: var(--bg-inset);
+  background: var(--bg-raised-2);
   transition:
-    border-color var(--dur) var(--ease),
     background var(--dur) var(--ease),
     transform var(--dur) var(--ease);
 }
 .quick-action:hover {
-  border-color: var(--accent-line);
   background: var(--bg-hover);
   color: var(--text);
   text-decoration: none;
@@ -1840,118 +2420,270 @@ app-command-palette {
   align-self: center;
 }
 
-/* ---- Security checkup -------------------------------------------------- */
-.checkup-hero {
+/* ---- Encryption keys -------------------------------------------------- */
+/* Figures and the one action in one card; the action drops below them in a narrow card. */
+.action-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 20rem);
+  gap: 1.2rem;
+  align-items: stretch;
+  container: strip / inline-size;
+}
+.action-strip .stat-grid {
+  margin-bottom: 0;
+}
+@media (max-width: 1100px) {
+  .action-strip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.action-tile {
   display: flex;
-  align-items: center;
-  gap: 1.6rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
 }
-
-.score-ring {
+.action-tile h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+.action-tile p {
+  margin: 0;
+}
+.action-fine {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+@media (max-width: 767px) {
+  .action-tile .button {
+    align-self: stretch;
+  }
+}
+/* Indeterminate progress: one segment slides across; still at 40% when motion is reduced. */
+.busy-bar {
   position: relative;
-  width: 132px;
-  height: 132px;
-  flex-shrink: 0;
+  align-self: stretch;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--border);
 }
-.score-ring svg {
-  display: block;
-}
-.ring-track {
-  stroke: var(--border);
-}
-/* The value arc inherits the grade colour via currentColor; its length is set server-side
-   as a stroke-dasharray presentation attribute, so no inline style is needed (CSP-clean). */
-.ring-value {
-  stroke: currentColor;
-  transition: stroke-dasharray var(--dur) var(--ease);
-}
-.score-center {
+.busy-bar span {
   position: absolute;
-  inset: 0;
+  inset: 0 auto 0 0;
+  width: 40%;
+  border-radius: 2px;
+  background: var(--accent);
+  animation: busy-slide 1.2s var(--ease) infinite;
+}
+@keyframes busy-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .busy-bar span {
+    animation: none;
+  }
+}
+/* Numbered steps, each number in a small circle. */
+ol.steps {
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+ol.steps > li {
+  position: relative;
+  min-height: 1.6rem;
+  padding: 0.15rem 0 0.15rem 2.2rem;
+  counter-increment: step;
+}
+ol.steps > li + li {
+  margin-top: 0.55rem;
+}
+ol.steps > li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 0;
   display: grid;
   place-items: center;
-  align-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  background: var(--bg-raised-2);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
 }
-.score-number {
-  font-size: 2.2rem;
-  font-weight: 400;
-  color: var(--text);
-  line-height: 1;
+.step-card h2 {
+  margin: 0 0 0.3rem;
 }
-.score-outof {
-  font-size: 0.72rem;
-  color: var(--text-faint);
+.step-card p {
+  margin: 0;
+}
+.key-role {
+  display: block;
+  font-size: 0.8rem;
+}
+.data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.card-link {
+  display: inline-block;
+  margin-top: 0.9rem;
+  font-size: 0.86rem;
 }
 
-.checkup-summary {
-  flex: 1;
-  min-width: 240px;
+/* ---- Security checkup -------------------------------------------------- */
+/* The score against its target: label, the number, a bar, then "Target 100" and the grade. */
+.target-tile {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  max-width: 360px;
+  margin-bottom: 1.5rem;
+  padding: 1.1rem 1.3rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-card);
 }
-.grade-label {
-  display: inline-block;
-  font-size: 0.94rem;
+.target-label {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.target-value {
+  font-size: 3.5rem;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.target-outof {
+  color: var(--text-faint);
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+.target-bar {
+  display: block;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+}
+.target-track {
+  fill: var(--border);
+}
+.target-fill.tone-ok {
+  fill: var(--ok);
+}
+.target-fill.tone-warn {
+  fill: var(--warn);
+}
+.target-fill.tone-danger {
+  fill: var(--danger);
+}
+.target-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+@media (max-width: 767px) {
+  .target-tile {
+    max-width: none;
+  }
+}
+
+/* Checks that pass: quiet rows with a dot, nothing to do. */
+.check-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.check-list > li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.check-list > li:first-child {
+  padding-top: 0;
+}
+.check-list > li:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.check-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.check-title {
+  margin: 0;
   font-weight: 500;
 }
-.checkup-lead {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-}
-.checkup-counts {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  margin-top: 0.2rem;
-}
-
-/* Grade colour, shared by the ring (currentColor) and the headline label. */
-.grade-strong {
-  color: var(--ok);
-}
-.grade-good {
-  color: var(--ok);
-}
-.grade-fair {
-  color: var(--warn);
-}
-.grade-atrisk {
-  color: var(--danger);
-}
-
-/* Per-control icon chip, coloured by standing (mirrors the activity feed's severity chips). */
-.feed-item.check-pass .feed-icon {
-  color: var(--ok);
-  border-color: transparent;
-  background: var(--ok-soft);
-}
-.feed-item.check-warn .feed-icon {
-  color: var(--warn);
-  border-color: transparent;
-  background: var(--warn-soft);
-}
-.feed-item.check-fail .feed-icon {
-  color: var(--danger);
-  border-color: transparent;
-  background: var(--danger-soft);
-}
-.check-rec {
-  margin-top: 0.3rem;
-  font-size: 0.82rem;
-  color: var(--text-secondary);
+.check-detail {
+  margin: 0.15rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.86rem;
 }
 
 /* ---- Signed-in devices ------------------------------------------------------- */
-.feed-item.session-current .feed-icon {
-  color: var(--ok);
-  border-color: transparent;
-  background: var(--ok-soft);
+/* This device leads the list; the others wrap their sign-out onto a full row when the card is narrow. */
+.device-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.current-pill {
-  font-size: 0.78rem;
+.device-list > li {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.device-list > li:first-child {
+  padding-top: 0;
+}
+.device-list > li:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.device-name {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.device-meta {
+  margin: 0.2rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+.device-list .button {
+  justify-self: end;
+}
+.attention-icon.tone-ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+@media (max-width: 560px) {
+  .device-list > li {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+  .device-list .button {
+    grid-column: 1 / -1;
+  }
 }
 
 /* Status stays in the page until another action or navigation replaces it. */
@@ -1984,6 +2716,124 @@ app-command-palette {
   -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
 }
+.confirmation-dialog > p {
+  margin: 0 0 1.1rem;
+  overflow-wrap: anywhere;
+}
+/* Under a title the message is the explanation, so it steps back. */
+.dialog-title + p {
+  color: var(--text-secondary);
+}
+.dialog-title {
+  margin-bottom: 0.75rem;
+  font-size: 1.3rem;
+  overflow-wrap: anywhere;
+}
+.dialog-extra:empty {
+  display: none;
+}
+.dialog-extra {
+  margin-bottom: 1.1rem;
+}
+.confirmation-dialog .button-row {
+  align-items: center;
+  justify-content: flex-end;
+}
+.dialog-note {
+  margin: 0 auto 0 0;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+
+/* Label and value rows on the inset tone: what a decision touches, said exactly. */
+.facts {
+  margin: 0 0 1.1rem;
+  padding: 0.35rem 1rem;
+  background: var(--bg-raised-2);
+  border-radius: var(--radius);
+}
+.facts div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 0;
+}
+.facts div + div {
+  border-top: 1px solid var(--border);
+}
+.facts dt {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+.facts dd {
+  margin: 0;
+  min-width: 0;
+  text-align: right;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+/* Below 768px a decision dialog is a bottom sheet: full width, pinned buttons, a grab handle. */
+@media (max-width: 767px) {
+  .confirmation-dialog {
+    inset: auto 0 0 0;
+    width: 100%;
+    max-width: none;
+    max-height: calc(100dvh - 40px);
+    margin: 0;
+    padding: 0.5rem 1rem calc(1rem + env(safe-area-inset-bottom));
+    border-bottom: 0;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    transition:
+      transform var(--dur-sheet) var(--ease),
+      overlay var(--dur-sheet) allow-discrete,
+      display var(--dur-sheet) allow-discrete;
+  }
+  .confirmation-dialog:not([open]) {
+    transform: translateY(100%);
+  }
+  @starting-style {
+    .confirmation-dialog[open] {
+      transform: translateY(100%);
+    }
+  }
+  /* Decorative: Escape, Cancel and the scrim dismiss the sheet. */
+  .confirmation-dialog::before {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 5px;
+    margin: 0.25rem auto 1rem;
+    border-radius: 3px;
+    background: var(--border-strong);
+  }
+  .confirmation-dialog .button-row .button {
+    flex: 1;
+  }
+  .dialog-note {
+    flex: 1 0 100%;
+  }
+}
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+  .confirmation-dialog {
+    transition:
+      opacity var(--dur) ease,
+      overlay var(--dur) allow-discrete,
+      display var(--dur) allow-discrete;
+  }
+  .confirmation-dialog:not([open]) {
+    transform: none;
+    opacity: 0;
+  }
+  @starting-style {
+    .confirmation-dialog[open] {
+      transform: none;
+      opacity: 0;
+    }
+  }
+}
 
 /* ---- Forms -------------------------------------------------------- */
 /* min-width:0 lets a field (and its width:100% control) shrink inside a flex row. */
@@ -2002,7 +2852,7 @@ app-command-palette {
   color: var(--text-secondary);
 }
 
-/* The Legacy two-column row, its field errors and its form-level summary, for New secret. */
+/* Two-column form rows, field errors and form-level summaries. */
 .field-row {
   display: flex;
   gap: 1rem;
@@ -2016,39 +2866,129 @@ app-command-palette {
   }
 }
 
-.field-error,
-.validation-summary {
+.field-error {
   color: var(--danger);
   font-size: 0.84rem;
 }
 
+.validation-summary {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  background: var(--danger-wash);
+  color: var(--danger);
+  font-size: 0.88rem;
+}
+
 .validation-summary ul {
-  margin: 0.3rem 0 1rem;
+  margin: 0;
   padding-left: 1.2rem;
 }
 
-/* Legacy's form textarea and its clickable list rows, for New secret and Secrets. */
-.field textarea {
-  width: 100%;
-  padding: 0.6rem 0.75rem;
-  background: var(--bg-raised-2);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font-family: var(--font);
-  font-size: 0.92rem;
+textarea {
   line-height: 1.5;
   resize: vertical;
 }
 
-.field textarea:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+.form-note {
+  font-size: 0.84rem;
 }
 
-.data-table tr[data-href] {
-  cursor: pointer;
+/* ---- Dynamic secrets ---------------------------------------------- */
+.licence-note {
+  margin: 0 0 1.1rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius);
+  background: var(--info-wash);
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.licence-note strong {
+  color: var(--text);
+  font-weight: 500;
+}
+.licence-note-warn {
+  background: var(--warn-wash);
+}
+.role-description {
+  margin-top: 0.15rem;
+  font-size: 0.84rem;
+}
+.lease-note {
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.inline-form {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.inline-form input {
+  width: 5.5rem;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: var(--radius-pill);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.credential-table th {
+  width: 11rem;
+}
+.credential-table td {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 1199px) {
+  .inline-form input {
+    min-height: 2.75rem;
+  }
+}
+@container rows (width < 880px) {
+  .row-cards .inline-form {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .row-cards .cell-verb:has(.inline-form) {
+    order: 4;
+    flex-basis: 100%;
+    margin-left: 0;
+    margin-top: 0.35rem;
+  }
+  .row-cards .inline-form .button {
+    flex: 1;
+  }
+}
+@media (max-width: 520px) {
+  .credential-table,
+  .credential-table tbody,
+  .credential-table tr,
+  .credential-table th,
+  .credential-table td {
+    display: block;
+    width: auto;
+    height: auto;
+  }
+  .credential-table tr {
+    padding: 0.65rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .credential-table tr:last-child {
+    border-bottom: none;
+  }
+  .credential-table th,
+  .credential-table td {
+    padding: 0.15rem 0;
+    border-bottom: none;
+  }
 }
 
 input,
@@ -2228,6 +3168,134 @@ select:focus {
   font-size: 0.82rem;
 }
 
+/* ---- Secret details (record page) --------------------------------- */
+.record-title {
+  overflow-wrap: anywhere;
+}
+.record-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+.secret-code {
+  display: block;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 0.9rem;
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  margin: 0.5rem 0 0.85rem;
+}
+.revealed-box {
+  border-radius: var(--radius);
+  padding: 1rem 1.15rem;
+  background: var(--bg-raised-2);
+}
+.revealed-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+.revealed-note {
+  margin: 0;
+  font-size: 0.84rem;
+}
+.input-narrow {
+  flex: 1 1 7.5rem;
+  max-width: 150px;
+  min-width: 0;
+}
+.managed-rotate-form {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  margin-top: 0.5rem;
+}
+.managed-rotate-form input {
+  width: auto;
+  min-width: 8.5rem;
+  max-width: 150px;
+  text-align: left;
+}
+details.rotate > summary {
+  list-style: none;
+  display: inline-flex;
+  cursor: pointer;
+}
+details.rotate > summary::-webkit-details-marker {
+  display: none;
+}
+.rotate-form {
+  margin-top: 1rem;
+}
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.timeline-item {
+  position: relative;
+  display: flex;
+  gap: 0.9rem;
+  padding: 0 0 1.15rem 0;
+}
+.timeline-item:last-child {
+  padding-bottom: 0;
+}
+.timeline-item:not(:last-child) .timeline-dot::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 14px;
+  bottom: -6px;
+  width: 2px;
+  background: var(--border-strong);
+}
+.timeline-dot {
+  position: relative;
+  width: 12px;
+  flex-shrink: 0;
+}
+.timeline-dot::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--bg-raised);
+  border: 2px solid var(--accent);
+}
+.timeline-body {
+  flex: 1;
+  min-width: 0;
+}
+.timeline-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.timeline-note {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.timeline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.55rem;
+}
+
 /* Networks keeps the Legacy page's layout while both UIs serve administrators. */
 .current-ip {
   display: flex;
@@ -2245,6 +3313,7 @@ select:focus {
 .current-ip-value code {
   font-size: 1.3rem;
   font-weight: 500;
+  overflow-wrap: anywhere;
 }
 .current-ip p {
   margin: 0.35rem 0 0;
@@ -2274,6 +3343,7 @@ select:focus {
   padding: 0.4rem 0;
   border-bottom: 1px solid var(--border);
   color: var(--text-muted);
+  overflow-wrap: anywhere;
 }
 .cidr-list li:last-child {
   border-bottom: none;
@@ -2382,10 +3452,108 @@ fieldset {
   color: var(--ok);
 }
 
+/* Pill navigation bar on the Secrets card: links for sibling URLs, with the trust line beside it. */
+.secrets-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-bottom: 1.15rem;
+}
+.secrets-bar .trust-line {
+  margin: 0;
+}
+.tab-strip {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--bg-raised-2);
+  overflow: hidden;
+}
+.tab-strip::before,
+.tab-strip::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+  z-index: 1;
+}
+.tab-strip::before {
+  left: 0;
+  background: linear-gradient(to right, var(--bg-raised-2) 20%, transparent);
+}
+.tab-strip::after {
+  right: 0;
+  background: linear-gradient(to left, var(--bg-raised-2) 20%, transparent);
+}
+.tab-strip.fade-start::before,
+.tab-strip.fade-end::after {
+  opacity: 1;
+}
+.tab-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.25rem;
+  max-width: 100%;
+  overflow-x: auto;
+  scroll-padding-inline: 2.25rem;
+  scrollbar-width: none;
+  border-radius: var(--radius-pill);
+}
+.tab-nav::-webkit-scrollbar {
+  display: none;
+}
+.tab-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.95rem;
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+.tab-link:focus-visible {
+  outline-offset: -2px;
+  border-radius: var(--radius-pill);
+}
+.tab-link:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+.tab-link.active {
+  background: var(--nav-active-bg);
+  color: var(--nav-active-text);
+  box-shadow: var(--shadow-sm);
+}
+
 .table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem 1rem;
   margin-bottom: 1rem;
 }
+.table-toolbar app-table-filter {
+  flex: 1 1 220px;
+  min-width: 0;
+}
 .table-search {
+  width: 100%;
   max-width: 340px;
 }
 
@@ -2441,7 +3609,6 @@ fieldset {
   text-align: left;
 }
 
-#users-table .cell-actions > .button + .button,
 #users-table .cell-actions > app-row-menu {
   margin-left: 0.4rem;
 }
@@ -2644,7 +3811,8 @@ input.code-input {
     padding: 1rem 1.5rem;
   }
   .button.small,
-  .menu-item {
+  .menu-item,
+  .tab-link {
     min-height: 2.75rem;
     min-width: 2.75rem;
   }
@@ -2698,7 +3866,6 @@ input.code-input {
   .page-actions,
   .danger-zone,
   .settings-row,
-  .checkup-hero,
   .pager {
     flex-wrap: wrap;
   }
@@ -2714,6 +3881,149 @@ input.code-input {
   .feed-action {
     margin-left: auto;
   }
+}
+
+/* ---- License --------------------------------------------------------- */
+/* A long promise has to wrap inside a phone's column. The shared line is a nowrap flex row. */
+app-license-page .trust-line {
+  display: block;
+}
+app-license-page .trust-line svg {
+  display: inline-block;
+  vertical-align: -0.15em;
+  margin-right: 0.35rem;
+}
+
+/* ---- My activity ----------------------------------------------------- */
+.activity-table .cell-main,
+.activity-table .activity-time {
+  overflow-wrap: anywhere;
+}
+.activity-resource {
+  display: block;
+  font-size: 0.76rem;
+}
+
+/* ---- Profile --------------------------------------------------------- */
+/* The person is the header: picture and name on the left, methods stack below as cards. */
+.profile-person {
+  align-items: flex-start;
+}
+.profile-portrait {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+.profile-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--bg-inset);
+}
+.profile-identity {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.profile-identity .field {
+  max-width: 28rem;
+}
+app-profile-page .trust-line,
+app-change-password-page .trust-line {
+  display: block;
+}
+app-profile-page .trust-line svg,
+app-change-password-page .trust-line svg {
+  display: inline-block;
+  vertical-align: -0.15em;
+  margin-right: 0.35rem;
+}
+.profile-portrait .hint,
+.profile-identity .hint {
+  margin: 0;
+}
+.profile-people {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+.profile-people > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  min-width: 0;
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--border);
+}
+.profile-people > li:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.profile-person-name {
+  margin: 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.profile-people .muted {
+  margin: 0.15rem 0 0;
+}
+@media (max-width: 480px) {
+  .profile-people > li {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .profile-people .button {
+    flex: 1 1 100%;
+  }
+}
+
+/* ---- Notifications -------------------------------------------------- */
+/* A failed delivery says why beside its pill; the reason wraps inside the scrolling table. */
+.outbox-error {
+  display: block;
+  max-width: 18rem;
+  margin-top: 0.2rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+/* ---- Service accounts -------------------------------------------------- */
+/* The one-time key: its ends stay readable, and Copy is the way to take the whole value. */
+.issued-key {
+  margin-bottom: 1.25rem;
+  padding: 1.1rem 1.3rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+}
+.issued-key-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.issued-key-value {
+  display: block;
+  margin: 0.8rem 0;
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+/* A project scope can be 64 characters with no space; its chip wraps rather than widening the dialog. */
+.issued-key-scope li {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -44,6 +44,24 @@ public class StepUpPolicyTests
     [Fact]
     public void MaxAuthAgeMinutes_is_surfaced_for_the_prompt()
         => Assert.Equal(15, Service(maxAgeMinutes: 15).MaxAuthAgeMinutes);
+
+    /// <summary>
+    /// Revealing, revealing a version, sharing and approving a request each ask with this one decision, at
+    /// the vault's default threshold (Secret) and window (10 minutes).
+    /// </summary>
+    [Theory]
+    [InlineData(SensitivityLevel.Internal, 9, false)]
+    [InlineData(SensitivityLevel.Internal, 11, false)]
+    [InlineData(SensitivityLevel.Confidential, 9, false)]
+    [InlineData(SensitivityLevel.Confidential, 11, false)]
+    [InlineData(SensitivityLevel.Secret, 9, false)]
+    [InlineData(SensitivityLevel.Secret, 11, true)]
+    [InlineData(SensitivityLevel.TopSecret, 9, false)]
+    [InlineData(SensitivityLevel.TopSecret, 11, true)]
+    public void A_reveal_or_share_needs_fresh_proof_only_for_a_stale_session_at_or_above_Secret(
+        SensitivityLevel sensitivity, int minutesSinceStrongAuth, bool required)
+        => Assert.Equal(required, Service().IsRequired(sensitivity, Now.AddMinutes(-minutesSinceStrongAuth), Now));
+
     [Theory]
     [InlineData(AdministratorAction.CreateAccount, true)]
     [InlineData(AdministratorAction.ResendInvitation, true)]

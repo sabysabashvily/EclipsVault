@@ -2,6 +2,7 @@ import type { Page, TestInfo } from '@playwright/test';
 import { expect } from './fixtures';
 import { verifyMyAccess } from './access';
 import { AppShell } from './app-shell';
+import { legacyShell, legacyShellHeading } from './legacy-shell';
 
 /**
  * Inventory every authorized destination, including folded links. Expansion is checked separately.
@@ -24,14 +25,11 @@ async function navigation(page: Page) {
   }));
 }
 
-/** Places people visit, then the You group, which My access opens. Sharing folds until it becomes tabs. */
+/** Places people visit, then the You group, which My access opens. */
 const everyone = [
   ['Overview', '/', ''],
   ['Secrets', '/Secrets', ''],
   ['Dynamic secrets', '/DynamicSecrets', ''],
-  ['Sharing', 'group', ''],
-  ['Shared with me', '/Secrets/SharedWithMe', ''],
-  ['Shared by me', '/Secrets/SharedByMe', ''],
   ['Access requests', '/AccessRequests', ''],
   ['You', 'group', 'open'],
   ['My access', '/Access', 'current'],
@@ -123,9 +121,10 @@ export async function verifySidebar(
         secure: true,
       },
     ]);
-    const legacy = await page.goto('/DynamicSecrets');
+    const legacy = await page.goto(legacyShell);
     expect(legacy?.headers()['content-security-policy']).not.toContain('trusted-types');
-    await expect(page.locator('.sidenav a.active')).toHaveText('Dynamic secrets');
+    // The error page is in no sidebar entry, so the Legacy document marks none active.
+    await expect(page.locator('.sidenav a.active')).toHaveCount(0);
     // Compare the Legacy styles in the same selected state as My access. The real active states
     // of both documents are asserted separately; the deleted Razor page is no longer a reference.
     await page.locator('.sidenav').evaluate((nav) => {
@@ -168,12 +167,6 @@ export async function verifySidebar(
     await expect(shell.youGroup.getByRole('link')).toHaveCount(0);
     await shell.you.click();
     await expect(shell.myAccess).toBeVisible();
-    await expect(shell.sharing).not.toHaveAttribute('open');
-    await expect(shell.sharing.getByRole('link')).toHaveCount(0);
-    await shell.sharing.getByText('Sharing', { exact: true }).click();
-    await expect(shell.sharing).toHaveAttribute('open', '');
-    await expect(shell.sharing.getByRole('link')).toHaveText(['Shared with me', 'Shared by me']);
-    await shell.sharing.getByText('Sharing', { exact: true }).click();
     expect(await accountMenu(page)).toEqual(referenceMenu);
     expect(await notices(page)).toEqual(referenceNotices);
     if (account === 'standard') {
@@ -181,7 +174,7 @@ export async function verifySidebar(
       expect(referenceNotices).toEqual([]);
       expect(await page.content()).not.toMatch(/unlicensed|notice-warn/i);
       await expect(page.locator('.sidenav')).not.toContainText('Administration');
-      await expect(page.locator('.sidenav a')).toHaveCount(12);
+      await expect(page.locator('.sidenav a')).toHaveCount(10);
       await expect(
         page.locator(
           'a[href^="/Admin"], a[href="/ServiceAccounts"], a[href="/Audit"], a[href="/Notifications"], a[href="/Encryption"], a[href="/License"]',
@@ -205,7 +198,7 @@ export async function verifySidebar(
       expect(referenceNotices).toEqual([
         expect.stringMatching(/^Running unlicensed\. .+ View license$/),
       ]);
-      await expect(page.locator('.sidenav a')).toHaveCount(19);
+      await expect(page.locator('.sidenav a')).toHaveCount(17);
     }
     await expect(page.locator('style, [style]')).toHaveCount(0);
     await screenshot(page, info, `${account}-${theme}-angular`);
@@ -227,16 +220,10 @@ export async function verifySidebar(
   await expect(page.locator('.sidenav a.active')).toHaveText('My access');
   expect(documents).toEqual([]);
 
-  // Legacy links replace the document. The return link reuses the same authenticated session.
-  const legacyDocument = page.waitForResponse((response) =>
-    response.request().isNavigationRequest(),
-  );
-  await page.getByRole('link', { name: 'Dynamic secrets', exact: true }).click();
-  expect((await legacyDocument).headers()['content-security-policy']).not.toContain(
-    'trusted-types',
-  );
-  await expect(page).toHaveURL(/\/DynamicSecrets$/);
-  await expect(page.getByRole('heading', { name: 'Dynamic secrets', exact: true })).toBeVisible();
+  // A Legacy document's sidebar link replaces the document. The return reuses the same session.
+  const legacyDocument = await page.goto(legacyShell);
+  expect(legacyDocument?.headers()['content-security-policy']).not.toContain('trusted-types');
+  await expect(page.getByRole('heading', { name: legacyShellHeading, exact: true })).toBeVisible();
   await page.getByText('Access', { exact: true }).click();
   const angularDocument = page.waitForResponse((response) =>
     response.request().isNavigationRequest(),
@@ -247,7 +234,7 @@ export async function verifySidebar(
   );
   await expect(page).toHaveURL(/\/Access$/);
   await expect(page.locator('.sidenav a.active')).toHaveText('My access');
-  expect(documents.map((url) => new URL(url).pathname)).toEqual(['/DynamicSecrets', '/Access']);
+  expect(documents.map((url) => new URL(url).pathname)).toEqual(['/Home/Error', '/Access']);
   expect(signInRequests).toEqual([]);
   expect(
     (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')?.value,

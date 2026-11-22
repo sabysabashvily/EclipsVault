@@ -50,15 +50,15 @@ const ssoNotices: Readonly<Record<string, LoginNotice>> = {
  * What Login says on arrival. A query code can be typed by anyone, so it only ever explains an
  * outcome; the authenticator-reset sentence comes from the document's one-time handoff instead.
  */
-export function loginNotice(
-  search: string,
-  handedOff: string | null,
-  restarted: string,
-): LoginNotice {
-  if (restarted) return { message: restarted, error: true };
+export function loginNotice(search: string, handedOff: string | null): LoginNotice {
+  const query = new URLSearchParams(search);
+  if (query.get('signIn') === 'restarted')
+    return {
+      message: 'Your account changed while you were signing in. Sign in again.',
+      error: true,
+    };
   if (handedOff === 'authenticator_reset')
     return { message: 'Your authenticator was reset. Sign in to set up a new one.', error: false };
-  const query = new URLSearchParams(search);
   return (
     known(ssoNotices, query.get('sso')) ??
     known(signOutNotices, query.get('signOut')) ?? { message: '', error: false }
@@ -101,12 +101,7 @@ export class LoginPage {
     const meta = this.document.querySelector(handedOffNotice);
     // Said once: a later visit to Login inside this document must not repeat it.
     meta?.remove();
-    this.notice = loginNotice(
-      this.document.location.search,
-      meta?.getAttribute('content') ?? null,
-      this.flow.restarted(),
-    );
-    this.flow.restarted.set('');
+    this.notice = loginNotice(this.document.location.search, meta?.getAttribute('content') ?? null);
     inject(DestroyRef).onDestroy(() => this.prompt.abort());
   }
 

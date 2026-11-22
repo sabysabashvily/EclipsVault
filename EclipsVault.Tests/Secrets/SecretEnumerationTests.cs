@@ -13,11 +13,9 @@ namespace EclipsVault.Tests.Secrets;
 /// <summary>
 /// A decoy must never reach a list.
 ///
-/// Decoys used to be returned to every caller with a flag, and the UI hid the flag from anyone
-/// below TopSecret — so an ordinary user saw bait that was, by design, indistinguishable from a
-/// real secret, and opening it revoked their session and blocked their network range. The trap
-/// punished the people it was not built for, and the only warning was one the UI showed to the
-/// administrators who were already protected from it.
+/// A listed decoy is bait that is, by design, indistinguishable from a real secret, and opening it
+/// revokes the opener's session and blocks their network range. Listed, it would catch the vault's
+/// own staff, the people it is not built for.
 ///
 /// Unlisted, the only way to reach a decoy is with an id obtained out of band — a database dump, a
 /// backup, a stolen envelope — which is the reader it exists to catch. That is the difference
@@ -36,8 +34,7 @@ public class SecretEnumerationTests
         public Task<Secret?> FindAsync(Guid id, CancellationToken ct)
             => Task.FromResult(_secrets.FirstOrDefault(s => s.Id == id));
 
-        public Task RotateAsync(Secret secret, SecretVersion archivedVersion, CancellationToken ct) => Task.CompletedTask;
-        public Task<int> CountVersionsAsync(Guid secretId, CancellationToken ct) => Task.FromResult(0);
+        public Task RotateAsync(Secret secret, byte[] readWrappedDek, SecretVersion archivedVersion, AuditAction recordedAs, CancellationToken ct) => Task.CompletedTask;
         public Task<IReadOnlyList<Secret>> ListExpiredAsync(DateTimeOffset asOfUtc, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<Secret>>([]);
         public Task<IReadOnlyList<Secret>> ListExpiringAsync(DateTimeOffset asOfUtc, DateTimeOffset horizonUtc, CancellationToken ct)
@@ -47,7 +44,8 @@ public class SecretEnumerationTests
         public Task AddAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
         public Task UpdateAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
         public Task DeleteAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
-        public Task ShredAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
+        public Task<bool> ShredAsync(Secret secret, byte[] readWrappedDek, DateTimeOffset readExpiresAtUtc, CancellationToken ct) => Task.FromResult(true);
+        public Task ReloadAsync(Secret secret, CancellationToken ct) => Task.CompletedTask;
         public Task<IReadOnlyList<SecretVersion>> ListVersionsAsync(Guid secretId, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<SecretVersion>>([]);
         public Task<SecretVersion?> FindVersionAsync(Guid secretId, Guid versionId, CancellationToken ct)
@@ -109,7 +107,7 @@ public class SecretEnumerationTests
 
     private static SecretService Build(ISecretRepository repository, IIntrusionResponseService? intrusion = null)
         => new(repository, new FakeCryptoEngine(), new NullCache(), intrusion ?? new UnusedIntrusionResponse(),
-               new NullAuditSink(), new StubActor(), [], TimeProvider.System, new RecordingPremiumFeatureUsage());
+               new NullAuditSink(), new StubActor(), [], TimeProvider.System, new RecordingPremiumFeatureUsage(), new FakeLoginLock());
 
     [Fact]
     public async Task Listing_never_returns_a_decoy()
@@ -165,8 +163,8 @@ public class SecretEnumerationTests
     [Fact]
     public void A_list_row_cannot_carry_the_decoy_flag_at_all()
     {
-        // The flag was removed from the DTO rather than left for callers to filter on, so there is
-        // no shape in which a decoy can be handed out and hidden by whoever renders it.
+        // A list row has no flag for callers to filter on, so there is no shape in which a decoy can
+        // be handed out and hidden by whoever renders it.
         Assert.DoesNotContain(
             typeof(SecretSummaryDto).GetProperties(),
             p => p.Name.Contains("Honey", StringComparison.OrdinalIgnoreCase)

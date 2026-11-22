@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -11,6 +12,18 @@ namespace EclipsVault.IntegrationTests;
 internal static class AccessRequestsApi
 {
     public const string Path = "/api/ui/access-requests";
+
+    /// <summary>Whether the Denied page would offer the request form for the secret.</summary>
+    public static Task<HttpResponseMessage> EligibilityAsync(HttpClient client, Guid secretId)
+        => client.GetAsync($"{Path}/eligibility?secretId={secretId}");
+
+    /// <summary>Files a request the way the Denied page does.</summary>
+    public static async Task<HttpResponseMessage> FileAsync(HttpClient client, Guid secretId, string reason = "Need this for deployment")
+        => await FileWithTokenAsync(client, await UiApiRequest.AntiforgeryTokenAsync(client), secretId, reason);
+
+    /// <summary>Files a request with a token fetched beforehand.</summary>
+    public static Task<HttpResponseMessage> FileWithTokenAsync(HttpClient client, string token, Guid secretId, string reason = "Need this for deployment")
+        => UiApiRequest.SendWithTokenAsync(client, token, HttpMethod.Post, Path, JsonContent.Create(new { secretId, reason }));
 
     public static async Task<JsonElement> PageAsync(HttpClient client)
         => await client.GetFromJsonAsync<JsonElement>(Path);
@@ -41,5 +54,32 @@ internal static class AccessRequestsApi
         using var scope = vault.Services.CreateScope();
         return await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().AccessRequests.AsNoTracking()
             .Where(request => request.Id == requestId).Select(request => request.Status).SingleAsync();
+    }
+
+    /// <summary>
+    /// Inserts a pending request straight into the database, skipping filing and its rule, for tests
+    /// about deciding a request rather than filing one. The row has no audit entry and no actor.
+    /// </summary>
+    public static async Task<AccessRequest> PendingAsync(VaultFixture vault, string details, string username)
+    {
+        using var scope = vault.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+        var user = await db.Users.SingleAsync(user => user.Username == username);
+        var secretId = SecretSharing.SecretIdOf(details);
+        var secret = await db.Secrets.SingleAsync(secret => secret.Id == secretId);
+        var request = new AccessRequest
+        {
+            Id = Guid.NewGuid(),
+            SecretId = secretId,
+            SecretName = secret.Name,
+            ProjectKey = secret.ProjectKey,
+            RequesterUserId = user.Id,
+            RequesterUsername = username,
+            Reason = "Need this for deployment",
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+        };
+        db.AccessRequests.Add(request);
+        await db.SaveChangesAsync();
+        return request;
     }
 }

@@ -47,13 +47,22 @@ export function blockRunClient(address: string): void {
 
 /** Removes the block and any recovery guard on this run's browser, whatever recovery left behind. */
 export function clearRunClientBlock(address: string): void {
-  redis('DEL', blockKey(address), blockKey(address).replace(':ipblock:', ':ipguard:'));
+  redis('DEL', blockKey(address), guardKey(address));
 }
 
 function blockKey(address: string): string {
+  return `eclipsvault:ipblock:${singleAddress(address)}`;
+}
+
+/** The recovery guard that protects a source while its block is being lifted. */
+function guardKey(address: string): string {
+  return `eclipsvault:ipguard:${singleAddress(address)}`;
+}
+
+function singleAddress(address: string): string {
   if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(address))
     throw new Error(`Expected an IPv4 address: ${address}`);
-  return `eclipsvault:ipblock:${address}/32`;
+  return `${address}/32`;
 }
 
 function redis(...command: string[]): string {

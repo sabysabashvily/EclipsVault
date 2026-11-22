@@ -29,7 +29,7 @@ import type { components } from '../ui-api/schema.generated';
     >
       <h2 [id]="titleId">Confirm it's you</h2>
       @if (proof() === 'code') {
-        <p>Enter an authenticator code to continue.</p>
+        <p>{{ detail() || 'Enter an authenticator code to continue.' }}</p>
         <form (submit)="verify($event, code.value)">
           <div class="field">
             <label [for]="codeId">Authenticator code</label>
@@ -54,7 +54,7 @@ import type { components } from '../ui-api/schema.generated';
           </div>
         </form>
       } @else {
-        <p>Sign in again to continue.</p>
+        <p>{{ detail() || 'Sign in again to continue.' }}</p>
         <p class="field-error" role="alert">{{ error() }}</p>
         <div class="button-row">
           <button type="button" class="button" (click)="finish(false)">Cancel</button>
@@ -71,6 +71,7 @@ export class StepUpDialog {
   protected readonly titleId = `step-up-title-${StepUpDialog.nextId++}`;
   protected readonly codeId = `${this.titleId}-code`;
   protected readonly proof = signal<StepUpProof>('code');
+  protected readonly detail = signal('');
   protected readonly busy = signal(false);
   protected readonly error = signal('');
   readonly decision = output<boolean>();
@@ -84,11 +85,12 @@ export class StepUpDialog {
   private opener: Element | null = null;
   private verification: Subscription | undefined;
 
-  open(proof: StepUpProof): void {
+  open(proof: StepUpProof, detail = ''): void {
     if (this.dialog().nativeElement.open) return;
     const active = this.document.activeElement;
     this.opener = active?.closest('details')?.querySelector('summary') ?? active;
     this.proof.set(proof);
+    this.detail.set(detail);
     this.error.set('');
     afterNextRender(
       () => {

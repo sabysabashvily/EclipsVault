@@ -28,25 +28,7 @@ describe('sidebar mapping', () => {
             label: 'Dynamic secrets',
             icon: 'dynamic-secrets',
             url: '/DynamicSecrets',
-            angular: false,
-          },
-          {
-            label: 'Sharing',
-            icon: 'shared-with-me',
-            children: [
-              {
-                label: 'Shared with me',
-                icon: 'shared-with-me',
-                url: '/Secrets/SharedWithMe',
-                angular: true,
-              },
-              {
-                label: 'Shared by me',
-                icon: 'shared-by-me',
-                url: '/Secrets/SharedByMe',
-                angular: true,
-              },
-            ],
+            angular: true,
           },
           {
             label: 'Access requests',
@@ -138,9 +120,19 @@ describe('sidebar mapping', () => {
 });
 
 describe('palette shortcuts', () => {
-  it('offers New secret only to an account that may open Secrets', () => {
+  it('offers New secret and the Sharing tabs only to accounts whose Areas allow them', () => {
+    expect(shortcutsFor(['secrets', 'shared-with-me', 'shared-by-me'])).toEqual([
+      { label: 'New secret', icon: 'secrets', url: '/Secrets/Create', angular: true },
+      {
+        label: 'Shared with me',
+        icon: 'shared-with-me',
+        url: '/Secrets/SharedWithMe',
+        angular: true,
+      },
+      { label: 'Shared by me', icon: 'shared-by-me', url: '/Secrets/SharedByMe', angular: true },
+    ]);
     expect(shortcutsFor(['secrets'])).toEqual([
-      { label: 'New secret', icon: 'secrets', url: '/Secrets/Create', angular: false },
+      { label: 'New secret', icon: 'secrets', url: '/Secrets/Create', angular: true },
     ]);
     expect(shortcutsFor(['access'])).toEqual([]);
   });

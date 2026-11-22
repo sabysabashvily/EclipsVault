@@ -15,9 +15,9 @@ public sealed class ConcurrentShareRevocationTests(VaultFixture vault)
     {
         var issuer = await vault.SignInNewAccountAsync("it-shares-race-issuer", IPAddress.Parse("192.0.2.110"));
         await vault.SignInNewAccountAsync("it-shares-race-recipient", IPAddress.Parse("192.0.2.111"));
-        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-shares-race-secret");
-        await LegacySharing.ShareAsync(issuer.Client, details, "it-shares-race-recipient");
-        var share = await LegacySharing.ShareOfAsync(vault, details);
+        var details = await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-shares-race-secret");
+        await SecretDetailsApi.ShareAsync(issuer.Client, details, "it-shares-race-recipient");
+        var share = await SecretSharing.ShareOfAsync(vault, details);
         var before = await AuditTrail.HeadAsync(vault);
         using var scope = vault.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();

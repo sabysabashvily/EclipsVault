@@ -40,9 +40,9 @@ describe('ProfilePage recovery codes', () => {
   async function verifiedReplacement(account = profile) {
     const rendered = await render(account);
     const { fixture, page, changes } = rendered;
-    button(page, 'Regenerate').click();
+    button(page, 'Replace recovery codes').click();
     await fixture.whenStable();
-    button(changes, 'Continue').click();
+    button(changes, 'Replace recovery codes').click();
     backend
       .expectOne('/api/ui/profile/operations')
       .flush({ ...operation, kind: 'ReplaceRecoveryCodes' });
@@ -73,12 +73,12 @@ describe('ProfilePage recovery codes', () => {
 
   it('asks before replacing the codes and freezes the replacement for verification', async () => {
     const { fixture, page, changes } = await render();
-    button(page, 'Regenerate').click();
+    button(page, 'Replace recovery codes').click();
     await fixture.whenStable();
     expect(changes.querySelector('dialog[role=alertdialog]')?.textContent).toContain(
       'Generate a new set of recovery codes? Any codes you already have will immediately stop working.',
     );
-    button(changes, 'Continue').click();
+    button(changes, 'Replace recovery codes').click();
     const prepare = backend.expectOne({ method: 'POST', url: '/api/ui/profile/operations' });
     expect(prepare.request.body).toEqual({ kind: 'ReplaceRecoveryCodes' });
     prepare.flush({ ...operation, kind: 'ReplaceRecoveryCodes' });
@@ -182,7 +182,7 @@ describe('ProfilePage recovery codes', () => {
     expect(page.querySelector('[role=alert]')?.textContent).toContain(
       'The response was lost, so no new codes can be shown. If a new set was generated, your old codes no longer work. Check your account or sign in, then deliberately generate a new set.',
     );
-    expect(button(page, 'Regenerate').disabled).toBe(true);
+    expect(button(page, 'Replace recovery codes').disabled).toBe(true);
     expect(page.querySelector('a[href="/Account/Login"]')?.textContent).toBe('Sign in again');
     backend.expectNone('/api/ui/me');
     backend.expectNone('/api/ui/profile/recovery-codes');
@@ -219,7 +219,7 @@ describe('ProfilePage recovery codes', () => {
       expect(page.querySelector('[role=alert]')?.textContent).toContain(
         'If a new set was generated, your old codes no longer work.',
       );
-      expect(button(page, 'Regenerate').disabled).toBe(true);
+      expect(button(page, 'Replace recovery codes').disabled).toBe(true);
       expect(page.querySelector('a[href="/Account/Login"]')?.textContent).toBe('Sign in again');
       backend.expectNone('/api/ui/profile');
       backend.expectNone('/api/ui/profile/recovery-codes');
@@ -228,9 +228,9 @@ describe('ProfilePage recovery codes', () => {
 
   it('commits nothing when verification expires before the replacement', async () => {
     const { fixture, page, changes } = await render();
-    button(page, 'Regenerate').click();
+    button(page, 'Replace recovery codes').click();
     await fixture.whenStable();
-    button(changes, 'Continue').click();
+    button(changes, 'Replace recovery codes').click();
     backend
       .expectOne('/api/ui/profile/operations')
       .flush({ ...operation, kind: 'ReplaceRecoveryCodes' });
@@ -246,12 +246,12 @@ describe('ProfilePage recovery codes', () => {
     backend.expectNone('/api/ui/profile/recovery-codes');
   });
 
-  it('prepares one replacement however often Regenerate is clicked', async () => {
+  it('prepares one replacement however often Replace recovery codes is clicked', async () => {
     const { fixture, page, changes } = await render();
-    button(page, 'Regenerate').click();
-    button(page, 'Regenerate').click();
+    button(page, 'Replace recovery codes').click();
+    button(page, 'Replace recovery codes').click();
     await fixture.whenStable();
-    button(changes, 'Continue').click();
+    button(changes, 'Replace recovery codes').click();
     backend
       .expectOne('/api/ui/profile/operations')
       .flush({ ...operation, kind: 'ReplaceRecoveryCodes' });
@@ -269,7 +269,7 @@ describe('ProfilePage recovery codes', () => {
         replaceRecoveryCodes: { available: false, unavailableReason: 'authenticator_not_enrolled' },
       },
     });
-    expect(button(page, 'Generate codes').disabled).toBe(true);
+    expect(button(page, 'Generate recovery codes').disabled).toBe(true);
     expect(page.textContent).toContain('This needs an authenticator app set up first.');
   });
 });

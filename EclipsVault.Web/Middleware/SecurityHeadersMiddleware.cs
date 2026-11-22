@@ -20,6 +20,14 @@ public sealed class SecurityHeadersMiddleware
     internal const string AngularContentSecurityPolicy = ContentSecurityPolicy +
         "; require-trusted-types-for 'script'; trusted-types angular angular#bundler";
 
+    /// <summary>
+    /// The Angular policy for a document whose form may redirect to <paramref name="origin"/>:
+    /// form-action also governs a submission's redirects, so single sign-on's hop to the identity
+    /// provider needs it. The origin comes from configuration, never from the request.
+    /// </summary>
+    internal static string AngularContentSecurityPolicyWithFormTarget(string origin) =>
+        AngularContentSecurityPolicy.Replace("form-action 'self';", $"form-action 'self' {origin};", StringComparison.Ordinal);
+
     private readonly RequestDelegate _next;
 
     public SecurityHeadersMiddleware(RequestDelegate next) => _next = next;

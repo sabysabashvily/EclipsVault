@@ -6,14 +6,22 @@
 </div>
 
 <section class="panel recovery-panel">
-  <div class="notice notice-warn">
-    <strong>⚠ Store these somewhere safe and private.</strong>
-    <span
-      >Each code signs you in once if you lose your authenticator, then stops working. Anyone who
-      has a code can pass your second factor, so treat them like passwords. Generating a new set
-      replaces these.</span
-    >
-  </div>
+  <section class="notice notice-warn" aria-labelledby="recovery-warning">
+    <span class="notice-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24">
+        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+        <path d="M12 9v4M12 17h.01" />
+      </svg>
+    </span>
+    <div class="notice-body">
+      <h2 id="recovery-warning">Store these somewhere safe and private</h2>
+      <p>
+        Each code signs you in once if you lose your authenticator, then stops working. Anyone who
+        has a code can pass your second factor, so treat them like passwords. Generating a new set
+        replaces these.
+      </p>
+    </div>
+  </section>
 
   <ol class="recovery-codes">
     @for (code of codes(); track $index) {

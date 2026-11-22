@@ -167,7 +167,7 @@ public class AuthorizationSurfaceTests
     /// pending sign-in and nothing else, and the only anonymous actions are the sign-in calls named above.
     /// </summary>
     [Fact]
-    public void UiApiControllers_AcceptOnlyTheSession_AndOnlyTheSignInCallsAreAnonymous()
+    public void Every_UI_API_controller_accepts_only_its_own_scheme_and_only_the_sign_in_calls_are_anonymous()
     {
         var uiApi = ControllersUnder("api/ui/");
         Assert.NotEmpty(uiApi);
@@ -179,7 +179,8 @@ public class AuthorizationSurfaceTests
             .Select(type => type.Name)
             .ToList();
         Assert.True(wrongScheme.Count == 0,
-            "These UI API controllers do not declare the session scheme, and only it, on their [Authorize]:\n  " +
+            "These UI API controllers do not declare their one scheme on their [Authorize] (the pending sign-in for " +
+            "PendingSignInController, the session for every other):\n  " +
             string.Join("\n  ", wrongScheme));
 
         var anonymous = Actions()
@@ -233,7 +234,7 @@ public class AuthorizationSurfaceTests
         {
             ["overview"] = typeof(HomeController),
             ["secrets"] = typeof(EclipsVault.Web.Controllers.Ui.SecretsController),
-            ["dynamic-secrets"] = typeof(DynamicSecretsController),
+            ["dynamic-secrets"] = typeof(EclipsVault.Web.Controllers.Ui.DynamicSecretsController),
             ["shared-with-me"] = typeof(EclipsVault.Web.Controllers.Ui.SharedWithMeController),
             ["shared-by-me"] = typeof(EclipsVault.Web.Controllers.Ui.SharedByMeController),
             ["access"] = typeof(EclipsVault.Web.Controllers.Ui.AccessController),

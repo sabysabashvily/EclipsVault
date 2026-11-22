@@ -1,12 +1,7 @@
 {
   "e2e/access.ts": {
     "playwright/no-raw-locators": {
-      "count": 13
-    }
-  },
-  "e2e/activity.ts": {
-    "playwright/no-raw-locators": {
-      "count": 9
+      "count": 6
     }
   },
   "e2e/palette.ts": {
@@ -16,7 +11,7 @@
   },
   "e2e/security.ts": {
     "playwright/no-raw-locators": {
-      "count": 15
+      "count": 2
     }
   },
   "e2e/sidebar.ts": {
@@ -26,12 +21,12 @@
   },
   "e2e/sign-in.spec.ts": {
     "playwright/no-raw-locators": {
-      "count": 123
+      "count": 60
     }
   },
   "e2e/sign-ins.ts": {
     "playwright/no-raw-locators": {
-      "count": 9
+      "count": 4
     }
   }
 }

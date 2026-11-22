@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures';
 import { ResponsiveShell } from './responsive-shell';
+import { AccountSignIn } from './account-sign-in';
 
 test.use({
   storageState: `${process.env['E2E_TEST_RESULTS'] || 'test-results'}/sessions-administrator.json`,
@@ -62,7 +63,9 @@ for (const theme of ['dark', 'light']) {
           { name: 'EclipsVault.Theme', value: theme, url: process.env['E2E_BASE_URL']! },
         ]);
       await page.goto('/Admin/Users');
-      await new ResponsiveShell(page).editUser.click();
+      const shell = new ResponsiveShell(page);
+      await shell.rowMore.click();
+      await shell.editUser.click();
       await expect(
         page.getByRole('heading', { name: 'Edit user', exact: true, level: 1 }),
       ).toBeVisible();
@@ -176,11 +179,11 @@ for (const width of [300, 768, 1199]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/Admin/Users');
     const shell = new ResponsiveShell(page);
-    await expect(shell.editUser).toBeVisible();
-    const edit = await shell.editUser.boundingBox();
+    await expect(shell.rowMore).toBeVisible();
+    const more = await shell.rowMore.boundingBox();
     // Boxes come back in floating point: a 2.75rem control can measure 43.99997px.
-    expect(Math.round(edit?.height ?? 0)).toBeGreaterThanOrEqual(44);
-    expect(Math.round(edit?.width ?? 0)).toBeGreaterThanOrEqual(44);
+    expect(Math.round(more?.height ?? 0)).toBeGreaterThanOrEqual(44);
+    expect(Math.round(more?.width ?? 0)).toBeGreaterThanOrEqual(44);
     const primary = await shell.newUser.boundingBox();
     expect(Math.round(primary?.height ?? 0)).toBeGreaterThanOrEqual(44);
     expect(Math.round(primary?.width ?? 0)).toBeGreaterThanOrEqual(44);
@@ -215,21 +218,21 @@ test('the tablet primary action keeps its visible label', async ({ page }) => {
   await expect(shell.newUser.getByText('New user', { exact: true })).toBeVisible();
 });
 
-test('an overflowing Users table shows a scroll hint above the minimum table width', async ({
+test('an overflowing Audit table shows a scroll hint above the minimum table width', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 800, height: 900 });
-  await page.goto('/Admin/Users');
-  const shell = new ResponsiveShell(page);
-  await expect(shell.editUser).toBeVisible();
-  expect(await shell.users.evaluate((region) => region.clientWidth)).toBeGreaterThan(640);
+  await page.goto('/Audit');
+  const entries = page.getByRole('region', { name: 'Audit entries', exact: true });
+  await expect(entries.getByRole('row').nth(1)).toBeVisible();
+  expect(await entries.evaluate((region) => region.clientWidth)).toBeGreaterThan(640);
   await expect
-    .poll(() => shell.users.evaluate((region) => region.scrollWidth > region.clientWidth))
+    .poll(() => entries.evaluate((region) => region.scrollWidth > region.clientWidth))
     .toBe(true);
   await expect(
-    shell.users.getByText('Scroll horizontally to see all columns.', { exact: true }),
+    entries.getByText('Scroll horizontally to see all columns.', { exact: true }),
   ).toBeVisible();
-  await expect(shell.users).toHaveAttribute('tabindex', '0');
+  await expect(entries).toHaveAttribute('tabindex', '0');
 
   await page.setViewportSize({ width: 2000, height: 900 });
   await page.goto('/Access');
@@ -253,4 +256,37 @@ test('reduced-motion navigation can close and reopen without losing keyboard foc
   await expect(shell.open).toBeFocused();
   await shell.open.click();
   await expect(shell.close).toBeFocused();
+});
+
+test.describe('signed-out sign-in', () => {
+  // Clear the file-level administrator storage state so /Account/Login renders instead of redirecting.
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  test('sign-in follows the saved theme and preserves a changed theme after reload', async ({
+    context,
+    page,
+  }) => {
+    const signIn = new AccountSignIn(page);
+    await signIn.open();
+    await context.addCookies([
+      {
+        name: 'EclipsVault.Theme',
+        value: 'dark',
+        url: new URL('/', page.url()).href,
+        secure: true,
+      },
+    ]);
+    await page.reload();
+    const theme = () => page.evaluate(() => document.documentElement.dataset['theme']);
+    await expect.poll(theme).toBe('dark');
+
+    await signIn.themeSwitch.click();
+
+    await expect.poll(theme).toBe('light');
+    expect(
+      (await context.cookies()).find((cookie) => cookie.name === 'EclipsVault.Theme')?.value,
+    ).toBe('light');
+    await page.reload();
+    await expect.poll(theme).toBe('light');
+  });
 });

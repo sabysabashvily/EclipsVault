@@ -6,11 +6,11 @@ namespace EclipsVault.IntegrationTests;
 /// A vault whose audit trail tests rewrite, truncate or hold. Verify reports the first broken entry of
 /// the whole trail, so a tampered trail must never be seen by another test. Each test restores what it
 /// tampered with, but the critical rows some verifications wrote stay, so tests here assert only on rows
-/// after their own head.
+/// after their own head. Single sign-on is off here, so this vault also pins the sign-in page without it.
 /// </summary>
 public sealed class AuditTamperingFixture : IAsyncLifetime
 {
-    public VaultFixture Vault { get; } = new();
+    public VaultFixture Vault { get; } = new() { SsoDisabled = true };
 
     public Task InitializeAsync() => Vault.InitializeAsync();
 

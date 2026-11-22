@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { test as browserTest, expect } from './fixtures';
+import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { savedAdministratorCookies } from './administrator-cookies';
 import {
   savedProofSetupTimeout,
@@ -41,15 +42,21 @@ test('Verify is anchored by the checkpoint just created', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const audit = new AuditLog(page);
   await audit.open();
-  const created = page.waitForResponse('**/api/ui/audit/checkpoints');
+  // The server's real reply, read as it passes: Chromium can drop a body before a test asks for it.
+  let sequence: number | undefined;
+  await page.route('**/api/ui/audit/checkpoints', async (route) => {
+    const response = await route.fetch();
+    sequence = ((await response.json()) as { sequence: number }).sequence;
+    await route.fulfill({ response });
+  });
   await audit.checkpoint.click();
-  const { sequence } = (await (await created).json()) as { sequence: number };
+  await expect.poll(() => sequence).toBeDefined();
   await expect(audit.status).toHaveText(
     new RegExp(`^Signed checkpoint created at sequence ${sequence} with key \\S+\\.$`),
   );
   await expect(audit.latestCheckpoint).toContainText(`sequence ${sequence} ·`);
   await audit.verify.click();
-  await expect(audit.notice).toContainText('✓ Hash chain intact.');
+  await expect(audit.notice).toContainText('Hash chain intact');
   await expect(audit.notice).toContainText(`The signed checkpoint at sequence ${sequence} matches`);
 });
 
@@ -123,8 +130,9 @@ for (const [name, link] of [
   });
 }
 
-for (const shell of ['/DynamicSecrets', '/Access'] as const) {
-  test(`the sidebar on ${shell} opens the Audit log`, async ({ page }) => {
+for (const shell of [legacyShell, '/Access'] as const) {
+  test(`the sidebar on ${shell} opens the Audit log`, async ({ page, browserHealth }) => {
+    expectLegacyShell(browserHealth, shell);
     await page.context().addCookies(await savedAdministratorCookies());
     const audit = new AuditLog(page);
     await audit.fromSidebar(shell);
@@ -132,7 +140,8 @@ for (const shell of ['/DynamicSecrets', '/Access'] as const) {
     await expect(page).toHaveURL(/\/Audit$/);
   });
 
-  test(`the palette on ${shell} opens the Audit log`, async ({ page }) => {
+  test(`the palette on ${shell} opens the Audit log`, async ({ page, browserHealth }) => {
+    expectLegacyShell(browserHealth, shell);
     await page.context().addCookies(await savedAdministratorCookies());
     const audit = new AuditLog(page);
     await audit.fromPalette(shell);
@@ -141,7 +150,7 @@ for (const shell of ['/DynamicSecrets', '/Access'] as const) {
 }
 
 for (const theme of ['dark', 'light'] as const) {
-  test(`visual parity: the Audit log in ${theme} appearance`, async ({ page }, info) => {
+  test(`the Audit log lists entries in ${theme} appearance`, async ({ page }, info) => {
     await page.context().addCookies(await savedAdministratorCookies());
     const audit = new AuditLog(page);
     await audit.open();

@@ -10,7 +10,6 @@ import { EnrollTotpPage } from './enroll-totp-page';
 import { LoginPage, loginNotice } from './login-page';
 import { RecoverPage } from './recover-page';
 import { RecoveryCodePage } from './recovery-code-page';
-import { SignInFlow } from './sign-in-flow';
 import { TotpPage } from './totp-page';
 
 const reset = 'Your authenticator was reset. Sign in to set up a new one.';
@@ -44,15 +43,15 @@ describe('loginNotice', () => {
       true,
     ],
   ])('says what %s means', (search, message, error) => {
-    expect(loginNotice(search, null, '')).toEqual({ message, error });
+    expect(loginNotice(search, null)).toEqual({ message, error });
   });
 
   it('says nothing for a code it does not know, a typed reset code included', () => {
-    expect(loginNotice('?signOut=authenticator_reset', null, '')).toEqual({
+    expect(loginNotice('?signOut=authenticator_reset', null)).toEqual({
       message: '',
       error: false,
     });
-    expect(loginNotice('?signOut=other&sso=other', null, '')).toEqual({
+    expect(loginNotice('?signOut=other&sso=other', null)).toEqual({
       message: '',
       error: false,
     });
@@ -61,22 +60,16 @@ describe('loginNotice', () => {
   it.each(['?sso=constructor', '?signOut=toString', '?signOut=__proto__'])(
     'says nothing for %s, a name every object inherits',
     (search) => {
-      expect(loginNotice(search, null, '')).toEqual({ message: '', error: false });
+      expect(loginNotice(search, null)).toEqual({ message: '', error: false });
     },
   );
 
   it('says the reset sentence only from the handoff', () => {
-    expect(loginNotice('', 'authenticator_reset', '')).toEqual({ message: reset, error: false });
+    expect(loginNotice('', 'authenticator_reset')).toEqual({ message: reset, error: false });
   });
 
   it('puts a restarted sign-in first', () => {
-    expect(
-      loginNotice(
-        '?sso=failed',
-        null,
-        'Your account changed while you were signing in. Sign in again.',
-      ),
-    ).toEqual({
+    expect(loginNotice('?sso=failed&signIn=restarted', null)).toEqual({
       message: 'Your account changed while you were signing in. Sign in again.',
       error: true,
     });
@@ -168,16 +161,41 @@ describe('sign-in pages', () => {
       expect(page.querySelector('.auth-card > .muted')?.textContent).toBe(
         'Step 1 of 2 — password. An authenticator code is always required next.',
       );
-      expect(page.querySelectorAll('.step-track .step.active')).toHaveLength(1);
       expect(page.querySelector('label[for="Username"]')?.textContent).toBe('Username or email');
       expect(page.querySelector('#Username')?.getAttribute('autocomplete')).toBe('username');
       expect(page.querySelector('#Password')?.getAttribute('autocomplete')).toBe(
         'current-password',
       );
       expect(button(page, 'Continue').type).toBe('submit');
-      expect(button(page, 'Sign in with a passkey')).toBeDefined();
+      expect(button(page, 'Sign in with a passkey').textContent?.trim()).toBe(
+        'Sign in with a passkey',
+      );
       expect(page.querySelector('form[action="/Account/ExternalLogin"]')).toBeNull();
       expect(page.querySelector('.flash')).toBeNull();
+    });
+
+    it('shows the restarted notice in a fresh Login document and keeps the return URL', async () => {
+      const { page, fixture } = await render(
+        LoginPage,
+        '/Account/Login?ReturnUrl=%2FSecrets&signIn=restarted',
+      );
+      options(true);
+      await fixture.whenStable();
+
+      expect(page.querySelector('[role="alert"]')?.textContent?.trim()).toBe(
+        'Your account changed while you were signing in. Sign in again.',
+      );
+      expect(button(page, 'Sign in with Contoso SSO').disabled).toBe(false);
+      type(page, 'Username', 'devon');
+      type(page, 'Password', 'correct horse');
+      submit(page);
+      const request = backend.expectOne('/api/ui/auth/password');
+      expect(request.request.body).toEqual({
+        username: 'devon',
+        password: 'correct horse',
+        returnUrl: '/Secrets',
+      });
+      request.flush({ next: 'totp' });
     });
 
     it('sends the password with the return URL, then goes on to the authenticator code', async () => {
@@ -264,26 +282,6 @@ describe('sign-in pages', () => {
       expect((again.nativeElement as HTMLElement).querySelector('.flash')).toBeNull();
     });
 
-    it('shows a restarted sign-in once', async () => {
-      const { page, fixture } = await render(LoginPage, '/Account/Login');
-      options(false);
-      await fixture.whenStable();
-      expect(page.querySelector('.flash')).toBeNull();
-
-      TestBed.inject(SignInFlow).restarted.set(
-        'Your account changed while you were signing in. Sign in again.',
-      );
-      const restarted = TestBed.createComponent(LoginPage);
-      TestBed.tick();
-      backend.expectOne('/api/ui/auth/options').flush({ ssoEnabled: false, ssoDisplayName: '' });
-      await restarted.whenStable();
-
-      expect(
-        (restarted.nativeElement as HTMLElement).querySelector('.flash-error')?.textContent?.trim(),
-      ).toBe('Your account changed while you were signing in. Sign in again.');
-      expect(TestBed.inject(SignInFlow).restarted()).toBe('');
-    });
-
     it('starts single sign-on with a real form post carrying the request token and return URL', async () => {
       const { page, fixture } = await render(LoginPage, '/Account/Login?ReturnUrl=%2FSecrets');
       options(true);
@@ -345,7 +343,6 @@ describe('sign-in pages', () => {
         );
         await fixture.whenStable();
 
-        expect(page.querySelector('.passkey-status')?.classList).toContain('status-error');
         expect(button(page, 'Sign in with a passkey').disabled).toBe(false);
       });
 
@@ -394,7 +391,6 @@ describe('sign-in pages', () => {
       );
       expect(page.querySelector('label[for="Code"]')?.textContent).toBe('Authenticator code');
       const code = page.querySelector('#Code')!;
-      expect(code.className).toBe('code-input');
       expect(code.getAttribute('inputmode')).toBe('numeric');
       expect(code.getAttribute('maxlength')).toBe('6');
       expect(page.querySelector('.footnote a')?.getAttribute('href')).toBe(
@@ -451,10 +447,10 @@ describe('sign-in pages', () => {
         'Your account changed while you were signing in. Sign in again.',
       );
 
-      expect(navigate).toHaveBeenCalledExactlyOnceWith('/Account/Login?ReturnUrl=%2FSecrets');
-      expect(TestBed.inject(SignInFlow).restarted()).toBe(
-        'Your account changed while you were signing in. Sign in again.',
+      expect(assign).toHaveBeenCalledExactlyOnceWith(
+        '/Account/Login?ReturnUrl=%2FSecrets&signIn=restarted',
       );
+      expect(navigate).not.toHaveBeenCalled();
       expect(page.querySelector('.validation-summary')).toBeNull();
     });
 
@@ -595,7 +591,7 @@ describe('sign-in pages', () => {
         'Your account changed while you were signing in. Sign in again.',
       );
 
-      expect(navigate).toHaveBeenCalledExactlyOnceWith('/Account/Login');
+      expect(assign).toHaveBeenCalledExactlyOnceWith('/Account/Login?signIn=restarted');
     });
   });
   describe('Recover', () => {

@@ -27,7 +27,7 @@ A sign-in whose first proof (a password, or an identity provider without its own
 _Avoid_: Half-signed-in, MFA session, partial session
 
 **Step-up**:
-A fresh second factor demanded on a session whose last strong sign-in is too old, before revealing a high-sensitivity secret or before an administrator grants lasting access.
+A fresh second factor demanded on a session whose last strong sign-in is too old, before revealing or sharing a high-sensitivity secret, issuing a dynamic credential for such a role, or before an administrator grants lasting access.
 _Avoid_: Re-login, re-auth prompt, sudo mode
 
 **Account verification**:
@@ -93,7 +93,7 @@ A secret that is a real account's password on a backend, which the vault can cha
 _Avoid_: Managed credential
 
 **Decoy**:
-A planted secret nobody should open. Opening one signs the session out and blocks its network range.
+A planted secret nobody should open. Opening one signs the session out and blocks its network range, though that request is answered exactly as for a secret that does not exist.
 _Avoid_: Honey token (in prose), trap
 
 **Access denial**:
@@ -165,7 +165,7 @@ _Avoid_: Audit key, master key (that wraps data keys)
 ### Sharing
 
 **Share**:
-Read access to one secret, given to one vault account by another, optionally until an expiry. Its recipient may view and reveal the secret, never change, share or delete it. Its issuer can revoke it, and it outlives the issuer's account.
+Read access to one secret, given to one vault account by another, optionally until an expiry. Its recipient may view and reveal the secret, never change, share or delete it. Its issuer can revoke it, as can an administrator or a member of the secret's project, and it outlives the issuer's account.
 _Avoid_: Grant, permission
 
 **Issuer**:
@@ -209,7 +209,7 @@ The server-rendered pages being replaced. Shrinks to nothing by the end of the m
 _Avoid_: Old UI, MVC frontend
 
 **Area**:
-A group of related pages behind one sidebar entry (e.g. Profile, Secrets, Users), named by a stable key such as `users` in `/api/ui/me`. An area migrates as one unit; a migration step may move several at once, as the Administration step moves the administration areas in two parts. At any moment an area belongs wholly to either the Legacy UI or the Angular UI, never both. The one exception is Secrets, which Area 7 moves in parts: from 7a until 7b, its list and New secret are in the Angular UI and Secret details is still Legacy.
+A group of related pages behind one sidebar entry (e.g. Profile, Secrets, Users), named by a stable key such as `users` in `/api/ui/me`. An area migrates as one unit; a migration step may move several at once, as the Administration step moves the administration areas in two parts. At any moment an area belongs wholly to either the Legacy UI or the Angular UI, never both. The one exception was Secrets, which Area 7 moved in parts: from 7a until 7b, its list and New secret were in the Angular UI and Secret details was still Legacy.
 _Avoid_: Module, feature, screen
 
 **Angular UI**:

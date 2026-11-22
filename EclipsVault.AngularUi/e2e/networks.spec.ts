@@ -1,6 +1,7 @@
 import type { BrowserContext } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
+import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { Networks, blockInRunStore } from './networks';
 import { freshTotp, currentTotpStep } from './totp';
 import { savedAdministratorCookies } from './administrator-cookies';
@@ -84,7 +85,7 @@ test('a block written into the run store shows the tripped decoy by name and its
   blockInRunStore('192.0.2.14/32', "Honey-token 'E2E_NETWORKS_DECOY' tripped");
   const networks = new Networks(page);
   await networks.open();
-  await expect(networks.row('192.0.2.14/32')).toContainText(
+  await expect(networks.block('192.0.2.14/32')).toContainText(
     "Honey-token 'E2E_NETWORKS_DECOY' tripped",
   );
   await expect(networks.blockedSince('192.0.2.14/32')).toHaveText(/^\d{2}-\d{2} \d{2}:\d{2}$/);
@@ -101,7 +102,7 @@ test('Unblock after the Legacy confirmation lifts the block', async ({ page }) =
   );
   await networks.confirm();
   await expect(networks.status).toHaveText('Block on 192.0.2.14/32 lifted.');
-  await expect(networks.row('192.0.2.14/32')).toHaveCount(0);
+  await expect(networks.block('192.0.2.14/32')).toHaveCount(0);
 });
 
 test('the Dashboard action opens Networks', async ({ page }) => {
@@ -119,10 +120,11 @@ test('the Denied page link opens Networks', async ({ page }) => {
   await expect(networks.heading).toBeVisible();
 });
 
-test('the Legacy sidebar opens Networks', async ({ page }) => {
+test('the Legacy sidebar opens Networks', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
   await page.context().addCookies(administratorCookies);
   const networks = new Networks(page);
-  await networks.fromSidebar('/DynamicSecrets');
+  await networks.fromSidebar(legacyShell);
   await expect(networks.heading).toBeVisible();
 });
 
@@ -133,10 +135,11 @@ test('the Angular sidebar opens Networks', async ({ page }) => {
   await expect(networks.heading).toBeVisible();
 });
 
-test('the palette in the Legacy shell opens Networks', async ({ page }) => {
+test('the palette in the Legacy shell opens Networks', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
   await page.context().addCookies(administratorCookies);
   const networks = new Networks(page);
-  await networks.fromPalette('/DynamicSecrets');
+  await networks.fromPalette(legacyShell);
   await expect(networks.heading).toBeVisible();
 });
 
@@ -181,10 +184,16 @@ for (const { theme, blocked } of appearances) {
     const networks = new Networks(page);
     await networks.open();
     await networks.useTheme(theme);
-    await expect(networks.row(blocked)).toBeVisible();
+    await expect(networks.block(blocked)).toBeVisible();
     await expect(networks.address).toBeVisible();
     await expect(networks.range).toBeEditable();
     await page.screenshot({ path: info.outputPath(`networks-${theme}.png`), fullPage: true });
+    for (const width of [300, 2000]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+        .toBe(width);
+    }
   });
 
   test(`the Trust form is reachable in order by keyboard in ${theme} appearance`, async ({
@@ -219,6 +228,6 @@ for (const { theme, blocked } of appearances) {
     await page.keyboard.press('Tab');
     await page.keyboard.press('Enter');
     await expect(networks.status).toHaveText(`Block on ${blocked} lifted.`);
-    await expect(networks.row(blocked)).toHaveCount(0);
+    await expect(networks.block(blocked)).toHaveCount(0);
   });
 }

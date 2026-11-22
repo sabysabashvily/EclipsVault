@@ -40,7 +40,7 @@ export async function signInNewAccount(
 
   await signIn.open();
   await signIn.submitPassword(username, password);
-  await signIn.submitCode(await freshTotp(secret, activationStep));
+  await signIn.submitAuthenticatorCode(await freshTotp(secret, activationStep));
   const step = currentTotpStep();
   await page.waitForURL(/\/Secrets$/);
   return { secret, step };

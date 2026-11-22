@@ -73,7 +73,7 @@ test('an administrator on a blocked network recovers with a password and a real 
     const users = new Users(page);
     await users.open();
     await users.more(username, 'Delete user');
-    await users.confirm();
+    await users.confirm('Delete user');
     await expect(users.row(username)).toHaveCount(0);
   }
 });

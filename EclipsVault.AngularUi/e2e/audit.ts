@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { openPalette } from './palette';
+import type { legacyShell } from './legacy-shell';
 import { AppShell } from './app-shell';
 
 export class AuditLog {
@@ -18,9 +19,7 @@ export class AuditLog {
   readonly verifyProofButton;
   constructor(private readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Audit log', exact: true });
-    this.summary = page.getByText(
-      /Immutable, fail-closed trail — showing the latest \d+ entries\./,
-    );
+    this.summary = page.getByText(/Newest first · \d+ entries\./);
     // eslint-disable-next-line playwright/no-raw-locators -- The notice is an unlabelled banner, as in Legacy; the shell's licence notice is one too.
     this.notice = page.locator('app-audit-page .notice');
     // eslint-disable-next-line playwright/no-raw-locators -- Loading has its own status; this is the shared outcome announcer.
@@ -55,13 +54,13 @@ export class AuditLog {
     await this.page.goto('/');
     await this.page.getByRole('link', { name: link }).click();
   }
-  async fromSidebar(path: '/DynamicSecrets' | '/Access'): Promise<void> {
+  async fromSidebar(path: typeof legacyShell | '/Access'): Promise<void> {
     await this.page.goto(path);
     // The Angular sidebar folds its administration pages into a group; the Legacy one lists them.
     if (path === '/Access') await new AppShell(this.page).administration.click();
     await this.page.getByRole('link', { name: 'Audit log', exact: true }).click();
   }
-  async fromPalette(path: '/DynamicSecrets' | '/Access'): Promise<void> {
+  async fromPalette(path: typeof legacyShell | '/Access'): Promise<void> {
     await this.page.goto(path);
     await openPalette(this.page);
     await this.page.getByRole('combobox').fill('Audit log');

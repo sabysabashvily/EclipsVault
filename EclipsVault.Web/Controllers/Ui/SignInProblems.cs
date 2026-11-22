@@ -28,7 +28,8 @@ public static class SignInProblems
 
     /// <summary>
     /// The sign-in cannot finish under the proof it began with: the pending sign-in is ended, and the
-    /// browser gets an anonymous token so Login can start again without a reload.
+    /// browser gets an anonymous token for its next request. The UI loads a fresh Login document
+    /// to obtain its identity-provider form policy.
     /// </summary>
     public static async Task<JsonResult> RestartAsync(HttpContext context, IAntiforgery antiforgery, string title = Restarted)
     {

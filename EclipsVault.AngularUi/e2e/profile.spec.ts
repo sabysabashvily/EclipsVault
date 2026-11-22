@@ -4,8 +4,12 @@ import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
 import { signInNewAccount } from './account-activation';
+import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { AccountCreation } from './account-creation';
 import { AccountSignIn } from './account-sign-in';
+import { AppShell } from './app-shell';
+import { AuthenticatorVerification } from './authenticator-verification';
+import { RecoveryCodeSignIn } from './recovery-code-sign-in';
 import { AuthenticatorEnrollment } from './authenticator-enrollment';
 import { openPalette } from './palette';
 import { avatarImage, ChangePasswordPage, freshProfileTotp, ProfilePage } from './profile';
@@ -66,6 +70,7 @@ test('both account menus, both palettes and Security checkup open Profile on the
   page,
   browserHealth,
 }) => {
+  expectLegacyShell(browserHealth);
   await page.context().addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   const documents: string[] = [];
@@ -98,13 +103,13 @@ test('both account menus, both palettes and Security checkup open Profile on the
   });
 
   await test.step('the Legacy account menu and palette load Profile into Angular', async () => {
-    await page.goto('/DynamicSecrets');
+    await page.goto(legacyShell);
     documents.length = 0;
     await page.getByText('Mailbox Owner', { exact: true }).click();
     await page.getByRole('menuitem', { name: 'Profile', exact: true }).click();
     await expect(profile.heading).toBeVisible();
     expect(documents).toEqual(['/Profile']);
-    await page.goto('/DynamicSecrets');
+    await page.goto(legacyShell);
     documents.length = 0;
     await openPalette(page);
     await page.getByRole('combobox').fill('Profile');
@@ -171,65 +176,39 @@ test('the password form refuses mismatched, unchanged and breached choices befor
   expect(prepared).toEqual([]);
 });
 
-test('visual parity: Profile preserves cards and labels in both themes and on a narrow screen', async ({
+test('Profile shows the person and sign-in methods, and nothing scrolls sideways at 300 or 2000px', async ({
   page,
-}, testInfo) => {
+}) => {
   await page.context().addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
   await expect(page.getByRole('heading', { level: 2 })).toHaveText([
-    'Profile picture',
-    'Details',
-    'Access',
-    'Security',
+    'Authenticator',
     'Passkeys',
+    'Recovery codes',
+    'Email',
+    'Password',
+    'Sign out',
   ]);
+  await expect(
+    page.getByText('Every change here is saved to the audit log.', { exact: true }),
+  ).toBeVisible();
   await expect(page.getByLabel('Username', { exact: true })).toBeDisabled();
   await expect(profile.email).toHaveAttribute('readonly', '');
-  await expect(page.getByRole('term')).toHaveText(['Clearance', 'Project']);
   await expect(
     page.getByText(
       'Clearance and project are set by an administrator. Ask one if these need to change.',
       { exact: true },
     ),
   ).toBeVisible();
-  // eslint-disable-next-line playwright/no-raw-locators -- The rows' titles are unlabelled <strong> elements.
-  await expect(page.locator('.settings-row > div > strong')).toHaveText([
-    'Password',
-    'Authenticator (2FA)',
-    'Recovery codes',
-    'Sessions',
-  ]);
   await expect(
-    page.getByText('Argon2id-hashed. Change it if you suspect it has been compromised.'),
+    page.getByText('Change it if you suspect it has been compromised.', { exact: true }),
   ).toBeVisible();
-  const details = await page.getByRole('heading', { name: 'Details', exact: true }).boundingBox();
-  const access = await page.getByRole('heading', { name: 'Access', exact: true }).boundingBox();
-  expect(access!.x).toBeGreaterThan(details!.x + details!.width);
-
-  await page.screenshot({ path: testInfo.outputPath('profile-dark.png'), fullPage: true });
-  await page.getByText('Mailbox Owner', { exact: true }).click();
-  await page.getByRole('menuitem', { name: /Switch to light/ }).click();
-  // eslint-disable-next-line playwright/no-raw-locators -- Theme is a document attribute shared by both shells.
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  await page.screenshot({ path: testInfo.outputPath('profile-light.png'), fullPage: true });
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(profile.displayName).toBeVisible();
-  // Narrowing swaps the sidebar for the drawer, so the cards settle a frame later: poll the layout.
-  const detailsHeading = page.getByRole('heading', { name: 'Details', exact: true });
-  const accessHeading = page.getByRole('heading', { name: 'Access', exact: true });
-  await expect
-    .poll(async () => {
-      const details = await detailsHeading.boundingBox();
-      const access = await accessHeading.boundingBox();
-      return {
-        accessBelowDetails: access!.y > details!.y,
-        sameColumn: Math.abs(access!.x - details!.x) < 2,
-      };
-    })
-    .toEqual({ accessBelowDetails: true, sameColumn: true });
-  await page.screenshot({ path: testInfo.outputPath('profile-narrow.png'), fullPage: true });
+  await expect(page.getByRole('button', { name: 'Remove passkey', exact: true })).toHaveCount(0);
+  for (const width of [300, 2000]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  }
 });
 
 test('Change password shows its fields, hint, meter and a working show/hide in both themes', async ({
@@ -287,7 +266,7 @@ test('display name and avatar update the live shell without changing the email',
   await profile.open();
   const email = await profile.email.inputValue();
   await profile.displayName.fill('Profile Browser Owner');
-  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await page.getByRole('button', { name: 'Save display name', exact: true }).click();
   await expect(
     page.getByRole('status').filter({ hasText: 'Your profile was updated.' }),
   ).toBeVisible();
@@ -307,7 +286,7 @@ test('display name and avatar update the live shell without changing the email',
   );
   expect(avatar.headers()['cache-control']).toContain('no-store');
   expect(avatar.headers()['content-type']).toContain('image/png');
-  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove picture', exact: true }).click();
   await profile.confirm();
   await expect(page.getByText('Your profile picture was removed.', { exact: true })).toBeVisible();
   ownerCookies = await page.context().cookies();
@@ -359,7 +338,7 @@ test('a JPEG avatar is cropped into a metadata-free 256 pixel PNG', async ({ pag
   expect(png.readUInt32BE(16)).toBe(256);
   expect(png.readUInt32BE(20)).toBe(256);
   expect(png.includes(comment)).toBe(false);
-  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove picture', exact: true }).click();
   await profile.confirm();
   await expect(page.getByText('Your profile picture was removed.', { exact: true })).toBeVisible();
   ownerCookies = await page.context().cookies();
@@ -447,7 +426,7 @@ test('real password verification renews the current browser and refuses its copi
   await page.getByRole('link', { name: 'Back to profile', exact: true }).click();
   await expect(profile.heading).toBeVisible();
   await profile.displayName.fill('After Password Renewal');
-  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await page.getByRole('button', { name: 'Save display name', exact: true }).click();
   await expect(page.getByText('Your profile was updated.', { exact: true })).toBeVisible();
   ownerCookies = await page.context().cookies();
 });
@@ -635,7 +614,7 @@ test('a real SMTP outage leaves email inactive and reports delivery failure', as
   await expect(profile.newEmail).toBeVisible();
 });
 
-test('visual parity: ten recovery codes print once and clear on Done, direct visits and refresh', async ({
+test('ten recovery codes print once and clear on Done, direct visits and refresh', async ({
   page,
   browserHealth,
 }, testInfo) => {
@@ -646,7 +625,7 @@ test('visual parity: ten recovery codes print once and clear on Done, direct vis
   const profile = new ProfilePage(page);
   await profile.open();
   profile.releaseSignInBudget();
-  await page.getByRole('button', { name: 'Generate codes', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate recovery codes', exact: true }).click();
   await profile.confirm();
   lastStep = await profile.verifyOwner(password, secret, lastStep);
   await expect(page).toHaveTitle('Recovery codes — EclipsVault');
@@ -703,97 +682,82 @@ test('visual parity: ten recovery codes print once and clear on Done, direct vis
   ownerCookies = await page.context().cookies();
 });
 
-test('a recovery code signs in from the keyboard in both themes, then the menu sign-out reports an unconfirmed revocation', async ({
+test('a recovery code entered from the keyboard announces it is spent before Continue', async ({
+  browserHealth,
+}) => {
+  test.setTimeout(240_000);
+  const page = await (await browserHealth.newContext()).newPage();
+  new ProfilePage(page).releaseSignInBudget();
+  const signIn = new AccountSignIn(page);
+  const authenticator = new AuthenticatorVerification(page);
+  const recovery = new RecoveryCodeSignIn(page);
+  await signIn.open();
+
+  await expect(signIn.username).toBeFocused();
+  await page.keyboard.type('e2e-profile-owner');
+  await page.keyboard.press('Tab');
+  await expect(signIn.password).toBeFocused();
+  await page.keyboard.type(password);
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/Account\/Totp$/);
+  await expect(authenticator.code).toBeFocused();
+  await authenticator.recoveryCode.focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/Account\/RecoveryCode$/);
+  await expect(recovery.code).toBeFocused();
+  await page.keyboard.type(signInRecoveryCode);
+  await page.keyboard.press('Enter');
+
+  await expect(recovery.notice).toContainText(
+    'that code is now used up. You have 9 recovery codes left.',
+  );
+  await expect(recovery.continue).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/Secrets$/);
+});
+
+test('a menu sign-out with unconfirmed revocation clears the cookie and shows its warning', async ({
   browserHealth,
 }) => {
   test.setTimeout(240_000);
   const context = await browserHealth.newContext();
   const page = await context.newPage();
   new ProfilePage(page).releaseSignInBudget();
-  await page.goto('/Account/Login');
-  await context.addCookies([
-    { name: 'EclipsVault.Theme', value: 'dark', url: new URL('/', page.url()).href, secure: true },
-  ]);
-  await page.reload();
+  const signIn = new AccountSignIn(page);
+  await signIn.open();
+  await signIn.submitPassword('e2e-profile-owner', password);
+  await signIn.submitAuthenticatorCode(await freshProfileTotp(secret));
+  lastStep = currentTotpStep();
+  await expect(page).toHaveURL(/\/Secrets$/);
 
-  await test.step('the sign-in pages follow the shared theme and switch it', async () => {
-    const theme = () => page.evaluate(() => document.documentElement.dataset['theme']);
-    const background = () =>
-      page
-        .getByRole('heading', { name: 'Sign in', exact: true })
-        .evaluate((heading) => getComputedStyle(heading.closest('.auth-card')!).backgroundColor);
-    await expect.poll(theme).toBe('dark');
-    const dark = await background();
-    await page.getByRole('button', { name: 'Switch color theme', exact: true }).click();
-    await expect.poll(theme).toBe('light');
-    expect(await background()).not.toBe(dark);
-    expect(
-      (await context.cookies()).find((cookie) => cookie.name === 'EclipsVault.Theme')?.value,
-    ).toBe('light');
-    await page.reload();
-    await expect.poll(theme).toBe('light');
-  });
-
-  await test.step('password, then a recovery code, from the keyboard alone', async () => {
-    await expect(page.getByLabel('Username')).toBeFocused();
-    await page.keyboard.type('e2e-profile-owner');
-    await page.keyboard.press('Tab');
-    await expect(page.getByLabel('Password', { exact: true })).toBeFocused();
-    await page.keyboard.type(password);
-    await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(/\/Account\/Totp$/);
-    await expect(page.getByLabel('Authenticator code')).toBeFocused();
-    await page.getByRole('link', { name: 'Use a recovery code', exact: true }).focus();
-    await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(/\/Account\/RecoveryCode$/);
-    await expect(page.getByLabel('Recovery code')).toBeFocused();
-    await page.keyboard.type(signInRecoveryCode);
-    await page.keyboard.press('Enter');
-  });
-
-  await test.step('the notice says the code is spent and how many are left before Continue', async () => {
-    await expect(
-      page.getByRole('status').filter({ hasText: 'You signed in with a recovery code' }),
-    ).toContainText('that code is now used up. You have 9 recovery codes left.');
-    await expect(page.getByRole('button', { name: 'Continue', exact: true })).toBeFocused();
-    await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(/\/Secrets$/);
-  });
-
-  await test.step('a menu sign-out the vault could not confirm still reaches sign-in with the local-clear warning', async () => {
-    // The integration tests pin when the vault answers sign_out_incomplete. The real call clears
-    // this browser's cookie; the transport reports that the store did not confirm the revocation.
-    await page.route(
-      '**/api/ui/auth/sign-out',
-      async (route) => {
-        const response = await route.fetch();
-        expect(response.status()).toBe(204);
-        await route.fulfill({
-          response,
+  // The real call clears the cookie; the transport supplies the unconfirmed-revocation outcome.
+  // Production HTTP tests pin the storage failure that returns this answer.
+  await page.route(
+    '**/api/ui/auth/sign-out',
+    async (route) => {
+      const response = await route.fetch();
+      expect(response.status()).toBe(204);
+      await route.fulfill({
+        response,
+        status: 503,
+        contentType: 'application/problem+json',
+        body: JSON.stringify({
           status: 503,
-          contentType: 'application/problem+json',
-          body: JSON.stringify({
-            status: 503,
-            code: 'sign_out_incomplete',
-            title: "This browser's cookie was cleared. Other devices may still be signed in.",
-          }),
-        });
-      },
-      { times: 1 },
-    );
-    browserHealth.expectConsoleError({ text: /status of 503/, url: /\/api\/ui\/auth\/sign-out$/ });
-    await page.getByText('After Password Renewal', { exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click();
-    await expect(page).toHaveURL(/\/Account\/Login\?signOut=sign_out_incomplete$/);
-    await expect(
-      page.getByText("This browser's cookie was cleared. Other devices may still be signed in.", {
-        exact: true,
-      }),
-    ).toBeVisible();
-    expect((await context.cookies()).some((cookie) => cookie.name === 'EclipsVault.Session')).toBe(
-      false,
-    );
-  });
+          code: 'sign_out_incomplete',
+          title: "This browser's cookie was cleared. Other devices may still be signed in.",
+        }),
+      });
+    },
+    { times: 1 },
+  );
+  browserHealth.expectConsoleError({ text: /status of 503/, url: /\/api\/ui\/auth\/sign-out$/ });
+  await new AppShell(page).signOut('After Password Renewal');
+
+  await expect(page).toHaveURL(/\/Account\/Login\?signOut=sign_out_incomplete$/);
+  await expect(signIn.localSignOutWarning).toBeVisible();
+  expect((await context.cookies()).some((cookie) => cookie.name === 'EclipsVault.Session')).toBe(
+    false,
+  );
 });
 
 test('a UV virtual passkey is added, verifies a frozen change and is removed using a surviving authenticator', async ({
@@ -838,7 +802,7 @@ test('a UV virtual passkey is added, verifies a frozen change and is removed usi
       if (/\/passkey\/complete$/.test(request.url())) completed.push(request.method());
     });
     await cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled: false });
-    await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
+    await page.getByRole('button', { name: 'Replace recovery codes', exact: true }).click();
     await profile.confirm();
     await profile.verificationMethod.selectOption('Passkey');
     const begun = page.waitForResponse(/\/passkey\/begin$/);
@@ -849,7 +813,7 @@ test('a UV virtual passkey is added, verifies a frozen change and is removed usi
     await page.goBack();
     await expect(profile.heading).toBeVisible();
     await expect(profile.verification).not.toBeVisible();
-    await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
+    await page.getByRole('button', { name: 'Replace recovery codes', exact: true }).click();
     await profile.confirm();
     await profile.verificationMethod.selectOption('PasswordAndAuthenticatorCode');
     await expect(profile.verificationPassword).toHaveValue('');
@@ -859,7 +823,7 @@ test('a UV virtual passkey is added, verifies a frozen change and is removed usi
   });
   const beforeProof = await browserHealth.newContext();
   await beforeProof.addCookies(await page.context().cookies());
-  await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
+  await page.getByRole('button', { name: 'Replace recovery codes', exact: true }).click();
   await profile.confirm();
   await profile.verificationMethod.selectOption('Passkey');
   await profile.verifyAccount.click();
@@ -869,7 +833,7 @@ test('a UV virtual passkey is added, verifies a frozen change and is removed usi
   expect((await beforeProof.request.get('/api/ui/me')).status()).toBe(401);
   const beforeRemoval = await browserHealth.newContext();
   await beforeRemoval.addCookies(await page.context().cookies());
-  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove passkey', exact: true }).click();
   await profile.confirm();
   await expect(profile.verificationMethod).not.toContainText('Passkey');
   lastStep = await profile.verifyOwner(password, secret, lastStep);
@@ -914,7 +878,7 @@ test('session loss clears an outstanding UV registration and refuses its late co
     if (request.url().endsWith('/passkeys/registration/complete')) completed.push(request.method());
   });
   try {
-    await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+    await page.getByRole('button', { name: 'Save display name', exact: true }).click();
     await snapshot;
     await expect(page.getByText('Your profile was updated.', { exact: true })).toBeVisible();
     await page.getByLabel('New passkey name').fill('Discarded after session loss');
@@ -1188,7 +1152,7 @@ test('reset retains a passkey and refuses deleting the last method until Legacy 
     page.on('request', (request) => {
       if (/\/passkey\/complete$/.test(request.url())) completions.push(request.method());
     });
-    await page.getByRole('button', { name: 'Generate codes', exact: true }).click();
+    await page.getByRole('button', { name: 'Generate recovery codes', exact: true }).click();
     await profile.confirm();
     await profile.verificationMethod.selectOption('Passkey');
     await cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled: false });
@@ -1213,8 +1177,10 @@ test('reset retains a passkey and refuses deleting the last method until Legacy 
     await expect(page).toHaveURL(/\/Secrets$/);
     await profile.open();
     await expect(page.getByText('Surviving UV key', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Remove', exact: true })).toBeDisabled();
-    await expect(page.getByRole('button', { name: 'Generate codes', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Remove passkey', exact: true })).toBeDisabled();
+    await expect(
+      page.getByRole('button', { name: 'Generate recovery codes', exact: true }),
+    ).toBeDisabled();
     await expect(profile.resetAuthenticator).toBeDisabled();
 
     profile.releaseSignInBudget();
@@ -1227,7 +1193,7 @@ test('reset retains a passkey and refuses deleting the last method until Legacy 
     lastStep = currentTotpStep();
     await expect(page).toHaveURL(/\/Secrets$/);
     await profile.open();
-    await page.getByRole('button', { name: 'Remove', exact: true }).click();
+    await page.getByRole('button', { name: 'Remove passkey', exact: true }).click();
     await profile.confirm();
     await expect(profile.verificationMethod).not.toContainText('Passkey');
     lastStep = await profile.verifyOwner(password, secret, lastStep);
@@ -1298,7 +1264,7 @@ test('a rejected recovery mutation returns no codes and never replays generation
     text: /status of 503/,
     url: /\/api\/ui\/profile\/recovery-codes$/,
   });
-  await page.getByRole('button', { name: 'Generate codes', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate recovery codes', exact: true }).click();
   await profile.confirm();
   lastStep = await profile.verifyOwner(password, secret, lastStep);
   await expect(

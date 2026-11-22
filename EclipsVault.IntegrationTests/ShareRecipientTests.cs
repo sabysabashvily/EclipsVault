@@ -17,16 +17,15 @@ public sealed class ShareRecipientTests(VaultFixture vault)
         // Only a trusted address may open a Confidential secret, and the issuer must open it to share it.
         var issuer = await vault.SignInNewAccountAsync("it-share-cleared-issuer", IPAddress.Parse("10.97.0.1"), ClearanceLevel.TopSecret);
         await vault.SignInNewAccountAsync("it-share-under-cleared", IPAddress.Parse("198.51.100.150"), project: "SHARE-RULE");
-        var details = await LegacySharing.CreateSecretAsync(issuer.Client, "it-share-confidential-secret", sensitivity: "Confidential");
+        var details = await SecretSharing.CreateSecretAsync(issuer.Client, "it-share-confidential-secret", sensitivity: "Confidential");
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await LegacySharing.ShareAsync(issuer.Client, details, "it-share-under-cleared");
+        var response = await SecretDetailsApi.ShareAsync(issuer.Client, details, "it-share-under-cleared");
 
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal(details, response.Headers.Location?.OriginalString);
-        Assert.Contains("That account's clearance is below this secret's sensitivity, so a share would not let them open it.",
-            WebUtility.HtmlDecode(await issuer.Client.GetStringAsync(details)));
-        Assert.False(await LegacySharing.HasAnyShareAsync(vault, details));
+        var problem = await SecretsApi.AssertProblemAsync(response, 409, "share_refused");
+        Assert.Equal("That account's clearance is below this secret's sensitivity, so a share would not let them open it.",
+            problem.GetProperty("title").GetString());
+        Assert.False(await SecretSharing.HasAnyShareAsync(vault, details));
         Assert.Empty(await AuditTrail.ShareRowsAfterAsync(vault, before));
     }
 
@@ -35,25 +34,24 @@ public sealed class ShareRecipientTests(VaultFixture vault)
     {
         var issuer = await vault.AdminClientAsync();
         var recipient = await vault.SignInNewAccountAsync("it-share-expired-recipient", IPAddress.Parse("198.51.100.151"), project: "SHARE-RULE");
-        var details = await LegacySharing.CreateSecretAsync(issuer, "it-share-expired-secret");
-        Assert.Equal(HttpStatusCode.Redirect, (await LegacySharing.ShareAsync(issuer, details, "it-share-expired-recipient", ttlDays: "1")).StatusCode);
-        var expired = await LegacySharing.ShareOfAsync(vault, details);
-        await LegacySharing.ExpireShareAsync(vault, expired.Id);
-        Assert.StartsWith("/Account/Denied?", (await recipient.Client.GetAsync(details)).Headers.Location?.OriginalString);
+        var details = await SecretSharing.CreateSecretAsync(issuer, "it-share-expired-secret");
+        Assert.Equal(HttpStatusCode.NoContent, (await SecretDetailsApi.ShareAsync(issuer, details, "it-share-expired-recipient", ttlDays: 1)).StatusCode);
+        var expired = await SecretSharing.ShareOfAsync(vault, details);
+        await SecretSharing.ExpireShareAsync(vault, expired.Id);
+        Assert.Equal(HttpStatusCode.Forbidden, (await SecretDetailsApi.GetAsync(recipient.Client, details)).StatusCode);
         var before = await AuditTrail.HeadAsync(vault);
 
-        var response = await LegacySharing.ShareAsync(issuer, details, "it-share-expired-recipient");
+        var response = await SecretDetailsApi.ShareAsync(issuer, details, "it-share-expired-recipient");
 
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal(details, response.Headers.Location?.OriginalString);
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         var row = Assert.Single(await AuditTrail.ShareRowsAfterAsync(vault, before));
         Assert.Equal(AuditAction.SecretShared, row.Action);
         Assert.Equal(expired.SecretId, row.ResourceId);
         Assert.Equal("it-share-expired-secret", row.ResourceName);
         Assert.Equal("Shared with 'it-share-expired-recipient', replacing an expired share", row.Details);
-        var replacement = await LegacySharing.ShareOfAsync(vault, details);
+        var replacement = await SecretSharing.ShareOfAsync(vault, details);
         Assert.NotEqual(expired.Id, replacement.Id);
         Assert.Null(replacement.ExpiresAtUtc);
-        Assert.Equal(HttpStatusCode.OK, (await recipient.Client.GetAsync(details)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await SecretDetailsApi.GetAsync(recipient.Client, details)).StatusCode);
     }
 }

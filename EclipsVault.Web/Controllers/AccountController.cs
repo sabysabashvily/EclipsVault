@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using EclipsVault.Core.Application.Sso;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
@@ -40,44 +41,12 @@ public sealed class AccountController : Controller
         _logger = logger;
     }
 
-    /// <summary>The Error page's sign-out until Area 9; the UI API's sign-out runs the same implementation.</summary>
+    /// <summary>The Error page's sign-out; the UI API's sign-out runs the same implementation.</summary>
     [HttpPost]
     public async Task<IActionResult> Logout(CancellationToken ct)
         => await _signOut.ThisSessionAsync(HttpContext, ct)
             ? RedirectToAction("Index", "Home")
             : LocalRedirect("/Account/Login?signOut=sign_out_incomplete");
-
-    /// <summary>TempData key used to hand ABAC denial reasons to the Denied page ('\n'-separated).</summary>
-    internal const string DenialReasonsTempDataKey = "AbacDenialReasons";
-
-    [HttpGet]
-    public async Task<IActionResult> Denied(Guid? secretId, [FromServices] IAccessRequestService requests, CancellationToken ct)
-        => View(new AccessDeniedViewModel
-        {
-            Reasons = TempData[DenialReasonsTempDataKey] is string reasons
-                ? reasons.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                : [],
-            SecretId = secretId,
-            RequestRefusalMessage = secretId is { } id ? await RequestRefusalMessageAsync(requests, id, ct) : null,
-        });
-
-    /// <summary>
-    /// Why the Request access form is not offered for this secret, or null when it is. A honey token's
-    /// exception is left to the global handler, which signs the session out.
-    /// </summary>
-    private async Task<string?> RequestRefusalMessageAsync(IAccessRequestService requests, Guid secretId, CancellationToken ct)
-    {
-        try
-        {
-            return await requests.FilingRefusalAsync(secretId, User.GetUserId(), ct) is { } refusal
-                ? AccessRequestRules.ExplainToRequester(refusal)
-                : null;
-        }
-        catch (SecretNotFoundException)
-        {
-            return "That secret no longer exists.";
-        }
-    }
 
     /// <summary>Hands off to the identity provider. Nothing is decided here.</summary>
     [HttpPost]
@@ -128,14 +97,33 @@ public sealed class AccountController : Controller
                 return LocalRedirect(SignInPage("/Account/Login", returnUrl, sso: "failed"));
             }
 
-            return LocalRedirect(SignInTarget.Choose(Url, returnUrl));
+            return ContinueFromVault(SignInTarget.Choose(Url, returnUrl));
         }
 
         // The IdP proved one factor; this vault wants its own. Rejoin the ordinary flow rather than
         // inventing a second one — TOTP, enrollment and recovery codes all already live there.
         var pending = VaultClaimsFactory.CreatePendingMfaPrincipal(user, decision.Stamp);
         await HttpContext.SignInAsync(AuthSchemes.MfaPending, pending);
-        return LocalRedirect(SignInPage(user.TotpEnabled ? "/Account/Totp" : "/Account/EnrollTotp", returnUrl));
+        return ContinueFromVault(SignInPage(user.TotpEnabled ? "/Account/Totp" : "/Account/EnrollTotp", returnUrl));
+    }
+
+    /// <summary>
+    /// Ends the identity provider's redirect chain with a page of the vault's own, which goes on to
+    /// <paramref name="target"/>. The chain began with the provider's cross-site form post, and the browser
+    /// withholds SameSite=Strict cookies, the session and the pending sign-in among them, from every hop of
+    /// it. The page's own navigation starts a same-site one that carries them.
+    /// </summary>
+    private ContentResult ContinueFromVault(string target)
+    {
+        if (!Url.IsLocalUrl(target))
+        {
+            throw new InvalidOperationException("A sign-in target must be a local URL.");
+        }
+
+        var href = HtmlEncoder.Default.Encode(target);
+        return Content(
+            $"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><meta http-equiv="refresh" content="0;url={href}" /><title>Signing in — EclipsVault</title><link rel="icon" type="image/svg+xml" href="/favicon.svg" /></head><body><a href="{href}">Continue to the vault</a></body></html>""",
+            "text/html; charset=utf-8");
     }
 
     /// <summary>A sign-in page of the Angular UI, carrying the return URL on to be judged when sign-in finishes.</summary>
