@@ -79,3 +79,31 @@ handoff now use the one-time HttpOnly Login-scoped handoff for authenticator res
 typed-query negative test and second-load consumption. Three sign-out-everywhere outcomes retain
 their distinct query codes. 8a ticket 2 owns the implementation and both TempData removals; 9a only
 verifies there is no remaining Logout caller. No issue publication or commit occurred.
+
+## Delivery: 9a ticket 1 (#195)
+
+Started 2026-11-23 from `6db89e5` (`main` after PR #201) on `area-9a-final-cleanup`. Claude Opus 5.5 (high).
+
+| Commit | Subject |
+| --- | --- |
+| `71d267c2` | Record the Area 9 grill: no catch-all, errors in the caller's format |
+| `0789f815` | Answer every failure in its caller's format instead of redirecting |
+| this one | Record the delivery of 9a ticket 1 |
+
+The grill records were applied on top of `main`'s text: `main` already carried the grill's Master key
+rotation entry, and the Area 9 paragraph of ADR-0017 follows `main`'s Area 8 paragraph.
+
+F5, F6, F7 and F11 were each shown failing on PostgreSQL against the starting code, then fixed. Local checks:
+`scripts/check.sh` (unit 1046); `scripts/check.sh integration` on PostgreSQL for `UiApiFailureContractTests`,
+`AuthApiTests`, `SecretsApiTests`, `ServiceAccountKeyTests`, `DocumentSecurityHeadersTests`, `OverviewApiTests`
+and `AuthenticationBoundaryTests` (187); `dotnet format`; both pending-model checks; the hook tests; the
+Angular gates. CI (both databases, the browser suite, `e2e:verify-guards`) is run by the coordinator.
+`security-reviewer` approved with two nits, both left for ticket 2.
+
+Deviation: `HomeController.Error`, its view and `ErrorViewModel` stay. No failure redirects there, but
+`/Home/Error?code=404` is still the suites' Legacy shell. Ticket 2 deletes them with the rest of Razor and
+re-homes or drops what uses the shell: `e2e/legacy-shell.ts` and its specs, three `e2e:verify-guards` probes,
+`VaultFixture.LegacyShell` and its callers. Ticket 2 also deletes two leftovers outside the spec's list,
+`EnumDisplay.ClearanceSelectList` and `SensitivitySelectList`.
+
+To restart: read this section and #195. Ticket 2 (#196) starts from this branch's head.
