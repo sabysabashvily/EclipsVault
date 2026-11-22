@@ -3452,6 +3452,12 @@ fieldset {
   overflow-wrap: anywhere;
   user-select: all;
 }
+/* A project scope can be 64 characters with no space; its chip wraps rather than widening the dialog. */
+.issued-key-scope li {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .mobile-navigation {

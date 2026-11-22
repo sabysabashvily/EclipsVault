@@ -228,6 +228,28 @@ for (const theme of themes) {
   });
 }
 
+const longestProjectScope = 'PAYMENTS_SETTLEMENT_RECONCILIATION_EUROPE_WEST_PRODUCTION_BATCH1';
+for (const width of [300, 2000]) {
+  test(`the issue-key confirmation with the longest project scope does not scroll sideways at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.context().addCookies(administratorCookies);
+    await page.goto(detailsUrl);
+    const details = new ServiceAccount(page, name);
+    await details.projectScope.fill(longestProjectScope);
+    await details.issue.click();
+    await expect(details.confirmation).toContainText(`Project ${longestProjectScope}`);
+    await expect
+      .poll(() =>
+        details.confirmation.evaluate((dialog) => dialog.scrollWidth > dialog.clientWidth),
+      )
+      .toBe(false);
+    await details.cancel();
+    await expect(details.confirmation).not.toBeVisible();
+  });
+}
+
 test('a non-administrator reaches Denied from every service-account bookmark', async ({
   page,
   browserHealth,
