@@ -23,12 +23,63 @@ export interface ExpectedRow {
   severity: string;
 }
 
-export async function feedRows(page: Page): Promise<FeedRow[]> {
-  return page
-    .getByRole('main')
-    .getByRole('row')
-    .filter({ has: page.getByRole('cell') })
-    .evaluateAll((rows) =>
+/** My activity: the signed-in account's own actions, newest first. */
+export class MyActivity {
+  readonly heading;
+  readonly summary;
+  readonly profileLink;
+  readonly table;
+  readonly rows;
+  readonly pager;
+  readonly pagerLinks;
+  readonly pageNumber;
+  readonly older;
+  readonly newer;
+  readonly empty;
+  readonly emptyMessage;
+  readonly nothingFurther;
+  readonly backToLatest;
+  readonly failure;
+  readonly tryAgain;
+  readonly inlineStyles;
+
+  constructor(readonly page: Page) {
+    const main = page.getByRole('main');
+    this.heading = page.getByRole('heading', { name: 'My activity', exact: true });
+    this.summary = main
+      .getByRole('paragraph')
+      .filter({ hasText: 'Only your own actions are listed.' });
+    this.profileLink = page.getByRole('link', {
+      name: 'Change your password or sign out everywhere',
+      exact: true,
+    });
+    this.table = main.getByRole('table');
+    this.rows = main.getByRole('row').filter({ has: page.getByRole('cell') });
+    this.pager = page.getByRole('navigation', { name: 'Activity pages', exact: true });
+    this.pagerLinks = this.pager.getByRole('link');
+    this.pageNumber = this.pager.getByText(/^Page \d+$/);
+    this.older = this.pager.getByRole('link', { name: 'Older →', exact: true });
+    this.newer = this.pager.getByRole('link', { name: '← Newer', exact: true });
+    this.empty = page.getByRole('heading', { name: 'No activity yet', exact: true });
+    this.emptyMessage = page.getByText(
+      'As you sign in, view and reveal secrets, and update your account, each action is recorded here so you can review it later.',
+      { exact: true },
+    );
+    this.nothingFurther = page.getByText('Nothing further back to show.', { exact: true });
+    this.backToLatest = page.getByRole('link', { name: 'Back to latest', exact: true });
+    this.failure = main.getByRole('alert');
+    this.tryAgain = page.getByRole('button', { name: 'Try again', exact: true });
+    // eslint-disable-next-line playwright/no-raw-locators -- Inline styles have no role, and the CSP must never need to allow them.
+    this.inlineStyles = page.locator('style, [style]');
+  }
+
+  async open(query = ''): Promise<void> {
+    await this.page.goto(`/Activity${query}`);
+  }
+
+  /** Each row, column by column, as a person reads it. */
+  async entries(): Promise<FeedRow[]> {
+    return this.rows.evaluateAll((rows) =>
       rows.map((row) => {
         const [when, action, severity, kind, from] = [...row.children];
         // The action cell holds the title, then any resource name, as two spans with no role.
@@ -43,6 +94,7 @@ export async function feedRows(page: Page): Promise<FeedRow[]> {
         };
       }),
     );
+  }
 }
 
 /** The row that records `title` for the resource named `resource`. */
@@ -109,6 +161,7 @@ export async function verifyMyActivity(
   theme: string,
   rows: ExpectedRow[],
 ) {
+  const myActivity = new MyActivity(page);
   await page
     .context()
     .addCookies([
@@ -119,29 +172,30 @@ export async function verifyMyActivity(
   expect(served?.headers()['content-security-policy']).toContain(
     "require-trusted-types-for 'script'",
   );
+  // eslint-disable-next-line playwright/no-raw-locators -- The theme is an attribute of the document element.
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
   await expect(page).toHaveTitle('My activity — EclipsVault');
-  await expect(page.getByRole('heading', { name: 'My activity', exact: true })).toBeVisible();
+  await expect(myActivity.heading).toBeVisible();
   const notable = rows.filter(({ severity }) => severity !== '').length;
   const notableSentence = notable === 0 ? '' : `${notable} notable on this page. `;
-  await expect(page.locator('.page-sub')).toHaveText(
+  await expect(myActivity.summary).toHaveText(
     `Newest first. ${notableSentence}Only your own actions are listed. This wasn't you? ` +
       'Change your password or sign out everywhere.',
   );
-  await expect(page.locator('.page-sub a')).toHaveAttribute('href', '/Profile');
+  await expect(myActivity.profileLink).toHaveAttribute('href', '/Profile');
   await expect(page.getByText('Newest first', { exact: true }).last()).toBeVisible();
 
   // Docker allocates the proxy's forwarded source address; every row of this session comes from it.
   const access = await page.request.get('/api/ui/access');
   const sourceIp: string = (await access.json()).sourceIp;
-  await expect(page.locator('.activity-table tbody tr')).toHaveCount(rows.length);
+  await expect(myActivity.rows).toHaveCount(rows.length);
   // Read the rows' timestamps from the API itself: the body of the page's own fetch is not always
   // still held by the browser once the page has consumed it.
   const response = await page.request.get('/api/ui/activity');
   expect(response.status()).toBe(200);
   const activity: Activity = await response.json();
   expect(activity.items).toHaveLength(rows.length);
-  const shown = await feedRows(page);
+  const shown = await myActivity.entries();
   expect(shown.map(({ title, kind, severity }) => ({ title, category: kind, severity }))).toEqual(
     rows,
   );
@@ -150,8 +204,8 @@ export async function verifyMyActivity(
     expect(row.from).toBe(sourceIp);
     expect(row.time).toBe(utc(activity.items[i]!.timestampUtc));
   }
-  await expect(page.locator('.pager')).toHaveCount(0);
-  await expect(page.locator('style, [style]')).toHaveCount(0);
+  await expect(myActivity.pager).toHaveCount(0);
+  await expect(myActivity.inlineStyles).toHaveCount(0);
 
   await page.evaluate(() => document.fonts.ready);
   const path = info.outputPath(`administrator-${theme}-activity.png`);
