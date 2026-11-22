@@ -192,7 +192,8 @@ the five steps. Do not start a stack for the first time in front of the room.
 Narration while it works:
 
 "This account is the Phoenix member. Sign-in opens Secrets, which is an Angular page. The list
-says two active secrets: the one I will open, and a short-lived token I will not. I filter to
+says two active secrets right after the reset: the one I will open, and a short-lived token I will
+not. The token expires about five minutes after the reset, so the list may now say one. I filter to
 `Phoenix_Dev_Database_Password` and press Open, then Reveal value. The value appears on the page,
 so I press Back to list before anyone records the screen. I sign out from the account card and
 return as the administrator. The audit log is an Angular page under Administration, and only an
@@ -216,8 +217,10 @@ If a step-up form appears, you are not on the Internal secret. Stop. Do not type
 
 ტექსტი, სანამ მუშაობს:
 
-„ეს ანგარიში Phoenix-ის წევრია. შესვლა ხსნის Secrets-ს, რომელიც Angular-ის გვერდია. სია ორ
-აქტიურ საიდუმლოს აჩვენებს: იმას, რომელსაც გავხსნი, და ხანმოკლე ტოკენს, რომელსაც არ შევეხები.
+„ეს ანგარიში Phoenix-ის წევრია. შესვლა ხსნის Secrets-ს, რომელიც Angular-ის გვერდია. სია
+გადატვირთვისთანავე ორ აქტიურ საიდუმლოს აჩვენებს: იმას, რომელსაც გავხსნი, და ხანმოკლე ტოკენს,
+რომელსაც არ შევეხები. ტოკენს ვადა გადატვირთვიდან დაახლოებით ხუთ წუთში გასდის, ამიტომ სია ახლა
+შეიძლება ერთს აჩვენებდეს.
 ვფილტრავ `Phoenix_Dev_Database_Password`-ზე და ვაჭერ Open-ს, შემდეგ Reveal value-ს. მნიშვნელობა
 გვერდზე ჩნდება, ამიტომ Back to list-ს ვაჭერ, სანამ ვინმე ეკრანს ჩაიწერს. ანგარიშის ბარათიდან
 გამოვდივარ და ადმინისტრატორად ვბრუნდები. აუდიტის ჟურნალი Angular-ის გვერდია Administration-ში და

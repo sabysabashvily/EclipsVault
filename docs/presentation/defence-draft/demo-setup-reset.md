@@ -24,12 +24,13 @@ seeded accounts, opened `Phoenix_Dev_Database_Password`, revealed it, left that 
 | Member | username `dev-user`, display name Dev User, clearance Standard, project `PHOENIX` | same |
 | Administrator | username `vault-admin`, display name Vault Administrator, clearance Top Secret, project `GLOBAL` | same |
 | Secret | `Phoenix_Dev_Database_Password`, Development, Internal, not a honey-token | same |
-| Also on this account's list | `Phoenix_Ephemeral_Deploy_Token`, badge `soon`. Do not open it | same |
+| Also on this account's list | `Phoenix_Ephemeral_Deploy_Token`, badge `soon`, until it expires about five minutes after the reset. Do not open it | same |
 | Do not open | `Production_AWS_Root_Key`, `Global_SQL_SA_Password` | same, `IsHoneyToken`. They are omitted from the list |
 | After sign-in | `/Secrets`, not `/` | `AccountController.RedirectAfterSignIn` defaults to `/Secrets` |
 
-`dev-user` sees two active secrets. The page says "2 active secrets. Opening one records an audit
-entry." The recorded entry for opening the details page is `Viewed`, and only after the access
+`dev-user` sees two active secrets right after the reset, and one once the ephemeral token expires,
+about five minutes later. Right after the reset the page says "2 active secrets. Opening one records
+an audit entry." The recorded entry for opening the details page is `Viewed`, and only after the access
 check allows it.
 
 The seeded secret values are synthetic and already in `DbSeeder.cs`. Do not copy them onto a slide
@@ -143,7 +144,7 @@ Light theme: the account card says "Switch to dark" when the page is already lig
    not on the page yet. Press "Reveal value". For this Internal secret the page does not ask for a
    code.
 5. Press "Back to list" before any capture. The filter clears, so the short-lived token is visible
-   again. Do not open it.
+   again unless it has expired. Do not open it.
 6. Open the account card "Dev User" / "Standard" and press "Sign out". The next page is
    `/Account/Login`.
 7. Sign in as `vault-admin` and complete that account's enrollment off camera. Open `/Audit`. The
