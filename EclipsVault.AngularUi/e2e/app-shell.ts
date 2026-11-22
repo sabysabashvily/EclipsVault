@@ -12,7 +12,12 @@ export class AppShell {
   readonly youGroup;
   readonly administrationGroup;
 
-  constructor(page: Page) {
+  async signOut(displayName: string): Promise<void> {
+    await this.page.getByText(displayName, { exact: true }).click();
+    await this.page.getByRole('menuitem', { name: 'Sign out', exact: true }).click();
+  }
+
+  constructor(private readonly page: Page) {
     this.yourData = page.getByRole('link', { name: 'Your data', exact: true });
     // A folding group's summary has no role of its own, so it is found by its text in the navigation.
     const navigation = page.getByRole('navigation', { name: 'Main navigation' });

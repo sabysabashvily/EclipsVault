@@ -107,6 +107,29 @@ public sealed class AuthAuditFailureTests(AuditFailureFixture failure)
     }
 
     [Fact]
+    public async Task A_refused_recovery_row_reissues_the_session_token_so_recovery_can_be_retried()
+    {
+        var recovery = await BlockedRecoveryAsync("it-auth-af-glass-retry", "100.74.175.29", "100.74.175.30");
+        try
+        {
+            var response = await RejectingAsync(AuditAction.BreakGlassRecovery, recovery.SendAsync);
+
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
+            Assert.NotNull(recovery.Browser.SessionCookie);
+            await recovery.AssertStillBlockedAsync();
+            var retry = await AuthApi.PostAsync(recovery.Browser, "/api/ui/auth/recover", AuthApi.ReissuedToken(recovery.Browser),
+                new { username = "it-auth-af-glass-retry", password = Password, code = "12" });
+
+            var problem = await ProfileApi.AssertProblemAsync(retry, 400, "validation_failed");
+            Assert.Equal("This field is missing or invalid.", problem.GetProperty("errors").GetProperty("code")[0].GetString());
+        }
+        finally
+        {
+            await recovery.ReleaseAsync();
+        }
+    }
+
+    [Fact]
     public async Task A_refused_lift_row_restores_the_exact_blocks_and_keeps_access_refused()
     {
         var recovery = await BlockedRecoveryAsync("it-auth-af-glass-lift", "100.74.175.24", "100.74.175.25");

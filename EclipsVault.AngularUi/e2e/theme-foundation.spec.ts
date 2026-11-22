@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures';
 import { ResponsiveShell } from './responsive-shell';
+import { AccountSignIn } from './account-sign-in';
 
 test.use({
   storageState: `${process.env['E2E_TEST_RESULTS'] || 'test-results'}/sessions-administrator.json`,
@@ -254,4 +255,28 @@ test('reduced-motion navigation can close and reopen without losing keyboard foc
   await expect(shell.open).toBeFocused();
   await shell.open.click();
   await expect(shell.close).toBeFocused();
+});
+
+test('sign-in follows the saved theme and preserves a changed theme after reload', async ({
+  browserHealth,
+}) => {
+  const context = await browserHealth.newContext();
+  const page = await context.newPage();
+  const signIn = new AccountSignIn(page);
+  await signIn.open();
+  await context.addCookies([
+    { name: 'EclipsVault.Theme', value: 'dark', url: new URL('/', page.url()).href, secure: true },
+  ]);
+  await page.reload();
+  const theme = () => page.evaluate(() => document.documentElement.dataset['theme']);
+  await expect.poll(theme).toBe('dark');
+
+  await signIn.themeSwitch.click();
+
+  await expect.poll(theme).toBe('light');
+  expect(
+    (await context.cookies()).find((cookie) => cookie.name === 'EclipsVault.Theme')?.value,
+  ).toBe('light');
+  await page.reload();
+  await expect.poll(theme).toBe('light');
 });

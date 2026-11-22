@@ -122,6 +122,50 @@ test('a user whose identity provider did not complete MFA finishes with an authe
   await expect(new SecretsList(page).heading).toBeVisible();
 });
 
+test('a restarted second factor loads Login with its notice and permits single sign-on', async ({
+  browserHealth,
+}) => {
+  test.setTimeout(120_000);
+  const page = await (await browserHealth.newContext()).newPage();
+  const signIn = new AccountSignIn(page);
+  clearSignInBudget();
+  await signIn.open();
+  await signIn.submitPassword(passwordUsername, vaultPassword);
+  await expect(page).toHaveURL(/\/Account\/Totp$/);
+  // A directly loaded second-factor document permits only same-origin form targets.
+  const secondFactor = await page.reload();
+  expect(secondFactor?.headers()['content-security-policy']).toContain("form-action 'self';");
+  await page.route(
+    '**/api/ui/auth/totp',
+    (route) =>
+      route.fulfill({
+        status: 409,
+        contentType: 'application/problem+json',
+        body: JSON.stringify({
+          status: 409,
+          code: 'sign_in_restarted',
+          title: 'Your account changed while you were signing in. Sign in again.',
+        }),
+      }),
+    { times: 1 },
+  );
+  browserHealth.expectConsoleError({ text: /status of 409/, url: /\/api\/ui\/auth\/totp$/ });
+  const loginDocument = page.waitForResponse(
+    (response) =>
+      response.request().isNavigationRequest() &&
+      new URL(response.url()).pathname === '/Account/Login',
+  );
+
+  await signIn.submitAuthenticatorCode('123456');
+
+  expect((await loginDocument).status()).toBe(200);
+  await expect(page).toHaveURL(/\/Account\/Login\?signIn=restarted$/);
+  await expect(signIn.restartedNotice).toBeVisible();
+  await signIn.continueWithSingleSignOn('Keycloak');
+  await new KeycloakSignIn(page).submitPassword('sso-password', idpPassword());
+  await expect(page).toHaveURL(/\/Account\/Totp$/);
+});
+
 test('a user with no vault account is told single sign-on did not grant access', async ({
   browserHealth,
 }) => {

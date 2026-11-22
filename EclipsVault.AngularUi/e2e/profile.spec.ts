@@ -6,6 +6,9 @@ import { test, expect } from './fixtures';
 import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { AccountCreation } from './account-creation';
 import { AccountSignIn } from './account-sign-in';
+import { AppShell } from './app-shell';
+import { AuthenticatorVerification } from './authenticator-verification';
+import { RecoveryCodeSignIn } from './recovery-code-sign-in';
 import { AuthenticatorEnrollment } from './authenticator-enrollment';
 import { openPalette } from './palette';
 import { avatarImage, ChangePasswordPage, freshProfileTotp, ProfilePage } from './profile';
@@ -711,91 +714,82 @@ test('visual parity: ten recovery codes print once and clear on Done, direct vis
   ownerCookies = await page.context().cookies();
 });
 
-test('a recovery code signs in from the keyboard in both themes, then the menu sign-out reports an unconfirmed revocation', async ({
+test('a recovery code entered from the keyboard announces it is spent before Continue', async ({
+  browserHealth,
+}) => {
+  test.setTimeout(240_000);
+  const page = await (await browserHealth.newContext()).newPage();
+  new ProfilePage(page).releaseSignInBudget();
+  const signIn = new AccountSignIn(page);
+  const authenticator = new AuthenticatorVerification(page);
+  const recovery = new RecoveryCodeSignIn(page);
+  await signIn.open();
+
+  await expect(signIn.username).toBeFocused();
+  await page.keyboard.type('e2e-profile-owner');
+  await page.keyboard.press('Tab');
+  await expect(signIn.password).toBeFocused();
+  await page.keyboard.type(password);
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/Account\/Totp$/);
+  await expect(authenticator.code).toBeFocused();
+  await authenticator.recoveryCode.focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/Account\/RecoveryCode$/);
+  await expect(recovery.code).toBeFocused();
+  await page.keyboard.type(signInRecoveryCode);
+  await page.keyboard.press('Enter');
+
+  await expect(recovery.notice).toContainText(
+    'that code is now used up. You have 9 recovery codes left.',
+  );
+  await expect(recovery.continue).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/Secrets$/);
+});
+
+test('a menu sign-out with unconfirmed revocation clears the cookie and shows its warning', async ({
   browserHealth,
 }) => {
   test.setTimeout(240_000);
   const context = await browserHealth.newContext();
   const page = await context.newPage();
   new ProfilePage(page).releaseSignInBudget();
-  await page.goto('/Account/Login');
-  await context.addCookies([
-    { name: 'EclipsVault.Theme', value: 'dark', url: new URL('/', page.url()).href, secure: true },
-  ]);
-  await page.reload();
+  const signIn = new AccountSignIn(page);
+  await signIn.open();
+  await signIn.submitPassword('e2e-profile-owner', password);
+  await signIn.submitAuthenticatorCode(await freshProfileTotp(secret));
+  lastStep = currentTotpStep();
+  await expect(page).toHaveURL(/\/Secrets$/);
 
-  await test.step('the sign-in pages follow the shared theme and switch it', async () => {
-    const theme = () => page.evaluate(() => document.documentElement.dataset['theme']);
-    await expect.poll(theme).toBe('dark');
-    await page.getByRole('button', { name: 'Switch color theme', exact: true }).click();
-    await expect.poll(theme).toBe('light');
-    expect(
-      (await context.cookies()).find((cookie) => cookie.name === 'EclipsVault.Theme')?.value,
-    ).toBe('light');
-    await page.reload();
-    await expect.poll(theme).toBe('light');
-  });
-
-  await test.step('password, then a recovery code, from the keyboard alone', async () => {
-    await expect(page.getByLabel('Username')).toBeFocused();
-    await page.keyboard.type('e2e-profile-owner');
-    await page.keyboard.press('Tab');
-    await expect(page.getByLabel('Password', { exact: true })).toBeFocused();
-    await page.keyboard.type(password);
-    await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(/\/Account\/Totp$/);
-    await expect(page.getByLabel('Authenticator code')).toBeFocused();
-    await page.getByRole('link', { name: 'Use a recovery code', exact: true }).focus();
-    await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(/\/Account\/RecoveryCode$/);
-    await expect(page.getByLabel('Recovery code')).toBeFocused();
-    await page.keyboard.type(signInRecoveryCode);
-    await page.keyboard.press('Enter');
-  });
-
-  await test.step('the notice says the code is spent and how many are left before Continue', async () => {
-    await expect(
-      page.getByRole('status').filter({ hasText: 'You signed in with a recovery code' }),
-    ).toContainText('that code is now used up. You have 9 recovery codes left.');
-    await expect(page.getByRole('button', { name: 'Continue', exact: true })).toBeFocused();
-    await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(/\/Secrets$/);
-  });
-
-  await test.step('a menu sign-out the vault could not confirm still reaches sign-in with the local-clear warning', async () => {
-    // The integration tests pin when the vault answers sign_out_incomplete. The real call clears
-    // this browser's cookie; the transport reports that the store did not confirm the revocation.
-    await page.route(
-      '**/api/ui/auth/sign-out',
-      async (route) => {
-        const response = await route.fetch();
-        expect(response.status()).toBe(204);
-        await route.fulfill({
-          response,
+  // The real call clears the cookie; the transport supplies the unconfirmed-revocation outcome.
+  // Production HTTP tests pin the storage failure that returns this answer.
+  await page.route(
+    '**/api/ui/auth/sign-out',
+    async (route) => {
+      const response = await route.fetch();
+      expect(response.status()).toBe(204);
+      await route.fulfill({
+        response,
+        status: 503,
+        contentType: 'application/problem+json',
+        body: JSON.stringify({
           status: 503,
-          contentType: 'application/problem+json',
-          body: JSON.stringify({
-            status: 503,
-            code: 'sign_out_incomplete',
-            title: "This browser's cookie was cleared. Other devices may still be signed in.",
-          }),
-        });
-      },
-      { times: 1 },
-    );
-    browserHealth.expectConsoleError({ text: /status of 503/, url: /\/api\/ui\/auth\/sign-out$/ });
-    await page.getByText('After Password Renewal', { exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click();
-    await expect(page).toHaveURL(/\/Account\/Login\?signOut=sign_out_incomplete$/);
-    await expect(
-      page.getByText("This browser's cookie was cleared. Other devices may still be signed in.", {
-        exact: true,
-      }),
-    ).toBeVisible();
-    expect((await context.cookies()).some((cookie) => cookie.name === 'EclipsVault.Session')).toBe(
-      false,
-    );
-  });
+          code: 'sign_out_incomplete',
+          title: "This browser's cookie was cleared. Other devices may still be signed in.",
+        }),
+      });
+    },
+    { times: 1 },
+  );
+  browserHealth.expectConsoleError({ text: /status of 503/, url: /\/api\/ui\/auth\/sign-out$/ });
+  await new AppShell(page).signOut('After Password Renewal');
+
+  await expect(page).toHaveURL(/\/Account\/Login\?signOut=sign_out_incomplete$/);
+  await expect(signIn.localSignOutWarning).toBeVisible();
+  expect((await context.cookies()).some((cookie) => cookie.name === 'EclipsVault.Session')).toBe(
+    false,
+  );
 });
 
 test('a UV virtual passkey is added, verifies a frozen change and is removed using a surviving authenticator', async ({

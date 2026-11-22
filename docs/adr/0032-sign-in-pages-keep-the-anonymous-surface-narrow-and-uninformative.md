@@ -18,6 +18,9 @@ Angular sign-in pages are reached and what they may reveal.
   form submission redirects, and single sign-on's POST to `/Account/ExternalLogin` answers with a
   redirect to the identity provider. While SSO is enabled, Login's policy adds the configured
   authority's origin, its scheme, host and port taken from configuration, never from the request.
+  A `409 sign_in_restarted` response loads a fresh Login document, carrying the return URL and
+  `?signIn=restarted` for its fixed notice. This is an exception to navigation between sign-in
+  steps inside the app: a second-factor document retains its original policy until replaced.
   Every other document keeps `form-action 'self'`. Single sign-on therefore needs the provider's
   authorization endpoint on the authority's origin, as Keycloak's is; one that authorizes elsewhere,
   such as Cognito's hosted UI, would need that endpoint's origin from the discovery document instead.
@@ -26,7 +29,8 @@ Angular sign-in pages are reached and what they may reveal.
   pending sign-in cookies from every hop of it.
 - **Antiforgery before a session.** Serving an anonymous sign-in page sets an anonymous request token;
   every call that changes who the browser is (password, second factor, sign-out) issues a fresh one
-  for the new identity (ADR-0004).
+  for the new identity (ADR-0004). Recovery also reissues the token when an already-recorded session
+  survives a later failure, so its next recovery POST can validate.
 - **A blocked network reaches exactly two auth surfaces:** the `/Account/Recover` page and
   `POST /api/ui/auth/recover`. The page carries its own token, so no third exemption exists. Two
   branches never reach the blacklist and grant no account authority: static files, which already load

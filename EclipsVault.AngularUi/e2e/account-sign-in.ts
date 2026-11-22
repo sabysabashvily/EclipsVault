@@ -3,6 +3,30 @@ import type { Page } from '@playwright/test';
 export class AccountSignIn {
   constructor(private readonly page: Page) {}
 
+  get username() {
+    return this.page.getByLabel('Username');
+  }
+
+  get password() {
+    return this.page.getByLabel('Password', { exact: true });
+  }
+
+  get themeSwitch() {
+    return this.page.getByRole('button', { name: 'Switch color theme', exact: true });
+  }
+
+  get restartedNotice() {
+    return this.page.getByRole('alert').filter({
+      hasText: 'Your account changed while you were signing in. Sign in again.',
+    });
+  }
+
+  get localSignOutWarning() {
+    return this.page.getByRole('alert').filter({
+      hasText: "This browser's cookie was cleared. Other devices may still be signed in.",
+    });
+  }
+
   /** Login's StatusLine announces a warning as an alert. */
   get warning() {
     return this.page
@@ -15,8 +39,8 @@ export class AccountSignIn {
   }
 
   async submitPassword(username: string, password: string): Promise<void> {
-    await this.page.getByLabel('Username').fill(username);
-    await this.page.getByLabel('Password', { exact: true }).fill(password);
+    await this.username.fill(username);
+    await this.password.fill(password);
     await this.page.getByRole('button', { name: 'Continue', exact: true }).click();
   }
 

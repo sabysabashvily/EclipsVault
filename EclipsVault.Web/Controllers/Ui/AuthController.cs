@@ -4,6 +4,7 @@ using EclipsVault.Core.Application.Sso;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Web.Authentication;
 using EclipsVault.Web.Authorization;
+using EclipsVault.Web.Extensions;
 using EclipsVault.Web.Models.Ui;
 using EclipsVault.Web.Services;
 using Microsoft.AspNetCore.Antiforgery;
@@ -148,16 +149,27 @@ public sealed class AuthController(
             return SignInProblems.Problem(StatusCodes.Status400BadRequest, "recovery_failed", RecoveryFailed);
         }
 
-        var finished = await new BreakGlassSignIn(issuer, blacklist, audit).FinishAsync(HttpContext, user, stamp, source, ct);
-        if (!finished.SessionIssued)
+        var previousSessionId = User.GetSessionId();
+        try
         {
-            return SignInProblems.Problem(StatusCodes.Status400BadRequest, "recovery_failed", RecoveryFailed);
-        }
+            var finished = await new BreakGlassSignIn(issuer, blacklist, audit).FinishAsync(HttpContext, user, stamp, source, ct);
+            if (!finished.SessionIssued)
+            {
+                return SignInProblems.Problem(StatusCodes.Status400BadRequest, "recovery_failed", RecoveryFailed);
+            }
 
-        logger.LogWarning("Break-glass recovery completed by {Username} from {SourceIp}; block lifted: {BlockLifted}",
-            user.Username, source, finished.BlockLifted);
-        UiAntiforgery.IssueToken(HttpContext, antiforgery);
-        return new RecoverResponse(finished.BlockLifted);
+            logger.LogWarning("Break-glass recovery completed by {Username} from {SourceIp}; block lifted: {BlockLifted}",
+                user.Username, source, finished.BlockLifted);
+            return new RecoverResponse(finished.BlockLifted);
+        }
+        finally
+        {
+            // A recorded session survives a later recovery failure; its next POST needs that identity's token too.
+            if (User.GetSessionId() != previousSessionId)
+            {
+                UiAntiforgery.IssueToken(HttpContext, antiforgery);
+            }
+        }
     }
 
     /// <summary>
