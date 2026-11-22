@@ -6,8 +6,9 @@ import { filter, map } from 'rxjs';
 import { NavIcon } from './nav-icon';
 import { sidebarFor, SidebarGroup, SidebarLink } from './sidebar';
 
-/** Create and detail pages belong to their list's sidebar item, so its group stays open on them. */
+/** Subpages and sibling tabs belong to their list's sidebar item, so it stays active on them. */
 const subpages: Readonly<Record<string, RegExp>> = {
+  '/secrets': /^\/secrets\/(create|sharedwithme|sharedbyme|details\/[^/]+)$/,
   '/admin/users': /^\/admin\/(createuser|edituser\/[^/]+)$/,
   '/serviceaccounts': /^\/serviceaccounts\/(create|details\/[^/]+)$/,
 };

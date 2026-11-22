@@ -2,13 +2,6 @@
   <div>
     <h1>Shared by me</h1>
     <p class="page-sub">{{ context() }}</p>
-    <p class="trust-line">
-      <svg aria-hidden="true" viewBox="0 0 24 24">
-        <rect x="3" y="11" width="18" height="11" rx="2" />
-        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-      </svg>
-      Every reveal is logged
-    </p>
   </div>
 </div>
 
@@ -17,6 +10,7 @@
 
 @if (shares.hasValue()) {
   <section class="panel">
+    <app-secrets-tabs current="shared-by-me" />
     @if (sorted().length === 0) {
       <app-empty-state
         icon="share"
@@ -80,6 +74,7 @@
   </section>
 } @else if (shares.error()) {
   <section class="panel">
+    <app-secrets-tabs current="shared-by-me" />
     <p role="alert">Could not load your shares. Try again.</p>
     <button type="button" class="button" (click)="shares.reload()">Try again</button>
   </section>

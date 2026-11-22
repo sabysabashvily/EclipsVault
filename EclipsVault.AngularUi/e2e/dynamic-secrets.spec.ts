@@ -45,12 +45,20 @@ test('viewing the page twice starts no evaluation window', async ({ page }) => {
   await expect(dynamicSecrets.generate(dynamicRoles.secret)).toBeVisible();
 });
 
-test('a cancelled proof for the Secret role issues nothing and starts no window', async ({
+test('a cancelled issue dialog or cancelled proof for the Secret role issues nothing and starts no window', async ({
   withExpiredProof: dynamicSecrets,
   browserHealth,
 }) => {
   browserHealth.expectConsoleError(refusedIssue);
   await dynamicSecrets.generate(dynamicRoles.secret).click();
+  await expect(dynamicSecrets.confirmation).toContainText('Issue dynamic credential?');
+  await dynamicSecrets.confirmationCancel.click();
+  await expect(dynamicSecrets.confirmation).toBeHidden();
+  await expect(dynamicSecrets.generate(dynamicRoles.secret)).toBeFocused();
+  await expect(dynamicSecrets.credential).toHaveCount(0);
+
+  await dynamicSecrets.generate(dynamicRoles.secret).click();
+  await dynamicSecrets.confirmationIssue.click();
   await expect(dynamicSecrets.stepUp).toBeVisible();
   await dynamicSecrets.cancelProof();
   await expect(dynamicSecrets.stepUp).toBeHidden();
@@ -69,6 +77,7 @@ test('a real code issues the Secret role once, starts the evaluation and leaves 
   const secret = await readFile(`${directory}/users-administrator-authenticator.txt`, 'utf8');
   browserHealth.expectConsoleError(refusedIssue);
   await dynamicSecrets.generate(dynamicRoles.secret).click();
+  await dynamicSecrets.confirmationIssue.click();
   await dynamicSecrets.prove(await freshTotp(secret, currentTotpStep()));
 
   await expect(dynamicSecrets.credential).toBeFocused();
@@ -89,7 +98,7 @@ test('a real code issues the Secret role once, starts the evaluation and leaves 
   await expect(page.getByText(password)).toHaveCount(0);
 });
 
-test('the Internal role issues by keyboard without a dialog, and reloading forgets it', async ({
+test('the Internal role issues by keyboard through its consequence dialog without step-up, and reloading forgets it', async ({
   page,
 }) => {
   await page.context().addCookies(await savedAdministratorCookies());
@@ -99,6 +108,17 @@ test('the Internal role issues by keyboard without a dialog, and reloading forge
   await page.keyboard.type('30');
   await page.keyboard.press('Tab');
   await expect(dynamicSecrets.generate(dynamicRoles.internal)).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(dynamicSecrets.confirmation).toContainText('Issue dynamic credential?');
+  await expect(dynamicSecrets.confirmation).toContainText(dynamicRoles.internal);
+  await expect(dynamicSecrets.confirmation).toContainText('30 min');
+  await expect(dynamicSecrets.confirmation).toContainText(
+    'The password is shown once and cannot be recovered.',
+  );
+  await expect(dynamicSecrets.confirmation).toContainText('Issuance saved to the audit log');
+  await expect(dynamicSecrets.confirmationCancel).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(dynamicSecrets.confirmationIssue).toBeFocused();
   await page.keyboard.press('Enter');
 
   await expect(dynamicSecrets.issuedPassword).toHaveText(/^[A-Za-z0-9]{40}$/);
@@ -114,20 +134,20 @@ test('the Internal role issues by keyboard without a dialog, and reloading forge
   await expect(page.getByText(password)).toHaveCount(0);
 });
 
-test('Revoke by keyboard asks with the Legacy confirmation and removes the login', async ({
-  page,
-}) => {
+test('Revoke by keyboard asks with the decision dialog and removes the login', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const dynamicSecrets = new DynamicSecretsPage(page);
   await dynamicSecrets.open();
   await dynamicSecrets.revoke(secretLogin).focus();
   await page.keyboard.press('Enter');
+  await expect(dynamicSecrets.confirmation).toContainText('Revoke dynamic credential?');
   await expect(dynamicSecrets.confirmation).toContainText(
     `Hand back '${secretLogin}'? It stops working immediately.`,
   );
+  await expect(dynamicSecrets.confirmation).toContainText('Saved to the audit log');
   await expect(dynamicSecrets.confirmationCancel).toBeFocused();
   await page.keyboard.press('Tab');
-  await expect(dynamicSecrets.confirmationContinue).toBeFocused();
+  await expect(dynamicSecrets.confirmationRevoke).toBeFocused();
   await page.keyboard.press('Enter');
 
   await expect(dynamicSecrets.status).toHaveText('Credential handed back — it no longer works.');
@@ -135,7 +155,7 @@ test('Revoke by keyboard asks with the Legacy confirmation and removes the login
   expect(loginExists(secretLogin)).toBe(false);
 });
 
-test('cancelling Revoke keeps the login, and Continue removes it', async ({ page }) => {
+test('cancelling Revoke keeps the login, and Revoke credential removes it', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const dynamicSecrets = new DynamicSecretsPage(page);
   await dynamicSecrets.open();
@@ -145,7 +165,7 @@ test('cancelling Revoke keeps the login, and Continue removes it', async ({ page
   expect(loginExists(internalLogin)).toBe(true);
 
   await dynamicSecrets.revoke(internalLogin).click();
-  await dynamicSecrets.confirmationContinue.click();
+  await dynamicSecrets.confirmationRevoke.click();
 
   await expect(dynamicSecrets.status).toHaveText('Credential handed back — it no longer works.');
   expect(loginExists(internalLogin)).toBe(false);
@@ -184,7 +204,9 @@ test('the palette in the Angular shell opens Dynamic secrets', async ({ page }) 
 });
 
 for (const theme of ['dark', 'light'] as const) {
-  test(`visual parity: Dynamic secrets in ${theme} appearance`, async ({ page }, info) => {
+  test(`Dynamic secrets renders roles and leases in ${theme} appearance`, async ({
+    page,
+  }, info) => {
     await page.context().addCookies(await savedAdministratorCookies());
     const dynamicSecrets = new DynamicSecretsPage(page);
     await dynamicSecrets.open();
@@ -196,5 +218,16 @@ for (const theme of ['dark', 'light'] as const) {
       path: info.outputPath(`dynamic-secrets-${theme}.png`),
       fullPage: true,
     });
+  });
+}
+
+for (const width of [300, 2000] as const) {
+  test(`Dynamic secrets has no sideways scroll at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.context().addCookies(await savedAdministratorCookies());
+    const dynamicSecrets = new DynamicSecretsPage(page);
+    await dynamicSecrets.open();
+    await expect(dynamicSecrets.generate(dynamicRoles.internal)).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
   });
 }

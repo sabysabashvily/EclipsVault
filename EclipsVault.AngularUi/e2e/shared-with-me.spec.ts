@@ -1,5 +1,6 @@
 import { refreshAdministratorProof } from './administrator-proof';
 import { AccountCreation } from './account-creation';
+import { AppShell } from './app-shell';
 import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -211,6 +212,12 @@ test('the keyboard reaches the first row and opens its Legacy Details page', asy
   const shared = await openAsRecipient(page);
   await shared.heading.click();
   await page.keyboard.press('Tab');
+  await expect(shared.tab('All secrets')).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(shared.tab('Shared with me')).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(shared.tab('Shared by me')).toBeFocused();
+  await page.keyboard.press('Tab');
   await expect(shared.openOf(shared.rows.first())).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(
@@ -269,15 +276,18 @@ test('a mixed-case Shared with me bookmark serves the titled Angular page', asyn
   await expect(page).toHaveTitle('Shared with me — EclipsVault');
 });
 
-test('the sidebar opens Shared with me in-app with its Sharing group active', async ({ page }) => {
+test('the Secrets card tab opens Shared with me in-app while keeping Secrets active in the sidebar', async ({
+  page,
+}) => {
   await openAsRecipient(page, '/Access');
   const documents = recordDocuments(page);
-  await page.getByText('Sharing', { exact: true }).click();
-  const link = page.getByRole('link', { name: 'Shared with me', exact: true });
-  await link.click();
+  const shell = new AppShell(page);
+  await shell.secrets.click();
+  const tab = new SecretsList(page).tab('Shared with me');
+  await tab.click();
   await expect(new SharedWithMe(page).rows).toHaveCount(2);
-  await expect(link).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('group').filter({ has: link })).toHaveJSProperty('open', true);
+  await expect(tab).toHaveAttribute('aria-current', 'page');
+  await expect(shell.secrets).toHaveAttribute('aria-current', 'true');
   expect(documents).toEqual([]);
 });
 

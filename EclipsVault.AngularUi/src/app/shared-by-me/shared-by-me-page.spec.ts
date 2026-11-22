@@ -74,8 +74,13 @@ describe('SharedByMePage', () => {
     expect(page.textContent).toContain(
       "When you grant a colleague access to one of your secrets, it shows up here so you can keep track of who can see what — and revoke access when it's no longer needed.",
     );
-    expect(page.querySelector('a')?.textContent).toBe('Go to your secrets');
-    expect(page.querySelector('a')?.getAttribute('href')).toBe('/Secrets');
+    expect(page.querySelector('.empty-state a')?.textContent).toBe('Go to your secrets');
+    expect(page.querySelector('.empty-state a')?.getAttribute('href')).toBe('/Secrets');
+    expect(
+      page
+        .querySelector('nav[aria-label="Secrets views"] a[aria-current="page"]')
+        ?.textContent?.trim(),
+    ).toBe('Shared by me');
   });
 
   it('lists the soonest-ending share first, its close expiry as a yellow pill', async () => {

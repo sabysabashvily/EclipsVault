@@ -25,14 +25,11 @@ async function navigation(page: Page) {
   }));
 }
 
-/** Places people visit, then the You group, which My access opens. Sharing folds until it becomes tabs. */
+/** Places people visit, then the You group, which My access opens. */
 const everyone = [
   ['Overview', '/', ''],
   ['Secrets', '/Secrets', ''],
   ['Dynamic secrets', '/DynamicSecrets', ''],
-  ['Sharing', 'group', ''],
-  ['Shared with me', '/Secrets/SharedWithMe', ''],
-  ['Shared by me', '/Secrets/SharedByMe', ''],
   ['Access requests', '/AccessRequests', ''],
   ['You', 'group', 'open'],
   ['My access', '/Access', 'current'],
@@ -170,12 +167,6 @@ export async function verifySidebar(
     await expect(shell.youGroup.getByRole('link')).toHaveCount(0);
     await shell.you.click();
     await expect(shell.myAccess).toBeVisible();
-    await expect(shell.sharing).not.toHaveAttribute('open');
-    await expect(shell.sharing.getByRole('link')).toHaveCount(0);
-    await shell.sharing.getByText('Sharing', { exact: true }).click();
-    await expect(shell.sharing).toHaveAttribute('open', '');
-    await expect(shell.sharing.getByRole('link')).toHaveText(['Shared with me', 'Shared by me']);
-    await shell.sharing.getByText('Sharing', { exact: true }).click();
     expect(await accountMenu(page)).toEqual(referenceMenu);
     expect(await notices(page)).toEqual(referenceNotices);
     if (account === 'standard') {
@@ -183,7 +174,7 @@ export async function verifySidebar(
       expect(referenceNotices).toEqual([]);
       expect(await page.content()).not.toMatch(/unlicensed|notice-warn/i);
       await expect(page.locator('.sidenav')).not.toContainText('Administration');
-      await expect(page.locator('.sidenav a')).toHaveCount(12);
+      await expect(page.locator('.sidenav a')).toHaveCount(10);
       await expect(
         page.locator(
           'a[href^="/Admin"], a[href="/ServiceAccounts"], a[href="/Audit"], a[href="/Notifications"], a[href="/Encryption"], a[href="/License"]',
@@ -207,7 +198,7 @@ export async function verifySidebar(
       expect(referenceNotices).toEqual([
         expect.stringMatching(/^Running unlicensed\. .+ View license$/),
       ]);
-      await expect(page.locator('.sidenav a')).toHaveCount(19);
+      await expect(page.locator('.sidenav a')).toHaveCount(17);
     }
     await expect(page.locator('style, [style]')).toHaveCount(0);
     await screenshot(page, info, `${account}-${theme}-angular`);

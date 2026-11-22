@@ -1,5 +1,6 @@
 import { refreshAdministratorProof } from './administrator-proof';
 import { AccountCreation } from './account-creation';
+import { AppShell } from './app-shell';
 import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -183,19 +184,22 @@ test('Shared by me shows "No expiry" for a share without an expiry', async ({ pa
   await expect(shares.accessUntilOf(shares.share('E2e_Shared_No_Expiry'))).toHaveText('No expiry');
 });
 
-test('the sidebar opens Shared by me in-app with its Sharing group active', async ({ page }) => {
+test('the Secrets card tab opens Shared by me in-app while keeping Secrets active in the sidebar', async ({
+  page,
+}) => {
   await openAsIssuer(page, '/Access');
   const documents: string[] = [];
   page.on('request', (request) => {
     if (request.isNavigationRequest() && request.resourceType() === 'document')
       documents.push(request.url());
   });
-  await page.getByText('Sharing', { exact: true }).click();
-  const link = page.getByRole('link', { name: 'Shared by me', exact: true });
-  await link.click();
+  const shell = new AppShell(page);
+  await shell.secrets.click();
+  const tab = new SecretsList(page).tab('Shared by me');
+  await tab.click();
   await expect(new SharedByMe(page).heading).toBeVisible();
-  await expect(link).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('group').filter({ has: link })).toHaveJSProperty('open', true);
+  await expect(tab).toHaveAttribute('aria-current', 'page');
+  await expect(shell.secrets).toHaveAttribute('aria-current', 'true');
   expect(documents).toEqual([]);
 });
 

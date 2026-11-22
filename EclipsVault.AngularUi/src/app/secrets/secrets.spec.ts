@@ -124,24 +124,36 @@ describe('Secrets', () => {
     expect(rows(page)).toHaveLength(1);
   });
 
-  it('lists each secret as Legacy did, marking one that expires within 7 days', async () => {
-    const { page } = await loaded([expiringSoon, expiringLater, neverExpiring]);
+  it('lists secrets soonest-expiring first with tabs, expiry pills and full-row links', async () => {
+    const { page } = await loaded([neverExpiring, expiringLater, expiringSoon]);
 
     expect(page.querySelector('.page-sub')?.textContent).toBe(
-      '3 active secrets. Opening one records an audit entry.',
+      '3 active secrets · 1 expires within 7 days. Opening one records an audit entry.',
     );
+    expect(text(page.querySelector('.title-row .badge'))).toBe('Expiring soon');
+    expect(text(page.querySelector('.trust-line'))).toBe('Every reveal is logged');
+    expect(text(page.querySelector('.sort-note'))).toBe('Sorted by expiry, soonest first');
+    expect(
+      [...page.querySelectorAll('nav[aria-label="Secrets views"] a')].map((link) => [
+        text(link),
+        link.getAttribute('href'),
+        link.getAttribute('aria-current'),
+      ]),
+    ).toEqual([
+      ['All secrets', '/Secrets', 'page'],
+      ['Shared with me', '/Secrets/SharedWithMe', null],
+      ['Shared by me', '/Secrets/SharedByMe', null],
+    ]);
     expect([...page.querySelectorAll('th')].map((header) => text(header))).toEqual([
-      'Name',
-      'Project',
+      'Secret',
       'Environment',
       'Sensitivity',
-      'Expires (UTC)',
-      '',
+      'Expires',
     ]);
     expect(rows(page)).toEqual([
-      ['Phoenix_Db_Password', 'PHOENIX', 'Production', 'Secret', '2026-11-20 09:30 soon', 'Open'],
-      ['Billing_Api_Key', 'BILLING', 'Staging', 'Internal', '2026-12-31 00:00', 'Open'],
-      ['Ci_Token', 'PHOENIX', 'Development', 'Top Secret', '—', 'Open'],
+      ['Phoenix_Db_PasswordPHOENIX', 'Production', 'Secret', 'In 4 days · 20 Nov'],
+      ['Billing_Api_KeyBILLING', 'Staging', 'Internal', '2026-12-31 00:00'],
+      ['Ci_TokenPHOENIX', 'Development', 'Top Secret', 'No expiry'],
     ]);
     expect([...page.querySelectorAll('tbody a')].map((link) => link.getAttribute('href'))).toEqual([
       '/Secrets/Details/00000000-0000-4000-8000-000000000001',
@@ -151,20 +163,16 @@ describe('Secrets', () => {
     expect(page.querySelector('.page-actions a')?.getAttribute('href')).toBe('/Secrets/Create');
   });
 
-  it('opens a secret when its row is clicked anywhere but a control, as Legacy rows did', async () => {
-    const { page } = await loaded([expiringSoon, neverExpiring]);
-    const [first, second] = [...page.querySelectorAll<HTMLElement>('tbody tr')];
+  it('keeps the expiry tooltip while opening the secret when the expiry pill is clicked', async () => {
+    const { page } = await loaded([expiringSoon]);
+    const link = page.querySelector<HTMLAnchorElement>('tbody a.row-link')!;
+    const clicked = vi.fn((event: Event) => event.preventDefault());
+    link.addEventListener('click', clicked);
 
-    first.querySelector('td')!.click();
-    expect(assign).toHaveBeenCalledExactlyOnceWith(
-      '/Secrets/Details/00000000-0000-4000-8000-000000000001',
-    );
-
-    assign.mockReset();
-    const open = second.querySelector('a')!;
-    open.addEventListener('click', (event) => event.preventDefault());
-    open.click();
-    expect(assign).not.toHaveBeenCalled();
+    const pill = page.querySelector<HTMLElement>('tbody .badge.tone-warn')!;
+    expect(pill.getAttribute('title')).toBe('2026-11-20 09:30:00 UTC');
+    pill.click();
+    expect(clicked).toHaveBeenCalledOnce();
   });
 
   it('shows a deletion once and drops it from the address', async () => {
@@ -179,11 +187,12 @@ describe('Secrets', () => {
     expect(TestBed.inject(Router).url).toBe('/Secrets');
   });
 
-  it('counts a single secret in the singular', async () => {
+  it('counts a single secret in the singular without an expiring verdict pill', async () => {
     const { page } = await loaded([neverExpiring]);
     expect(page.querySelector('.page-sub')?.textContent).toBe(
       '1 active secret. Opening one records an audit entry.',
     );
+    expect(page.querySelector('.title-row .badge')).toBeNull();
   });
 
   it('filters rows by what they show and keeps the count of every secret', async () => {
@@ -195,14 +204,27 @@ describe('Secrets', () => {
     filter.value = 'phoenix';
     filter.dispatchEvent(new Event('input'));
     await fixture.whenStable();
-    expect(rows(page).map(([name]) => name)).toEqual(['Phoenix_Db_Password', 'Ci_Token']);
+    expect(rows(page).map(([name]) => name)).toEqual([
+      'Phoenix_Db_PasswordPHOENIX',
+      'Ci_TokenPHOENIX',
+    ]);
+
+    filter.value = ' 20 nov ';
+    filter.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    expect(rows(page).map(([name]) => name)).toEqual(['Phoenix_Db_PasswordPHOENIX']);
 
     filter.value = ' SOON ';
     filter.dispatchEvent(new Event('input'));
     await fixture.whenStable();
-    expect(rows(page).map(([name]) => name)).toEqual(['Phoenix_Db_Password']);
+    expect(rows(page).map(([name]) => name)).toEqual(['Phoenix_Db_PasswordPHOENIX']);
+
+    filter.value = '2026-11-20';
+    filter.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    expect(rows(page).map(([name]) => name)).toEqual(['Phoenix_Db_PasswordPHOENIX']);
     expect(page.querySelector('.page-sub')?.textContent).toBe(
-      '3 active secrets. Opening one records an audit entry.',
+      '3 active secrets · 1 expires within 7 days. Opening one records an audit entry.',
     );
   });
 
@@ -270,6 +292,10 @@ describe('New secret', () => {
   it('offers the Legacy form, defaulting to the caller’s own project', async () => {
     const form = await opened();
     expect(text(form.page.querySelector('h1'))).toBe('New secret');
+    expect(form.page.querySelector('a[aria-label="Back to secrets"]')?.getAttribute('href')).toBe(
+      '/Secrets',
+    );
+    expect(text(form.page.querySelector('.form-note'))).toBe('Saved to the audit log.');
     expect(values(form)).toEqual(['', '', 'PHOENIX', '0', 'Development', '1']);
     expect(
       [...form.field<HTMLSelectElement>('Environment').options].map((option) => text(option)),

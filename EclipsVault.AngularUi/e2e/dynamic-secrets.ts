@@ -14,7 +14,8 @@ export class DynamicSecretsPage {
   readonly stepUp;
   readonly confirmation;
   readonly confirmationCancel;
-  readonly confirmationContinue;
+  readonly confirmationIssue;
+  readonly confirmationRevoke;
 
   constructor(private readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Dynamic secrets', exact: true });
@@ -31,7 +32,12 @@ export class DynamicSecretsPage {
     this.stepUp = page.getByRole('dialog', { name: "Confirm it's you" });
     this.confirmation = page.getByRole('alertdialog');
     this.confirmationCancel = this.confirmation.getByRole('button', { name: 'Cancel' });
-    this.confirmationContinue = this.confirmation.getByRole('button', { name: 'Continue' });
+    this.confirmationIssue = this.confirmation.getByRole('button', {
+      name: 'Issue credential',
+    });
+    this.confirmationRevoke = this.confirmation.getByRole('button', {
+      name: 'Revoke credential',
+    });
   }
 
   async open(): Promise<void> {

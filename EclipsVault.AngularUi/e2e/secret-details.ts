@@ -72,7 +72,7 @@ export class SecretDetails {
     return this.page.getByRole('row').filter({ hasText: recipient });
   }
 
-  async confirm(): Promise<void> {
-    await this.confirmation.getByRole('button', { name: 'Continue', exact: true }).click();
+  async confirm(label: string): Promise<void> {
+    await this.confirmation.getByRole('button', { name: label, exact: true }).click();
   }
 }
