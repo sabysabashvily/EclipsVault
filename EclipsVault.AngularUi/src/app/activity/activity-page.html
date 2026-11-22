@@ -39,6 +39,7 @@
             <tr>
               <th>When</th>
               <th>Action</th>
+              <th>Severity</th>
               <th>Kind</th>
               <th>From</th>
             </tr>
@@ -58,7 +59,12 @@
                   }
                 </td>
                 <td class="cell-pill">
-                  <span class="badge tone-{{ item.tone }}">{{ item.label }}</span>
+                  @if (item.severity !== 'Routine') {
+                    <span class="badge tone-{{ item.tone }}">{{ item.severity }}</span>
+                  }
+                </td>
+                <td class="cell-pill">
+                  <span class="badge">{{ item.label }}</span>
                 </td>
                 <td class="cell-meta mono" data-label="from">{{ item.sourceIp }}</td>
               </tr>
