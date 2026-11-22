@@ -223,7 +223,7 @@ sequenceDiagram
   participant Account as Vault account in a browser<br/>[Person]
   participant Page as SecretDetailsController<br/>[Component]<br/>ASP.NET Core
   participant Open as OpenAsync<br/>[Component]<br/>C#35;
-  participant Details as GetDetailsAsync<br/>[Component]<br/>C#35;
+  participant LoadedEnvelope as GetDetailsAsync<br/>[Component]<br/>C#35;
   participant Access as SecretAccessHandler<br/>[Component]<br/>C#35;
   participant Policy as SecretAccessPolicy<br/>[Component]<br/>C#35;
   participant View as RecordViewedAsync<br/>[Component]<br/>C#35;
@@ -233,7 +233,7 @@ sequenceDiagram
 
   Account->>Page: GET /api/ui/secrets/{id}
   Page->>Open: OpenAsync
-  Open->>Details: load envelope, no audit row
+  Open->>LoadedEnvelope: load envelope, no audit row
   Open->>Access: Authorize SecretAccess
   Access->>Policy: Evaluate
   Policy-->>Access: allow
