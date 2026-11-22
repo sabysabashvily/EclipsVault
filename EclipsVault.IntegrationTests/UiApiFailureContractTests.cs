@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using EclipsVault.Core.Application.Abstractions;
+using EclipsVault.Core.Domain.Exceptions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -9,9 +10,10 @@ using Xunit;
 namespace EclipsVault.IntegrationTests;
 
 /// <summary>
-/// The UI API's failure contract (ADR-0006, ADR-0013): every failure under <c>/api/ui/</c> is an
-/// RFC 9457 Problem Details response with a stable code and no exception detail, and every response
-/// there is <c>no-store</c>. The Legacy UI keeps its redirects and the Public API keeps its own shape.
+/// Every failure answers in its caller's format, without a redirect and without exception detail
+/// (ADR-0006, ADR-0013, ADR-0034). Under <c>/api/ui/</c> it is an RFC 9457 Problem Details response
+/// with a stable code, under <c>/api/v1/</c> it is <c>{ "error": "&lt;code&gt;" }</c>, and anywhere
+/// else it is the error server page. Every <c>/api/</c> response is <c>no-store</c>.
 /// </summary>
 [Collection(VaultCollection.Name)]
 public sealed class UiApiFailureContractTests(VaultFixture vault)
@@ -19,14 +21,23 @@ public sealed class UiApiFailureContractTests(VaultFixture vault)
     /// <summary>The only members a UI API problem may carry: nothing an exception could fill.</summary>
     private static readonly string[] ProblemMembers = ["code", "detail", "status", "title", "type"];
 
+    /// <summary>Each failure the middleware maps: its kind, status and code.</summary>
+    public static TheoryData<string, int, string> Codes => new()
+    {
+        { "audit", 503, "audit_unavailable" },
+        { "session_store", 503, "session_store_unavailable" },
+        { "unblock_unrecorded", 503, "unblock_unrecorded" },
+        { "recovery_incomplete", 503, "recovery_incomplete" },
+        { "not_found", 404, "not_found" },
+        { "legacy_blob", 409, "legacy_blob_refused" },
+        { "crypto", 500, "crypto_unavailable" },
+        { "premium", 402, "premium_not_licensed" },
+        { "domain", 400, "invalid_request" },
+        { "unhandled", 500, "internal_error" },
+    };
+
     [Theory]
-    [InlineData("audit", 503, "audit_unavailable")]
-    [InlineData("not_found", 404, "not_found")]
-    [InlineData("legacy_blob", 409, "legacy_blob_refused")]
-    [InlineData("crypto", 500, "crypto_unavailable")]
-    [InlineData("premium", 402, "premium_not_licensed")]
-    [InlineData("domain", 400, "invalid_request")]
-    [InlineData("unhandled", 500, "internal_error")]
+    [MemberData(nameof(Codes))]
     public async Task Each_failure_on_the_ui_api_is_a_problem_with_its_status_and_code(string kind, int status, string code)
     {
         var admin = await vault.AdminClientAsync();
@@ -37,22 +48,96 @@ public sealed class UiApiFailureContractTests(VaultFixture vault)
     }
 
     [Theory]
-    [InlineData("audit", "/Home/Error?code=503")]
-    [InlineData("not_found", "/Home/Error?code=404")]
-    [InlineData("legacy_blob", "/Home/Error?code=409")]
-    [InlineData("crypto", "/Home/Error?code=500")]
-    [InlineData("premium", "/Home/Error?code=402")]
-    [InlineData("domain", "/Home/Error?code=400")]
-    [InlineData("unhandled", "/Home/Error?code=500")]
-    public async Task Each_failure_on_the_legacy_ui_still_redirects_to_its_error_page(string kind, string errorPage)
+    [InlineData("audit", 503, "Vault unavailable (fail-closed)", "The audit trail is unavailable, so the vault refused the request.")]
+    [InlineData("session_store", 503, "Vault unavailable (fail-closed)", "The session store is unavailable, so the vault refused the change. Nothing was saved.")]
+    [InlineData("unblock_unrecorded", 503, "Vault unavailable (fail-closed)", UnblockUnrecordedException.FailureMessage)]
+    [InlineData("recovery_incomplete", 503, "Vault unavailable (fail-closed)", RecoveryIncompleteException.FailureMessage)]
+    [InlineData("not_found", 404, "Not found", "Not found.")]
+    [InlineData("legacy_blob", 409, "Secret needs a one-time upgrade", "This secret is sealed in a format the vault refuses until an administrator re-seals it.")]
+    [InlineData("crypto", 500, "Something went wrong", "The vault's encryption is unavailable.")]
+    [InlineData("premium", 402, "Licence required", "This feature needs a licence.")]
+    [InlineData("domain", 400, "Something went wrong", "The request could not be completed.")]
+    [InlineData("unhandled", 500, "Something went wrong", "Something went wrong.")]
+    public async Task Each_failure_outside_the_apis_is_the_error_page_with_its_status_and_no_redirect(
+        string kind, int status, string heading, string line)
     {
         var admin = await vault.AdminClientAsync();
 
         var response = await admin.GetAsync($"/test-only/throw/{kind}");
 
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal(errorPage, response.Headers.Location?.OriginalString);
-        Assert.Empty(await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Equal(status, (int)response.StatusCode);
+        Assert.Null(response.Headers.Location);
+        Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
+        Assert.True(response.Headers.CacheControl?.NoStore, "The page is not no-store");
+        var text = WebUtility.HtmlDecode(body);
+        Assert.Contains($"<title>{heading} — EclipsVault</title>", text);
+        Assert.Contains($"<h1>{status} — {heading}</h1>", text);
+        Assert.Contains($"<p class=\"muted\">{line}</p>", text);
+        Assert.Contains("Request id: <code>", text);
+        Assert.Contains("""<a class="button primary wide" href="/">Back to safety</a>""", text);
+        Assert.DoesNotContain("<script", text);
+        AssertNoExceptionDetail(body);
+    }
+
+    [Theory]
+    [MemberData(nameof(Codes))]
+    public async Task Each_failure_on_the_public_api_is_its_error_code_with_its_status(string kind, int status, string code)
+    {
+        var service = await PublicApiClientAsync($"it-public-fail-{kind}");
+
+        var response = await service.GetAsync($"/api/v1/test-only/throw/{kind}");
+
+        await AssertPublicErrorAsync(response, status, code);
+    }
+
+    [Fact]
+    public async Task A_honey_token_on_the_public_api_answers_an_ordinary_not_found()
+    {
+        var notFound = await (await PublicApiClientAsync("it-public-honey-control")).GetAsync("/api/v1/test-only/throw/not_found");
+        var intruder = await PublicApiClientAsync("it-public-honey");
+
+        var response = await intruder.GetAsync("/api/v1/test-only/throw/honey_token");
+
+        await AssertPublicErrorAsync(response, 404, "not_found");
+        Assert.Equal(HeadersOf(notFound), HeadersOf(response));
+    }
+
+    [Fact]
+    public async Task Every_public_api_response_is_no_store()
+    {
+        var service = await PublicApiClientAsync("it-public-no-store");
+
+        HttpResponseMessage[] responses =
+        [
+            await service.GetAsync("/api/v1/secrets"),
+            await service.GetAsync($"/api/v1/secrets/{Guid.NewGuid()}"),
+            await vault.CreateClient().GetAsync("/api/v1/secrets"),
+            await service.GetAsync("/api/v1/test-only/throw/unhandled"),
+        ];
+
+        Assert.All(responses, r => Assert.True(r.Headers.CacheControl?.NoStore, $"{r.RequestMessage?.RequestUri} is not no-store"));
+        Assert.Equal(
+            new[] { HttpStatusCode.OK, HttpStatusCode.NotFound, HttpStatusCode.Unauthorized, HttpStatusCode.InternalServerError },
+            responses.Select(r => r.StatusCode));
+    }
+
+    private async Task<HttpClient> PublicApiClientAsync(string serviceAccountName)
+    {
+        var client = vault.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", await vault.IssueApiKeyAsync(await vault.AdminClientAsync(), serviceAccountName));
+        return client;
+    }
+
+    private static async Task AssertPublicErrorAsync(HttpResponseMessage response, int status, string code)
+    {
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Equal(status, (int)response.StatusCode);
+        Assert.Null(response.Headers.Location);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        Assert.True(response.Headers.CacheControl?.NoStore, "The response is not no-store");
+        Assert.Equal($$"""{"error":"{{code}}"}""", body);
     }
 
     [Fact]
@@ -83,7 +168,7 @@ public sealed class UiApiFailureContractTests(VaultFixture vault)
             .ToArray();
 
     [Fact]
-    public async Task A_honey_token_on_the_legacy_ui_still_signs_out_to_the_sign_in_page()
+    public async Task A_honey_token_outside_the_apis_still_signs_out_to_the_sign_in_page()
     {
         var intruder = await vault.SignInNewAccountAsync("it-honey-legacy");
         var stolenCookie = Assert.IsType<Cookie>(intruder.SessionCookie);
@@ -155,7 +240,7 @@ public sealed class UiApiFailureContractTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task A_blacklisted_source_gets_a_vague_403_problem_on_the_ui_api_and_the_block_page_elsewhere()
+    public async Task A_blacklisted_source_gets_a_vague_403_in_its_callers_format()
     {
         // TEST-NET-3 (RFC 5737): never a real caller, and no other test sends from it.
         var source = IPAddress.Parse("203.0.113.46");
@@ -164,7 +249,9 @@ public sealed class UiApiFailureContractTests(VaultFixture vault)
         try
         {
             var uiApi = await vault.SendFromAsync(source, "/api/ui/me");
-            var legacy = await vault.SendFromAsync(source, "/Account/Login");
+            var publicApi = await vault.SendFromAsync(source, "/api/v1/secrets");
+            var page = await vault.SendFromAsync(source, "/Account/Login");
+            var stylesheet = await vault.SendFromAsync(source, "/css/server-page.css");
 
             Assert.Equal(StatusCodes.Status403Forbidden, uiApi.Response.StatusCode);
             Assert.Equal("application/problem+json", uiApi.Response.ContentType);
@@ -178,9 +265,23 @@ public sealed class UiApiFailureContractTests(VaultFixture vault)
                 "The event has been reported to the vault administrators.",
                 problem.RootElement.GetProperty("detail").GetString());
 
-            Assert.Equal(StatusCodes.Status403Forbidden, legacy.Response.StatusCode);
-            Assert.StartsWith("text/html", legacy.Response.ContentType);
-            Assert.Contains("<h1>Access blocked</h1>", await new StreamReader(legacy.Response.Body).ReadToEndAsync());
+            Assert.Equal(StatusCodes.Status403Forbidden, page.Response.StatusCode);
+            Assert.StartsWith("text/html", page.Response.ContentType);
+            var html = await new StreamReader(page.Response.Body).ReadToEndAsync();
+            Assert.Contains("<title>Access blocked — EclipsVault</title>", html);
+            Assert.Contains("<h1>Access blocked</h1>", html);
+            Assert.Contains("""<a class="button primary wide" href="/Account/Recover">Vault administrator? Recover access</a>""", html);
+            Assert.Contains("""<link rel="stylesheet" href="/css/server-page.css" />""", html);
+            Assert.DoesNotContain("<script", html);
+
+            // Static files are served before the block, so the page keeps its look on a blocked network.
+            Assert.Equal(StatusCodes.Status200OK, stylesheet.Response.StatusCode);
+            Assert.StartsWith("text/css", stylesheet.Response.ContentType);
+
+            Assert.Equal(StatusCodes.Status403Forbidden, publicApi.Response.StatusCode);
+            Assert.StartsWith("application/json", publicApi.Response.ContentType);
+            Assert.Contains("no-store", publicApi.Response.Headers.CacheControl.ToString());
+            Assert.Equal("""{"error":"blocked"}""", await new StreamReader(publicApi.Response.Body).ReadToEndAsync());
         }
         finally
         {
@@ -237,6 +338,11 @@ public sealed class UiApiFailureContractTests(VaultFixture vault)
         Assert.Equal(code, problem.RootElement.GetProperty("code").GetString());
         Assert.False(string.IsNullOrWhiteSpace(problem.RootElement.GetProperty("title").GetString()));
 
+        AssertNoExceptionDetail(body);
+    }
+
+    private static void AssertNoExceptionDetail(string body)
+    {
         Assert.DoesNotContain(TestOnlyFailures.Detail, body);
         // No exception type name and no stack frame, both of which name the vault's namespaces.
         Assert.DoesNotContain("Exception", body);

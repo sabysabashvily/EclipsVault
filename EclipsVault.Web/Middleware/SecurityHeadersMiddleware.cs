@@ -28,6 +28,8 @@ public sealed class SecurityHeadersMiddleware
     internal static string AngularContentSecurityPolicyWithFormTarget(string origin) =>
         AngularContentSecurityPolicy.Replace("form-action 'self';", $"form-action 'self' {origin};", StringComparison.Ordinal);
 
+    private static readonly PathString ApiPath = new("/api");
+
     private readonly RequestDelegate _next;
 
     public SecurityHeadersMiddleware(RequestDelegate next) => _next = next;
@@ -35,15 +37,15 @@ public sealed class SecurityHeadersMiddleware
     public Task InvokeAsync(HttpContext context)
     {
         // Keep authenticated vault pages out of the browser's disk cache — and off the back button
-        // after sign-out. HTML and every UI API response, errors included, are marked no-store: a
-        // UI API reveal is JSON (ADR-0013). Static assets and images (served with their own caching)
-        // are untouched. Content-Type is only known once the response starts, so this is deferred
-        // to OnStarting.
+        // after sign-out. HTML and every API response, errors included, are marked no-store: a
+        // reveal is JSON on both the UI API and the Public API (ADR-0013, ADR-0034). Static assets
+        // and images (served with their own caching) are untouched. Content-Type is only known once
+        // the response starts, so this is deferred to OnStarting.
         context.Response.OnStarting(static state =>
         {
             var ctx = (HttpContext)state;
             var contentType = ctx.Response.ContentType;
-            if (UiApiProblem.IsUiApi(ctx.Request) ||
+            if (ctx.Request.Path.StartsWithSegments(ApiPath) ||
                 (contentType is not null && contentType.Contains("text/html", StringComparison.OrdinalIgnoreCase)))
             {
                 ctx.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";

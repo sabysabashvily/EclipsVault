@@ -1,5 +1,6 @@
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Domain.Exceptions;
+using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Controllers.Ui;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
@@ -32,6 +33,12 @@ internal static class TestOnlyFailures
                 throw new HoneyTokenTrippedException(decoy, Detail);
             case "audit":
                 throw new AuditWriteFailedException(Detail, new InvalidOperationException(Detail));
+            case "session_store":
+                throw new SessionStoreUnavailableException(new InvalidOperationException(Detail));
+            case "unblock_unrecorded":
+                throw new UnblockUnrecordedException();
+            case "recovery_incomplete":
+                throw new RecoveryIncompleteException(Detail);
             case "not_found":
                 throw new SecretNotFoundException(Guid.NewGuid());
             case "legacy_blob":
@@ -92,7 +99,17 @@ public sealed class TestOnlyUiApiController(IIntrusionResponseService intrusion)
     public IActionResult AccessRequestRequesterGone() => throw new RequesterNotFoundException();
 }
 
-/// <summary>The same failures on a Legacy UI path, which must keep its redirects.</summary>
+/// <summary>The same failures on the Public API, which answers each as <c>{ "error": "&lt;code&gt;" }</c>.</summary>
+[ApiController]
+[Route("api/v1/test-only")]
+[Authorize(AuthenticationSchemes = AuthSchemes.ApiKey)]
+public sealed class TestOnlyPublicApiController(IIntrusionResponseService intrusion) : ControllerBase
+{
+    [HttpGet("throw/{kind}")]
+    public Task Throw(string kind, CancellationToken ct) => TestOnlyFailures.ThrowAsync(kind, intrusion, ct);
+}
+
+/// <summary>The same failures on a path outside the APIs, which answers each with the error page.</summary>
 [Route("test-only")]
 [Authorize(AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme)]
 public sealed class TestOnlyLegacyController(IIntrusionResponseService intrusion) : Controller

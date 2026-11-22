@@ -15,19 +15,7 @@ public sealed class IpBlacklistMiddleware
 
     // Deliberately vague: a honey-token trip must not be distinguishable from any
     // other network block, or the message itself tells the intruder what happened.
-    private const string BlockedPageTemplate = """
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="utf-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-            <title>Access blocked — EclipsVault</title>
-            <link rel="stylesheet" href="/css/site.css" />
-        </head>
-        <body class="auth-body">
-            <main class="auth-wrap">
-                <span class="brand auth-brand"><span class="brand-name">EclipsVault</span></span>
-                <section class="auth-card">
+    private const string BlockedPageContent = """
                     <h1>Access blocked</h1>
                     <p class="muted">
                         Requests from your network location have been blocked by the vault's
@@ -40,10 +28,6 @@ public sealed class IpBlacklistMiddleware
                         audited. Otherwise, ask an administrator to lift the block from the
                         Networks console.
                     </p>
-                </section>
-            </main>
-        </body>
-        </html>
         """;
 
     // The UI API's version of the page above, in the same words (ADR-0006).
@@ -57,14 +41,14 @@ public sealed class IpBlacklistMiddleware
     private readonly RequestDelegate _next;
     private readonly IIpBlacklist _blacklist;
     private readonly ILogger<IpBlacklistMiddleware> _logger;
-    private readonly string _blockedPage;
+    private readonly string _blockedContent;
 
     public IpBlacklistMiddleware(RequestDelegate next, IIpBlacklist blacklist, ILogger<IpBlacklistMiddleware> logger, IHostEnvironment environment)
     {
         _next = next;
         _blacklist = blacklist;
         _logger = logger;
-        _blockedPage = BlockedPageTemplate.Replace("{0}", environment.IsDevelopment() ? DevelopmentHint : string.Empty);
+        _blockedContent = BlockedPageContent.Replace("{0}", environment.IsDevelopment() ? DevelopmentHint : string.Empty);
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -81,9 +65,13 @@ public sealed class IpBlacklistMiddleware
                 return;
             }
 
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            context.Response.ContentType = "text/html; charset=utf-8";
-            await context.Response.WriteAsync(_blockedPage);
+            if (PublicApiError.IsPublicApi(context.Request))
+            {
+                await PublicApiError.WriteAsync(context, StatusCodes.Status403Forbidden, "blocked");
+                return;
+            }
+
+            await ServerPage.WriteAsync(context, StatusCodes.Status403Forbidden, "Access blocked", _blockedContent);
             return;
         }
 
