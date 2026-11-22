@@ -7,7 +7,7 @@ import { AuthenticatorEnrollment } from './authenticator-enrollment';
 import { test, expect } from './fixtures';
 import { clearSignInBudget } from './profile-state';
 import { SecretsList } from './secrets-list';
-import { KeycloakSignIn, VaultSingleSignOn } from './sso';
+import { KeycloakSignIn } from './sso';
 import { currentTotpStep, freshTotp } from './totp';
 import { Users } from './users';
 
@@ -32,15 +32,14 @@ function idpAuthenticatorSecret(): string {
 }
 
 test.describe.configure({ mode: 'serial' });
+const vaultPassword = `E2e-${randomBytes(24).toString('hex')}`;
 let vaultAuthenticatorSecret = '';
 let vaultAuthenticatorStep = -1;
 
-test('the password-only identity provider user enrolls a vault authenticator', async ({
+test('an administrator creates the vault accounts both identity provider users sign in as', async ({
   page,
-  browserHealth,
 }) => {
   test.setTimeout(180_000);
-  const vaultPassword = `E2e-${randomBytes(24).toString('hex')}`;
   await page.context().addCookies(await savedAdministratorCookies());
   clearSignInBudget();
   await refreshAdministratorProof(page);
@@ -71,7 +70,12 @@ test('the password-only identity provider user enrolls a vault authenticator', a
   await expect(users.status).toContainText(
     `User '${passwordUsername}' created with email ${passwordEmail}.`,
   );
+});
 
+test('the password-only identity provider user enrolls a vault authenticator', async ({
+  browserHealth,
+}) => {
+  test.setTimeout(180_000);
   const enrolling = await (await browserHealth.newContext()).newPage();
   clearSignInBudget();
   const signIn = new AccountSignIn(enrolling);
@@ -90,9 +94,9 @@ test('a user whose identity provider completed MFA lands on Secrets', async ({ b
   test.setTimeout(120_000);
   const page = await (await browserHealth.newContext()).newPage();
   clearSignInBudget();
-  const vault = new VaultSingleSignOn(page);
+  const vault = new AccountSignIn(page);
   await vault.open();
-  await vault.continueWithKeycloak();
+  await vault.continueWithSingleSignOn('Keycloak');
   const keycloak = new KeycloakSignIn(page);
   await keycloak.submitPassword('sso-mfa', idpPassword());
   await keycloak.submitOneTimeCode(await freshTotp(idpAuthenticatorSecret()));
@@ -106,15 +110,14 @@ test('a user whose identity provider did not complete MFA finishes with an authe
   test.setTimeout(120_000);
   const page = await (await browserHealth.newContext()).newPage();
   clearSignInBudget();
-  const vault = new VaultSingleSignOn(page);
+  const vault = new AccountSignIn(page);
   await vault.open();
-  await vault.continueWithKeycloak();
+  await vault.continueWithSingleSignOn('Keycloak');
   await new KeycloakSignIn(page).submitPassword('sso-password', idpPassword());
   await expect(page).toHaveURL(/\/Account\/Totp$/);
-  await page
-    .getByLabel('Authenticator code')
-    .fill(await freshTotp(vaultAuthenticatorSecret, vaultAuthenticatorStep));
-  await page.getByRole('button', { name: 'Verify and sign in' }).click();
+  await vault.submitAuthenticatorCode(
+    await freshTotp(vaultAuthenticatorSecret, vaultAuthenticatorStep),
+  );
   await expect(page).toHaveURL(/\/Secrets$/);
   await expect(new SecretsList(page).heading).toBeVisible();
 });
@@ -124,9 +127,9 @@ test('a user with no vault account is told single sign-on did not grant access',
 }) => {
   const page = await (await browserHealth.newContext()).newPage();
   clearSignInBudget();
-  const vault = new VaultSingleSignOn(page);
+  const vault = new AccountSignIn(page);
   await vault.open();
-  await vault.continueWithKeycloak();
+  await vault.continueWithSingleSignOn('Keycloak');
   await new KeycloakSignIn(page).submitPassword('sso-stranger', idpPassword());
   await expect(page).toHaveURL(/\/Account\/Login\?sso=refused$/);
   await expect(page.getByText(refused, { exact: true })).toBeVisible();

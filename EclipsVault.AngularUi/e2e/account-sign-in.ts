@@ -19,4 +19,15 @@ export class AccountSignIn {
     await this.page.getByLabel('Password', { exact: true }).fill(password);
     await this.page.getByRole('button', { name: 'Continue', exact: true }).click();
   }
+
+  /** Login's single sign-on button, which posts to the identity provider named on it. */
+  async continueWithSingleSignOn(provider: string): Promise<void> {
+    await this.page.getByRole('button', { name: `Sign in with ${provider}`, exact: true }).click();
+  }
+
+  /** The second-factor page's authenticator code. */
+  async submitAuthenticatorCode(code: string): Promise<void> {
+    await this.page.getByLabel('Authenticator code').fill(code);
+    await this.page.getByRole('button', { name: 'Verify and sign in', exact: true }).click();
+  }
 }
