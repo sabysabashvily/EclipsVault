@@ -14,7 +14,9 @@ public sealed record UserSummaryDto(
     bool IsDisabled,
     bool IsLockedOut,
     bool HasCustomAvatar,
-    DateTimeOffset CreatedAtUtc);
+    DateTimeOffset CreatedAtUtc,
+    bool AwaitingActivation,
+    DateTimeOffset? InvitationExpiresAtUtc);
 
 public sealed record CreateUserRequest(
     string Username,
@@ -42,6 +44,10 @@ public interface IUserAdminService
     /// <summary>True when real SMTP delivery and a valid <c>Identity:PublicUrl</c> are both configured.</summary>
     bool InvitationsAvailable { get; }
 
+    /// <summary>
+    /// Every account. <see cref="UserSummaryDto.InvitationExpiresAtUtc"/> is set only while the account's
+    /// invitation can still activate it.
+    /// </summary>
     Task<IReadOnlyList<UserSummaryDto>> ListAsync(CancellationToken ct);
 
     Task<UserSummaryDto?> GetAsync(Guid userId, CancellationToken ct);

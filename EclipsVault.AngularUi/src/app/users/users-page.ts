@@ -12,15 +12,16 @@ import { TableFilter } from '../shared/table-filter';
 import { PagePrimary } from '../shell/page-primary';
 import type { components } from '../ui-api/schema.generated';
 import { UiApiError } from '../ui-api/ui-api-errors';
+import { accountStatus, resendOutcome, resendQuestion } from './account-status';
 
 type User = components['schemas']['UserResponse'];
-type Action = 'enable' | 'disable' | 'unlock' | 'reset-mfa' | 'sign-out' | 'delete';
+type Action = 'enable' | 'disable' | 'unlock' | 'reset-mfa' | 'sign-out' | 'delete' | 'invitation';
 interface Pending {
   action: Action;
   user: User;
 }
 
-const outcomes: Record<Action, string> = {
+const outcomes: Record<Exclude<Action, 'invitation'>, string> = {
   enable: 'Account enabled.',
   disable: 'Account disabled and its sessions revoked.',
   unlock: 'Lockout cleared. The user can sign in again.',
@@ -28,12 +29,6 @@ const outcomes: Record<Action, string> = {
   'sign-out': "All of the user's sessions were revoked.",
   delete: 'User deleted.',
 };
-const statuses: Record<User['status'], { label: string; tone: string }> = {
-  active: { label: 'Active', tone: 'tone-ok' },
-  locked: { label: 'Locked', tone: 'tone-warn' },
-  disabled: { label: 'Disabled', tone: 'tone-danger' },
-};
-
 @Component({
   selector: 'app-users-page',
   imports: [
@@ -61,7 +56,7 @@ export class UsersPage {
   protected readonly query = signal('');
   protected readonly busy = signal(false);
   protected readonly status = signal({ message: '', error: false });
-  protected readonly statuses = statuses;
+  protected readonly accountStatus = accountStatus;
   protected readonly filtered = computed(() => {
     const accounts = this.users.hasValue() ? this.users.value().users : [];
     const query = this.query().trim().toLowerCase();
@@ -74,7 +69,7 @@ export class UsersPage {
         account.clearanceLabel,
         account.project,
         account.mfaEnrolled ? 'On' : 'Not set up',
-        statuses[account.status].label,
+        accountStatus(account).label,
       ]
         .join(' ')
         .toLowerCase()
@@ -84,13 +79,16 @@ export class UsersPage {
 
   /** "4 people · 1 without two-step · 1 locked. …": parts after the count only when not zero. */
   protected readonly summary = computed(() => {
-    const onboarding = 'New users set up their authenticator at first sign-in.';
+    const onboarding =
+      'New users set their own password and authenticator from an emailed invitation.';
     if (!this.users.hasValue()) return onboarding;
     const accounts = this.users.value().users;
     const withoutTwoStep = accounts.filter((account) => !account.mfaEnrolled).length;
     const locked = accounts.filter((account) => account.status === 'locked').length;
+    const invited = accounts.filter((account) => account.awaitingActivation).length;
     const counts = [
       `${accounts.length} ${accounts.length === 1 ? 'person' : 'people'}`,
+      invited ? `${invited} awaiting activation` : '',
       withoutTwoStep ? `${withoutTwoStep} without two-step` : '',
       locked ? `${locked} locked` : '',
     ]
@@ -145,6 +143,12 @@ export class UsersPage {
           confirm: 'Delete user',
         });
         break;
+      case 'invitation': {
+        const question = resendQuestion(user);
+        this.awaitingConfirmation = { action, user };
+        this.confirmation().open(question.message, question.options);
+        break;
+      }
       case 'enable':
       case 'unlock':
         this.send({ action, user }, true);
@@ -180,20 +184,27 @@ export class UsersPage {
     const path = `/api/ui/users/${pending.user.userId}`;
     const write =
       pending.action === 'delete'
-        ? this.http.delete<void>(path)
-        : this.http.post<void>(`${path}/${pending.action}`, null);
+        ? this.http.delete<null>(path)
+        : this.http.post<components['schemas']['InvitationResponse'] | null>(
+            `${path}/${pending.action}`,
+            null,
+          );
     write
       .pipe(
         takeUntilDestroyed(this.destroyRef),
         finalize(() => this.busy.set(false)),
       )
       .subscribe({
-        next: () => {
+        next: (sent) => {
           if (pending.action === 'sign-out' && pending.user.isYou) {
             this.location.assign('/Account/Login');
             return;
           }
-          this.status.set({ message: outcomes[pending.action], error: false });
+          this.status.set(
+            pending.action === 'invitation'
+              ? resendOutcome(sent!, pending.user.email)
+              : { message: outcomes[pending.action], error: false },
+          );
           this.users.reload();
         },
         error: (error: unknown) => {

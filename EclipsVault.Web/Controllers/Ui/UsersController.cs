@@ -32,7 +32,7 @@ public sealed class UsersController(IUserAdminService users, AdministratorStepUp
             account.Clearance.ToDisplayName(), account.ProjectKey, account.TotpEnabled,
             account.IsDisabled ? "disabled" : account.IsLockedOut ? "locked" : "active",
             Url.Content($"~/Profile/Avatar?id={account.Id}&seed={Uri.EscapeDataString(account.DisplayName)}&v={(account.HasCustomAvatar ? "c" : "g")}"),
-            account.Id == User.GetUserId())).ToList());
+            account.Id == User.GetUserId(), account.AwaitingActivation, account.InvitationExpiresAtUtc)).ToList());
     }
 
     private static IReadOnlyList<ClearanceOptionResponse> Clearances => Enum.GetValues<ClearanceLevel>()
@@ -52,8 +52,8 @@ public sealed class UsersController(IUserAdminService users, AdministratorStepUp
         {
             return AdministratorProblems.UserNotFound();
         }
-        return new UserDetailsResponse(account.Id, account.Username, account.DisplayName, (int)account.Clearance,
-            account.ProjectKey, account.Id == User.GetUserId(), Clearances);
+        return new UserDetailsResponse(account.Id, account.Username, account.DisplayName, account.Email, (int)account.Clearance,
+            account.ProjectKey, account.Id == User.GetUserId(), Clearances, account.AwaitingActivation, account.InvitationExpiresAtUtc);
     }
 
     [HttpPost]

@@ -57,6 +57,8 @@ export function loginNotice(search: string, handedOff: string | null): LoginNoti
       message: 'Your account changed while you were signing in. Sign in again.',
       error: true,
     };
+  if (query.get('activated') === '1')
+    return { message: 'Your account is ready. Sign in with your new password.', error: false };
   if (handedOff === 'authenticator_reset')
     return { message: 'Your authenticator was reset. Sign in to set up a new one.', error: false };
   return (

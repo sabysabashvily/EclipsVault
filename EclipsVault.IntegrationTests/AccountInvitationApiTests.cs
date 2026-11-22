@@ -193,6 +193,51 @@ public sealed class AccountInvitationApiTests(InvitationFixture fixture)
         Assert.Contains(await AuditTrail.RowsAfterAsync(Vault, before), row => row.Action == AuditAction.InvitationSent);
     }
 
+    /// <summary>
+    /// The Users list and the user page say whether an account awaits activation and until when its link
+    /// works. A link that can no longer activate the account, here one spent by an address replacement,
+    /// has no expiry to show.
+    /// </summary>
+    [Fact]
+    public async Task Users_list_and_details_report_the_activation_state_and_the_usable_links_expiry()
+    {
+        var admin = await Vault.AdminClientAsync();
+        var invited = await SeedInvitedAccountAsync("it-inv-state", "it-inv-state@example.test");
+        var resend = await UiApiRequest.SendWithTokenAsync(admin, await UiApiRequest.AntiforgeryTokenAsync(admin),
+            HttpMethod.Post, $"/api/ui/users/{invited.Id}/invitation");
+        var expiresAtUtc = (await resend.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("expiresAtUtc").GetDateTimeOffset();
+
+        var (listed, details) = await StateAsync(admin, invited.Id);
+        Assert.True(listed.GetProperty("awaitingActivation").GetBoolean());
+        Assert.Equal(expiresAtUtc, listed.GetProperty("invitationExpiresAtUtc").GetDateTimeOffset());
+        Assert.True(details.GetProperty("awaitingActivation").GetBoolean());
+        Assert.Equal(expiresAtUtc, details.GetProperty("invitationExpiresAtUtc").GetDateTimeOffset());
+        Assert.Equal("it-inv-state@example.test", details.GetProperty("email").GetString());
+
+        (await UiApiRequest.SendWithTokenAsync(admin, await UiApiRequest.AntiforgeryTokenAsync(admin),
+            HttpMethod.Post, $"/api/ui/users/{invited.Id}/invitation-address",
+            JsonContent.Create(new { email = "it-inv-state-new@example.test" }))).EnsureSuccessStatusCode();
+
+        (listed, details) = await StateAsync(admin, invited.Id);
+        Assert.True(listed.GetProperty("awaitingActivation").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, listed.GetProperty("invitationExpiresAtUtc").ValueKind);
+        Assert.Equal(JsonValueKind.Null, details.GetProperty("invitationExpiresAtUtc").ValueKind);
+        Assert.Equal("it-inv-state-new@example.test", details.GetProperty("email").GetString());
+
+        var administrator = await ProfileHttp.AccountAsync(Vault, "vault-admin");
+        (listed, details) = await StateAsync(admin, administrator.Id);
+        Assert.False(listed.GetProperty("awaitingActivation").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, listed.GetProperty("invitationExpiresAtUtc").ValueKind);
+        Assert.False(details.GetProperty("awaitingActivation").GetBoolean());
+    }
+
+    private static async Task<(JsonElement Listed, JsonElement Details)> StateAsync(HttpClient admin, Guid userId)
+    {
+        var users = await admin.GetFromJsonAsync<JsonElement>("/api/ui/users");
+        var listed = users.GetProperty("users").EnumerateArray().Single(user => user.GetProperty("userId").GetGuid() == userId);
+        return (listed, await admin.GetFromJsonAsync<JsonElement>($"/api/ui/users/{userId}"));
+    }
+
     [Fact]
     public async Task Replacing_invitation_address_spends_the_current_token_audits_the_new_address_sends_no_mail_and_resend_uses_it()
     {

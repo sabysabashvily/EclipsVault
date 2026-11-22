@@ -79,9 +79,8 @@
                 }
               </td>
               <td class="cell-pill">
-                <span [class]="'badge ' + statuses[user.status].tone">{{
-                  statuses[user.status].label
-                }}</span>
+                @let status = accountStatus(user);
+                <span [class]="'badge ' + status.tone">{{ status.label }}</span>
               </td>
               <td class="cell-actions cell-verb">
                 @if (!user.isYou && user.status === 'locked') {
@@ -92,6 +91,20 @@
                     (click)="act('unlock', user)"
                   >
                     Unlock
+                  </button>
+                }
+                @if (
+                  user.awaitingActivation &&
+                  !user.invitationExpiresAtUtc &&
+                  user.status !== 'disabled'
+                ) {
+                  <button
+                    type="button"
+                    class="button small"
+                    [disabled]="busy()"
+                    (click)="act('invitation', user)"
+                  >
+                    Resend invitation
                   </button>
                 }
                 @if (!user.isYou && user.status === 'disabled') {
@@ -111,6 +124,26 @@
                     [routerLink]="['/Admin/EditUser', user.userId]"
                     >Edit</a
                   >
+                  @if (user.awaitingActivation && user.status !== 'disabled') {
+                    @if (user.invitationExpiresAtUtc) {
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="menu-item"
+                        [disabled]="busy()"
+                        (click)="act('invitation', user)"
+                      >
+                        Resend invitation
+                      </button>
+                    }
+                    <a
+                      role="menuitem"
+                      class="menu-item"
+                      [routerLink]="['/Admin/EditUser', user.userId]"
+                      fragment="invitation"
+                      >Replace invitation address</a
+                    >
+                  }
                   @if (!user.isYou && user.status !== 'disabled') {
                     <button
                       type="button"
@@ -132,15 +165,17 @@
                     Force logout
                   </button>
                   @if (!user.isYou) {
-                    <button
-                      type="button"
-                      role="menuitem"
-                      class="menu-item"
-                      [disabled]="busy()"
-                      (click)="act('reset-mfa', user)"
-                    >
-                      Reset MFA
-                    </button>
+                    @if (!user.awaitingActivation) {
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="menu-item"
+                        [disabled]="busy()"
+                        (click)="act('reset-mfa', user)"
+                      >
+                        Reset MFA
+                      </button>
+                    }
                     <button
                       type="button"
                       role="menuitem"

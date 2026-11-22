@@ -8,6 +8,9 @@ public sealed class AccountInvitationRepository(EclipsVaultDbContext context) : 
     public Task<AccountInvitation?> FindByUserIdAsync(Guid userId, CancellationToken ct)
         => context.AccountInvitations.FirstOrDefaultAsync(i => i.UserId == userId, ct);
 
+    public async Task<IReadOnlyList<AccountInvitation>> ListAsync(CancellationToken ct)
+        => await context.AccountInvitations.AsNoTracking().ToListAsync(ct);
+
     public Task<AccountInvitation?> FindByTokenHashAsync(byte[] tokenHash, CancellationToken ct)
         => context.AccountInvitations.Include(i => i.User)
             .FirstOrDefaultAsync(i => i.TokenHash == tokenHash, ct);

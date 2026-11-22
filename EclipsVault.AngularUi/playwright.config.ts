@@ -53,6 +53,7 @@ export default defineConfig({
             '**/dynamic-secrets.spec.ts',
             '**/break-glass.spec.ts',
             '**/sso.spec.ts',
+            '**/invitations.spec.ts',
           ],
           use: { ...devices['Desktop Chrome'] },
         },
@@ -147,9 +148,16 @@ export default defineConfig({
           use: { ...devices['Desktop Chrome'] },
         },
         {
+          // Needs the administrator session that sign-in saves, and its authenticator.
+          name: 'invitations',
+          testMatch: '**/invitations.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
           // Users ends with the administrator's own Force logout, which ends the saved session that
           // Networks, Notifications, License, Encryption keys, the Audit log, the Overview, Secrets,
-          // Secret details, Dynamic secrets, My activity, break-glass and single sign-on reuse.
+          // Secret details, Dynamic secrets, My activity, break-glass, single sign-on and invitations reuse.
           // Run those projects before Users so they can still use the saved session.
           name: 'users',
           testMatch: '**/users.spec.ts',
@@ -164,6 +172,7 @@ export default defineConfig({
             'dynamic-secrets',
             'break-glass',
             'sso',
+            'invitations',
           ],
           use: { ...devices['Desktop Chrome'] },
         },

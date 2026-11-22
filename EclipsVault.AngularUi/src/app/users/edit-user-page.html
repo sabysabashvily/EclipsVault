@@ -20,6 +20,48 @@
     </div>
   </div>
 
+  @if (account.value().awaitingActivation) {
+    @let invited = account.value();
+    @let status = accountStatus(invited);
+    <section
+      class="panel narrow-left invitation-panel"
+      id="invitation"
+      aria-labelledby="invitation-title"
+    >
+      <div class="panel-header">
+        <h2 id="invitation-title">Invitation</h2>
+        <span [class]="'badge ' + status.tone">{{ status.label }}</span>
+      </div>
+      <p class="hint muted">
+        The account cannot sign in until its owner opens the emailed link, chooses a password and
+        sets up an authenticator. Sent to <span class="mono">{{ invited.email }}</span
+        >.
+      </p>
+      <fieldset [disabled]="writes.busy() || writes.awaitingProof() || writes.blocked()">
+        <button #resendButton type="button" class="button" (click)="askResend(resendButton)">
+          Resend invitation
+        </button>
+        <form class="invitation-address" (submit)="askReplace($event, replaceButton)">
+          <div class="field">
+            <label for="invitation-email">Invitation address</label>
+            <input
+              id="invitation-email"
+              #addressInput
+              type="email"
+              maxlength="254"
+              required
+              autocomplete="off"
+              [value]="address()"
+              (input)="address.set(addressInput.value)"
+            />
+            <span class="field-error">{{ error('email') }}</span>
+          </div>
+          <button #replaceButton type="submit" class="button">Replace address</button>
+        </form>
+      </fieldset>
+    </section>
+  }
+
   <section class="panel narrow-left">
     <div class="panel-header"><h2>Role &amp; access</h2></div>
     <form (submit)="submit($event)">
@@ -64,4 +106,5 @@
     </form>
   </section>
 }
+<app-confirmation-dialog (decision)="confirmed($event)" />
 <app-step-up-dialog (decision)="verified($event)" />

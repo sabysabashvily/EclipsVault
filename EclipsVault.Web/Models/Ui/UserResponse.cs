@@ -13,4 +13,6 @@ public sealed record UserResponse(
     bool MfaEnrolled,
     [property: AllowedValues("active", "locked", "disabled")] string Status,
     string AvatarUrl,
-    bool IsYou);
+    bool IsYou,
+    bool AwaitingActivation,
+    DateTimeOffset? InvitationExpiresAtUtc);

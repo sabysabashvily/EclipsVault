@@ -23,6 +23,7 @@ export const signInPaths = [
   '/account/recoverycode',
   '/account/enrolltotp',
   '/account/recover',
+  '/account/activate',
 ];
 
 const routes: Routes = [
@@ -50,6 +51,11 @@ const routes: Routes = [
     matcher: legacyPath('Account/Recover'),
     loadComponent: () => import('./recover-page').then((m) => m.RecoverPage),
     title: 'Recover access — EclipsVault',
+  },
+  {
+    matcher: legacyPath('Account/Activate'),
+    loadComponent: () => import('./activate-page').then((m) => m.ActivatePage),
+    title: 'Activate your account — EclipsVault',
   },
 ];
 

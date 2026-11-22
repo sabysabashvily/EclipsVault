@@ -54,6 +54,15 @@ export class Users {
   async edit(username: string): Promise<void> {
     await this.more(username, 'Edit');
   }
+  async resend(username: string): Promise<void> {
+    await this.more(username, 'Resend invitation');
+  }
+  async replaceInvitationAddress(username: string): Promise<void> {
+    await this.more(username, 'Replace invitation address');
+  }
+  resendButton(username: string) {
+    return this.row(username).getByRole('button', { name: 'Resend invitation', exact: true });
+  }
   async disable(username: string): Promise<void> {
     await this.more(username, 'Disable');
   }

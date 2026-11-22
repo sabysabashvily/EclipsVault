@@ -253,7 +253,7 @@ describe('Overview', () => {
       ['Full audit log', '/Audit'],
       ['Browse secrets Metadata only — reveals are audited', '/Secrets'],
       ['Store a new secret AES-256-GCM envelope encryption', '/Secrets/Create'],
-      ['Provision a user TOTP enrollment at first sign-in', '/Admin/CreateUser'],
+      ['Provision a user They set their own password and authenticator', '/Admin/CreateUser'],
       ['Manage trusted networks Trust your current IP, lift blocks', '/Admin/Networks'],
     ]);
   });

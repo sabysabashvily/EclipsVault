@@ -6,6 +6,7 @@ import { provideRouter, Router } from '@angular/router';
 import { PasskeyProof } from '../profile/passkey-proof';
 import { PAGE_LOCATION } from '../shell/command-palette';
 import { signInApiErrors } from '../ui-api/ui-api-errors';
+import { ActivatePage, invalidInvitation } from './activate-page';
 import { EnrollTotpPage } from './enroll-totp-page';
 import { LoginPage, loginNotice } from './login-page';
 import { RecoverPage } from './recover-page';
@@ -63,6 +64,14 @@ describe('loginNotice', () => {
       expect(loginNotice(search, null)).toEqual({ message: '', error: false });
     },
   );
+
+  it('says the account is ready after activation', () => {
+    expect(loginNotice('?activated=1', null)).toEqual({
+      message: 'Your account is ready. Sign in with your new password.',
+      error: false,
+    });
+    expect(loginNotice('?activated=yes', null)).toEqual({ message: '', error: false });
+  });
 
   it('says the reset sentence only from the handoff', () => {
     expect(loginNotice('', 'authenticator_reset')).toEqual({ message: reset, error: false });
@@ -592,6 +601,157 @@ describe('sign-in pages', () => {
       );
 
       expect(assign).toHaveBeenCalledExactlyOnceWith('/Account/Login?signIn=restarted');
+    });
+  });
+  describe('Activate', () => {
+    const token = 'tOkEn-from_the.email';
+    const invitation = {
+      username: 'grace',
+      displayName: 'Grace Hopper',
+      secretBase32: 'JBSWY3DPEHPK3PXP',
+      qrCodeDataUri: 'data:image/png;base64,AAAA',
+      expiresAtUtc: '2099-11-26T14:30:00Z',
+    };
+    const password = 'Correct-horse-battery-1';
+
+    async function opened() {
+      const rendered = await render(ActivatePage, `/Account/Activate#${token}`);
+      const inspect = backend.expectOne({ method: 'POST', url: '/api/ui/auth/activation' });
+      expect(inspect.request.body).toEqual({ token });
+      inspect.flush(invitation);
+      await rendered.fixture.whenStable();
+      return rendered;
+    }
+
+    function fillIn(page: HTMLElement, confirm = password): void {
+      type(page, 'new-password', password);
+      type(page, 'confirm-password', confirm);
+      type(page, 'Code', '123456');
+    }
+
+    function text(page: HTMLElement): string {
+      return page.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    }
+
+    it('reads the token from the fragment, posts it in the body and drops it from the address bar', async () => {
+      const { page } = await opened();
+
+      expect(location.hash).toBe('');
+      expect(location.pathname).toBe('/Account/Activate');
+      expect(page.querySelector('h1')?.textContent).toBe('Activate your account');
+      expect(text(page)).toContain(
+        'Choose your password and set up your authenticator. Multi-factor sign-in is mandatory.',
+      );
+      expect(page.querySelector<HTMLInputElement>('#Username')?.value).toBe('grace');
+      expect(page.querySelector('#Username')?.getAttribute('autocomplete')).toBe('username');
+      expect(page.querySelector('#new-password')?.getAttribute('autocomplete')).toBe(
+        'new-password',
+      );
+      expect([...page.querySelectorAll('label')].map((label) => label.textContent)).toEqual([
+        'Username',
+        'New password',
+        'Confirm new password',
+        'Confirmation code',
+      ]);
+      expect(page.querySelector('img.totp-qr')?.getAttribute('src')).toBe(invitation.qrCodeDataUri);
+      expect(page.querySelector('code.secret-code')?.textContent).toBe('JBSWY3DPEHPK3PXP');
+      expect(button(page, 'Activate account').type).toBe('submit');
+    });
+
+    it('shows the strength of the password being chosen', async () => {
+      const { page, fixture } = await opened();
+      expect(page.querySelector('.strength')).toBeNull();
+      type(page, 'new-password', 'short');
+      await fixture.whenStable();
+      expect(page.querySelector('.strength-label')?.textContent).toBe(
+        'Too short — 7 more characters needed',
+      );
+    });
+
+    it('says a link without a token is not valid, without calling the vault', async () => {
+      const { page, fixture } = await render(ActivatePage, '/Account/Activate');
+      await fixture.whenStable();
+      expect(page.querySelector('[role="alert"]')?.textContent?.trim()).toBe(invalidInvitation);
+      expect(page.querySelector('form')).toBeNull();
+    });
+
+    it('says an unknown, used or expired link is not valid', async () => {
+      const { page, fixture } = await render(ActivatePage, `/Account/Activate#${token}`);
+      refuse('/api/ui/auth/activation', 404, 'invitation_invalid', invalidInvitation);
+      await fixture.whenStable();
+      expect(page.querySelector('[role="alert"]')?.textContent?.trim()).toBe(invalidInvitation);
+      expect(page.querySelector('form')).toBeNull();
+      expect(location.hash).toBe('');
+    });
+
+    it('says when the vault is throttling the link', async () => {
+      const { page, fixture } = await render(ActivatePage, `/Account/Activate#${token}`);
+      refuse('/api/ui/auth/activation', 429, 'throttled', 'Too many attempts. Try again later.');
+      await fixture.whenStable();
+      expect(page.querySelector('[role="alert"]')?.textContent?.trim()).toBe(
+        'Too many attempts. Try again later.',
+      );
+    });
+
+    it.each([
+      ['short', 'Your new password must be 12–256 characters.'],
+      [password + 'x', 'The passwords do not match.'],
+    ])('refuses before sending when the confirmation is %s', async (confirm, message) => {
+      const { page, fixture } = await opened();
+      if (confirm === 'short') {
+        type(page, 'new-password', 'short');
+        type(page, 'confirm-password', 'short');
+      } else fillIn(page, confirm);
+      submit(page);
+      await fixture.whenStable();
+      expect(page.querySelector('.validation-summary li')?.textContent).toBe(message);
+      backend.expectNone('/api/ui/auth/activation/complete');
+    });
+
+    it('activates with the password and code, then signs in from Login', async () => {
+      const { page } = await opened();
+      fillIn(page);
+      submit(page);
+      const complete = backend.expectOne('/api/ui/auth/activation/complete');
+      expect(complete.request.body).toEqual({ token, password, code: '123456' });
+      complete.flush(null, { status: 204, statusText: 'No Content' });
+      expect(assign).toHaveBeenCalledExactlyOnceWith('/Account/Login?activated=1');
+    });
+
+    it.each([
+      [400, 'code_invalid', 'The confirmation code did not match. Try again.', {}],
+      [
+        400,
+        'validation_failed',
+        'One or more fields are invalid.',
+        {
+          password: ['This password has appeared in known data breaches — choose a different one.'],
+        },
+      ],
+      [503, 'audit_unavailable', 'The audit trail is unavailable. Nothing was changed.', {}],
+    ])('keeps the form for a %i %s refusal and says why', async (status, code, title, errors) => {
+      const { page, fixture } = await opened();
+      fillIn(page);
+      submit(page);
+      backend
+        .expectOne('/api/ui/auth/activation/complete')
+        .flush({ status, code, title, errors }, { status, statusText: 'Refused' });
+      await fixture.whenStable();
+      expect(page.querySelector('.validation-summary li')?.textContent).toBe(
+        Object.values(errors)[0]?.[0] ?? title,
+      );
+      expect(page.querySelector('fieldset')?.disabled).toBe(false);
+      expect(assign).not.toHaveBeenCalled();
+    });
+
+    it('says the link is not valid when it died while the form was open', async () => {
+      const { page, fixture } = await opened();
+      fillIn(page);
+      submit(page);
+      refuse('/api/ui/auth/activation/complete', 404, 'invitation_invalid', invalidInvitation);
+      await fixture.whenStable();
+      expect(page.querySelector('[role="alert"]')?.textContent?.trim()).toBe(invalidInvitation);
+      expect(page.querySelector('form')).toBeNull();
     });
   });
   describe('Recover', () => {

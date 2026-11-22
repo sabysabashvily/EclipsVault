@@ -17,10 +17,18 @@ const details = {
   userId: id,
   username: 'ada',
   displayName: 'Ada Saved',
+  email: 'ada@example.test',
   clearance: 1,
   project: 'OPS',
   isYou: false,
   clearances,
+  awaitingActivation: false,
+  invitationExpiresAtUtc: null as string | null,
+};
+const invited = {
+  ...details,
+  awaitingActivation: true,
+  invitationExpiresAtUtc: '2099-11-26T14:30:00Z',
 };
 
 function button(page: ParentNode, name: string): HTMLButtonElement {
@@ -299,6 +307,174 @@ describe('New user fields', () => {
       expect(navigate).not.toHaveBeenCalled();
     },
   );
+});
+
+describe('New user without invitations', () => {
+  it('explains what invitations need and keeps the form from submitting', async () => {
+    const { fixture, page } = render(newForm);
+    backend.expectOne(newForm.read).flush({ ...metadata, invitationsAvailable: false });
+    await fixture.whenStable();
+    expect(
+      page.querySelector('.notice[role="status"]')?.textContent?.replace(/\s+/g, ' ').trim(),
+    ).toBe(
+      "Invitations need email delivery and the vault's public address (Identity:PublicUrl). Configure both to add accounts.",
+    );
+    expect(page.querySelector('fieldset')?.disabled).toBe(true);
+  });
+  it('shows no notice when invitations are available', async () => {
+    const { page } = await loaded(newForm);
+    expect(page.querySelector('.notice')).toBeNull();
+    expect(page.querySelector('fieldset')?.disabled).toBe(false);
+  });
+});
+
+describe('Edit user invitation', () => {
+  async function invitedPage() {
+    const rendered = render(editForm);
+    backend.expectOne(editForm.read).flush(invited);
+    await rendered.fixture.whenStable();
+    const panel = rendered.page.querySelector<HTMLElement>('#invitation');
+    if (!panel) throw new Error('No invitation panel');
+    return { ...rendered, panel };
+  }
+  function openDialog(page: ParentNode): Element {
+    const dialog = page.querySelector('dialog[open]');
+    if (!dialog) throw new Error('No open dialog');
+    return dialog;
+  }
+  function replaceWith(panel: HTMLElement, email: string): void {
+    fill(panel, 'invitation-email', email);
+    panel.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true }));
+  }
+
+  it('is absent for an active account', async () => {
+    const { page } = await loaded(editForm);
+    expect(page.querySelector('#invitation')).toBeNull();
+  });
+  it('shows the status pill, the stored address and both actions', async () => {
+    const { panel } = await invitedPage();
+    expect(panel.querySelector('h2')?.textContent).toBe('Invitation');
+    expect(panel.querySelector('.badge.tone-info')?.textContent?.trim()).toBe(
+      'Invited · expires 26 Nov 2099, 14:30 UTC',
+    );
+    expect(panel.textContent).toContain('Sent to ada@example.test.');
+    expect(input(panel, 'invitation-email').value).toBe('ada@example.test');
+    expect(button(panel, 'Resend invitation').type).toBe('button');
+    expect(button(panel, 'Replace address').type).toBe('submit');
+  });
+  it('says an expired invitation in words', async () => {
+    const { fixture, page } = render(editForm);
+    backend.expectOne(editForm.read).flush({ ...invited, invitationExpiresAtUtc: null });
+    await fixture.whenStable();
+    expect(page.querySelector('#invitation .badge.tone-danger')?.textContent?.trim()).toBe(
+      'Invitation expired',
+    );
+  });
+  it('Resend confirms, writes, announces and reloads', async () => {
+    const { fixture, page, panel } = await invitedPage();
+    button(panel, 'Resend invitation').click();
+    await fixture.whenStable();
+    const dialog = openDialog(page);
+    expect(dialog.textContent).toContain(
+      'Send a new invitation to ada@example.test? The previous link stops working.',
+    );
+    button(dialog, 'Resend invitation').click();
+    backend
+      .expectOne({ method: 'POST', url: `/api/ui/users/${id}/invitation` })
+      .flush({ invitation: 'sent', expiresAtUtc: '2099-11-27T14:30:00Z' });
+    fixture.detectChanges();
+    backend.expectOne(editForm.read).flush(invited);
+    await fixture.whenStable();
+    expect(page.querySelector('.flash-success')?.textContent).toBe(
+      'Invitation sent to ada@example.test. It expires in 72 hours.',
+    );
+  });
+  it('Replace asks with the decided sentence, sends no link and tells the administrator to resend', async () => {
+    const { fixture, page, panel } = await invitedPage();
+    replaceWith(panel, '  grace@example.test ');
+    await fixture.whenStable();
+    const dialog = openDialog(page);
+    expect(dialog.textContent).toContain(
+      'Use grace@example.test for ada? The link already sent stops working. Resend to send a new one there.',
+    );
+    expect(dialog.querySelector('.dialog-note')?.textContent).toBe('Saved to the audit log');
+    button(dialog, 'Replace address').click();
+    const request = backend.expectOne({
+      method: 'POST',
+      url: `/api/ui/users/${id}/invitation-address`,
+    });
+    expect(request.request.body).toEqual({ email: 'grace@example.test' });
+    request.flush({ email: 'grace@example.test' });
+    fixture.detectChanges();
+    backend.expectOne(editForm.read).flush({ ...invited, email: 'grace@example.test' });
+    await fixture.whenStable();
+    backend.expectNone(`/api/ui/users/${id}/invitation`);
+    expect(page.querySelector('.flash-success')?.textContent).toBe(
+      'The invitation address is now grace@example.test. Resend the invitation to send a link there.',
+    );
+    expect(input(panel, 'invitation-email').value).toBe('grace@example.test');
+  });
+  it('cancelling Replace sends nothing', async () => {
+    const { fixture, page, panel } = await invitedPage();
+    replaceWith(panel, 'grace@example.test');
+    await fixture.whenStable();
+    button(openDialog(page), 'Cancel').click();
+    await fixture.whenStable();
+    backend.expectNone(`/api/ui/users/${id}/invitation-address`);
+  });
+  it('Replace asks for fresh proof, then retries once', async () => {
+    const { fixture, page, panel } = await invitedPage();
+    replaceWith(panel, 'grace@example.test');
+    await fixture.whenStable();
+    button(openDialog(page), 'Replace address').click();
+    backend
+      .expectOne(`/api/ui/users/${id}/invitation-address`)
+      .flush({ code: 'step_up_required', proof: 'code' }, { status: 403, statusText: 'Forbidden' });
+    await fixture.whenStable();
+    const proof = openDialog(page);
+    const code = proof.querySelector('input');
+    if (!code) throw new Error('No code field');
+    code.value = '123456';
+    code.dispatchEvent(new Event('input'));
+    submit(proof);
+    backend.expectOne('/api/ui/step-up').flush(null);
+    backend
+      .expectOne(`/api/ui/users/${id}/invitation-address`)
+      .flush({ email: 'grace@example.test' });
+    fixture.detectChanges();
+    backend.expectOne(editForm.read).flush(invited);
+    await fixture.whenStable();
+    expect(page.querySelector('.flash-success')?.textContent).toContain('grace@example.test');
+  });
+  it('cancelling Replace step-up returns focus to Replace address', async () => {
+    const { fixture, page, panel } = await invitedPage();
+    replaceWith(panel, 'grace@example.test');
+    await fixture.whenStable();
+    button(openDialog(page), 'Replace address').click();
+    backend
+      .expectOne(`/api/ui/users/${id}/invitation-address`)
+      .flush({ code: 'step_up_required', proof: 'code' }, { status: 403, statusText: 'Forbidden' });
+    await fixture.whenStable();
+    button(openDialog(page), 'Cancel').click();
+    await fixture.whenStable();
+    expect(document.activeElement).toBe(button(panel, 'Replace address'));
+  });
+  it('announces a refused address', async () => {
+    const { fixture, page, panel } = await invitedPage();
+    replaceWith(panel, 'taken@example.test');
+    await fixture.whenStable();
+    button(openDialog(page), 'Replace address').click();
+    backend
+      .expectOne(`/api/ui/users/${id}/invitation-address`)
+      .flush(
+        { code: 'email_taken', title: 'That email address cannot be used.' },
+        { status: 409, statusText: 'Conflict' },
+      );
+    await fixture.whenStable();
+    expect(page.querySelector('.flash-error')?.textContent).toBe(
+      'That email address cannot be used.',
+    );
+  });
 });
 
 describe('Edit user fields', () => {

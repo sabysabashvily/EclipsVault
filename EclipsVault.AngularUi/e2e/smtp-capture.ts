@@ -28,6 +28,13 @@ export async function invitationToken(address: string): Promise<string> {
   return token;
 }
 
+/** Counts invitation messages this run's capture server received for `address`. */
+export async function invitationCount(address: string): Promise<number> {
+  return (await captured("You're invited to EclipsVault")).filter((mail) =>
+    mail.To.some((recipient) => recipient.Address === address),
+  ).length;
+}
+
 async function captured(subject: string): Promise<CapturedMessage[]> {
   const inbox = await captureJson<{ messages: CapturedMessage[] }>('/api/v1/messages');
   return inbox.messages.filter((mail) => mail.Subject === subject);

@@ -18,6 +18,14 @@ const colleague: User = {
   status: 'active',
   avatarUrl: '/Profile/Avatar?id=ada',
   isYou: false,
+  awaitingActivation: false,
+  invitationExpiresAtUtc: null,
+};
+const invited: User = {
+  ...colleague,
+  mfaEnrolled: false,
+  awaitingActivation: true,
+  invitationExpiresAtUtc: '2099-11-26T14:30:00Z',
 };
 const path = `/api/ui/users/${colleague.userId}`;
 function button(scope: ParentNode, text: string): HTMLButtonElement {
@@ -102,13 +110,13 @@ describe('UsersPage', () => {
     });
     await fixture.whenStable();
     expect(page.querySelector('.page-sub')?.textContent?.trim()).toBe(
-      '3 people · 1 without two-step · 1 locked. New users set up their authenticator at first sign-in.',
+      '3 people · 1 without two-step · 1 locked. New users set their own password and authenticator from an emailed invitation.',
     );
   });
   it('sums up one person with nothing to flag', async () => {
     const { page } = await loaded();
     expect(page.querySelector('.page-sub')?.textContent?.trim()).toBe(
-      '1 person. New users set up their authenticator at first sign-in.',
+      '1 person. New users set their own password and authenticator from an emailed invitation.',
     );
   });
   it('filters accounts by their displayed fields', async () => {
@@ -230,6 +238,119 @@ describe('UsersPage', () => {
       expect(page.querySelector('dialog[open]')).toBeNull();
     },
   );
+  it('counts the accounts awaiting activation in the summary', async () => {
+    const { page } = await loaded(invited);
+    expect(page.querySelector('.page-sub')?.textContent?.trim()).toBe(
+      '1 person · 1 awaiting activation · 1 without two-step. New users set their own password and authenticator from an emailed invitation.',
+    );
+  });
+  it('shows an invited row as a pill with its word and offers Resend and address replacement, not Reset MFA', async () => {
+    const { page } = await loaded(invited);
+    expect(page.querySelector('tbody .badge.tone-info')?.textContent?.trim()).toBe(
+      'Invited · expires 26 Nov 2099, 14:30 UTC',
+    );
+    expect(
+      [...page.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent?.trim()),
+    ).toEqual([
+      'Edit',
+      'Resend invitation',
+      'Replace invitation address',
+      'Disable',
+      'Force logout',
+      'Delete user',
+    ]);
+    const replace = [...page.querySelectorAll('a[role="menuitem"]')].find(
+      (link) => link.textContent?.trim() === 'Replace invitation address',
+    );
+    expect(replace?.getAttribute('href')).toBe(`/Admin/EditUser/${colleague.userId}#invitation`);
+    expect(page.querySelector('.cell-verb > button')).toBeNull();
+  });
+  it('puts Resend beside the menu of a row whose invitation expired', async () => {
+    const { page } = await loaded({ ...invited, invitationExpiresAtUtc: null });
+    expect(page.querySelector('tbody .badge.tone-danger')?.textContent?.trim()).toBe(
+      'Invitation expired',
+    );
+    expect(page.querySelector('.cell-verb > button')?.textContent?.trim()).toBe(
+      'Resend invitation',
+    );
+    expect(
+      [...page.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent?.trim()),
+    ).not.toContain('Resend invitation');
+  });
+  it('shows a disabled invited account as Disabled, with no invitation actions', async () => {
+    const { page } = await loaded({ ...invited, status: 'disabled' });
+    expect(page.querySelector('tbody .badge.tone-danger')?.textContent?.trim()).toBe('Disabled');
+    expect(page.textContent).not.toContain('Resend invitation');
+    expect(page.textContent).not.toContain('Replace invitation address');
+  });
+  it.each([
+    ['sent', 'flash-success', 'Invitation sent to ada@example.test. It expires in 72 hours.'],
+    [
+      'not_delivered',
+      'flash-error',
+      'A new link was made, but it could not be delivered. Resend it to try again.',
+    ],
+  ] as const)(
+    'Resend confirms, writes, says the %s outcome and reloads',
+    async (invitation, flash, outcome) => {
+      const { fixture, page } = await loaded(invited);
+      button(page, 'Resend invitation').click();
+      await fixture.whenStable();
+      const dialog = page.querySelector('dialog[open]');
+      if (!dialog) throw new Error('No confirmation');
+      expect(dialog.querySelector('h2')?.textContent).toBe('Resend invitation to ada?');
+      expect(dialog.textContent).toContain(
+        'Send a new invitation to ada@example.test? The previous link stops working.',
+      );
+      expect(dialog.querySelector('.dialog-note')?.textContent).toBe('Saved to the audit log');
+      button(dialog, 'Resend invitation').click();
+      backend
+        .expectOne({ method: 'POST', url: `${path}/invitation` })
+        .flush({ invitation, expiresAtUtc: '2099-11-27T14:30:00Z' });
+      fixture.detectChanges();
+      backend.expectOne('/api/ui/users').flush({ users: [invited] });
+      await fixture.whenStable();
+      expect(page.querySelector(`.${flash}`)?.textContent).toBe(outcome);
+    },
+  );
+  it('cancelling Resend sends nothing', async () => {
+    const { fixture, page } = await loaded(invited);
+    button(page, 'Resend invitation').click();
+    await fixture.whenStable();
+    const dialog = page.querySelector('dialog[open]');
+    if (!dialog) throw new Error('No confirmation');
+    button(dialog, 'Cancel').click();
+    await fixture.whenStable();
+    backend.expectNone(`${path}/invitation`);
+  });
+  it('Resend asks for fresh proof, then retries once', async () => {
+    const { fixture, page } = await loaded(invited);
+    button(page, 'Resend invitation').click();
+    await fixture.whenStable();
+    button(page.querySelector('dialog[open]')!, 'Resend invitation').click();
+    backend
+      .expectOne(`${path}/invitation`)
+      .flush({ code: 'step_up_required', proof: 'code' }, { status: 403, statusText: 'Forbidden' });
+    fixture.detectChanges();
+    backend.expectOne('/api/ui/users').flush({ users: [invited] });
+    await fixture.whenStable();
+    const dialog = page.querySelector('dialog[open]');
+    const code = dialog?.querySelector('input');
+    if (!dialog || !code) throw new Error('No code dialog');
+    code.value = '123456';
+    code.dispatchEvent(new Event('input'));
+    dialog.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true }));
+    backend.expectOne('/api/ui/step-up').flush(null);
+    backend
+      .expectOne(`${path}/invitation`)
+      .flush({ invitation: 'sent', expiresAtUtc: '2099-11-27T14:30:00Z' });
+    fixture.detectChanges();
+    backend.expectOne('/api/ui/users').flush({ users: [invited] });
+    await fixture.whenStable();
+    expect(page.querySelector('.flash-success')?.textContent).toBe(
+      'Invitation sent to ada@example.test. It expires in 72 hours.',
+    );
+  });
   it('cancelling deletion keeps the account', async () => {
     const { fixture, page } = await loaded();
     button(page, 'Delete user').click();

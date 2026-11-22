@@ -71,13 +71,14 @@ public sealed class UserAdminService : IUserAdminService
     public async Task<IReadOnlyList<UserSummaryDto>> ListAsync(CancellationToken ct)
     {
         var users = await _users.ListAsync(ct);
-        return users.Select(Map).ToList();
+        var invitations = (await _invitations.ListAsync(ct)).ToDictionary(invitation => invitation.UserId);
+        return users.Select(user => Map(user, invitations.GetValueOrDefault(user.Id))).ToList();
     }
 
     public async Task<UserSummaryDto?> GetAsync(Guid userId, CancellationToken ct)
     {
         var user = await _users.FindByIdAsync(userId, ct);
-        return user is null ? null : Map(user);
+        return user is null ? null : Map(user, await _invitations.FindByUserIdAsync(user.Id, ct));
     }
 
     public async Task<CreatedUserDto> CreateAsync(CreateUserRequest request, CancellationToken ct)
@@ -505,7 +506,12 @@ public sealed class UserAdminService : IUserAdminService
     private static bool IsEnabledAdministrator(User account)
         => account.Clearance == ClearanceLevel.TopSecret && !account.IsDisabled && !account.AwaitingActivation;
 
-    private UserSummaryDto Map(User u) =>
-        new(u.Id, u.Username, u.DisplayName, u.Email, u.Clearance, u.ProjectKey,
-            u.TotpEnabled, u.IsDisabled, u.IsLockedOut(_clock.GetUtcNow()), u.AvatarUpdatedAtUtc is not null, u.CreatedAtUtc);
+    private UserSummaryDto Map(User u, AccountInvitation? invitation)
+    {
+        var now = _clock.GetUtcNow();
+        var usable = u.AwaitingActivation && invitation is not null && invitation.IsUsable(now);
+        return new(u.Id, u.Username, u.DisplayName, u.Email, u.Clearance, u.ProjectKey,
+            u.TotpEnabled, u.IsDisabled, u.IsLockedOut(now), u.AvatarUpdatedAtUtc is not null, u.CreatedAtUtc,
+            u.AwaitingActivation, usable ? invitation!.ExpiresAtUtc : null);
+    }
 }

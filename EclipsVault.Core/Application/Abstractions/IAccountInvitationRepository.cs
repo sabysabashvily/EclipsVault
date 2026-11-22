@@ -6,6 +6,9 @@ public interface IAccountInvitationRepository
 {
     Task<AccountInvitation?> FindByUserIdAsync(Guid userId, CancellationToken ct);
 
+    /// <summary>Every account's invitation, read-only, for the Users list.</summary>
+    Task<IReadOnlyList<AccountInvitation>> ListAsync(CancellationToken ct);
+
     Task<AccountInvitation?> FindByTokenHashAsync(byte[] tokenHash, CancellationToken ct);
 
     /// <summary>

@@ -253,7 +253,7 @@ internal static class ActivationApi
     public static HttpClient Visitor(VaultFixture vault, string address) => vault.CreateSession(source: IPAddress.Parse(address)).Client;
 
     public static async Task<HttpResponseMessage> InspectAsync(HttpClient visitor, string token)
-        => await UiApiRequest.SendWithTokenAsync(visitor, await SignInDocument.TokenAsync(visitor), HttpMethod.Post,
+        => await UiApiRequest.SendWithTokenAsync(visitor, await SignInDocument.TokenAsync(visitor, "/Account/Activate"), HttpMethod.Post,
             "/api/ui/auth/activation", JsonContent.Create(new { token }));
 
     public static async Task<string> SecretAsync(HttpClient visitor, string token)
@@ -264,7 +264,7 @@ internal static class ActivationApi
     }
 
     public static async Task<HttpResponseMessage> CompleteAsync(HttpClient visitor, string token, string password, string code)
-        => await UiApiRequest.SendWithTokenAsync(visitor, await SignInDocument.TokenAsync(visitor), HttpMethod.Post,
+        => await UiApiRequest.SendWithTokenAsync(visitor, await SignInDocument.TokenAsync(visitor, "/Account/Activate"), HttpMethod.Post,
             "/api/ui/auth/activation/complete", JsonContent.Create(new { token, password, code }));
 
     /// <summary>A code for the current step, not so close to its end that the vault reads it in the next.</summary>

@@ -35,7 +35,10 @@ export class AccountCreation {
   async fromDashboard(): Promise<void> {
     await this.page.goto('/');
     await this.page
-      .getByRole('link', { name: 'Provision a user TOTP enrollment at first sign-in', exact: true })
+      .getByRole('link', {
+        name: 'Provision a user They set their own password and authenticator',
+        exact: true,
+      })
       .click();
   }
 

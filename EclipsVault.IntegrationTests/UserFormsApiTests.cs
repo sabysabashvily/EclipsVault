@@ -68,8 +68,10 @@ public sealed class UserFormsApiTests(VaultFixture vault)
         var details = await admin.GetAsync($"/API/UI/USERS/{saved.Id.ToString().ToUpperInvariant()}");
         Assert.True(details.Headers.CacheControl?.NoStore);
         using var detailBody = JsonDocument.Parse(await details.Content.ReadAsStringAsync());
-        Assert.Equal(["clearance", "clearances", "displayName", "isYou", "project", "userId", "username"], ProfileApi.NamesOf(detailBody.RootElement));
+        Assert.Equal(["awaitingActivation", "clearance", "clearances", "displayName", "email", "invitationExpiresAtUtc", "isYou", "project", "userId", "username"], ProfileApi.NamesOf(detailBody.RootElement));
         Assert.Equal("Ada Saved", detailBody.RootElement.GetProperty("displayName").GetString());
+        Assert.Equal("Ada.Saved@Example.Test", detailBody.RootElement.GetProperty("email").GetString());
+        Assert.True(detailBody.RootElement.GetProperty("awaitingActivation").GetBoolean());
         Assert.Equal("OPS", detailBody.RootElement.GetProperty("project").GetString());
         Assert.False(detailBody.RootElement.GetProperty("isYou").GetBoolean());
         var (_, _, _, token) = await vault.Mailbox!.LatestInvitationForAsync("Ada.Saved@Example.Test");

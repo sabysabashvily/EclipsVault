@@ -6980,11 +6980,15 @@ export interface components {
             userId: string;
             username: string;
             displayName: string;
+            email: string;
             /** Format: int32 */
             clearance: number | string;
             project: string;
             isYou: boolean;
             clearances: components["schemas"]["ClearanceOptionResponse"][];
+            awaitingActivation: boolean;
+            /** Format: date-time */
+            invitationExpiresAtUtc: null | string;
         };
         UserNoticeResponse: {
             message: null | string;
@@ -7005,6 +7009,9 @@ export interface components {
             status: "active" | "locked" | "disabled";
             avatarUrl: string;
             isYou: boolean;
+            awaitingActivation: boolean;
+            /** Format: date-time */
+            invitationExpiresAtUtc: null | string;
         };
         UserRoleRequest: {
             /** Format: int32 */

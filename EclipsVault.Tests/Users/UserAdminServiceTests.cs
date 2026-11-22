@@ -135,6 +135,52 @@ public class UserAdminServiceTests
     }
 
     [Fact]
+    public async Task Listing_shows_an_invitations_expiry_only_while_it_can_still_activate_the_account()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var usable = Invited("it-list-usable");
+        var expired = Invited("it-list-expired");
+        var spent = Invited("it-list-spent");
+        var vault = new Vault(usable, expired, spent, Administrator());
+        vault.Invitations.Rows.AddRange(
+        [
+            Invitation(usable, now.AddDays(2), spentAtUtc: null),
+            Invitation(expired, now.AddDays(-1), spentAtUtc: null),
+            Invitation(spent, now.AddDays(2), spentAtUtc: now),
+        ]);
+
+        var listed = (await vault.Service.ListAsync(default)).ToDictionary(account => account.Username);
+
+        Assert.Equal(vault.Invitations.Rows[0].ExpiresAtUtc, listed["it-list-usable"].InvitationExpiresAtUtc);
+        Assert.Null(listed["it-list-expired"].InvitationExpiresAtUtc);
+        Assert.Null(listed["it-list-spent"].InvitationExpiresAtUtc);
+        Assert.All([listed["it-list-usable"], listed["it-list-expired"], listed["it-list-spent"]],
+            account => Assert.True(account.AwaitingActivation));
+        Assert.False(listed["vault-admin"].AwaitingActivation);
+        Assert.Equal(vault.Invitations.Rows[0].ExpiresAtUtc, (await vault.Service.GetAsync(usable.Id, default))!.InvitationExpiresAtUtc);
+        Assert.Null((await vault.Service.GetAsync(spent.Id, default))!.InvitationExpiresAtUtc);
+
+        static User Invited(string username) => new()
+        {
+            Id = Guid.NewGuid(),
+            Username = username,
+            DisplayName = "Invited Person",
+            Email = username + "@example.test",
+            ProjectKey = "GLOBAL",
+            AwaitingActivation = true,
+        };
+
+        static AccountInvitation Invitation(User account, DateTimeOffset expiresAtUtc, DateTimeOffset? spentAtUtc) => new()
+        {
+            Id = Guid.NewGuid(),
+            UserId = account.Id,
+            TokenHash = InvitationToken.Hash(account.Username),
+            ExpiresAtUtc = expiresAtUtc,
+            SpentAtUtc = spentAtUtc,
+        };
+    }
+
+    [Fact]
     public async Task Resetting_an_invited_accounts_authenticator_is_refused_as_not_activated()
     {
         var invited = Target(ClearanceLevel.Standard);
@@ -626,6 +672,9 @@ public class UserAdminServiceTests
 
         public Task<AccountInvitation?> FindByTokenHashAsync(byte[] tokenHash, CancellationToken ct)
             => Task.FromResult(Rows.FirstOrDefault(i => i.TokenHash.SequenceEqual(tokenHash)));
+
+        public Task<IReadOnlyList<AccountInvitation>> ListAsync(CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<AccountInvitation>>(Rows);
 
         public Task<string?> StorePendingSecretOnceAsync(Guid invitationId, byte[] tokenHash, string seed, DateTimeOffset nowUtc, CancellationToken ct)
             => throw new NotSupportedException();
