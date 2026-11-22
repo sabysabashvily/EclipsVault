@@ -153,13 +153,17 @@ public sealed class AuditSaveChangesInterceptor : SaveChangesInterceptor
             return;
         }
 
-        Inject<Secret>(context, DescribeSecretChange);
+        Inject<Secret>(context, entry => IsRecordedByItsOperation(entry) ? null : DescribeSecretChange(entry));
         Inject<AccessRequest>(context, DescribeAccessRequestChange);
         Inject<TrustedNetwork>(context, DescribeTrustedNetworkChange);
         Inject<DynamicSecretLease>(context, DescribeLeaseChange);
         Inject<AuditCheckpoint>(context, DescribeCheckpointChange);
         InjectOperationEvents(context);
     }
+
+    /// <summary>An operation that names a secret it saves records that change with its own event, not a generic one.</summary>
+    private bool IsRecordedByItsOperation(EntityEntry<Secret> entry)
+        => _operationEvents?.Any(e => e.ResourceType == nameof(Secret) && e.ResourceId == entry.Entity.Id) == true;
 
     private void InjectOperationEvents(DbContext context)
     {

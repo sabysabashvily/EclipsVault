@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { openPalette } from './palette';
+import type { legacyShell } from './legacy-shell';
 import { AppShell } from './app-shell';
 
 export class AuditLog {
@@ -55,13 +56,13 @@ export class AuditLog {
     await this.page.goto('/');
     await this.page.getByRole('link', { name: link }).click();
   }
-  async fromSidebar(path: '/DynamicSecrets' | '/Access'): Promise<void> {
+  async fromSidebar(path: typeof legacyShell | '/Access'): Promise<void> {
     await this.page.goto(path);
     // The Angular sidebar folds its administration pages into a group; the Legacy one lists them.
     if (path === '/Access') await new AppShell(this.page).administration.click();
     await this.page.getByRole('link', { name: 'Audit log', exact: true }).click();
   }
-  async fromPalette(path: '/DynamicSecrets' | '/Access'): Promise<void> {
+  async fromPalette(path: typeof legacyShell | '/Access'): Promise<void> {
     await this.page.goto(path);
     await openPalette(this.page);
     await this.page.getByRole('combobox').fill('Audit log');

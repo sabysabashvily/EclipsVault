@@ -18,21 +18,41 @@ export function count(n: number, one = 'item', many = 'items'): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
+/**
+ * The keys whose items can't be read here. Under a KMS engine the server counts none: its earlier
+ * key versions aren't loaded here, yet their items are waiting to be re-wrapped.
+ */
+export function unreadableKeys(encryption: Encryption): Key[] {
+  return Number(encryption.onMissingKeys) > 0
+    ? encryption.keys.filter((key) => key.status === 'not_loaded')
+    : [];
+}
+
 /** A key's status pill and the line under its id that says what it is for. */
-export function roleOf(key: Key): { tone: string; label: string; role: string } {
+export function roleOf(
+  key: Key,
+  unreadable: boolean,
+): { tone: string; label: string; role: string } {
   if (key.status === 'current')
     return { tone: 'ok', label: 'Current', role: 'Wraps every new secret' };
-  if (key.status === 'not_loaded')
+  if (unreadable)
     return {
       tone: 'danger',
       label: 'Not loaded',
       role: "Not on this server · its items can't be read",
     };
+  // A KMS key version. The API doesn't say which is the latest, so the words hold for every one.
+  if (key.status === 'not_loaded')
+    return {
+      tone: 'muted',
+      label: 'KMS version',
+      role: 'Held by the key service · a re-wrap moves items to its latest version',
+    };
   return Number(key.secrets) + Number(key.versions) > 0
     ? {
         tone: 'warn',
         label: 'Retired',
-        role: 'Loaded so its items can be read until they are re-wrapped',
+        role: 'Loaded so its items can be read · re-wrap moves them to the current key',
       }
     : {
         tone: 'muted',
@@ -107,14 +127,17 @@ export class EncryptionPage {
     const current = total(encryption.keys.filter((key) => key.status === 'current'));
     const waiting = Number(encryption.awaitingRotation);
     const missing = Number(encryption.onMissingKeys);
+    const missingKeys = unreadableKeys(encryption);
     return {
       ...encryption,
       ...stateOf(encryption, this.writes.busy(), this.refusal()),
       waiting,
       missing,
-      retired: total(encryption.keys.filter((key) => key.status === 'retired')),
+      toRewrap: total(
+        encryption.keys.filter((key) => key.status !== 'current' && !missingKeys.includes(key)),
+      ),
       onCurrent: current.secrets + current.versions,
-      missingKeys: encryption.keys.filter((key) => key.status === 'not_loaded'),
+      missingKeys,
     };
   });
 
@@ -125,7 +148,7 @@ export class EncryptionPage {
       ['Current key', model.currentKekId],
       [
         'To re-wrap',
-        `${count(model.retired.secrets, 'secret', 'secrets')} and ${count(model.retired.versions, 'version', 'versions')}`,
+        `${count(model.toRewrap.secrets, 'secret', 'secrets')} and ${count(model.toRewrap.versions, 'version', 'versions')}`,
       ],
     ];
     if (model.missing > 0) facts.push(['Skipped, key not loaded', count(model.missing)]);

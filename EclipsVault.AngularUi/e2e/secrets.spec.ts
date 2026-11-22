@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test';
 import { savedAdministratorCookies } from './administrator-cookies';
 import { AppShell } from './app-shell';
 import { test, expect } from './fixtures';
+import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { NewSecretForm } from './new-secret';
 import { openPalette, searchSecrets } from './palette';
 import { SecretDetails } from './secret-details';
@@ -27,7 +28,7 @@ function recordDocuments(page: Page): string[] {
   return documents;
 }
 
-test('New secret stores a secret and opens its details with the Legacy success message', async ({
+test('New secret stores a secret and opens its details with the success message', async ({
   page,
 }) => {
   await page.context().addCookies(await savedAdministratorCookies());
@@ -134,9 +135,13 @@ test('the sidebar opens the Secrets list in place, marking the new secret as exp
   expect(documents).toEqual([new URL(page.url()).pathname]);
 });
 
-test('both palettes find the secret by name, and Enter opens its details', async ({ page }) => {
-  await page.context().addCookies(await savedAdministratorCookies());
-  for (const shell of ['/Access', '/DynamicSecrets']) {
+for (const shell of ['/Access', legacyShell]) {
+  test(`the palette on ${shell} finds the secret by name, and Enter opens its details`, async ({
+    page,
+    browserHealth,
+  }) => {
+    expectLegacyShell(browserHealth, shell);
+    await page.context().addCookies(await savedAdministratorCookies());
     await page.goto(shell);
     await openPalette(page);
     expect(await searchSecrets(page, 'E2e_Secrets_Cr')).toEqual({
@@ -146,8 +151,8 @@ test('both palettes find the secret by name, and Enter opens its details', async
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(detailsUrl);
     await expect(new SecretDetails(page, created.name).heading).toBeVisible();
-  }
-});
+  });
+}
 
 const destinations = {
   Overview: {
@@ -162,15 +167,16 @@ const destinations = {
 };
 
 const sidebarLinks = [
-  ['/DynamicSecrets', 'Overview'],
-  ['/DynamicSecrets', 'Secrets'],
-  ['/DynamicSecrets', 'New secret'],
+  [legacyShell, 'Overview'],
+  [legacyShell, 'Secrets'],
+  [legacyShell, 'New secret'],
   ['/Access', 'Overview'],
   ['/Access', 'Secrets'],
 ] as const;
 
 for (const [shell, label] of sidebarLinks) {
-  test(`the sidebar on ${shell} opens ${label}`, async ({ page }) => {
+  test(`the sidebar on ${shell} opens ${label}`, async ({ page, browserHealth }) => {
+    expectLegacyShell(browserHealth, shell);
     await page.context().addCookies(await savedAdministratorCookies());
     await page.goto(shell);
 
@@ -189,9 +195,10 @@ test('the sidebar on /Access omits New secret', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'New secret', exact: true })).toHaveCount(0);
 });
 
-for (const shell of ['/DynamicSecrets', '/Access']) {
+for (const shell of [legacyShell, '/Access']) {
   for (const [label, { url, landmark }] of Object.entries(destinations)) {
-    test(`the palette's Go to ${label} on ${shell} opens it`, async ({ page }) => {
+    test(`the palette's Go to ${label} on ${shell} opens it`, async ({ page, browserHealth }) => {
+      expectLegacyShell(browserHealth, shell);
       await page.context().addCookies(await savedAdministratorCookies());
       await page.goto(shell);
       await openPalette(page);

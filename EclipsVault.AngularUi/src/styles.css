@@ -880,6 +880,17 @@ body:has(.mobile-navigation[open]) {
   max-width: 660px;
 }
 
+/* Copied from the Legacy site.css, for the Denied page's list of the policy's reasons. */
+.denial-reasons {
+  margin: 0.6rem 0 1rem;
+  padding-left: 1.3rem;
+}
+
+.denial-reasons li {
+  margin: 0.4rem 0;
+  color: var(--danger);
+}
+
 .panel-header {
   display: flex;
   justify-content: space-between;
@@ -1828,6 +1839,8 @@ button.matrix-cell:hover .matrix-word {
   .row-cards .cell-meta {
     order: 2;
     min-width: 0;
+    /* A full IPv6 address or a 64-character username has no break opportunity of its own. */
+    overflow-wrap: anywhere;
     color: var(--text-muted);
     font-size: 0.86rem;
   }
@@ -3003,6 +3016,101 @@ select:focus {
 .danger-zone p {
   margin: 0.15rem 0 0;
   font-size: 0.82rem;
+}
+
+/* Copied from the Legacy site.css, so Secret details keeps the Legacy page's look. */
+.secret-code {
+  display: block;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 0.9rem;
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  word-break: break-all;
+  margin: 0.4rem 0 1rem;
+}
+.revealed-box {
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
+  padding: 1rem 1.15rem;
+  background: linear-gradient(180deg, var(--accent-soft), transparent 75%);
+}
+.revealed-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+.input-narrow {
+  flex: 0 0 auto;
+  max-width: 150px;
+}
+details.rotate > summary {
+  list-style: none;
+  display: inline-flex;
+  cursor: pointer;
+}
+details.rotate > summary::-webkit-details-marker {
+  display: none;
+}
+.rotate-form {
+  margin-top: 0.9rem;
+}
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.timeline-item {
+  position: relative;
+  display: flex;
+  gap: 0.9rem;
+  padding: 0 0 1.1rem 0;
+}
+.timeline-item:not(:last-child) .timeline-dot::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 14px;
+  bottom: -6px;
+  width: 2px;
+  background: var(--border-strong);
+}
+.timeline-dot {
+  position: relative;
+  width: 12px;
+  flex-shrink: 0;
+}
+.timeline-dot::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--bg-raised);
+  border: 2px solid var(--accent);
+}
+.timeline-body {
+  flex: 1;
+  min-width: 0;
+}
+.timeline-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.timeline-note {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+}
+.timeline-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
 }
 
 /* Networks keeps the Legacy page's layout while both UIs serve administrators. */

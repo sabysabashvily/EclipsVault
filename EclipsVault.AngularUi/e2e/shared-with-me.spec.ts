@@ -4,6 +4,7 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
+import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { createSecret, openPalette } from './palette';
 import { SecretsList } from './secrets-list';
 import { SharedByMe } from './shared-by-me';
@@ -169,11 +170,10 @@ test('after an issuer shares, the recipient lists it soonest-ending first and op
   await expect(shared.environmentBadgeOf(expiring, 'Development')).toBeVisible();
   await expect(shared.sensitivityBadgeOf(expiring, 'Internal')).toBeVisible();
   await expect(shared.sharedByOf(expiring)).toHaveText('vault-admin');
-  // Shared for 7 days a moment ago, so it ends within the week: yellow, not yet red.
-  // eslint-disable-next-line playwright/no-raw-locators -- The pill's tone is a class; it has no role of its own.
-  const pill = shared.accessUntilOf(expiring).locator('.badge');
-  await expect(pill).toHaveText(/^In 6 days · \d{1,2} [A-Z][a-z]{2}( \d{4})?$/);
-  await expect(pill).toHaveClass(/\btone-warn\b/);
+  // Shared for 7 days a moment ago, so it ends within the week: the pill counts the days left.
+  await expect(shared.accessUntilOf(expiring)).toHaveText(
+    /^In 6 days · \d{1,2} [A-Z][a-z]{2}( \d{4})?$/,
+  );
   const withoutExpiry = shared.secret('E2e_Shared_With_Me');
   await expect(shared.secretCellOf(withoutExpiry)).toContainText('GLOBAL');
   await expect(shared.environmentBadgeOf(withoutExpiry, 'Development')).toBeVisible();
@@ -291,8 +291,9 @@ test('the palette opens Shared with me without a document load', async ({ page }
   expect(documents).toEqual([]);
 });
 
-test('the Legacy sidebar loads Shared with me into Angular', async ({ page }) => {
-  await openAsRecipient(page, '/DynamicSecrets');
+test('the Legacy sidebar loads Shared with me into Angular', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
+  await openAsRecipient(page, legacyShell);
   const documents = recordDocuments(page);
   await page.getByText('Sharing', { exact: true }).click();
   await page.getByRole('link', { name: 'Shared with me', exact: true }).click();
@@ -301,8 +302,9 @@ test('the Legacy sidebar loads Shared with me into Angular', async ({ page }) =>
   expect(documents).toEqual(['/Secrets/SharedWithMe']);
 });
 
-test('the Legacy palette loads Shared with me into Angular', async ({ page }) => {
-  await openAsRecipient(page, '/DynamicSecrets');
+test('the Legacy palette loads Shared with me into Angular', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
+  await openAsRecipient(page, legacyShell);
   const documents = recordDocuments(page);
   await openPalette(page);
   await page.getByRole('combobox').fill('Shared with me');

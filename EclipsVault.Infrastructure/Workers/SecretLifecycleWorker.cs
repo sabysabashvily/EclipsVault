@@ -72,13 +72,13 @@ public sealed class SecretLifecycleWorker : BackgroundService
     {
         using var scope = _scopeFactory.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<ISecretRepository>();
-        var cache = scope.ServiceProvider.GetRequiredService<ISecretCache>();
+        var secrets = scope.ServiceProvider.GetRequiredService<ISecretService>();
         var notifications = scope.ServiceProvider.GetRequiredService<INotificationService>();
 
         var now = _clock.GetUtcNow();
 
         await WarnExpiringAsync(repository, notifications, now, ct);
-        await ReapExpiredAsync(repository, cache, now, ct);
+        await ReapExpiredAsync(repository, secrets, now, ct);
     }
 
     /// <summary>
@@ -120,19 +120,23 @@ public sealed class SecretLifecycleWorker : BackgroundService
     }
 
     private async Task ReapExpiredAsync(
-        ISecretRepository repository, ISecretCache cache, DateTimeOffset now, CancellationToken ct)
+        ISecretRepository repository, ISecretService secrets, DateTimeOffset now, CancellationToken ct)
     {
         var expired = await repository.ListExpiredAsync(now, ct);
 
         foreach (var secret in expired)
         {
-            secret.Shred(now);
-            await repository.ShredAsync(secret, ct); // purges archived versions + records SecretShredded atomically
-            await cache.EvictAsync(secret.Id, ct);
+            var expiresAtUtc = secret.ExpiresAtUtc;
+            if (!await secrets.ShredIfExpiredAsync(secret.Id, ct))
+            {
+                _logger.LogInformation(
+                    "Left expired secret {SecretId} ({SecretName}) for the next sweep: it changed or is being changed", secret.Id, secret.Name);
+                continue;
+            }
 
             _logger.LogInformation(
                 "Shredded expired secret {SecretId} ({SecretName}); TTL elapsed at {ExpiresAtUtc}",
-                secret.Id, secret.Name, secret.ExpiresAtUtc);
+                secret.Id, secret.Name, expiresAtUtc);
         }
     }
 }

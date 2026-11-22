@@ -388,7 +388,7 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
         Assert.Equal(expected, completionRedirect.Headers.Location?.OriginalString);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/ui/me")).StatusCode);
         // Consuming the challenge prevents a replay from issuing another redirect/session.
-        var replay = await PostJsonAsync(client, "/Account/PasskeyLoginComplete", await client.GetStringAsync("/DynamicSecrets"), new { credential = new { } });
+        var replay = await PostJsonAsync(client, "/Account/PasskeyLoginComplete", await VaultFixture.LegacyShellAsync(client), new { credential = new { } });
         Assert.False(replay.GetProperty("success").GetBoolean());
         Assert.False(replay.TryGetProperty("redirect", out _));
     }

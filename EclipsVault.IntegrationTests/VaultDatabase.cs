@@ -40,7 +40,28 @@ internal abstract class VaultDatabase : IAsyncDisposable
 
     public abstract string ConnectionString();
 
+    /// <summary>
+    /// A SQL Server database for the vault to mint dynamic credentials on, as an operator configures one:
+    /// never the vault's own database. Returns the connection string the vault is given for it.
+    /// </summary>
+    public abstract Task<string> StartDynamicTargetAsync();
+
     public abstract ValueTask DisposeAsync();
+
+    protected static async Task<string> CreateDynamicTargetAsync(string serverConnectionString)
+    {
+        await using (var server = new SqlConnection(serverConnectionString))
+        {
+            await server.OpenAsync();
+            await using var create = server.CreateCommand();
+            create.CommandText = $"CREATE DATABASE [{DynamicTargetDatabase}]";
+            await create.ExecuteNonQueryAsync();
+        }
+
+        return new SqlConnectionStringBuilder(serverConnectionString) { InitialCatalog = DynamicTargetDatabase }.ConnectionString;
+    }
+
+    private const string DynamicTargetDatabase = "DynamicTarget";
 
     protected static string ContainerName(string engine)
         => $"{Environment.GetEnvironmentVariable("ECLIPSVAULT_TEST_RESOURCE_PREFIX") ?? "eclipsvault-it"}-{engine}-{Guid.NewGuid():N}";
@@ -62,6 +83,9 @@ internal sealed class SqlServerVaultDatabase : VaultDatabase
     public override string ConnectionString()
         => new SqlConnectionStringBuilder(_sql.GetConnectionString()) { InitialCatalog = "EclipsVault" }.ConnectionString;
 
+    // The vault's own server already runs SQL Server, so the target is a second database on it.
+    public override Task<string> StartDynamicTargetAsync() => CreateDynamicTargetAsync(_sql.GetConnectionString());
+
     public override ValueTask DisposeAsync() => _sql.DisposeAsync();
 }
 
@@ -76,10 +100,30 @@ internal sealed class PostgresVaultDatabase : VaultDatabase
 
     public override string Provider => DatabaseProvider.Postgres;
 
+    private MsSqlContainer? _dynamicTarget;
+
     public override Task StartAsync() => _postgres.StartAsync();
 
     public override string ConnectionString()
         => new NpgsqlConnectionStringBuilder(_postgres.GetConnectionString()) { Database = "eclipsvault" }.ConnectionString;
 
-    public override ValueTask DisposeAsync() => _postgres.DisposeAsync();
+    // Dynamic credentials are SQL Server logins, so a PostgreSQL vault needs a SQL Server beside it.
+    public override async Task<string> StartDynamicTargetAsync()
+    {
+        _dynamicTarget = new MsSqlBuilder(VaultFixture.SqlServerImage)
+            .WithName(ContainerName("sql-target"))
+            .WithPassword("Sa1!" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16)))
+            .Build();
+        await _dynamicTarget.StartAsync();
+        return await CreateDynamicTargetAsync(_dynamicTarget.GetConnectionString());
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        await _postgres.DisposeAsync();
+        if (_dynamicTarget is not null)
+        {
+            await _dynamicTarget.DisposeAsync();
+        }
+    }
 }

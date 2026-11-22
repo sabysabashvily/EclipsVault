@@ -1,4 +1,5 @@
 using EclipsVault.Core.Domain.Entities;
+using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Infrastructure.Security;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -35,11 +36,22 @@ public class SqlServerBackendTargetTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public async Task Minting_refuses_when_no_target_is_configured(string? connectionString)
-    {
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+    public async Task Minting_refuses_when_no_target_is_configured_and_reports_that_nothing_was_sent(string? connectionString)
+        => await Assert.ThrowsAsync<MintRefusedException>(() =>
             Backend(connectionString).MintAsync(
                 Role(), "svc_reporting", "Abc123", DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None));
+
+    [Fact]
+    public async Task Minting_on_an_unreachable_target_reports_that_nothing_was_sent()
+        => await Assert.ThrowsAsync<MintRefusedException>(() =>
+            Backend("Server=tcp:127.0.0.1,1;Connect Timeout=1;Encrypt=False").MintAsync(
+                Role(), "svc_reporting", "Abc123", DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None));
+
+    [Fact]
+    public async Task Revoking_refuses_when_no_target_is_configured()
+    {
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Backend(null).RevokeAsync(Role(), "svc_reporting", CancellationToken.None));
 
         // The message has to tell an operator what to set and why it is not the vault's connection.
         Assert.Contains("TargetConnectionString", ex.Message, StringComparison.Ordinal);
@@ -47,14 +59,14 @@ public class SqlServerBackendTargetTests
     }
 
     [Fact]
-    public async Task Revoking_refuses_when_no_target_is_configured()
-        => await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            Backend(null).RevokeAsync(Role(), "svc_reporting", CancellationToken.None));
-
-    [Fact]
     public async Task Rotating_a_managed_principal_refuses_when_no_target_is_configured()
-        => await Assert.ThrowsAsync<InvalidOperationException>(() =>
+    {
+        // Nothing was sent, so the refusal is a certain one: the caller need not put a password back.
+        var refused = await Assert.ThrowsAsync<UpstreamRotationRefusedException>(() =>
             Backend(null).RotatePrincipalAsync("svc_reporting", "Abc123", CancellationToken.None));
+
+        Assert.IsType<InvalidOperationException>(refused.InnerException);
+    }
 
     [Fact]
     public void A_configured_target_is_reported_as_configured()

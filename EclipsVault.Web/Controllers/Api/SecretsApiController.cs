@@ -33,9 +33,8 @@ public sealed class SecretsApiController : ControllerBase
     public async Task<IActionResult> List(CancellationToken ct)
     {
         // Every row runs the full rule set — clearance, project, network, time window, and the
-        // key's own scope — through the same handler that gates a read. The key's project scope
-        // used to be re-applied here by hand, which was both a second copy of rule 5 and the only
-        // rule this list applied at all: everything else was disclosed to any valid key.
+        // key's own scope — through the same handler that gates a read. Re-applying any one rule
+        // here by hand would be a second copy that could drift, and would tempt skipping the rest.
         var visible = await _authorization.VisibleToAsync(User, await _secrets.ListAsync(ct));
 
         return Ok(visible.Select(s => new
@@ -60,11 +59,9 @@ public sealed class SecretsApiController : ControllerBase
             var authorized = await _authorization.AuthorizeAsync(User, details, VaultPolicies.SecretAccess);
             if (!authorized.Succeeded)
             {
-                return StatusCode(StatusCodes.Status403Forbidden, new
-                {
-                    error = "forbidden",
-                    reasons = authorized.Failure?.FailureReasons.Select(r => r.Message) ?? []
-                });
+                var reasons = authorized.Failure?.FailureReasons.Select(r => r.Message).ToList() ?? [];
+                await _secrets.RecordAccessDeniedAsync(details, reasons, ct);
+                return StatusCode(StatusCodes.Status403Forbidden, new { error = "forbidden", reasons });
             }
 
             var revealed = await _secrets.RevealAsync(id, ct);
