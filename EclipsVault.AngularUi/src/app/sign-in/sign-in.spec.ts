@@ -328,7 +328,7 @@ describe('sign-in pages', () => {
 
         const begin = backend.expectOne({ method: 'POST', url: '/api/ui/auth/passkey/begin' });
         expect(begin.request.body).toEqual({ returnUrl: '/Secrets' });
-        expect(page.querySelector('.passkey-status')?.textContent?.trim()).toBe(
+        expect(visibleText(page.querySelector('[role="status"]'))).toBe(
           'Follow the prompt on your device…',
         );
         begin.flush({ publicKey: { challenge: 'abc' } });
@@ -352,7 +352,7 @@ describe('sign-in pages', () => {
         button(page, 'Sign in with a passkey').click();
         backend.expectOne('/api/ui/auth/passkey/begin').flush({ publicKey: {} });
         await vi.waitFor(() =>
-          expect(page.querySelector('.passkey-status')?.textContent?.trim()).toBe(
+          expect(visibleText(page.querySelector('[role="status"]'))).toBe(
             'The passkey prompt was dismissed or timed out.',
           ),
         );
@@ -377,7 +377,7 @@ describe('sign-in pages', () => {
         );
 
         await vi.waitFor(() =>
-          expect(page.querySelector('.passkey-status')?.textContent?.trim()).toBe(
+          expect(visibleText(page.querySelector('[role="status"]'))).toBe(
             'Sign-in timed out. Try again.',
           ),
         );
@@ -566,11 +566,11 @@ describe('sign-in pages', () => {
       expect(visibleText(page)).toContain('Step 2 of 2');
       expect(page.querySelector('[role="status"]')).toBe(liveRegion);
       expect(visibleText(liveRegion)).toBe('Authenticator QR code and setup key are ready.');
-      expect(page.querySelector('img.totp-qr')?.getAttribute('src')).toBe(enrollment.qrCodeDataUri);
-      expect(page.querySelector('img.totp-qr')?.getAttribute('alt')).toBe(
-        'QR code containing the authenticator enrollment secret',
+      const qr = page.querySelector(
+        'img[alt="QR code containing the authenticator enrollment secret"]',
       );
-      expect(page.querySelector('code.secret-code')?.textContent).toBe('JBSWY3DPEHPK3PXP');
+      expect(qr?.getAttribute('src')).toBe(enrollment.qrCodeDataUri);
+      expect(visibleText(page)).toContain('JBSWY3DPEHPK3PXP');
       expect(page.querySelector('label[for="Code"]')?.textContent).toBe('Confirmation code');
     });
 
