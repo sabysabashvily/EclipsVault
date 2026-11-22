@@ -7,7 +7,7 @@ using Xunit;
 
 namespace EclipsVault.IntegrationTests;
 
-[Collection(VaultCollection.Name)]
+[Collection(AccountDeletionCollection.Name)]
 public sealed partial class AccountDeletionTests(VaultFixture vault)
 {
     /// <summary>
@@ -51,21 +51,11 @@ public sealed partial class AccountDeletionTests(VaultFixture vault)
     {
         var signedIn = await vault.SignInNewAccountAsync("it-delete-surviving", IPAddress.Parse("10.52.0.71"));
         // A lost version cannot establish whether the session was revoked before the restart.
-        // Program.Main closes Serilog's process-wide static logger on exit, so restore the shared
-        // vault's logger afterwards or request logging stops for the rest of this collection.
-        var previousLogger = Serilog.Log.Logger;
-        try
-        {
-            await using var restarted = new WebApplicationFactory<Program>()
-                .WithWebHostBuilder(host => host.UseEnvironment("Production"));
-            using var replay = ReplayOn(restarted, signedIn.Cookies.GetCookieHeader(signedIn.Client.BaseAddress!));
+        await using var restarted = new WebApplicationFactory<Program>()
+            .WithWebHostBuilder(host => host.UseEnvironment("Production"));
+        using var replay = ReplayOn(restarted, signedIn.Cookies.GetCookieHeader(signedIn.Client.BaseAddress!));
 
-            Assert.Equal(HttpStatusCode.Unauthorized, (await replay.GetAsync("/api/ui/me")).StatusCode);
-        }
-        finally
-        {
-            Serilog.Log.Logger = previousLogger;
-        }
+        Assert.Equal(HttpStatusCode.Unauthorized, (await replay.GetAsync("/api/ui/me")).StatusCode);
     }
 
     private static HttpClient ReplayOn(WebApplicationFactory<Program> host, string cookies)
@@ -98,4 +88,15 @@ public sealed partial class AccountDeletionTests(VaultFixture vault)
 
     [GeneratedRegex("<code class=\"secret-code\" id=\"revealed-value\">([^<]+)</code>")]
     private static partial Regex RevealedValue();
+}
+
+/// <summary>
+/// Isolated from <see cref="VaultCollection"/> because restarting the vault starts a second
+/// <see cref="WebApplicationFactory{TEntryPoint}"/> of <c>Program</c>, whose shutdown closes
+/// Serilog's process-wide static logger and would silence request logging for later tests sharing a host.
+/// </summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class AccountDeletionCollection : ICollectionFixture<VaultFixture>
+{
+    public const string Name = "account deletion vault";
 }
