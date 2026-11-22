@@ -21,6 +21,10 @@ public interface IIpBlacklist
 
     Task<ILiftedIpBlock?> UnblockAsync(string network, CancellationToken ct = default);
 
-    /// <summary>Removes every blocked range containing the address (break-glass recovery).</summary>
-    Task<bool> UnblockAddressAsync(IPAddress address, CancellationToken ct = default);
+    /// <summary>
+    /// Break-glass recovery's lift: guards the address's range first, so the address stays refused
+    /// until the lift is settled, then removes every blocked range containing the address and keeps
+    /// exactly what it removed. Not cancellable: a removal must always be settled.
+    /// </summary>
+    Task<IRecoveryLift> LiftForRecoveryAsync(IPAddress address);
 }

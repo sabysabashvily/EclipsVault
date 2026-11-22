@@ -38,6 +38,12 @@ public static class UiApiProblem
     public static Task UnauthenticatedAsync(HttpContext context)
         => WriteAsync(context, StatusCodes.Status401Unauthorized, "unauthenticated", "Sign in to continue.");
 
+    /// <summary>A second-factor call without a usable pending sign-in: the sign-in starts again at Login.</summary>
+    public static Task SignInExpiredAsync(HttpContext context)
+        => WriteAsync(context, StatusCodes.Status401Unauthorized, "sign_in_expired", SignInExpiredTitle);
+
+    public const string SignInExpiredTitle = "Your sign-in expired. Sign in again.";
+
     /// <summary><see cref="UnauthenticatedAsync"/> as an action result, for a UI API action that finds the session unusable.</summary>
     public static ActionResult Unauthenticated() => new Result(UnauthenticatedAsync);
 

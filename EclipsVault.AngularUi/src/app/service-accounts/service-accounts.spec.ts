@@ -652,7 +652,7 @@ describe('Service account Details', () => {
     blocked('sign_in');
     await fixture.whenStable();
     button(page, 'Sign in again').click();
-    backend.expectOne('/Account/Logout').flush('');
+    backend.expectOne('/api/ui/auth/sign-out').flush('');
     await fixture.whenStable();
     expect(assign).toHaveBeenCalledWith(
       '/Account/Login?ReturnUrl=%2FServiceAccounts%2FDetails%2Faaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',

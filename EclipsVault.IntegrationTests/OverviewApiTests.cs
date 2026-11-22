@@ -216,6 +216,7 @@ public sealed class OverviewApiTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.OK, landing.StatusCode);
         var html = await landing.Content.ReadAsStringAsync();
         Assert.Contains("Secrets, kept in the shadow.", html);
+        Assert.Contains("href=\"/Account/Login\">Sign in to the vault</a>", html);
         Assert.DoesNotContain("<app-root>", html);
     }
 
@@ -227,6 +228,8 @@ public sealed class OverviewApiTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.NotFound, error.StatusCode);
         var html = await error.Content.ReadAsStringAsync();
         Assert.Contains("404 — Not found", html);
+        // Signed out, the Legacy layout's sidebar offers sign-in.
+        Assert.Contains("<a class=\"nav-item\" href=\"/Account/Login\">", html);
         Assert.DoesNotContain("<app-root>", html);
     }
 

@@ -4,6 +4,10 @@ using EclipsVault.Core.Application.Sessions;
 using EclipsVault.Infrastructure.Security;
 using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Controllers;
+using EclipsVault.Web.Controllers.Ui;
+using EclipsVault.Web.Models.Ui;
+using EclipsVault.Web.Services;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -65,7 +69,8 @@ public class SignOutRevokesSessionTests
 
         // Logout touches only the session registry and the authentication service; the other
         // collaborators belong to the sign-in flows and are never reached here.
-        var controller = new AccountController(null!, null!, null!, null!, sessions, null!, null!, null!, null!,
+        var controller = new AccountController(
+            new AccountSignOut(null!, sessions, null!, NullLogger<AccountSignOut>.Instance), null!, null!,
             NullLogger<AccountController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = http }
@@ -125,10 +130,11 @@ public class SignOutRevokesSessionTests
     }
 
     [Fact]
-    public async Task When_the_revocation_cannot_be_stored_this_browser_is_still_signed_out()
+    public async Task When_the_revocation_cannot_be_stored_this_browser_is_signed_out_and_told_so()
     {
         // Failing closed here would leave a live session in the browser, on a shared machine the
-        // likelier threat, so the cookie is cleared regardless and the failure is logged.
+        // likelier threat, so the cookie is cleared regardless. A copy of the cookie stays valid until
+        // it expires, so the person is told this browser alone was signed out.
         var (controller, auth) = SignedInController(new WriteFailingRegistry(),
             new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()),
             new Claim(VaultClaimTypes.SessionId, Guid.NewGuid().ToString()));
@@ -136,6 +142,39 @@ public class SignOutRevokesSessionTests
         var result = await controller.Logout(CancellationToken.None);
 
         Assert.True(auth.SignedOut);
-        Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal("/Account/Login?signOut=sign_out_incomplete", Assert.IsType<LocalRedirectResult>(result).Url);
+    }
+
+    private sealed class FixedAntiforgery : IAntiforgery
+    {
+        public AntiforgeryTokenSet GetAndStoreTokens(HttpContext httpContext) => new("request-token", "cookie-token", "form", "header");
+        public AntiforgeryTokenSet GetTokens(HttpContext httpContext) => throw new NotSupportedException();
+        public Task<bool> IsRequestValidAsync(HttpContext httpContext) => throw new NotSupportedException();
+        public Task ValidateRequestAsync(HttpContext httpContext) => throw new NotSupportedException();
+        public void SetCookieTokenAndHeader(HttpContext httpContext) => throw new NotSupportedException();
+    }
+
+    [Fact]
+    public async Task The_ui_api_sign_out_reports_a_revocation_it_could_not_store_with_the_cookie_cleared()
+    {
+        var (legacy, auth) = SignedInController(new WriteFailingRegistry(),
+            new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()),
+            new Claim(VaultClaimTypes.SessionId, Guid.NewGuid().ToString()));
+        var http = legacy.HttpContext;
+        var controller = new AuthController(null!, null!, null!, null!, null!, null!, null!,
+            new AccountSignOut(null!, new WriteFailingRegistry(), null!, NullLogger<AccountSignOut>.Instance),
+            new FixedAntiforgery(), NullLogger<AuthController>.Instance)
+        {
+            ControllerContext = new ControllerContext { HttpContext = http }
+        };
+
+        var result = Assert.IsType<JsonResult>(await controller.SignOutSession(CancellationToken.None));
+
+        Assert.True(auth.SignedOut);
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, result.StatusCode);
+        Assert.Equal("sign_out_incomplete", Assert.IsType<SignInProblemResponse>(result.Value).Code);
+        // The next request is anonymous, and so is the token issued for it.
+        Assert.False(http.User.Identity?.IsAuthenticated);
+        Assert.Contains("XSRF-TOKEN=request-token", http.Response.Headers.SetCookie.ToString(), StringComparison.Ordinal);
     }
 }

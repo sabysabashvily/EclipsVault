@@ -1,17 +1,10 @@
 import { RouterLink } from '@angular/router';
 import { HttpClient, httpResource } from '@angular/common/http';
-import {
-  Component,
-  computed,
-  DestroyRef,
-  DOCUMENT,
-  inject,
-  signal,
-  viewChild,
-} from '@angular/core';
+import { Component, computed, DestroyRef, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize } from 'rxjs';
 import { ConfirmationDialog, type DecisionOptions } from '../shared/confirmation-dialog';
+import { PAGE_LOCATION } from '../shell/command-palette';
 import { RowMenu } from '../shared/row-menu';
 import { StatusLine } from '../shared/status-line';
 import { StepUpDialog } from '../shared/step-up-dialog';
@@ -57,7 +50,7 @@ const statuses: Record<User['status'], { label: string; tone: string }> = {
 export class UsersPage {
   private readonly http = inject(HttpClient);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly document = inject(DOCUMENT);
+  private readonly location = inject(PAGE_LOCATION);
   private readonly confirmation = viewChild.required(ConfirmationDialog);
   private readonly stepUp = viewChild.required(StepUpDialog);
   private awaitingConfirmation: Pending | null = null;
@@ -197,7 +190,7 @@ export class UsersPage {
       .subscribe({
         next: () => {
           if (pending.action === 'sign-out' && pending.user.isYou) {
-            this.document.location.assign('/Account/Login');
+            this.location.assign('/Account/Login');
             return;
           }
           this.status.set({ message: outcomes[pending.action], error: false });
@@ -226,7 +219,7 @@ export class UsersPage {
               error instanceof UiApiError &&
               error.code === 'revoked_unrecorded'
             ) {
-              this.document.location.assign('/Account/Login');
+              this.location.assign('/Account/Login?signOut=revoked_unrecorded');
               return;
             }
           }

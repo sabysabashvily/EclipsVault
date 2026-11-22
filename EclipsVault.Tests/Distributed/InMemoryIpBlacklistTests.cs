@@ -10,7 +10,8 @@ namespace EclipsVault.Tests.Distributed;
 /// The blacklist contract shared by the in-process and Redis stores. By default a block contains
 /// only the exact offending host — so one trip cannot deny the vault to a whole shared-egress
 /// subnet; with range blocking enabled it contains the surrounding /24 (or /64). Blocks are
-/// enumerable and liftable, and break-glass recovery lifts exactly what would keep an admin out.
+/// enumerable and liftable, and break-glass recovery lifts exactly what would keep an admin out,
+/// under a guard that refuses the range until the lift is settled.
 /// </summary>
 public class InMemoryIpBlacklistTests
 {
@@ -72,22 +73,30 @@ public class InMemoryIpBlacklistTests
     }
 
     [Fact]
-    public async Task UnblockAddress_lifts_the_block_covering_the_caller()
+    public async Task A_settled_recovery_lift_lifts_the_block_covering_the_caller()
     {
         var blacklist = NewBlacklist();
         await blacklist.BlockAsync("198.51.100.9", "test");
 
-        Assert.True(await blacklist.UnblockAddressAsync(IPAddress.Parse("198.51.100.9")));
+        var lift = await blacklist.LiftForRecoveryAsync(IPAddress.Parse("198.51.100.9"));
+        Assert.True(lift.Lifted);
+        Assert.True(await blacklist.IsBlockedAsync(IPAddress.Parse("198.51.100.9")));
+        await lift.ReleaseAsync();
+
         Assert.False(await blacklist.IsBlockedAsync(IPAddress.Parse("198.51.100.9")));
     }
 
     [Fact]
-    public async Task UnblockAddress_in_range_mode_lifts_the_whole_range_covering_the_caller()
+    public async Task A_recovery_lift_in_range_mode_guards_and_lifts_the_whole_range_covering_the_caller()
     {
         var blacklist = NewBlacklist(blockSurroundingRange: true);
         await blacklist.BlockAsync("198.51.100.9", "test");
 
-        Assert.True(await blacklist.UnblockAddressAsync(IPAddress.Parse("198.51.100.200")));
+        var lift = await blacklist.LiftForRecoveryAsync(IPAddress.Parse("198.51.100.200"));
+        Assert.Empty(await blacklist.ListAsync());
+        Assert.True(await blacklist.IsBlockedAsync(IPAddress.Parse("198.51.100.9")));
+        await lift.ReleaseAsync();
+
         Assert.False(await blacklist.IsBlockedAsync(IPAddress.Parse("198.51.100.9")));
     }
 

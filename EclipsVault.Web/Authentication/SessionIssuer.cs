@@ -49,7 +49,10 @@ public sealed class SessionIssuer(
 
         await context.SignOutAsync(AuthSchemes.MfaPending);
         var sessionId = Guid.NewGuid();
-        await IssueAsync(context, VaultClaimsFactory.CreateSessionPrincipal(user, sessionId, DateTimeOffset.UtcNow, stamp));
+        var session = VaultClaimsFactory.CreateSessionPrincipal(user, sessionId, DateTimeOffset.UtcNow, stamp);
+        await IssueAsync(context, session);
+        // The rest of this request acts as the new session, so a request token issued now names it.
+        context.User = session;
         await RecordAsync(context, user.Id, sessionId, stamp);
         return true;
     }

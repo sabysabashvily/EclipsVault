@@ -1,0 +1,115 @@
+<section class="auth-card">
+  <div class="step-track" aria-hidden="true">
+    <span class="step active"></span><span class="step"></span>
+  </div>
+  <h1>Sign in</h1>
+  <p class="muted">Step 1 of 2 — password. An authenticator code is always required next.</p>
+
+  <app-status-line [message]="notice.message" [error]="notice.error" />
+
+  <form (submit)="signIn($event)">
+    <fieldset [disabled]="busy()">
+      @if (error()) {
+        <div class="validation-summary" role="alert">
+          <ul>
+            <li>{{ error() }}</li>
+          </ul>
+        </div>
+      }
+
+      <div class="field">
+        <label for="Username">Username or email</label>
+        <input
+          id="Username"
+          name="Username"
+          autocomplete="username"
+          maxlength="256"
+          required
+          appSignInFocus
+          [value]="username()"
+          (input)="username.set($any($event.target).value)"
+        />
+      </div>
+
+      <div class="field">
+        <label for="Password">Password</label>
+        <div class="input-affix">
+          <input
+            #passwordInput
+            id="Password"
+            name="Password"
+            [type]="shown() ? 'text' : 'password'"
+            autocomplete="current-password"
+            maxlength="256"
+            required
+            [value]="password()"
+            (input)="password.set($any($event.target).value)"
+          /><button
+            class="affix-button"
+            type="button"
+            [attr.aria-label]="shown() ? 'Hide password' : 'Show password'"
+            (click)="shown.set(!shown()); passwordInput.focus()"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              @if (shown()) {
+                <path
+                  d="M2 12s3.6-7 10-7c2 0 3.8.7 5.2 1.6M22 12s-3.6 7-10 7c-2 0-3.8-.7-5.2-1.6"
+                />
+                <path d="m4 4 16 16" />
+              } @else {
+                <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
+                <circle cx="12" cy="12" r="3" />
+              }
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <button type="submit" class="button primary wide">Continue</button>
+    </fieldset>
+  </form>
+
+  <div class="auth-divider"><span>or</span></div>
+  <button
+    type="button"
+    class="button wide"
+    [disabled]="passkeyBusy() || !passkeysSupported"
+    [attr.title]="passkeysSupported ? null : 'This browser does not support passkeys.'"
+    (click)="signInWithPasskey()"
+  >
+    Sign in with a passkey
+  </button>
+  <p
+    class="passkey-status"
+    role="status"
+    aria-live="polite"
+    [class.status-error]="passkeyStatus().error"
+    [class.status-ok]="passkeyStatus().message && !passkeyStatus().error"
+  >
+    {{ passkeyStatus().message }}
+  </p>
+
+  @if (options.hasValue() && options.value().ssoEnabled) {
+    <div class="auth-divider"><span>or</span></div>
+    <!-- Single sign-on leaves through server redirects, so it is a real form post (ADR-0032). -->
+    <form
+      method="post"
+      action="/Account/ExternalLogin"
+      (submit)="tokenField.value = requestToken()"
+    >
+      <input #tokenField type="hidden" name="__RequestVerificationToken" />
+      <input type="hidden" id="sso-return-url" name="ReturnUrl" [value]="returnUrl ?? ''" />
+      <button type="submit" class="button wide">
+        Sign in with {{ options.value().ssoDisplayName }}
+      </button>
+    </form>
+  }
+</section>

@@ -18,15 +18,20 @@ public sealed class InMemoryIpBlacklist : IIpBlacklist
     private sealed record Entry(IPNetwork Network, BlockedRangeDto Dto);
 
     private readonly ConcurrentDictionary<string, Entry> _blocked = new();
+    // Break-glass guards, keyed by the lift that holds them and the range they cover.
+    private readonly ConcurrentDictionary<(Guid Lift, string Network), IPNetwork> _guards = new();
+    // Checks, recovery lifts and their settlement take turns, so a check never reads a block already
+    // lifted and then its guard already released, which would let one request through unrecorded.
+    private readonly Lock _gate = new();
     private readonly TimeProvider _clock;
     private readonly ILogger<InMemoryIpBlacklist> _logger;
-    private readonly bool _blockSurroundingRange;
+    private readonly IOptions<IntrusionResponseOptions> _options;
 
     public InMemoryIpBlacklist(TimeProvider clock, IOptions<IntrusionResponseOptions> options, ILogger<InMemoryIpBlacklist> logger)
     {
         _clock = clock;
         _logger = logger;
-        _blockSurroundingRange = options.Value.BlockSurroundingRange;
+        _options = options;
     }
 
     public Task BlockAsync(string sourceIp, string reason, CancellationToken ct = default)
@@ -37,7 +42,7 @@ public sealed class InMemoryIpBlacklist : IIpBlacklist
             return Task.CompletedTask;
         }
 
-        var network = NetworkRules.ToBlockRange(address, _blockSurroundingRange);
+        var network = NetworkRules.ToBlockRange(address, _options.Value.BlockSurroundingRange);
         var key = network.ToString();
         var entry = new Entry(network, new BlockedRangeDto(key, reason, _clock.GetUtcNow()));
 
@@ -51,15 +56,11 @@ public sealed class InMemoryIpBlacklist : IIpBlacklist
 
     public Task<bool> IsBlockedAsync(IPAddress address, CancellationToken ct = default)
     {
-        foreach (var entry in _blocked.Values)
+        lock (_gate)
         {
-            if (NetworkRules.Contains(entry.Network, address))
-            {
-                return Task.FromResult(true);
-            }
+            return Task.FromResult(_blocked.Values.Any(entry => NetworkRules.Contains(entry.Network, address))
+                || _guards.Values.Any(network => NetworkRules.Contains(network, address)));
         }
-
-        return Task.FromResult(false);
     }
 
     public Task<IReadOnlyList<BlockedRangeDto>> ListAsync(CancellationToken ct = default)
@@ -92,18 +93,87 @@ public sealed class InMemoryIpBlacklist : IIpBlacklist
         }
     }
 
-    public Task<bool> UnblockAddressAsync(IPAddress address, CancellationToken ct = default)
+    public Task<IRecoveryLift> LiftForRecoveryAsync(IPAddress address)
     {
-        var removed = false;
+        lock (_gate)
+        {
+            return Task.FromResult<IRecoveryLift>(Lift(address));
+        }
+    }
+
+    private RecoveryLift Lift(IPAddress address)
+    {
+        var lift = Guid.NewGuid();
+        var canonical = NetworkRules.ToBlockRange(address, _options.Value.BlockSurroundingRange);
+        _guards[(lift, canonical.ToString())] = canonical;
+        var removed = new List<Entry>();
         foreach (var (key, entry) in _blocked)
         {
-            if (NetworkRules.Contains(entry.Network, address) && _blocked.TryRemove(key, out _))
+            if (!NetworkRules.Contains(entry.Network, address))
             {
-                removed = true;
+                continue;
+            }
+
+            // Guarded before it goes, so no address the range covered is let in before the lift is settled.
+            _guards[(lift, key)] = entry.Network;
+            if (_blocked.TryRemove(new KeyValuePair<string, Entry>(key, entry)))
+            {
+                removed.Add(entry);
                 _logger.LogWarning("Blacklisted range {Network} lifted via break-glass recovery from {SourceIp}", key, address);
             }
         }
 
-        return Task.FromResult(removed);
+        return new RecoveryLift(this, lift, removed);
+    }
+
+    private sealed class RecoveryLift(InMemoryIpBlacklist owner, Guid lift, IReadOnlyList<Entry> removed) : IRecoveryLift
+    {
+        public bool Lifted => removed.Count > 0;
+
+        public string Guard
+        {
+            get
+            {
+                lock (owner._gate)
+                {
+                    var ranges = owner._guards.Keys.Where(guard => guard.Lift == lift).Select(guard => guard.Network);
+                    return $"lift {lift} of the in-process blacklist, guarding {string.Join(", ", ranges)} until the process restarts";
+                }
+            }
+        }
+
+        public Task ReleaseAsync()
+        {
+            lock (owner._gate)
+            {
+                Release();
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task<bool> TryRestoreAsync()
+        {
+            lock (owner._gate)
+            {
+                // A block raised meanwhile on the same range is kept, and then this one is not back as it was.
+                var restored = removed.Count(entry => owner._blocked.GetOrAdd(entry.Dto.Network, entry) == entry);
+                if (restored != removed.Count)
+                {
+                    return Task.FromResult(false);
+                }
+
+                Release();
+                return Task.FromResult(true);
+            }
+        }
+
+        private void Release()
+        {
+            foreach (var guard in owner._guards.Keys.Where(guard => guard.Lift == lift))
+            {
+                owner._guards.TryRemove(guard, out _);
+            }
+        }
     }
 }

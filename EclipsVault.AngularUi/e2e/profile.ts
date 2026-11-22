@@ -152,7 +152,7 @@ export class ProfilePage {
       (cookie) => cookie.name === 'XSRF-TOKEN',
     );
     if (!token) throw new Error('The signed-in browser has no antiforgery token');
-    await this.page.request.post('/Account/Logout', {
+    await this.page.request.post('/api/ui/auth/sign-out', {
       headers: { RequestVerificationToken: decodeURIComponent(token.value) },
     });
     await this.page.goto('/Account/Login');

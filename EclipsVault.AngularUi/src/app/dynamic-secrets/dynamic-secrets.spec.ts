@@ -461,7 +461,7 @@ describe('Dynamic secrets', () => {
       );
     await reload(fixture);
     button(page, 'Sign in again').click();
-    backend.expectOne('/Account/Logout').flush('');
+    backend.expectOne('/api/ui/auth/sign-out').flush('');
     await fixture.whenStable();
     expect(assign).toHaveBeenCalledWith('/Account/Login?ReturnUrl=%2FDynamicSecrets');
   });

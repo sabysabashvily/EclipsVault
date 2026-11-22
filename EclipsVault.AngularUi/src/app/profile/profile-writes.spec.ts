@@ -87,17 +87,26 @@ describe('ProfileWrites', () => {
     expect(state.blocked()).toBe(false);
     expect(state.signInRequired()).toBe(false);
   });
-  it.each(['revoked_unrecorded', 'sign_out_incomplete'])(
-    'leaves for sign-in with the server warning after %s',
-    (code) => {
-      const state = session();
-      state.signOutEverywhere();
-      backend
-        .expectOne('/api/ui/profile/sign-out-everywhere')
-        .flush({ code, title: 'Sign-out warning.' }, { status: 503, statusText: 'Unavailable' });
-      expect(assign).toHaveBeenCalledExactlyOnceWith('/Account/Login');
-    },
-  );
+  it('leaves for sign-in with the signed-out-everywhere code after a complete sign-out', () => {
+    const state = session();
+    state.signOutEverywhere();
+    backend
+      .expectOne('/api/ui/profile/sign-out-everywhere')
+      .flush(null, { status: 204, statusText: 'No Content' });
+    expect(assign).toHaveBeenCalledExactlyOnceWith('/Account/Login?signOut=everywhere');
+  });
+  // The local-clear code keeps its own sentence; this outcome has another.
+  it.each([
+    ['revoked_unrecorded', 'revoked_unrecorded'],
+    ['sign_out_incomplete', 'everywhere_incomplete'],
+  ])('leaves for sign-in with its own code after %s', (code, signOut) => {
+    const state = session();
+    state.signOutEverywhere();
+    backend
+      .expectOne('/api/ui/profile/sign-out-everywhere')
+      .flush({ code, title: 'Sign-out warning.' }, { status: 503, statusText: 'Unavailable' });
+    expect(assign).toHaveBeenCalledExactlyOnceWith(`/Account/Login?signOut=${signOut}`);
+  });
   it('offers local clearing after a store failure without claiming account-wide success', () => {
     const state = session();
     state.signOutEverywhere();
@@ -160,7 +169,7 @@ describe('ProfileWrites', () => {
         { code: 'stale_session', title: 'Sign out and sign in again.' },
         { status: 401, statusText: 'Unauthorized' },
       );
-    const logout = backend.expectOne('/Account/Logout');
+    const logout = backend.expectOne('/api/ui/auth/sign-out');
     expect(logout.cancelled).toBe(false);
     expect(cleared).toHaveBeenCalledOnce();
     logout.flush('');

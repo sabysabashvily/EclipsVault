@@ -1,15 +1,7 @@
 using System.Net;
-using System.Text.Json;
 using EclipsVault.Core.Application.Abstractions;
-using EclipsVault.Core.Application.Authentication;
-using EclipsVault.Core.Application.Mfa;
-using EclipsVault.Core.Application.Passkeys;
-using EclipsVault.Core.Application.Profile;
-using EclipsVault.Core.Application.Sessions;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
-using EclipsVault.Web.Authentication;
-using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -18,13 +10,13 @@ namespace EclipsVault.IntegrationTests;
 
 /// <summary>
 /// A factor can pass and the account can still change before a session exists. The trail then
-/// records a refusal, and it does not record a sign-in.
+/// records a refusal, and it does not record a sign-in. Each runs through the sign-in UI API: the
+/// audit chain is held after the factor's own row commits, so the change lands while issuance waits.
 /// </summary>
 [Collection(VaultCollection.Name)]
 public sealed class SignInRefusalAuditTests(VaultFixture vault)
 {
     private const string Password = "It-refusal-password-2026!";
-    private const string ReplacementPassword = "It-refusal-replacement-2026!";
 
     [Fact]
     public async Task A_credential_change_between_verification_and_issuance_records_a_refusal_and_no_session()
@@ -32,17 +24,14 @@ public sealed class SignInRefusalAuditTests(VaultFixture vault)
         const string username = "it-refusal-totp";
         await vault.SignInNewAccountAsync(username, IPAddress.Parse("198.18.93.1"), password: Password);
         var account = await ProfileHttp.AccountAsync(vault, username);
-        using var proof = vault.Services.CreateScope();
-        var authentication = proof.ServiceProvider.GetRequiredService<IVaultAuthenticationService>();
-        var passwordStage = await authentication.ValidateCredentialsAsync(username, Password, default);
+        var browser = vault.CreateSession(source: IPAddress.Parse("198.18.93.11"));
+        var token = await AuthApi.PendingAsync(browser, username, Password);
         var before = await AuditTrail.HeadAsync(vault);
-        var proven = await authentication.VerifyTotpAsync(account.Id, passwordStage.Stamp!, Totp.NextCode(account.TotpSecret!), default);
-        await ChangePasswordAsync(account.Id, account.CredentialGeneration);
 
-        var http = new DefaultHttpContext { RequestServices = proof.ServiceProvider };
-        Assert.False(await IssueAsync(proof.ServiceProvider, http, proven!, passwordStage.Stamp!, "Password + TOTP"));
+        var response = await ChangeBeforeIssuanceAsync(account.Id, writersFirst: 1,
+            () => AuthApi.PostAsync(browser, "/api/ui/auth/totp", token, new { code = Totp.NextCode(account.TotpSecret!) }));
 
-        Assert.False(http.Response.Headers.ContainsKey("Set-Cookie"));
+        await AssertRestartedAsync(response, browser);
         var actions = await ProfileHttp.EventsAfterAsync(vault, before, account.Id);
         Assert.Contains(AuditAction.SignInRefused, actions);
         Assert.DoesNotContain(AuditAction.LoginSucceeded, actions);
@@ -54,32 +43,40 @@ public sealed class SignInRefusalAuditTests(VaultFixture vault)
         const string username = "it-refusal-held-account";
         await vault.SignInNewAccountAsync(username, IPAddress.Parse("198.18.93.10"), password: Password);
         var account = await ProfileHttp.AccountAsync(vault, username);
-        using var proof = vault.Services.CreateScope();
-        var authentication = proof.ServiceProvider.GetRequiredService<IVaultAuthenticationService>();
-        var passwordStage = await authentication.ValidateCredentialsAsync(username, Password, default);
-        var proven = await authentication.VerifyTotpAsync(account.Id, passwordStage.Stamp!, Totp.NextCode(account.TotpSecret!), default);
+        var browser = vault.CreateSession(source: IPAddress.Parse("198.18.93.12"));
+        var token = await AuthApi.PendingAsync(browser, username, Password);
         var before = await AuditTrail.HeadAsync(vault);
 
         using var change = vault.Services.CreateScope();
-        var held = await change.ServiceProvider.GetRequiredService<IUserRepository>().FindByIdAsync(account.Id, default);
+        var heldAccount = await change.ServiceProvider.GetRequiredService<IUserRepository>().FindByIdAsync(account.Id, default);
         var holding = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var changing = change.ServiceProvider.GetRequiredService<IAuthenticationAttempt>().RunAsync(held!, async _ =>
-        {
-            held!.CredentialGeneration++;
-            holding.SetResult();
-            await release.Task;
-            return true;
-        }, default);
-        var http = new DefaultHttpContext { RequestServices = proof.ServiceProvider };
-        Task<bool> issuing;
+        var chain = await HeldAuditChain.TakeAsync(vault);
+        var signingIn = AuthApi.PostAsync(browser, "/api/ui/auth/totp", token, new { code = Totp.NextCode(account.TotpSecret!) });
+        var changing = Task.FromResult(false);
         try
         {
+            try
+            {
+                // The factor holds the account and waits for the chain; the change queues for the account behind it.
+                await chain.WaitForQueuedWritersAsync(1);
+                changing = change.ServiceProvider.GetRequiredService<IAuthenticationAttempt>().RunAsync(heldAccount!, async _ =>
+                {
+                    heldAccount!.CredentialGeneration++;
+                    holding.SetResult();
+                    await release.Task;
+                    return true;
+                }, default);
+                await LockWaiters.WaitForAsync(vault, 2);
+            }
+            finally
+            {
+                await chain.DisposeAsync();
+            }
+
+            // The factor has committed and the change holds the account; issuance now waits for it.
             await holding.Task.WaitAsync(TimeSpan.FromSeconds(30));
-            issuing = IssueAsync(proof.ServiceProvider, http, proven!, passwordStage.Stamp!, "Password + TOTP");
-            // Long enough for issuance to read the account and reach the lock the change holds. If it
-            // gets there later, it still sees the committed change, so the outcome below cannot differ.
-            await Task.Delay(TimeSpan.FromSeconds(1));
+            await LockWaiters.WaitForAsync(vault, 1);
         }
         finally
         {
@@ -87,9 +84,7 @@ public sealed class SignInRefusalAuditTests(VaultFixture vault)
         }
 
         await changing;
-
-        Assert.False(await issuing);
-        Assert.False(http.Response.Headers.ContainsKey("Set-Cookie"));
+        await AssertRestartedAsync(await signingIn, browser);
         var actions = await ProfileHttp.EventsAfterAsync(vault, before, account.Id);
         Assert.Contains(AuditAction.SignInRefused, actions);
         Assert.DoesNotContain(AuditAction.LoginSucceeded, actions);
@@ -104,28 +99,29 @@ public sealed class SignInRefusalAuditTests(VaultFixture vault)
         var account = await ProfileHttp.AccountAsync(vault, username);
         var blacklist = vault.Services.GetRequiredService<IIpBlacklist>();
         await blacklist.BlockAsync(source.ToString(), "refusal probe", default);
-        using var proof = vault.Services.CreateScope();
-        var authentication = proof.ServiceProvider.GetRequiredService<IVaultAuthenticationService>();
-        var passwordStage = await authentication.ValidateCredentialsAsync(username, Password, default);
-        var before = await AuditTrail.HeadAsync(vault);
-        var proven = await authentication.VerifyBreakGlassAsync(account.Id, passwordStage.Stamp!, Totp.NextCode(account.TotpSecret!), default);
-        await ChangePasswordAsync(account.Id, account.CredentialGeneration);
-        var http = new DefaultHttpContext { RequestServices = proof.ServiceProvider };
+        try
+        {
+            var browser = vault.CreateSession(source: source);
+            var token = await AuthApi.AnonymousTokenAsync(browser, "/Account/Recover");
+            var before = await AuditTrail.HeadAsync(vault);
 
-        var finished = await new BreakGlassSignIn(
-            proof.ServiceProvider.GetRequiredService<SessionIssuer>(),
-            blacklist,
-            proof.ServiceProvider.GetRequiredService<IAuditSink>())
-            .FinishAsync(http, proven!, passwordStage.Stamp!, source, default);
+            // The password stage and the authenticator code each commit before issuance.
+            var response = await ChangeBeforeIssuanceAsync(account.Id, writersFirst: 2,
+                () => AuthApi.PostAsync(browser, "/api/ui/auth/recover", token, new { username, password = Password, code = Totp.NextCode(account.TotpSecret!) }));
 
-        Assert.False(finished.SessionIssued);
-        Assert.False(finished.BlockLifted);
-        Assert.False(http.Response.Headers.ContainsKey("Set-Cookie"));
-        Assert.True(await blacklist.IsBlockedAsync(source));
-        var actions = await ProfileHttp.EventsAfterAsync(vault, before, account.Id);
-        Assert.Contains(AuditAction.SignInRefused, actions);
-        Assert.DoesNotContain(AuditAction.LoginSucceeded, actions);
-        Assert.DoesNotContain(AuditAction.BreakGlassRecovery, actions);
+            await ProfileApi.AssertProblemAsync(response, 400, "recovery_failed");
+            Assert.Null(browser.SessionCookie);
+            Assert.True(await blacklist.IsBlockedAsync(source));
+            Assert.Equal(HttpStatusCode.Forbidden, (await browser.Client.GetAsync("/api/ui/me")).StatusCode);
+            var actions = await ProfileHttp.EventsAfterAsync(vault, before, account.Id);
+            Assert.Contains(AuditAction.SignInRefused, actions);
+            Assert.DoesNotContain(AuditAction.LoginSucceeded, actions);
+            Assert.DoesNotContain(AuditAction.BreakGlassRecovery, actions);
+        }
+        finally
+        {
+            await (await blacklist.LiftForRecoveryAsync(source)).ReleaseAsync();
+        }
     }
 
     [Fact]
@@ -137,22 +133,17 @@ public sealed class SignInRefusalAuditTests(VaultFixture vault)
         var account = await ProfileHttp.AccountAsync(vault, username);
         var blacklist = vault.Services.GetRequiredService<IIpBlacklist>();
         await blacklist.BlockAsync(source.ToString(), "issued recovery", default);
-        using var proof = vault.Services.CreateScope();
-        var authentication = proof.ServiceProvider.GetRequiredService<IVaultAuthenticationService>();
-        var passwordStage = await authentication.ValidateCredentialsAsync(username, Password, default);
+        var browser = vault.CreateSession(source: source);
+        var token = await AuthApi.AnonymousTokenAsync(browser, "/Account/Recover");
         var before = await AuditTrail.HeadAsync(vault);
-        var proven = await authentication.VerifyBreakGlassAsync(account.Id, passwordStage.Stamp!, Totp.NextCode(account.TotpSecret!), default);
-        var http = new DefaultHttpContext { RequestServices = proof.ServiceProvider };
 
-        var finished = await new BreakGlassSignIn(
-            proof.ServiceProvider.GetRequiredService<SessionIssuer>(),
-            blacklist,
-            proof.ServiceProvider.GetRequiredService<IAuditSink>())
-            .FinishAsync(http, proven!, passwordStage.Stamp!, source, default);
+        var response = await AuthApi.PostAsync(browser, "/api/ui/auth/recover", token,
+            new { username, password = Password, code = Totp.NextCode(account.TotpSecret!) });
 
-        Assert.True(finished.SessionIssued);
-        Assert.True(finished.BlockLifted);
+        Assert.True((await AuthApi.JsonAsync(response)).GetProperty("blockLifted").GetBoolean());
+        Assert.NotNull(browser.SessionCookie);
         Assert.False(await blacklist.IsBlockedAsync(source));
+        Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync("/api/ui/me")).StatusCode);
         var actions = await ProfileHttp.EventsAfterAsync(vault, before, account.Id);
         Assert.Contains(AuditAction.LoginSucceeded, actions);
         Assert.Contains(AuditAction.BreakGlassRecovery, actions);
@@ -165,23 +156,17 @@ public sealed class SignInRefusalAuditTests(VaultFixture vault)
     public async Task A_recovery_code_spent_before_a_refused_session_is_not_recorded_as_a_sign_in()
     {
         const string username = "it-refusal-recovery";
-        await vault.SignInNewAccountAsync(username, IPAddress.Parse("198.18.93.4"), password: Password);
-        var created = await ProfileHttp.AccountAsync(vault, username);
-        using var setup = vault.Services.CreateScope();
-        var generated = await setup.ServiceProvider.GetRequiredService<IMfaRecoveryService>()
-            .GenerateAsync(created.Id, created.CredentialGeneration, default);
+        var owner = await vault.SignInNewAccountAsync(username, IPAddress.Parse("198.18.93.4"), password: Password);
+        var codes = await ProfileApi.RecoverySetAsync(owner.ProfileOwner!);
         var account = await ProfileHttp.AccountAsync(vault, username);
-        using var proof = vault.Services.CreateScope();
-        var authentication = proof.ServiceProvider.GetRequiredService<IVaultAuthenticationService>();
-        var passwordStage = await authentication.ValidateCredentialsAsync(username, Password, default);
+        var browser = vault.CreateSession(source: IPAddress.Parse("198.18.93.13"));
+        var token = await AuthApi.PendingAsync(browser, username, Password);
         var before = await AuditTrail.HeadAsync(vault);
-        var proven = await authentication.VerifyRecoveryCodeAsync(account.Id, passwordStage.Stamp!, generated.Codes[0], default);
-        await ChangePasswordAsync(account.Id, account.CredentialGeneration);
 
-        var http = new DefaultHttpContext { RequestServices = proof.ServiceProvider };
-        Assert.False(await IssueAsync(proof.ServiceProvider, http, proven!, passwordStage.Stamp!, "Password + recovery code"));
+        var response = await ChangeBeforeIssuanceAsync(account.Id, writersFirst: 1,
+            () => AuthApi.PostAsync(browser, "/api/ui/auth/recovery-code", token, new { code = codes[0] }));
 
-        Assert.False(http.Response.Headers.ContainsKey("Set-Cookie"));
+        await AssertRestartedAsync(response, browser);
         var actions = await ProfileHttp.EventsAfterAsync(vault, before, account.Id);
         Assert.Contains(AuditAction.RecoveryCodeUsed, actions);
         Assert.Contains(AuditAction.SignInRefused, actions);
@@ -203,19 +188,16 @@ public sealed class SignInRefusalAuditTests(VaultFixture vault)
         }
 
         var account = await ProfileHttp.AccountAsync(vault, username);
-        using var proof = vault.Services.CreateScope();
-        var authentication = proof.ServiceProvider.GetRequiredService<IVaultAuthenticationService>();
-        var passwordStage = await authentication.ValidateCredentialsAsync(username, Password, default);
-        Assert.Equal(CredentialStatus.RequiresTotpEnrollment, passwordStage.Status);
+        var browser = vault.CreateSession(source: IPAddress.Parse("198.18.93.14"));
+        var token = await AuthApi.PendingAsync(browser, username, Password, next: "enroll");
+        var secret = (await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/enrollment", token)))
+            .GetProperty("secretBase32").GetString()!;
         var before = await AuditTrail.HeadAsync(vault);
-        var proven = await authentication.CompleteTotpEnrollmentAsync(
-            account.Id, passwordStage.Stamp!, Totp.Code(account.TotpSecret!, Totp.CurrentStep()), default);
-        await ChangePasswordAsync(account.Id, account.CredentialGeneration);
 
-        var http = new DefaultHttpContext { RequestServices = proof.ServiceProvider };
-        Assert.False(await IssueAsync(proof.ServiceProvider, http, proven!, passwordStage.Stamp!, "Password + TOTP enrollment"));
+        var response = await ChangeBeforeIssuanceAsync(account.Id, writersFirst: 1,
+            () => AuthApi.PostAsync(browser, "/api/ui/auth/enrollment/confirm", token, new { code = Totp.Code(secret, Totp.CurrentStep()) }));
 
-        Assert.False(http.Response.Headers.ContainsKey("Set-Cookie"));
+        await AssertRestartedAsync(response, browser);
         Assert.True((await ProfileHttp.AccountAsync(vault, username)).TotpEnabled);
         var actions = await ProfileHttp.EventsAfterAsync(vault, before, account.Id);
         Assert.Contains(AuditAction.TotpEnrolled, actions);
@@ -231,33 +213,50 @@ public sealed class SignInRefusalAuditTests(VaultFixture vault)
         using var authenticator = new PasskeyAuthenticator();
         await ProfileHttp.RegisterPasskeyAsync(owner, authenticator, "Refusal key");
         var account = await ProfileHttp.AccountAsync(vault, username);
-        using var proof = vault.Services.CreateScope();
-        var passkeys = proof.ServiceProvider.GetRequiredService<IPasskeyService>();
-        var ceremony = await passkeys.BeginAssertionAsync(username, default);
-        var response = JsonSerializer.Serialize(authenticator.Assert(JsonSerializer.Deserialize<JsonElement>(ceremony.OptionsJson)));
+        var browser = vault.CreateSession(source: IPAddress.Parse("198.18.93.15"));
+        var token = await AuthApi.AnonymousTokenAsync(browser);
+        var options = (await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/passkey/begin", token, new { })))
+            .GetProperty("publicKey");
+        var credential = authenticator.Assert(options);
         var before = await AuditTrail.HeadAsync(vault);
-        var result = await passkeys.CompleteAssertionAsync(ceremony.Challenge, ceremony.NamedAccount, response, default);
-        Assert.True(result.Success);
-        await ChangePasswordAsync(account.Id, account.CredentialGeneration);
 
-        var http = new DefaultHttpContext { RequestServices = proof.ServiceProvider };
-        Assert.False(await proof.ServiceProvider.GetRequiredService<SessionIssuer>().SignInAsync(
-            http, result.User!, result.Stamp!, new SignInAudit(AuditAction.PasskeyLogin, "Passwordless sign-in with a passkey"), default));
+        var response = await ChangeBeforeIssuanceAsync(account.Id, writersFirst: 1,
+            () => AuthApi.PostAsync(browser, "/api/ui/auth/passkey/complete", token, new { credential }));
 
-        Assert.False(http.Response.Headers.ContainsKey("Set-Cookie"));
+        var problem = await ProfileApi.AssertProblemAsync(response, 409, "sign_in_restarted");
+        Assert.Equal("Sign-in timed out. Try again.", problem.GetProperty("title").GetString());
+        Assert.Null(browser.SessionCookie);
         var actions = await ProfileHttp.EventsAfterAsync(vault, before, account.Id);
         Assert.Contains(AuditAction.SignInRefused, actions);
         Assert.DoesNotContain(AuditAction.PasskeyLogin, actions);
     }
 
-    private static Task<bool> IssueAsync(IServiceProvider services, HttpContext http, UserDto user, SessionStamp stamp, string details)
-        => services.GetRequiredService<SessionIssuer>().SignInAsync(
-            http, user, stamp, new SignInAudit(AuditAction.LoginSucceeded, details), default);
-
-    private async Task ChangePasswordAsync(Guid accountId, long generation)
+    /// <summary>
+    /// Sends the call, lets its first <paramref name="writersFirst"/> audited commits through, and
+    /// advances the account's credential generation while its session issuance waits for the chain.
+    /// </summary>
+    private async Task<HttpResponseMessage> ChangeBeforeIssuanceAsync(Guid accountId, int writersFirst, Func<Task<HttpResponseMessage>> send)
     {
-        using var request = vault.Services.CreateScope();
-        await request.ServiceProvider.GetRequiredService<IProfileService>()
-            .ChangePasswordAsync(accountId, generation, Password, ReplacementPassword, default);
+        var held = await HeldAuditChain.TakeAsync(vault);
+        var call = send();
+        try
+        {
+            held = await AuthApi.HoldAfterWritersAsync(vault, held, writersFirst);
+            await AuthApi.AdvanceCredentialGenerationAsync(held, accountId);
+            await held.CommitAsync();
+        }
+        finally
+        {
+            await held.DisposeAsync();
+        }
+
+        return await call;
+    }
+
+    private static async Task AssertRestartedAsync(HttpResponseMessage response, VaultSession browser)
+    {
+        var problem = await ProfileApi.AssertProblemAsync(response, 409, "sign_in_restarted");
+        Assert.Equal("Your account changed while you were signing in. Sign in again.", problem.GetProperty("title").GetString());
+        Assert.Null(browser.SessionCookie);
     }
 }

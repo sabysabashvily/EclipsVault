@@ -1,4 +1,5 @@
 import { refreshAdministratorProof } from './administrator-proof';
+import { clearSignInBudget } from './profile-state';
 import type { BrowserContext } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -22,6 +23,9 @@ test('a real SMTP code activates only the frozen mailbox and retires a copied se
     ),
   ) as { cookies: Awaited<ReturnType<BrowserContext['cookies']>> };
   await page.context().addCookies(administrator.cookies);
+  // Every project uses the proxy's one source address; give this flow, the administrator's proof
+  // included, a full credential budget.
+  clearSignInBudget();
   const creation = new AccountCreation(page);
   await refreshAdministratorProof(page);
   await creation.open();
@@ -29,9 +33,6 @@ test('a real SMTP code activates only the frozen mailbox and retires a copied se
   await creation.createMailboxOwner('e2e-mailbox-owner', password);
   await expect(page).toHaveURL(/\/Admin\/Users$/);
 
-  // Every project uses the proxy's one source address; isolate this flow's real credential budget.
-  const windowMilliseconds = 120_000;
-  await page.waitForTimeout(windowMilliseconds - (Date.now() % windowMilliseconds) + 1_000);
   const owner = await (await browserHealth.newContext()).newPage();
   const signIn = new AccountSignIn(owner);
   await signIn.open();

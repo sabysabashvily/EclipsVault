@@ -51,6 +51,8 @@ export default defineConfig({
             '**/secrets.spec.ts',
             '**/secret-details.spec.ts',
             '**/dynamic-secrets.spec.ts',
+            '**/break-glass.spec.ts',
+            '**/sso.spec.ts',
           ],
           use: { ...devices['Desktop Chrome'] },
         },
@@ -87,9 +89,25 @@ export default defineConfig({
           use: { ...devices['Desktop Chrome'] },
         },
         {
+          // Needs the administrator session that sign-in saves. It creates the identity provider's
+          // vault accounts before Users ends that session.
+          name: 'sso',
+          testMatch: '**/sso.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
           // Needs the administrator session that sign-in saves, and makes its own Standard account.
           name: 'overview',
           testMatch: '**/overview.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          // Needs the administrator session that sign-in saves. It blocks the address every browser
+          // in the run shares, and recovery lifts it before the next project starts.
+          name: 'break-glass',
+          testMatch: '**/break-glass.spec.ts',
           dependencies: ['chromium'],
           use: { ...devices['Desktop Chrome'] },
         },
@@ -131,7 +149,8 @@ export default defineConfig({
         {
           // Users ends with the administrator's own Force logout, which ends the saved session that
           // Networks, Notifications, License, Encryption keys, the Audit log, the Overview, Secrets,
-          // Secret details, Dynamic secrets and My activity reuse, so they run first.
+          // Secret details, Dynamic secrets, My activity, break-glass and single sign-on reuse.
+          // Run those projects before Users so they can still use the saved session.
           name: 'users',
           testMatch: '**/users.spec.ts',
           dependencies: [
@@ -143,6 +162,8 @@ export default defineConfig({
             'secrets',
             'secret-details',
             'dynamic-secrets',
+            'break-glass',
+            'sso',
           ],
           use: { ...devices['Desktop Chrome'] },
         },

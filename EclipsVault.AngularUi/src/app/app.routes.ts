@@ -8,7 +8,7 @@ import { Routes, UrlMatcher } from '@angular/router';
  * Matches `path` ignoring case, as the server and the Legacy UI's routes do, so a bookmark to
  * `/access` opens the page instead of an unmatched route.
  */
-function legacyPath(path: string): UrlMatcher {
+export function legacyPath(path: string): UrlMatcher {
   const expected = path.toLowerCase().split('/');
   return (segments) =>
     segments.length === expected.length &&

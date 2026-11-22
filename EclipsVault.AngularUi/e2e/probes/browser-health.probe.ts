@@ -1,9 +1,15 @@
 import { test, expect } from '../fixtures';
+import { expectLegacyShell, legacyShell } from '../legacy-shell';
 
 // Intentionally failing tests, run only by e2e:verify-guards. The driver checks that each failed
 // specifically in the shared browser-health fixture, rather than accepting any nonzero exit.
-test('CSP violation', async ({ page }) => {
-  await page.goto('/Account/Login');
+// The inline-script and uncaught-exception probes use a Legacy page, the Legacy shell's error page. On
+// an Angular document, Trusted Types refuses the script's text before script-src can, and Angular's
+// ErrorHandler catches the throw and logs it as console.error, so neither reaches the guard the probe
+// is meant to prove. The page answers 404, which the browser logs; each probe declares that one error.
+test('CSP violation', async ({ browserHealth, page }) => {
+  expectLegacyShell(browserHealth);
+  await page.goto(legacyShell);
   await page.evaluate(
     () =>
       new Promise<void>((resolve) => {
@@ -17,7 +23,8 @@ test('CSP violation', async ({ page }) => {
 });
 
 test('an expected CSP violation excuses nothing else', async ({ browserHealth, page }) => {
-  await page.goto('/Account/Login');
+  expectLegacyShell(browserHealth);
+  await page.goto(legacyShell);
   browserHealth.expectCspViolation({
     effectiveDirective: 'script-src-elem',
     blockedURI: 'inline',
@@ -58,8 +65,9 @@ test('console.error after navigation in a second page', async ({ context, page }
   await other.close();
 });
 
-test('uncaught browser exception', async ({ page }) => {
-  await page.goto('/Account/Login');
+test('uncaught browser exception', async ({ browserHealth, page }) => {
+  expectLegacyShell(browserHealth);
+  await page.goto(legacyShell);
   const error = page.waitForEvent('pageerror');
   await page.evaluate(() => {
     setTimeout(() => {

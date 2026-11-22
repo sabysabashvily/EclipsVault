@@ -208,7 +208,7 @@ describe.each([newForm, editForm])('$name', (form) => {
   it('sign-in proof ends the stale session and preserves the form return URL', async () => {
     const { fixture, dialog } = await prompted('sign_in');
     button(dialog, 'Sign in again').click();
-    backend.expectOne('/Account/Logout').flush('');
+    backend.expectOne('/api/ui/auth/sign-out').flush('');
     await fixture.whenStable();
     expect(assign).toHaveBeenCalledExactlyOnceWith(form.signInUrl);
     backend.expectNone(write);

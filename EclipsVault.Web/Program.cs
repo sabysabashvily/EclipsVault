@@ -106,6 +106,11 @@ try
             options.ExpireTimeSpan = TimeSpan.FromMinutes(6);
             options.SlidingExpiration = false;
             options.Events.OnValidatePrincipal = SessionCookieValidation.ValidatePendingPrincipalAsync;
+            // A second-factor call without a usable pending sign-in is Problem Details, not a redirect.
+            var pendingDefaults = new CookieAuthenticationEvents();
+            options.Events.OnRedirectToLogin = context => UiApiProblem.IsUiApi(context.Request)
+                ? UiApiProblem.SignInExpiredAsync(context.HttpContext)
+                : pendingDefaults.RedirectToLogin(context);
         })
         .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(AuthSchemes.ApiKey, _ => { });
 

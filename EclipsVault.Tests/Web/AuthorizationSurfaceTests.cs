@@ -22,34 +22,45 @@ public class AuthorizationSurfaceTests
     public void The_local_cookie_branch_has_an_explicit_anonymous_allowlist_entry()
         => Assert.Equal(LocalSignOut.Path, Assert.Single(IntentionallyAnonymousTerminalPaths));
 
+    /// <summary>The UI API's anonymous actions: <c>/api/ui/auth</c>'s options, password, passkey and recovery calls.</summary>
+    // Declared before IntentionallyAnonymous, whose initializer spreads it.
+    private static readonly string[] UiApiAnonymous =
+    [
+        "AuthController.BeginPasskey",
+        "AuthController.CompletePasskey",
+        "AuthController.Options",
+        "AuthController.Password",
+        "AuthController.Recover",
+    ];
+
     /// <summary>
     /// The complete set of actions reachable without a session, as <c>Controller.Action</c>.
-    /// Every one of them by definition runs before a session exists: the password sign-in, the
-    /// passkey ceremony's two legs, the SSO redirect and its callback from the identity provider,
-    /// break-glass recovery for a locked-out administrator, the landing page, and the error page.
+    /// Every one of them by definition runs before a session exists: the SSO redirect and its
+    /// callback from the identity provider, the landing page, the error page, and the UI API's sign-in
+    /// calls (ADR-0032): the password, the passkey ceremony's two legs, break-glass recovery for a
+    /// locked-out administrator, and the Login page's options.
     /// Adding a name here is a decision that an unauthenticated stranger may reach it.
     /// </summary>
     private static readonly string[] IntentionallyAnonymous =
     [
         "AccountController.ExternalCallback",
         "AccountController.ExternalLogin",
-        "AccountController.Login",
-        "AccountController.PasskeyLoginBegin",
-        "AccountController.PasskeyLoginComplete",
-        "AccountController.Recover",
         "HomeController.Error",
         "HomeController.Index",
+        .. UiApiAnonymous,
     ];
 
     /// <summary>
     /// The only actions allowed to accept a principal that has passed the password factor but not a
-    /// second one — the three second-factor screens themselves, each a GET/POST pair.
+    /// second one: the UI API's second-factor calls, which accept nothing else. The route table
+    /// serves the second-factor pages themselves.
     /// </summary>
     private static readonly string[] MayAcceptPendingMfa =
     [
-        "AccountController.EnrollTotp",
-        "AccountController.RecoveryCode",
-        "AccountController.Totp",
+        "PendingSignInController.BeginEnrollment",
+        "PendingSignInController.ConfirmEnrollment",
+        "PendingSignInController.RecoveryCode",
+        "PendingSignInController.Totp",
     ];
 
     [Fact]
@@ -147,29 +158,34 @@ public class AuthorizationSurfaceTests
     /// API key, with the key's scopes. An endpoint accepting both would apply each set of rules only
     /// to some of its callers. The scheme is named explicitly on every UI API controller, rather than
     /// left to the default, so that changing the default scheme in <c>Program.cs</c> cannot quietly
-    /// let a key in.
+    /// let a key in. The one exception is the pending sign-in's second factor, which accepts the
+    /// pending sign-in and nothing else, and the only anonymous actions are the sign-in calls named above.
     /// </summary>
     [Fact]
-    public void UiApiControllers_AcceptOnlyTheSession_AndNoneOfTheirActionsIsAnonymous()
+    public void Every_UI_API_controller_accepts_only_its_own_scheme_and_only_the_sign_in_calls_are_anonymous()
     {
         var uiApi = ControllersUnder("api/ui/");
         Assert.NotEmpty(uiApi);
 
         var wrongScheme = uiApi
-            .Where(type => !DeclaresExactly(type, CookieAuthenticationDefaults.AuthenticationScheme))
+            .Where(type => !DeclaresExactly(type, type == typeof(EclipsVault.Web.Controllers.Ui.PendingSignInController)
+                ? AuthSchemes.MfaPending
+                : CookieAuthenticationDefaults.AuthenticationScheme))
             .Select(type => type.Name)
             .ToList();
         Assert.True(wrongScheme.Count == 0,
-            "These UI API controllers do not declare the session scheme, and only it, on their [Authorize]:\n  " +
+            "These UI API controllers do not declare their one scheme on their [Authorize] (the pending sign-in for " +
+            "PendingSignInController, the session for every other):\n  " +
             string.Join("\n  ", wrongScheme));
 
         var anonymous = Actions()
             .Where(action => uiApi.Contains(action.DeclaringType!))
             .Where(action => IsAnonymous(action) || DeclaresAnyScheme(action))
             .Select(Name)
+            .Order(StringComparer.Ordinal)
             .ToList();
-        Assert.True(anonymous.Count == 0,
-            "These UI API actions are anonymous or override the controller's scheme:\n  " +
+        Assert.True(anonymous.SequenceEqual(UiApiAnonymous, StringComparer.Ordinal),
+            "The UI API actions that are anonymous or override the controller's scheme must be exactly the sign-in calls:\n  " +
             string.Join("\n  ", anonymous));
     }
 

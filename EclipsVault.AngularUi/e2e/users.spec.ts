@@ -460,9 +460,9 @@ test('own Force logout reaches sign-in and preserves an audit-failure warning', 
   rejectAuditWrites(true);
   try {
     await users.confirm('End their sessions');
-    await expect(page).toHaveURL(/\/Account\/Login$/);
+    await expect(page).toHaveURL(/\/Account\/Login\?signOut=revoked_unrecorded$/);
     await expect(new AccountSignIn(page).warning).toContainText(
-      "All of the user's sessions were revoked, but the vault couldn't record it in the audit trail.",
+      "You have been signed out of all sessions, but the vault couldn't record it in the audit trail. Tell your administrator.",
     );
     expect((await context.cookies()).some((cookie) => cookie.name === 'EclipsVault.Session')).toBe(
       false,

@@ -256,7 +256,7 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task Signing_out_everywhere_ends_every_session_records_it_and_leaves_the_message_for_sign_in()
+    public async Task Signing_out_everywhere_ends_every_session_records_it_and_leaves_no_flash_for_sign_in()
     {
         var owner = await ProfileAccount.CreateAsync(vault, "it-ui87-profile-sign-out", "100.64.87.22");
         var copied = vault.CreateSession(owner.Browser.SessionCookie, IPAddress.Parse("100.64.87.23"));
@@ -268,7 +268,8 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
         Assert.Null(owner.Browser.SessionCookie);
         await UiApiFailureContractTests.AssertProblemAsync(await copied.Client.GetAsync("/api/ui/me"), 401, "unauthenticated");
         Assert.Equal([AuditAction.SessionsRevokedSelf], await ProfileHttp.EventsAfterAsync(vault, before, owner.Id));
-        Assert.Contains("You have been signed out of all sessions.", WebUtility.HtmlDecode(await owner.Browser.Client.GetStringAsync("/Account/Login")), StringComparison.Ordinal);
+        // The Profile page sends this outcome to Login as ?signOut=everywhere.
+        SignInDocument.AssertNoTempData(response);
     }
 
     [Fact]

@@ -12,6 +12,7 @@ import { AuthenticatorEnrollment } from './authenticator-enrollment';
 import { freshTotp, currentTotpStep } from './totp';
 import { AccountAdministrationActivity } from './account-administration-activity';
 import { savedAdministratorCookies } from './administrator-cookies';
+import { clearSignInBudget } from './profile-state';
 
 test.describe.configure({ mode: 'serial' });
 let administratorCookies: Awaited<ReturnType<BrowserContext['cookies']>> = [];
@@ -259,6 +260,8 @@ test('a non-administrator reaches Denied from every service-account bookmark', a
   await creation.open();
   await creation.createMailboxOwner('e2e-sa-reader', password);
   await expect(page).toHaveURL(/\/Admin\/Users$/);
+  // A first sign-in spends three requests of the proxy's one shared credential budget.
+  clearSignInBudget();
   const reader = await (await browserHealth.newContext()).newPage();
   const signIn = new AccountSignIn(reader);
   await signIn.open();

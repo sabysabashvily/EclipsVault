@@ -72,6 +72,9 @@ public sealed partial class VaultFixture : IAsyncLifetime
 
     public bool ProductionWindowNeverOpens { get; init; }
 
+    /// <summary>A deployment without single sign-on; every other vault offers it.</summary>
+    public bool SsoDisabled { get; init; }
+
     /// <summary>The token the vault reads from ECLIPSVAULT_LICENSE at startup; none means unlicensed.</summary>
     public string? License { get; init; }
 
@@ -128,7 +131,7 @@ public sealed partial class VaultFixture : IAsyncLifetime
         SetEnvironment("DynamicSecrets__ReapIntervalSeconds", "86400");
         // Register the production OIDC correlation cookie for HTTP callback scoping tests.
         // Those start after the IdP assertion, so this authority is never contacted.
-        SetEnvironment("Sso__Enabled", "true");
+        SetEnvironment("Sso__Enabled", SsoDisabled ? "false" : "true");
         SetEnvironment("Sso__TrustIdpMultiFactor", TrustIdpMfa.ToString());
         SetEnvironment("Sso__Authority", "https://idp.example.test/realms/integration");
         SetEnvironment("Sso__ClientId", "integration-vault");
@@ -346,23 +349,32 @@ public sealed partial class VaultFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// The first sign-in of a new account: the password, then enrolling an authenticator and confirming
-    /// it with a real code.
+    /// The first sign-in of a new account through the Angular sign-in pages' calls: the password, then
+    /// enrolling an authenticator and confirming it with a real code.
     /// </summary>
     private static async Task<string> SignInFirstTimeAsync(HttpClient client, string username, string password)
     {
-        var afterPassword = await PostFormAsync(client, "/Account/Login", new() { ["Username"] = username, ["Password"] = password });
-        var next = afterPassword.Headers.Location?.OriginalString;
-        if (!string.Equals(next, "/Account/EnrollTotp", StringComparison.OrdinalIgnoreCase))
+        var afterPassword = await UiApiRequest.SendWithTokenAsync(client, await SignInDocument.TokenAsync(client), HttpMethod.Post,
+            "/api/ui/auth/password", JsonContent.Create(new { username, password }));
+        var next = afterPassword.IsSuccessStatusCode
+            ? (await afterPassword.Content.ReadFromJsonAsync<EclipsVault.Web.Models.Ui.PasswordStageResponse>())?.Next
+            : null;
+        if (next != "enroll")
         {
             throw new InvalidOperationException(
-                $"The password step ended at '{next}' ({(int)afterPassword.StatusCode}), not at authenticator enrollment.");
+                $"The password step went to '{next}' ({(int)afterPassword.StatusCode}), not to authenticator enrollment.");
         }
 
-        var enrollment = await client.GetStringAsync("/Account/EnrollTotp");
-        var secret = EnrollmentSecret().Match(enrollment) is { Success: true } match
-            ? match.Groups[1].Value
-            : throw new InvalidOperationException("The enrollment page showed no authenticator secret.");
+        // The password step reissued the token for the pending sign-in.
+        var pending = SignInDocument.TokenOf(afterPassword);
+        var enrollment = await UiApiRequest.SendWithTokenAsync(client, pending, HttpMethod.Post, "/api/ui/auth/enrollment");
+        var secret = enrollment.IsSuccessStatusCode
+            ? (await enrollment.Content.ReadFromJsonAsync<EclipsVault.Web.Models.Ui.TotpEnrollmentResponse>())?.SecretBase32
+            : null;
+        if (secret is null)
+        {
+            throw new InvalidOperationException($"Enrollment showed no authenticator secret ({(int)enrollment.StatusCode}).");
+        }
 
         // A code about to expire may reach the vault in the next step, so wait for a fresh one.
         if (Totp.SecondsLeftInStep() < 5)
@@ -370,21 +382,13 @@ public sealed partial class VaultFixture : IAsyncLifetime
             await Task.Delay(TimeSpan.FromSeconds(Totp.SecondsLeftInStep() + 1));
         }
 
-        var response = await PostFormAsync(client, "/Account/EnrollTotp", new() { ["Code"] = Totp.Code(secret, Totp.CurrentStep()) });
-        var landed = response.Headers.Location?.OriginalString ?? string.Empty;
-        if (response.StatusCode != HttpStatusCode.Redirect || landed.StartsWith("/Account/", StringComparison.OrdinalIgnoreCase))
+        var response = await UiApiRequest.SendWithTokenAsync(client, pending, HttpMethod.Post, "/api/ui/auth/enrollment/confirm",
+            JsonContent.Create(new { code = Totp.Code(secret, Totp.CurrentStep()) }));
+        if (response.StatusCode != HttpStatusCode.OK)
         {
-            throw new InvalidOperationException($"Enrollment did not create a session ({(int)response.StatusCode}, '{landed}').");
+            throw new InvalidOperationException($"Enrollment did not create a session ({(int)response.StatusCode}).");
         }
         return secret;
-    }
-
-    /// <summary>Posts a form as a browser does: with the antiforgery token from the page that renders it.</summary>
-    private static async Task<HttpResponseMessage> PostFormAsync(
-        HttpClient client, string path, Dictionary<string, string> fields, string? formPage = null)
-    {
-        fields["__RequestVerificationToken"] = FormTokenOf(await client.GetStringAsync(formPage ?? path), formPage ?? path);
-        return await client.PostAsync(path, new FormUrlEncodedContent(fields));
     }
 
     /// <summary>
@@ -415,9 +419,6 @@ public sealed partial class VaultFixture : IAsyncLifetime
 
     [GeneratedRegex("name=\"__RequestVerificationToken\" type=\"hidden\" value=\"([^\"]+)\"")]
     private static partial Regex AntiforgeryField();
-
-    [GeneratedRegex("<code class=\"secret-code\">([A-Z2-7=]+)</code>")]
-    private static partial Regex EnrollmentSecret();
 
 
 }

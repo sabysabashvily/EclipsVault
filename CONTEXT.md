@@ -22,6 +22,10 @@ _Avoid_: Token, login, JWT
 The proof that must pass, after the password, before a session exists: an authenticator code or a recovery code. A passkey is both factors at once.
 _Avoid_: 2FA code, OTP
 
+**Pending sign-in**:
+A sign-in whose first proof (a password, or an identity provider without its own second factor) has passed and whose second factor has not. It lives a few minutes, admits only the second-factor step, and never becomes a session if the account's credentials change meanwhile.
+_Avoid_: Half-signed-in, MFA session, partial session
+
 **Step-up**:
 A fresh second factor demanded on a session whose last strong sign-in is too old, before revealing or sharing a high-sensitivity secret, issuing a dynamic credential for such a role, or before an administrator grants lasting access.
 _Avoid_: Re-login, re-auth prompt, sudo mode
@@ -31,7 +35,7 @@ Fresh proof using an existing credential of the signed-in vault account, require
 _Avoid_: Step-up (when an account change is meant)
 
 **Credential generation**:
-The current revision of a vault account's sign-in credentials and access, which identifies the sessions and pending proofs that still belong to them. An administrator's change of the account's clearance, project or enabled state starts a new one.
+The current revision of a vault account's sign-in credentials and access, which identifies the sessions and pending proofs that still belong to them. An administrator's change of the account's clearance, project or enabled state starts a new one. Account activation starts a new one, and so does the migration that places a never-used account into awaiting activation.
 _Avoid_: Authentication time, session age
 
 **Session revocation version**:
@@ -49,6 +53,14 @@ _Avoid_: Disable MFA, turn off two-step sign-in
 **Break-glass recovery**:
 The one way a vault administrator signs back in from a blocked network: all factors at once, audited, lifting the block on their own range.
 _Avoid_: Emergency login, unblock
+
+**Invitation**:
+A single-use, expiring link sent to a new vault account's email, through which its person sets the account's first credentials.
+_Avoid_: Activation email, signup link
+
+**Account activation**:
+The invited person choosing the account's password and enrolling its authenticator in one step. Before it, the account cannot sign in by any route.
+_Avoid_: Onboarding, first sign-in
 
 **Service account**:
 A non-interactive identity for an application. It never has a session; it calls the vault with an API key.

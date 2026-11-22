@@ -292,13 +292,13 @@ public sealed class MailboxTests(MailboxFixture fixture)
         var owner = await ProfileAccount.CreateAsync(Vault, "it-mailbox-sso", "100.68.88.15");
         var operation = await VerifiedAsync(owner, "mailbox.sso@example.test");
         await RequestAsync(owner, operation);
-        Assert.Equal("/Account/Login", (await PostIdpAssertion.InvokeAsync(Vault, "mailbox.sso@example.test", "100.68.88.16")).Headers.Location?.OriginalString);
+        Assert.Equal("/Account/Login?sso=refused", (await PostIdpAssertion.InvokeAsync(Vault, "mailbox.sso@example.test", "100.68.88.16")).Headers.Location?.OriginalString);
         var code = await Vault.Mailbox!.CodeForAsync("mailbox.sso@example.test");
         Assert.Equal(HttpStatusCode.NoContent, (await ConfirmAsync(owner, operation, code)).StatusCode);
         var head = await AuditTrail.HeadAsync(Vault);
 
-        Assert.Equal("/Account/Login", (await PostIdpAssertion.InvokeAsync(Vault, owner.Stored.Email, "100.68.88.17")).Headers.Location?.OriginalString);
-        Assert.Equal("/Account/Totp", (await PostIdpAssertion.InvokeAsync(Vault, "MAILBOX.SSO@EXAMPLE.TEST", "100.68.88.18")).Headers.Location?.OriginalString);
+        Assert.Equal("/Account/Login?sso=refused", (await PostIdpAssertion.InvokeAsync(Vault, owner.Stored.Email, "100.68.88.17")).Headers.Location?.OriginalString);
+        Assert.Equal("/Account/Totp", await PostIdpAssertion.ContinuesToAsync(await PostIdpAssertion.InvokeAsync(Vault, "MAILBOX.SSO@EXAMPLE.TEST", "100.68.88.18")));
 
         Assert.Equal(owner.Id, Assert.Single(await AuditTrail.RowsAfterAsync(Vault, head), row => row.Action == AuditAction.SsoIdentityLinked).UserId);
     }
@@ -313,7 +313,7 @@ public sealed class MailboxTests(MailboxFixture fixture)
         await db.SaveChangesAsync();
         var browser = Vault.CreateSession(source: IPAddress.Parse("100.68.88.19"));
         var callback = await PostIdpAssertion.InvokeAsync(Vault, account.Email, browser, providerMfa: true);
-        Assert.Equal("/Dashboard", callback.Headers.Location?.OriginalString);
+        Assert.Equal("/Secrets", await PostIdpAssertion.ContinuesToAsync(callback));
         var page = await browser.Client.GetFromJsonAsync<JsonElement>("/api/ui/profile");
         Assert.False(page.GetProperty("changes").GetProperty("changeEmail").GetProperty("available").GetBoolean());
         Assert.Empty(page.GetProperty("verificationMethods").EnumerateArray());

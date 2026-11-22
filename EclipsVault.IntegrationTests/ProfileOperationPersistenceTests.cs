@@ -155,7 +155,7 @@ public abstract class ProfileOperationPersistenceTests(AccountChangeDatabases da
     {
         var account = await databases.CreateEnrolledAccountAsync("it-operations-last-key");
         await using var setup = databases.NewRequest();
-        var codes = (await setup.Recovery.GenerateAsync(account.Id, 0, default)).Codes;
+        var codes = (await setup.ReplaceRecoveryCodesAsync(account.Id, 0)).Codes;
         var key = new PasskeyCredential
         {
             Id = Guid.NewGuid(),

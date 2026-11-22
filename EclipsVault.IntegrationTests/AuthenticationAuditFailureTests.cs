@@ -2,7 +2,6 @@ using System.Net;
 using System.Text.Json;
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Authentication;
-using EclipsVault.Core.Application.Mfa;
 using EclipsVault.Core.Application.Passkeys;
 using EclipsVault.Core.Application.Sessions;
 using EclipsVault.Core.Application.StepUp;
@@ -84,12 +83,10 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
     public async Task A_refused_recovery_sign_in_preserves_the_unused_code_and_failures()
     {
         var vault = failure.Vault;
-        await vault.SignInNewAccountAsync("it-ledger-recovery", IPAddress.Parse("203.0.113.171"));
+        var owner = await vault.SignInNewAccountAsync("it-ledger-recovery", IPAddress.Parse("203.0.113.171"));
+        var codes = await ProfileApi.RecoverySetAsync(owner.ProfileOwner!);
         var account = await ProfileHttp.AccountAsync(vault, "it-ledger-recovery");
         using var request = vault.Services.CreateScope();
-        var recovery = await request.ServiceProvider.GetRequiredService<IMfaRecoveryService>()
-            .GenerateAsync(account.Id, account.CredentialGeneration, default);
-        var codes = recovery.Codes;
         await SetFailuresAsync("it-ledger-recovery", 2);
         var auth = request.ServiceProvider.GetRequiredService<IVaultAuthenticationService>();
         var stamp = await CurrentStampAsync(vault, account);
@@ -222,14 +219,14 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         await SetFailuresAsync("it-ledger-passkey", 2);
         using var request = vault.Services.CreateScope();
         var passkeys = request.ServiceProvider.GetRequiredService<IPasskeyService>();
-        var ceremony = await passkeys.BeginAssertionAsync(account.Username, default);
+        var ceremony = await passkeys.BeginAssertionAsync(default);
         var response = JsonSerializer.Serialize(authenticator.Assert(JsonSerializer.Deserialize<JsonElement>(ceremony.OptionsJson)));
         var before = await AuditTrail.HeadAsync(vault);
 
         await failure.RejectAuditWritesAsync();
         try
         {
-            await Assert.ThrowsAsync<AuditWriteFailedException>(() => passkeys.CompleteAssertionAsync(ceremony.Challenge, ceremony.NamedAccount, response, default));
+            await Assert.ThrowsAsync<AuditWriteFailedException>(() => passkeys.CompleteAssertionAsync(ceremony.Challenge, response, default));
         }
         finally
         {
@@ -253,14 +250,14 @@ public sealed class AuthenticationAuditFailureTests(AuditFailureFixture failure)
         await SetFailuresAsync(account.Username, 4);
         using var request = vault.Services.CreateScope();
         var passkeys = request.ServiceProvider.GetRequiredService<IPasskeyService>();
-        var ceremony = await passkeys.BeginAssertionAsync(account.Username, default);
+        var ceremony = await passkeys.BeginAssertionAsync(default);
         var response = JsonSerializer.Serialize(authenticator.AssertWithWrongSignature(JsonSerializer.Deserialize<JsonElement>(ceremony.OptionsJson)));
         var before = await AuditTrail.HeadAsync(vault);
 
         await failure.RejectAuditWritesAsync();
         try
         {
-            await Assert.ThrowsAsync<AuditWriteFailedException>(() => passkeys.CompleteAssertionAsync(ceremony.Challenge, ceremony.NamedAccount, response, default));
+            await Assert.ThrowsAsync<AuditWriteFailedException>(() => passkeys.CompleteAssertionAsync(ceremony.Challenge, response, default));
         }
         finally
         {

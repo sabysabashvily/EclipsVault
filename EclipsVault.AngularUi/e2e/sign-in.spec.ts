@@ -67,15 +67,16 @@ async function signIn(page: Page): Promise<void> {
   await expect(new SecretsList(page).heading).toBeVisible();
 }
 
-/** Spend empty credential requests until the limiter answers or twelve ordinary replies exhaust its budget. */
+/** Guess at a name with no account until the limiter answers or twelve refusals exhaust its budget. */
 async function exhaustCredentialBudget(page: Page, token: string): Promise<number> {
   let status = 0;
   for (let attempt = 0; attempt < 12; attempt++) {
-    const response = await page.request.post('/Account/Login', {
+    const response = await page.request.post('/api/ui/auth/password', {
       headers: { RequestVerificationToken: token },
+      data: { username: 'e2e-no-such-account', password: 'E2e-guess-password' },
     });
     status = response.status();
-    if (status !== 200) return status;
+    if (status !== 400) return status;
   }
   return status;
 }
@@ -130,7 +131,7 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
     await angular.locator('summary.user-card').click();
     const signOut = angular.waitForRequest(
       (request) =>
-        request.method() === 'POST' && new URL(request.url()).pathname === '/Account/Logout',
+        request.method() === 'POST' && new URL(request.url()).pathname === '/api/ui/auth/sign-out',
     );
     await angular.getByRole('menuitem', { name: 'Sign out', exact: true }).click();
     expect((await signOut).headers()['requestverificationtoken']).toBe(xsrf?.value);
@@ -1658,7 +1659,7 @@ test('a stale-session problem ends the real session through protected sign-out b
   const xsrf = (await context.cookies()).find((cookie) => cookie.name === 'XSRF-TOKEN');
   expect(xsrf).toBeDefined();
   // Exhaust the real credential budget deliberately, instead of depending on how many earlier
-  // sign-ins happen to land in this rate window. Empty models cannot lock out an account.
+  // sign-ins happen to land in this rate window. A name with no account cannot be locked out.
   // API requests generate no browser console errors; the shared browser-health guard stays strict.
   expect(await exhaustCredentialBudget(page, xsrf!.value)).toBe(429);
   // Integration tests exercise real protected cookies with missing claims. Here the transport
@@ -1677,12 +1678,12 @@ test('a stale-session problem ends the real session through protected sign-out b
   );
   const logout = page.waitForRequest(
     (request) =>
-      request.method() === 'POST' && new URL(request.url()).pathname === '/Account/Logout',
+      request.method() === 'POST' && new URL(request.url()).pathname === '/api/ui/auth/sign-out',
   );
   const logoutResponse = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&
-      new URL(response.url()).pathname === '/Account/Logout',
+      new URL(response.url()).pathname === '/api/ui/auth/sign-out',
   );
   await page.getByRole('link', { name: 'My access', exact: true }).click();
   const sent = await logout;
@@ -1698,7 +1699,7 @@ test('a stale-session problem ends the real session through protected sign-out b
   );
   expect(xsrfAtSignOut).not.toBe('');
   expect(sent.headers()['requestverificationtoken']).toBe(xsrfAtSignOut);
-  expect((await logoutResponse).status()).toBe(302);
+  expect((await logoutResponse).status()).toBe(204);
   await expect(page).toHaveURL(/\/Account\/Login$/);
   expect((await context.cookies()).some((cookie) => cookie.name === 'EclipsVault.Session')).toBe(
     false,
