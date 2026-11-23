@@ -303,6 +303,40 @@ public sealed class KekRotationBatchTests : IDisposable
     }
 
     [Fact]
+    public async Task A_Transit_batch_with_fifteen_source_versions_records_every_key_within_audit_limits()
+    {
+        const string keyName = "eclipsvault-production-master-key-for-the-payment-team";
+        const string current = $"vault:{keyName}:v16";
+        await using var db = NewContext();
+        await db.Database.EnsureCreatedAsync();
+        using var transit = new FakeVaultTransit(keyName);
+        var engine = transit.Engine();
+        for (var version = 1; version <= 15; version++)
+        {
+            await SecretsSealedByAsync(db, engine, count: 1);
+            transit.RotateKey();
+        }
+
+        var result = await Rotation(db, engine).RotateAsync(default);
+
+        Assert.Equal(new KekRotationResult(current, 15, 0, 0), result);
+        Assert.Equal((current, 15), await db.Secrets.GroupBy(row => row.KekId)
+            .Select(group => ValueTuple.Create(group.Key, group.Count())).SingleAsync());
+        var rotations = await db.AuditLogs.Where(row => row.Action == AuditAction.KekRotated).ToListAsync();
+        Assert.All(rotations, row =>
+        {
+            Assert.InRange(row.ResourceName?.Length ?? 0, 1, 128);
+            Assert.InRange(row.Details?.Length ?? 0, 1, 1024);
+            Assert.Equal(current, row.ResourceName);
+            Assert.True(row.IsCritical);
+        });
+        int[] sourceVersions = [1, 10, 11, 12, 13, 14, 15, 2, 3, 4, 5, 6, 7, 8, 9];
+        Assert.Equal(
+            sourceVersions.Select(version => $"Re-wrapped 1 secret(s) and 0 archived version(s) from KEK vault:{keyName}:v{version} to KEK {current}"),
+            rotations.Select(row => row.Details).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public async Task A_Transit_key_rotated_during_a_pass_is_recorded_as_where_rows_moved_and_none_count_as_missing()
     {
         await using var db = NewContext();
@@ -320,12 +354,18 @@ public sealed class KekRotationBatchTests : IDisposable
         Assert.Equal(
             [
                 (
+                    "vault:eclipsvault-production-master-key-for-the-payments-team:v2",
+                    "Re-wrapped 1 secret(s) and 0 archived version(s) from KEK vault:eclipsvault-production-master-key-for-the-payments-team:v1 "
+                    + "to KEK vault:eclipsvault-production-master-key-for-the-payments-team:v2"
+                ),
+                (
                     "vault:eclipsvault-production-master-key-for-the-payments-team:v3",
-                    "Re-wrapped 2 secret(s) and 0 archived version(s) from KEK vault:eclipsvault-production-master-key-for-the-payments-team:v1 "
-                    + "to KEK vault:eclipsvault-production-master-key-for-the-payments-team:v2, vault:eclipsvault-production-master-key-for-the-payments-team:v3"
+                    "Re-wrapped 1 secret(s) and 0 archived version(s) from KEK vault:eclipsvault-production-master-key-for-the-payments-team:v1 "
+                    + "to KEK vault:eclipsvault-production-master-key-for-the-payments-team:v3"
                 ),
             ],
-            await audit.AuditLogs.Where(row => row.Action == AuditAction.KekRotated).Select(row => ValueTuple.Create(row.ResourceName, row.Details)).ToListAsync());
+            await audit.AuditLogs.Where(row => row.Action == AuditAction.KekRotated).OrderBy(row => row.ResourceName)
+                .Select(row => ValueTuple.Create(row.ResourceName, row.Details)).ToListAsync());
     }
 
     [Fact]

@@ -6,6 +6,7 @@ using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Infrastructure.Persistence;
 using EclipsVault.Infrastructure.Security;
+using EclipsVault.Tests.Fakes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -48,6 +49,57 @@ public sealed class KekRotationTests(KekRotationFixture fixture)
             rotations.Select(row => row.Details));
         Assert.All(rotations, row => Assert.True(row.IsCritical));
         Assert.DoesNotContain(rows, row => row.Action == AuditAction.SecretUpdated && secretIds.Contains(row.ResourceId!.Value));
+    }
+
+    [Fact]
+    public async Task A_Transit_batch_with_fifteen_source_versions_commits_all_moves_and_audit_rows()
+    {
+        const string keyName = "eclipsvault-production-master-key-for-the-payment-team";
+        const string current = $"vault:{keyName}:v16";
+        using var transit = new FakeVaultTransit(keyName);
+        var engine = new EngineFactory(transit.Engine());
+        var secretIds = new List<Guid>();
+        try
+        {
+            using var scope = _vault.Services.CreateScope();
+            var secrets = ActivatorUtilities.CreateInstance<SecretService>(scope.ServiceProvider, engine);
+            for (var version = 1; version <= 15; version++)
+            {
+                secretIds.Add(await secrets.CreateAsync(new CreateSecretRequest(
+                    $"transit-version-{version}", "value", "ROTATION", SecretEnvironment.Development, SensitivityLevel.Internal, TtlDays: 0), default));
+                transit.RotateKey();
+            }
+            var before = await AuditTrail.HeadAsync(_vault);
+            var rotation = ActivatorUtilities.CreateInstance<KekRotationService>(scope.ServiceProvider, engine);
+
+            var result = await rotation.RotateAsync(default);
+
+            Assert.Equal((current, 15, 0), (result.CurrentKekId, result.SecretsRewrapped, result.VersionsRewrapped));
+            var storedKeys = await ReadAsync(db => db.Secrets.Where(row => secretIds.Contains(row.Id))
+                .Select(row => row.KekId).ToListAsync());
+            Assert.Equal(Enumerable.Repeat(current, 15), storedKeys);
+            var rotations = (await AuditTrail.RowsAfterAsync(_vault, before)).Where(row => row.Action == AuditAction.KekRotated).ToArray();
+            Assert.All(rotations, row =>
+            {
+                Assert.InRange(row.ResourceName?.Length ?? 0, 1, 128);
+                Assert.InRange(row.Details?.Length ?? 0, 1, 1024);
+                Assert.Equal(current, row.ResourceName);
+                Assert.True(row.IsCritical);
+            });
+            int[] sourceVersions = [1, 10, 11, 12, 13, 14, 15, 2, 3, 4, 5, 6, 7, 8, 9];
+            Assert.Equal(
+                sourceVersions.Select(version => $"Re-wrapped 1 secret(s) and 0 archived version(s) from KEK vault:{keyName}:v{version} to KEK {current}"),
+                rotations.Select(row => row.Details).Order(StringComparer.Ordinal));
+        }
+        finally
+        {
+            using var scope = _vault.Services.CreateScope();
+            var secrets = scope.ServiceProvider.GetRequiredService<ISecretService>();
+            foreach (var id in secretIds)
+            {
+                await secrets.DeleteAsync(id, default);
+            }
+        }
     }
 
     [Fact]
@@ -257,5 +309,10 @@ public sealed class KekRotationTests(KekRotationFixture fixture)
     {
         using var scope = _vault.Services.CreateScope();
         return await read(scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>());
+    }
+
+    private sealed class EngineFactory(ICryptoEngine engine) : ICryptoEngineFactory
+    {
+        public ICryptoEngine Create() => engine;
     }
 }

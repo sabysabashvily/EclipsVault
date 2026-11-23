@@ -14,8 +14,8 @@ namespace EclipsVault.Infrastructure.Security;
 /// <summary>
 /// Re-wraps the data keys of secrets and archived versions under the current master key, in batches
 /// (ADR-0029). Only the wrapped data key and master key id change: the payload is untouched, so a pass
-/// never decrypts a value, a decoy's included. Each batch commits with its own critical
-/// <c>KekRotated</c> row, so other audited actions wait for the audit chain one batch at a time.
+/// never decrypts a value, a decoy's included. Each batch commits with its critical
+/// <c>KekRotated</c> events, so other audited actions wait for the audit chain one batch at a time.
 /// </summary>
 public sealed class KekRotationService : IKekRotationService
 {
@@ -140,7 +140,7 @@ public sealed class KekRotationService : IKekRotationService
         Guid? after = null;
         while (true)
         {
-            // Checked only here, between batches: a batch either commits with its audit row or not at all.
+            // Checked only here, between batches, so the updates and their audit events commit together.
             ct.ThrowIfCancellationRequested();
 
             var batch = await pending
@@ -166,8 +166,6 @@ public sealed class KekRotationService : IKekRotationService
     /// are still what was read; a row changed, deleted or shredded since is left alone, and counts as
     /// not moved. A changed value is already sealed under the current master key with a new data key.
     /// A row whose re-wrap changes nothing, or whose data key does not open, is not written either.
-    /// The audit row's details name every master key the rows actually moved to, which under a key
-    /// service can be a version newer than the one the pass started with.
     /// </summary>
     private async Task CommitBatchAsync(
         IReadOnlyList<ReadEnvelope> batch, bool areSecrets, ICryptoEngine engine, Action<int> onCommitted)
@@ -217,19 +215,22 @@ public sealed class KekRotationService : IKekRotationService
             return;
         }
 
-        var secrets = areSecrets ? moved.Count : 0;
-        var versions = areSecrets ? 0 : moved.Count;
-        var retiredIds = string.Join(", ", moved.Select(row => row.Read.KekId).Distinct().Order(StringComparer.Ordinal));
-        var currentIds = string.Join(", ", moved.Select(row => row.Rewrapped.KekId).Distinct().Order(StringComparer.Ordinal));
-        await RecordAndCommitAsync(transaction, new AuditEntry
+        // A pair of stored envelope ids fits in one audit row even when a batch spans many keys.
+        var events = new List<AuditEntry>();
+        foreach (var (keys, count) in moved.CountBy(row => (From: row.Read.KekId, To: row.Rewrapped.KekId)))
         {
-            Action = AuditAction.KekRotated,
-            ResourceType = "Kek",
-            // The last row moved went to the newest key, and one id always fits the column.
-            ResourceName = moved[^1].Rewrapped.KekId,
-            Details = $"Re-wrapped {secrets} secret(s) and {versions} archived version(s) from KEK {retiredIds} to KEK {currentIds}",
-            IsCritical = true
-        });
+            var secrets = areSecrets ? count : 0;
+            var versions = areSecrets ? 0 : count;
+            events.Add(new AuditEntry
+            {
+                Action = AuditAction.KekRotated,
+                ResourceType = "Kek",
+                ResourceName = keys.To,
+                Details = $"Re-wrapped {secrets} secret(s) and {versions} archived version(s) from KEK {keys.From} to KEK {keys.To}",
+                IsCritical = true
+            });
+        }
+        await RecordAndCommitAsync(transaction, events);
         onCommitted(moved.Count);
 
         // Archived versions are never cached; only a secret's own envelope is.
@@ -271,16 +272,16 @@ public sealed class KekRotationService : IKekRotationService
         }
     }
 
-    private async Task RecordAndCommitAsync(IDbContextTransaction transaction, AuditEntry entry)
+    private async Task RecordAndCommitAsync(IDbContextTransaction transaction, IReadOnlyList<AuditEntry> events)
     {
         try
         {
-            await _audit.SaveOperationAsync(_db, [entry], CancellationToken.None);
+            await _audit.SaveOperationAsync(_db, events, CancellationToken.None);
             await transaction.CommitAsync(CancellationToken.None);
         }
         catch (Exception failure)
         {
-            throw new AuditWriteFailedException("The rotation batch could not be stored with its audit row, so the pass stopped.", failure);
+            throw new AuditWriteFailedException("The rotation batch could not be stored with its audit events, so the pass stopped.", failure);
         }
     }
 

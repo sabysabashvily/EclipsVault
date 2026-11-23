@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\EclipsVault.Web\EclipsVault.Web.csproj" />
+    <Compile Include="..\EclipsVault.Tests\Fakes\FakeVaultTransit.cs" Link="Fakes\FakeVaultTransit.cs" />
   </ItemGroup>
 
 </Project>

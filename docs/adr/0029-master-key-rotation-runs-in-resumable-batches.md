@@ -11,10 +11,11 @@ each re-wrapped secret was recorded as an edit.
 
 ## Decisions
 
-- **Batches of 500 rows, each committed with its audit row.** One critical `KekRotated` row per batch,
-  in the batch's transaction, names the old and new master key ids and counts secrets and versions.
-  A change that only re-wraps a data key writes no per-secret `SecretUpdated` row. If the row cannot
-  be written, that batch rolls back and the pass stops with `503 audit_unavailable`; earlier batches
+- **Batches of 500 rows, each committed with its audit events.** Each distinct source and destination
+  master key pair gets one critical `KekRotated` row with its counts. Keeping one pair per audit row
+  preserves every key id and fits the audit columns even when the batch spans many keys. A change
+  that only re-wraps a data key writes no per-secret `SecretUpdated` row. If any audit row fails to
+  write, the whole batch rolls back and the pass stops with `503 audit_unavailable`. Earlier batches
   stay committed. A pass that stops for any other reason after a batch committed, such as a database
   or key service failure, answers `500 rotation_interrupted` with the same counts.
 - **A changed row is never overwritten.** A row is re-wrapped only if its wrapped data key and master
@@ -57,9 +58,8 @@ each re-wrapped secret was recorded as an edit.
   other answer, a 400 about the key such as "encryption key not found", a 403, a 429, a 5xx or an
   unreachable Vault, stops the pass and never reports it finished. The engine reads the Transit key,
   so its token needs `read` on the key's path.
-- A key service can move to a newer key version during a pass. Each `KekRotated` row names the key
-  versions its rows actually moved to, and the pass reads the key again before counting rows on
-  missing keys.
+- A key service can move to a newer key version during a pass. The audit records the actual
+  destination of each move, and the pass reads the key again before counting rows on missing keys.
 
 ## Considered Options
 
@@ -67,5 +67,5 @@ each re-wrapped secret was recorded as an edit.
   for as long as the pass runs, and fails closed on all of them.
 - **Refuse the whole pass while any master key is missing.** Rejected: if that key is truly lost, no
   other secret could ever leave the retired key.
-- **One audit row per re-wrapped secret.** Rejected: a re-wrap changes no secret, and thousands of
-  rows would bury the one event an auditor needs.
+- **One audit row per re-wrapped secret.** Rejected because a re-wrap changes no secret and the
+  counts per key pair are enough for the audit trail.
