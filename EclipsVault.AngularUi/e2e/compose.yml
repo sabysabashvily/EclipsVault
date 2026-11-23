@@ -46,6 +46,7 @@ services:
       AllowedHosts: localhost
       ForwardedHeaders__KnownProxies__0: ${E2E_PROXY_IP:?Set by run.mjs}
       ConnectionStrings__DefaultConnection: Server=sql;Database=EclipsVault;User Id=sa;Password=${E2E_SQL_PASSWORD};Encrypt=True;TrustServerCertificate=True
+      Database__Provider: SqlServer
       # Dynamic credentials are minted in a database of their own, which the spec that needs it creates.
       DynamicSecrets__TargetConnectionString: Server=sql;Database=DynamicTarget;User Id=sa;Password=${E2E_SQL_PASSWORD};Encrypt=True;TrustServerCertificate=True
       Database__MigrateOnStartup: 'true'
