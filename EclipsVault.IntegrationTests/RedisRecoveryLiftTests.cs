@@ -1,4 +1,5 @@
 using System.Net;
+using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Infrastructure.Distributed;
 using EclipsVault.Infrastructure.Security;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -137,6 +138,66 @@ public sealed class RedisRecoveryLiftTests(RedisSessionFixture fixture) : IClass
         Assert.NotNull(await replicas.First.ClaimStuckGuardAsync("198.51.100.120/32"));
 
         Assert.Null(await replicas.Second.ClaimStuckGuardAsync("198.51.100.120/32"));
+    }
+
+    [Fact]
+    public async Task Two_replicas_claiming_the_same_range_cannot_split_its_stuck_guards()
+    {
+        await using var replicas = await Replicas.ConnectAsync(fixture, "stuck-race");
+        await (await replicas.First.LiftForRecoveryAsync(Source)).MarkStuckAsync();
+        await (await replicas.Second.LiftForRecoveryAsync(Source)).MarkStuckAsync();
+
+        var claims = await Task.WhenAll(replicas.First.ClaimStuckGuardAsync("198.51.100.120/32"),
+            replicas.Second.ClaimStuckGuardAsync("198.51.100.120/32"));
+
+        await Assert.Single(claims.OfType<IClaimedGuard>()).ReleaseAsync();
+        Assert.False(await replicas.Second.IsBlockedAsync(Source));
+    }
+
+    [Fact]
+    public async Task A_stale_mark_after_a_guard_was_removed_cannot_be_listed_or_claimed()
+    {
+        const string range = "198.51.100.120/32";
+        await using var replicas = await Replicas.ConnectAsync(fixture, "stuck-stale");
+        await (await replicas.First.LiftForRecoveryAsync(Source)).MarkStuckAsync();
+        var members = await fixture.Database.SetMembersAsync("stuck-stale:ipstuck:198.51.100.120/32");
+        var claim = await replicas.First.ClaimStuckGuardAsync(range);
+        await claim!.ReleaseAsync();
+        await replicas.Second.LiftForRecoveryAsync(Source);
+        // An older replica could restore the mark if Redis applied the release but lost its reply.
+        await fixture.Database.SetAddAsync("stuck-stale:ipstuck:198.51.100.120/32", members);
+
+        Assert.DoesNotContain(range, await replicas.Second.ListStuckGuardsAsync());
+        Assert.Null(await replicas.Second.ClaimStuckGuardAsync(range));
+    }
+
+    [Fact]
+    public async Task Marking_a_settled_lift_stuck_does_not_create_a_redis_mark()
+    {
+        await using var replicas = await Replicas.ConnectAsync(fixture, "stuck-settled");
+        var lift = await replicas.First.LiftForRecoveryAsync(Source);
+        await lift.ReleaseAsync();
+        await replicas.Second.LiftForRecoveryAsync(Source);
+
+        await lift.MarkStuckAsync();
+
+        Assert.False(await fixture.Database.KeyExistsAsync("stuck-settled:ipstuck:198.51.100.120/32"));
+    }
+
+    [Fact]
+    public async Task A_guard_whose_audited_removal_cannot_run_still_refuses_on_another_replica()
+    {
+        const string range = "198.51.100.120/32";
+        await using var replicas = await Replicas.ConnectAsync(fixture, "stuck-release-offline");
+        await (await replicas.First.LiftForRecoveryAsync(Source)).MarkStuckAsync();
+        var claim = await replicas.First.ClaimStuckGuardAsync(range);
+        Assert.NotNull(claim);
+
+        await replicas.CloseFirstAsync();
+        Assert.NotNull(await Record.ExceptionAsync(claim.ReleaseAsync));
+
+        Assert.True(await replicas.Second.IsBlockedAsync(Source));
+        Assert.Null(await replicas.Second.ClaimStuckGuardAsync(range));
     }
 
     [Fact]

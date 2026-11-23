@@ -405,7 +405,7 @@ describe('Networks', () => {
     button(page, 'Release guard').click();
     await fixture.whenStable();
     expect(page.querySelector('[role="alertdialog"]')?.textContent).toContain(
-      'Release the break-glass guard on 198.51.100.7/32? Addresses it refuses are let in again unless a block still covers them.',
+      'Release the stuck break-glass guard on 198.51.100.7/32? A block or an ongoing recovery may still keep this range refused.',
     );
     button(page, 'Continue').click();
     stepUpRequired(`${path}/blocks/release-guard`);

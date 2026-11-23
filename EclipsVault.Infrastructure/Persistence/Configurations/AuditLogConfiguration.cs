@@ -15,7 +15,7 @@ public sealed class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
         builder.Property(a => a.SourceIp).HasMaxLength(64).IsRequired();
         builder.Property(a => a.Action).HasConversion<int>();
         builder.Property(a => a.ResourceType).HasMaxLength(64).IsRequired();
-        builder.Property(a => a.ResourceName).HasMaxLength(128);
+        builder.Property(a => a.ResourceName).HasMaxLength(AuditLog.ResourceNameMaxLength);
         builder.Property(a => a.Details).HasMaxLength(1024);
         builder.Property(a => a.PreviousHash).HasMaxLength(64);
         builder.Property(a => a.EntryHash).HasMaxLength(64);

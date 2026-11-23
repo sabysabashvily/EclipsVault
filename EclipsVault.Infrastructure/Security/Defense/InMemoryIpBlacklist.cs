@@ -130,6 +130,7 @@ public sealed class InMemoryIpBlacklist : IIpBlacklist
                 foreach (var guard in claimed)
                 {
                     owner._guards.TryRemove(guard, out _);
+                    owner._stuck.Remove(guard);
                 }
             }
 
@@ -141,7 +142,7 @@ public sealed class InMemoryIpBlacklist : IIpBlacklist
         {
             lock (owner._gate)
             {
-                owner._stuck.UnionWith(claimed);
+                owner._stuck.UnionWith(claimed.Where(owner._guards.ContainsKey));
             }
 
             return Task.CompletedTask;
@@ -240,6 +241,7 @@ public sealed class InMemoryIpBlacklist : IIpBlacklist
             foreach (var guard in owner._guards.Keys.Where(guard => guard.Lift == lift))
             {
                 owner._guards.TryRemove(guard, out _);
+                owner._stuck.Remove(guard);
             }
         }
     }

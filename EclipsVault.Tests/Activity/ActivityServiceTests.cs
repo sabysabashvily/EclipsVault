@@ -162,4 +162,15 @@ public class ActivityServiceTests
         Assert.Equal("Was refused access to a secret", item.Title);
         Assert.Null(item.ResourceName);
     }
+
+    [Theory]
+    [InlineData(AuditAction.IpRangeUnblocked, "Intrusion-defence block lifted by break-glass recovery: 198.51.100.9/32, private text")]
+    [InlineData(AuditAction.TrustedNetworkAdded, "Intrusion-defence block lifted by break-glass recovery: 198.51.100.9/32")]
+    public async Task My_activity_keeps_the_resource_name_when_details_are_not_a_break_glass_range_list(AuditAction action, string details)
+    {
+        var row = Row(action, resource: "Office network") with { ResourceType = "TrustedNetwork", Details = details };
+        var feed = await new ActivityService(new FakeReader([row])).GetForUserAsync(User, 1, 25, CancellationToken.None);
+
+        Assert.Equal("Office network", Assert.Single(feed.Items).ResourceName);
+    }
 }

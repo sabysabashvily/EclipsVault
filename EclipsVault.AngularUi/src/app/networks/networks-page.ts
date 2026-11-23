@@ -104,7 +104,7 @@ export class NetworksPage {
     this.opener = opener;
     this.pendingConfirmation = { kind: 'release', range };
     this.confirmation().open(
-      `Release the break-glass guard on ${range}? Addresses it refuses are let in again unless a block still covers them.`,
+      `Release the stuck break-glass guard on ${range}? A block or an ongoing recovery may still keep this range refused.`,
     );
   }
 

@@ -115,40 +115,51 @@ public sealed class RedisIpBlacklist : IIpBlacklist
         }
     }
 
-    public Task<IReadOnlyList<string>> ListStuckGuardsAsync(CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<string>>(ScanKeys($"{_prefix}:ipstuck:*")
-            .Select(key => ((string)key!)[$"{_prefix}:ipstuck:".Length..])
-            .Order(StringComparer.Ordinal)
-            .ToList());
+    public async Task<IReadOnlyList<string>> ListStuckGuardsAsync(CancellationToken ct = default)
+    {
+        var db = _redis.GetDatabase();
+        var prefix = $"{_prefix}:ipstuck:";
+        var ranges = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var key in ScanKeys($"{prefix}*"))
+        {
+            var network = ((string)key!)[prefix.Length..];
+            var stuck = await db.SetCombineAsync(SetOperation.Intersect, key, GuardKey(network));
+            if (stuck.Length > 0)
+            {
+                ranges.Add(network);
+            }
+        }
+
+        return ranges.Order(StringComparer.Ordinal).ToList();
+    }
+
+    // Claim every eligible member at once so two administrators cannot split the range.
+    private const string ClaimStuckMembers = """
+        local claimed = redis.call('SINTER', KEYS[1], KEYS[2])
+        redis.call('DEL', KEYS[1])
+        return claimed
+        """;
 
     public async Task<IClaimedGuard?> ClaimStuckGuardAsync(string network, CancellationToken ct = default)
     {
         var canonical = network.Trim();
         var db = _redis.GetDatabase();
-        var claimed = new List<RedisValue>();
-        var claim = new ClaimedGuard(this, db, canonical, claimed);
         try
         {
-            // Each removal is atomic and says whether this release won that lift, so two releases never
-            // claim the same one. The guard itself stays: claiming refuses nothing less.
-            foreach (var lift in await db.SetMembersAsync(StuckKey(canonical)))
-            {
-                if (await db.SetRemoveAsync(StuckKey(canonical), lift))
-                {
-                    claimed.Add(lift);
-                }
-            }
+            var result = await db.ScriptEvaluateAsync(ClaimStuckMembers, [StuckKey(canonical), GuardKey(canonical)]);
+            var claimed = (RedisValue[]?)result ?? [];
+            return claimed.Length == 0 ? null : new ClaimedGuard(this, db, canonical, claimed);
         }
-        catch (Exception)
+        catch (Exception failure)
         {
-            await claim.AbandonAsync();
+            _logger.LogCritical(
+                "Could not confirm the break-glass guard claim on {Network} ({Failure}); inspect Redis sets {Guard} and {Stuck}",
+                canonical, failure.GetType().Name, GuardKey(canonical).ToString(), StuckKey(canonical).ToString());
             throw;
         }
-
-        return claimed.Count == 0 ? null : claim;
     }
 
-    private sealed class ClaimedGuard(RedisIpBlacklist owner, IDatabase database, string network, List<RedisValue> lifts) : IClaimedGuard
+    private sealed class ClaimedGuard(RedisIpBlacklist owner, IDatabase database, string network, RedisValue[] lifts) : IClaimedGuard
     {
         public string Network => network;
 
@@ -157,11 +168,14 @@ public sealed class RedisIpBlacklist : IIpBlacklist
             try
             {
                 // One SREM, so the release is never left halfway; it removes the claimed lifts only.
-                await database.SetRemoveAsync(owner.GuardKey(network), lifts.ToArray());
+                await database.SetRemoveAsync(owner.GuardKey(network), lifts);
             }
-            catch (Exception)
+            catch (Exception failure)
             {
-                await AbandonAsync();
+                // The audit row has committed. Republishing these members could authorize a second release.
+                owner._logger.LogCritical(
+                    "Could not confirm removal of the audited break-glass guard on {Network} ({Failure}); inspect members {Lifts} in Redis sets {Guard} and {Stuck}",
+                    network, failure.GetType().Name, string.Join(", ", lifts), owner.GuardKey(network).ToString(), owner.StuckKey(network).ToString());
                 throw;
             }
 
@@ -170,20 +184,15 @@ public sealed class RedisIpBlacklist : IIpBlacklist
 
         public async Task AbandonAsync()
         {
-            if (lifts.Count == 0)
-            {
-                return;
-            }
-
             try
             {
-                await database.SetAddAsync(owner.StuckKey(network), lifts.ToArray());
+                await owner.MarkGuardMembersStuckAsync(database, network, lifts);
             }
             catch (Exception failure)
             {
                 owner._logger.LogCritical(
-                    "Could not list the stuck break-glass guard on {Network} again ({Failure}); it still refuses, held by members {Lifts} of {Guard}",
-                    network, failure.GetType().Name, string.Join(", ", lifts), (string)owner.GuardKey(network)!);
+                    "Could not restore the stuck break-glass mark on {Network} ({Failure}); the guard still refuses. Inspect members {Lifts} in Redis sets {Guard} and {Stuck}",
+                    network, failure.GetType().Name, string.Join(", ", lifts), owner.GuardKey(network).ToString(), owner.StuckKey(network).ToString());
             }
         }
     }
@@ -278,7 +287,7 @@ public sealed class RedisIpBlacklist : IIpBlacklist
             {
                 foreach (var network in guarded)
                 {
-                    await database.SetAddAsync(owner.StuckKey(network), lift);
+                    await owner.MarkGuardMembersStuckAsync(database, network, [lift]);
                 }
             }
             catch (Exception failure)
@@ -318,6 +327,19 @@ public sealed class RedisIpBlacklist : IIpBlacklist
 
     // Which guards' lifts are stuck. Marking or claiming one never touches the guard, so it refuses throughout.
     private RedisKey StuckKey(string network) => $"{_prefix}:ipstuck:{network}";
+
+    // A lift may have failed to install a guard, or removed it before Redis lost the reply.
+    private const string MarkPresentMembersStuck = """
+        for _, member in ipairs(ARGV) do
+            if redis.call('SISMEMBER', KEYS[2], member) == 1 then
+                redis.call('SADD', KEYS[1], member)
+            end
+        end
+        return 1
+        """;
+
+    private Task MarkGuardMembersStuckAsync(IDatabase db, string network, RedisValue[] lifts)
+        => db.ScriptEvaluateAsync(MarkPresentMembersStuck, [StuckKey(network), GuardKey(network)], lifts);
 
     /// <summary>Enumerates matching keys across the connected primary endpoints (admin-only, infrequent).</summary>
     private IEnumerable<RedisKey> ScanKeys(string pattern)

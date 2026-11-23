@@ -451,6 +451,39 @@ public sealed class AuthApiTests(VaultFixture vault)
     }
 
     [Fact]
+    public async Task Recovery_shows_all_lifted_ranges_in_my_activity_when_their_names_exceed_the_audit_column()
+    {
+        const string username = "it-auth-page-recover-many-ranges";
+        const string ranges = "2001:db8:205::7%1/128, 2001:db8:205::7%2/128, 2001:db8:205::7%3/128, 2001:db8:205::7%4/128, "
+            + "2001:db8:205::7%5/128, 2001:db8:205::7%6/128, 2001:db8:205::7%7/128, 2001:db8:205::7%8/128";
+        var source = IPAddress.Parse("2001:db8:205::7");
+        await vault.SignInNewAccountAsync(username, IPAddress.Parse("100.74.174.62"), ClearanceLevel.TopSecret, password: Password);
+        var account = await ProfileHttp.AccountAsync(vault, username);
+        var blacklist = vault.Services.GetRequiredService<IIpBlacklist>();
+        // A host CIDR retains its IPv6 scope id, but containment tests the address bits.
+        foreach (var scope in Enumerable.Range(1, 8))
+        {
+            await blacklist.BlockAsync($"2001:db8:205::7%{scope}", "overlapping host block");
+        }
+
+        var browser = vault.CreateSession(source: source);
+        var token = await AuthApi.AnonymousTokenAsync(browser, "/Account/Recover");
+        var before = await AuditTrail.HeadAsync(vault);
+
+        var response = await AuthApi.PostAsync(browser, "/api/ui/auth/recover", token,
+            new { username, password = Password, code = Totp.NextCode(account.TotpSecret!) });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True((await AuthApi.JsonAsync(response)).GetProperty("blockLifted").GetBoolean());
+        var row = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before),
+            entry => entry.UserId == account.Id && entry.Action == AuditAction.IpRangeUnblocked);
+        Assert.InRange(row.ResourceName!.Length, 1, 128);
+        Assert.Equal($"Intrusion-defence block lifted by break-glass recovery: {ranges}", row.Details);
+        var myActivity = await browser.Client.GetFromJsonAsync<ActivityResponse>("/api/ui/activity");
+        Assert.Equal(ranges, Assert.Single(myActivity!.Items, item => item.Title == "Unblocked an IP range").ResourceName);
+    }
+
+    [Fact]
     public async Task Local_sign_out_from_a_blocked_network_clears_only_this_browsers_cookie()
     {
         var source = IPAddress.Parse("100.74.174.33");

@@ -43,7 +43,7 @@ public sealed class BreakGlassSignIn(SessionIssuer issuer, IIpBlacklist blacklis
 
         try
         {
-            await audit.WriteAsync(Lift(user, lift.Removed), CancellationToken.None);
+            await audit.WriteAsync(BreakGlassLiftAudit.Create(user, lift.Removed), CancellationToken.None);
         }
         catch (AuditWriteFailedException)
         {
@@ -113,19 +113,4 @@ public sealed class BreakGlassSignIn(SessionIssuer issuer, IIpBlacklist blacklis
         ActorUsername = user.Username,
         Details = $"Break-glass recovery from {source}; lifting any intrusion block on it"
     };
-
-    // The ranges are the row's resource, as for an administrator's lift, so My Activity shows them too.
-    private static AuditEntry Lift(UserDto user, IReadOnlyList<string> removed)
-    {
-        var ranges = string.Join(", ", removed.Order(StringComparer.Ordinal));
-        return new AuditEntry
-        {
-            Action = AuditAction.IpRangeUnblocked,
-            ResourceType = "TrustedNetwork",
-            ResourceName = ranges,
-            ActorUserId = user.Id,
-            ActorUsername = user.Username,
-            Details = $"Intrusion-defence block lifted by break-glass recovery: {ranges}"
-        };
-    }
 }

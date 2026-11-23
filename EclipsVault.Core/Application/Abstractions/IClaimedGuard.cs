@@ -12,6 +12,6 @@ public interface IClaimedGuard
     /// <summary>The release's row committed: removes the claimed guards, and only those.</summary>
     Task ReleaseAsync();
 
-    /// <summary>The release's row was refused: the guards stay stuck and listed. Never throws.</summary>
+    /// <summary>The release's row was refused: the guards stay in force and the store attempts to list them again. Never throws.</summary>
     Task AbandonAsync();
 }
