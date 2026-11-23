@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { signInNewAccount } from './account-activation';
 import { AccountCreation, emailOf } from './account-creation';
 import { AccountSignIn } from './account-sign-in';
@@ -37,15 +38,27 @@ interface SsoAccounts {
 }
 
 // Single sign-on refuses an account awaiting activation, and both identity provider users map to
-// one vault account each by address. Provisioned once per worker, by whichever case needs it first.
-let provisioned: Promise<SsoAccounts> | undefined;
+// one vault account each by address. Provisioned once per run, by whichever case needs it first.
+// Playwright replaces the worker after a failure, so the accounts are kept on disk for its successor.
+const savedAccountsFile = `${process.env['E2E_TEST_RESULTS'] || 'test-results'}/sso-accounts.json`;
 
 const test = base.extend<{ ssoAccounts: SsoAccounts }>({
   ssoAccounts: async ({ browserHealth }, use) => {
-    provisioned ??= provisionSsoAccounts(browserHealth);
-    await use(await provisioned);
+    await use(savedSsoAccounts() ?? (await provisionSsoAccounts(browserHealth)));
   },
 });
+
+/** The accounts this run's stack already provisioned, or undefined before the first provisioning. */
+function savedSsoAccounts(): SsoAccounts | undefined {
+  let saved: { stack: string; accounts: SsoAccounts };
+  try {
+    saved = JSON.parse(readFileSync(savedAccountsFile, 'utf8')) as typeof saved;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
+  }
+  return saved.stack === process.env['E2E_COMPOSE_PROJECT'] ? saved.accounts : undefined;
+}
 
 async function provisionSsoAccounts(browserHealth: BrowserHealth): Promise<SsoAccounts> {
   const administrator = await (await browserHealth.newContext()).newPage();
@@ -78,7 +91,13 @@ async function provisionSsoAccounts(browserHealth: BrowserHealth): Promise<SsoAc
     passwordUsername,
     password,
   );
-  return { password, ...enrolled };
+  const accounts = { password, ...enrolled };
+  // A later run reuses this results folder with a new stack, which never has these accounts.
+  writeFileSync(
+    savedAccountsFile,
+    JSON.stringify({ stack: process.env['E2E_COMPOSE_PROJECT'], accounts }),
+  );
+  return accounts;
 }
 
 test('a user whose identity provider completed MFA lands on Secrets', async ({

@@ -448,3 +448,20 @@ high-severity audit. Evidence: `logs/ticket-182/round2/`.
 
 Restart: the coordinator pushes to PR #204, runs CI (both databases, full browser suite,
 `e2e:verify-guards`), a fresh GPT Sol 6.2 xhigh PR review and a fresh Opus 5.5 high security delta review.
+
+## Delivery: 8b ticket 4 round 3 (#182)
+
+GPT Sol 6.2 accepted round 2 except S1 and P1 (open in part) and an SSO fixture nit. The Opus delta
+security review approved round 2. Round 3:
+
+- P1: the upgrade tests issue a real protected pending cookie and a real SSO decision at the current
+  schema, roll the schema back to the previous release, run the upgrade, and prove the same cookie and
+  decision are refused on both databases.
+- S1: `SignInNewAccountAsync` chooses steps by the vault's clock and recorded spent step, waiting only on
+  the vault's clock. Browser TOTP helpers choose codes from the vault's `Date` header and never wait on
+  host step boundaries.
+- The SSO browser fixture reuses its accounts after a worker restart.
+
+Checks: `scripts/check.sh`, the integration filter at 316/316, `dotnet format`, the agent guardrail tests
+and every Angular gate. Browser specs run in CI only. Details are in `logs/ticket-182/review-ledger.md`,
+"Round 3".

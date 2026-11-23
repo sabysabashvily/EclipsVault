@@ -1,7 +1,6 @@
 import type { Page, Route } from '@playwright/test';
-import { setTimeout } from 'node:timers/promises';
 import { clearSignInBudget, readProfileTotpStep } from './profile-state';
-import { currentTotpStep, freshTotp, totp } from './totp';
+import { currentTotpStep, freshTotp } from './totp';
 
 /** The production Profile cards and the account-verification dialog they share. */
 export class ProfilePage {
@@ -167,25 +166,9 @@ export class ProfilePage {
   }
 }
 
-/**
- * A code for the profile account. The spent step is the one the server recorded, so a late request
- * that the server matched in the next step is not offered again. One wait, matching the original
- * authenticator helper: a second wait would walk a deliberate resend out of the mailbox minute.
- * Only a step the vault accepted ahead of this host's clock, as a new account's sign-in can, needs two.
- */
+/** A code for the profile account, newer than the step this run's database recorded for it. */
 export async function freshProfileTotp(secret: string): Promise<string> {
-  const started = Date.now();
-  // Only the step the server recorded. A client step ahead of it is the clock rolling after the
-  // code was made, and waiting that out pushes a deliberate resend past the mailbox minute.
-  const spent = readProfileTotpStep();
-  // The read is the round trip this code still has to survive. Keep it inside one step.
-  const margin = Math.min(10_000, Math.max(5_000, Date.now() - started + 1_000));
-  for (;;) {
-    const now = Date.now();
-    const remaining = 30_000 - (now % 30_000);
-    if (Math.floor(now / 30_000) > spent && remaining >= margin) return totp(secret);
-    await setTimeout(remaining + 100);
-  }
+  return freshTotp(secret, readProfileTotpStep());
 }
 
 /** The separate Change password page that Profile links to. */

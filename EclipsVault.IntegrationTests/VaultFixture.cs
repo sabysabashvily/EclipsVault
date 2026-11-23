@@ -288,22 +288,37 @@ public sealed partial class VaultFixture : IAsyncLifetime
         var created = await UserAccounts.CreateAsync(await AdminClientAsync(), username, clearance: clearance, project: project);
         created.EnsureSuccessStatusCode();
 
-        // A code about to expire may reach the vault in the next step, so wait for a fresh one.
-        if (Totp.SecondsLeftInStep() < 5)
-        {
-            await Task.Delay(TimeSpan.FromSeconds(Totp.SecondsLeftInStep() + 1));
-        }
-
-        // Activation spends the previous step, so the sign-in below spends the current one, as an enrollment
-        // at first sign-in did: a test's next code is then the next step's.
-        var step = Totp.CurrentStep();
+        // Activation spends the step before the vault's current one and the sign-in the current one, as an
+        // enrollment at first sign-in did, so a test's next code is the next step's. Both are chosen by the
+        // vault's clock and its record of the spent step.
+        var vaultClock = Services.GetRequiredService<TimeProvider>();
+        var step = await VaultStepWithTimeLeftAsync(vaultClock);
         var activationSource = NextActivationSource();
         var secret = await ActivateFromAsync(UserAccounts.EmailOf(username), password, step - 1, activationSource);
+        var activated = await ProfileHttp.AccountAsync(this, username);
         var session = CreateSession(source: source);
-        await SignInWithAuthenticatorAsync(session.Client, username, password, Totp.Code(secret, Totp.StepStillAccepted(DateTimeOffset.UtcNow, step - 1)));
+        await SignInWithAuthenticatorAsync(session.Client, username, password,
+            Totp.Code(secret, Totp.StepStillAccepted(vaultClock.GetUtcNow(), activated.LastTotpStep)));
         session.ProfileOwner = new ProfileAccount(session, await ProfileHttp.AccountAsync(this, username), password);
         session.ActivationSource = activationSource;
         return session;
+    }
+
+    /// <summary>
+    /// The vault's current step. Three codes fit one step (the one before, this one and the next), and the vault
+    /// accepts the one before only until this step ends, so a step about to end is waited out on the vault's clock.
+    /// </summary>
+    private static async Task<long> VaultStepWithTimeLeftAsync(TimeProvider vaultClock)
+    {
+        var now = vaultClock.GetUtcNow();
+        var left = TimeSpan.FromSeconds(30) - TimeSpan.FromMilliseconds(now.ToUnixTimeMilliseconds() % 30_000);
+        if (left < TimeSpan.FromSeconds(5))
+        {
+            await Task.Delay(left + TimeSpan.FromMilliseconds(100), vaultClock);
+            now = vaultClock.GetUtcNow();
+        }
+
+        return Totp.StepAt(now);
     }
 
     /// <summary>
