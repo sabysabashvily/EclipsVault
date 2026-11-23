@@ -75,14 +75,16 @@
           <tbody>
             @for (email of filtered(); track $index) {
               <tr>
-                <td class="muted">{{ email.sentAtUtc | date: 'yyyy-MM-dd HH:mm' : 'UTC' }}</td>
-                <td class="mono">{{ email.to }}</td>
-                <td class="cell-strong" [title]="email.body">{{ email.subject }}</td>
-                <td>
+                <td class="muted cell-nowrap">
+                  {{ email.sentAtUtc | date: 'yyyy-MM-dd HH:mm' : 'UTC' }}
+                </td>
+                <td class="mono cell-nowrap">{{ email.to }}</td>
+                <td class="cell-strong cell-wrap" [title]="email.body">{{ email.subject }}</td>
+                <td class="cell-nowrap">
                   <span class="badge tone-muted">{{ email.eventType }}</span>
                 </td>
-                <td class="muted">{{ email.transport }}</td>
-                <td>
+                <td class="muted cell-nowrap">{{ email.transport }}</td>
+                <td class="cell-nowrap">
                   <span [class]="'badge tone-' + badges[email.status].tone">{{
                     badges[email.status].label
                   }}</span>

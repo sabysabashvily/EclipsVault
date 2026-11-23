@@ -72,6 +72,16 @@ export class DynamicSecretsPage {
     });
   }
 
+  protected stepTtl(input: HTMLInputElement, role: Role, delta: -1 | 1): void {
+    const raw = input.value.trim();
+    const fallback = Number(role.defaultTtlMinutes);
+    const parsed = raw === '' ? fallback : Number(raw);
+    const base = Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
+    const max = Math.max(1, Number(role.maxTtlMinutes));
+    const next = Math.min(max, Math.max(1, base + delta));
+    input.value = String(next);
+  }
+
   protected askIssue(event: Event, role: Role, minutes: string, opener: HTMLButtonElement): void {
     event.preventDefault();
     if (this.writesClosed()) return;

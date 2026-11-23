@@ -128,10 +128,12 @@
           <tbody>
             @for (network of networks.value().trustedNetworks; track network.networkId) {
               <tr>
-                <td class="mono cell-strong">{{ network.range }}</td>
-                <td>{{ network.label }}</td>
-                <td class="muted">{{ network.addedBy }}</td>
-                <td class="muted">{{ network.addedAtUtc | date: 'yyyy-MM-dd HH:mm' : 'UTC' }}</td>
+                <td class="mono cell-strong cell-nowrap">{{ network.range }}</td>
+                <td class="cell-wrap">{{ network.label }}</td>
+                <td class="muted cell-nowrap">{{ network.addedBy }}</td>
+                <td class="muted cell-nowrap">
+                  {{ network.addedAtUtc | date: 'yyyy-MM-dd HH:mm' : 'UTC' }}
+                </td>
                 <td class="cell-actions">
                   <button
                     type="button"

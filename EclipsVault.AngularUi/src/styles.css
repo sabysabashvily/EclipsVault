@@ -98,7 +98,7 @@
   --ink-button-hover: #e4e4e6;
   --nav-active-bg: #ffffff;
   --nav-active-text: #0b0b0d;
-  --tree-line: rgba(255, 255, 255, 0.3);
+  --tree-line: rgba(255, 255, 255, 0.14);
 
   --radius-xl: 22px;
   --radius-lg: 16px;
@@ -114,6 +114,7 @@
   --scrim: rgba(0, 0, 0, 0.55);
 
   --sidebar-width: 264px;
+  --sidebar-collapsed-width: 68px;
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
   --dur: 200ms;
   --dur-press: 110ms;
@@ -340,11 +341,6 @@ button {
   height: 20px;
   flex-shrink: 0;
 }
-.navigation-close {
-  position: absolute;
-  top: 0.65rem;
-  right: 0.65rem;
-}
 .mobile-navigation {
   width: min(22rem, calc(100% - 0.5rem));
   max-width: none;
@@ -376,11 +372,6 @@ button {
   width: 100%;
   height: 100dvh;
   position: relative;
-  padding-top: 1.4rem;
-}
-/* The drawer's close button sits in the top corner, so the workspace card stops short of it. */
-.mobile-navigation .workspace-card {
-  margin-right: 3.25rem;
 }
 body:has(.mobile-navigation[open]) {
   overflow: hidden;
@@ -396,6 +387,16 @@ body:has(.mobile-navigation[open]) {
   position: sticky;
   top: 0;
   height: 100vh;
+  transition: width var(--dur) var(--ease);
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 1.15rem;
+  padding: 0.1rem 0.1rem 0.1rem 0.65rem;
 }
 
 .brand {
@@ -411,13 +412,35 @@ body:has(.mobile-navigation[open]) {
 .brand:hover {
   color: var(--text);
 }
-.workspace-card {
-  margin-bottom: 1.25rem;
-  padding: 0.7rem 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--bg-raised);
-  box-shadow: var(--shadow-card);
+.sidebar-brand {
+  padding: 0.25rem 0;
+  min-height: 2.25rem;
+  min-width: 0;
+}
+
+.sidebar-toggle {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+.sidebar-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.sidebar-toggle svg {
+  width: 18px;
+  height: 18px;
 }
 
 /* Eclipse logomark — the favicon's twin: a dark disc haloed by the accent ring. */
@@ -517,38 +540,133 @@ body:has(.mobile-navigation[open]) {
 .nav-group-summary.has-active svg {
   opacity: 1;
 }
-/* Children indented under the header, with a guide line so the grouping reads at a glance. */
+/* Children indented under the header, with one unbroken trunk and smooth rounded elbows. */
 .nav-group-items {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 2px;
   margin: 2px 0 4px;
-  padding-left: 2.1rem;
+  padding-left: 2.25rem;
 }
 .nav-group-items > .nav-item {
   position: relative;
 }
-/* The elbow into each child: down from the line, then right towards the child's icon. */
+/* Each non-final item contributes a rounded elbow curving off the continuous trunk, without
+   overlapping the vertical stroke so semi-transparent hairlines keep uniform opacity. */
 .nav-group-items > .nav-item::before {
   content: '';
   position: absolute;
-  left: calc(0.75rem + 9px - 2.1rem);
-  top: -2px;
-  width: calc(2.1rem - 9px - 0.2rem);
-  height: calc(50% + 2px);
+  left: calc(0.75rem + 9px - 2.25rem - 0.75px);
+  top: calc(50% - 0.55rem);
+  width: calc(2.25rem - 0.75rem - 9px - 2px);
+  height: 0.55rem;
   border-left: 1.5px solid var(--tree-line);
   border-bottom: 1.5px solid var(--tree-line);
-  border-bottom-left-radius: 0.7rem;
+  border-bottom-left-radius: 0.55rem;
+  pointer-events: none;
 }
-/* The next elbow begins at the row boundary, so the straight segment starts below this elbow. */
+/* One unbroken vertical trunk across all items before the last child's elbow. */
 .nav-group-items > .nav-item:not(:last-child)::after {
   content: '';
   position: absolute;
-  left: calc(0.75rem + 9px - 2.1rem);
-  top: 50%;
-  bottom: 0;
+  left: calc(0.75rem + 9px - 2.25rem - 0.75px);
+  top: 0;
+  bottom: -2px;
   border-left: 1.5px solid var(--tree-line);
+  pointer-events: none;
+}
+/* Drop cleanly from just beneath the group's icon. */
+.nav-group-items > .nav-item:first-child:not(:last-child)::after {
+  top: -6px;
+}
+/* The final child terminates the trunk directly into its rounded elbow. */
+.nav-group-items > .nav-item:last-child::before {
+  top: 0;
+  height: 50%;
+}
+.nav-group-items > .nav-item:only-child::before {
+  top: -6px;
+  height: calc(50% + 6px);
+}
+
+/* Compact desktop icon rail: icons stay centered and labels remain in the DOM for assistive
+   technology and the command palette. */
+.sidebar.is-collapsed {
+  width: var(--sidebar-collapsed-width);
+  padding: 1.2rem 0.625rem;
+}
+.sidebar.is-collapsed .sidebar-header {
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0;
+  margin-bottom: 0.9rem;
+}
+.sidebar.is-collapsed .sidebar-brand {
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  justify-content: center;
+  border-radius: 50%;
+}
+.sidebar.is-collapsed .sidebar-brand .brand-name,
+.sidebar.is-collapsed .nav-section,
+.sidebar.is-collapsed .nav-label,
+.sidebar.is-collapsed .user-meta {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.sidebar.is-collapsed .sidenav {
+  align-items: center;
+  gap: 0.3rem;
+}
+.sidebar.is-collapsed .nav-gap {
+  height: 0.65rem;
+}
+.sidebar.is-collapsed .nav-item {
+  width: 2.75rem;
+  height: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0;
+  justify-content: center;
+  border-radius: 50%;
+}
+.sidebar.is-collapsed .nav-item:not(.active):hover {
+  background: var(--bg-hover);
+}
+.sidebar.is-collapsed .nav-chevron,
+.sidebar.is-collapsed .nav-group-items,
+.sidebar.is-collapsed .user-chevron {
+  display: none;
+}
+.sidebar.is-collapsed .nav-group-summary.has-active {
+  background: var(--nav-active-bg);
+  color: var(--nav-active-text);
+  box-shadow: var(--shadow-sm);
+}
+.sidebar.is-collapsed .sidebar-footer {
+  display: flex;
+  justify-content: center;
+}
+.sidebar.is-collapsed .sidebar-footer .user-card {
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  justify-content: center;
+  border-radius: 50%;
+}
+.sidebar.is-collapsed .account-menu-panel {
+  left: 0;
+  right: auto;
+  min-width: 13.5rem;
+  bottom: calc(100% + 8px);
 }
 
 .sidebar-footer {
@@ -1792,8 +1910,12 @@ button.matrix-cell:hover .matrix-word {
 .table-scroll.has-overflow > .table-scroll-hint {
   display: block;
 }
+/* Reset overflow-wrap inside horizontally scrolling tables so phone-level wrapping on .content
+   never splits structured values mid-word; the region scrolls instead. */
 .table-scroll .data-table {
-  min-width: 640px;
+  min-width: max(100%, 48rem);
+  overflow-wrap: normal;
+  word-break: normal;
 }
 /* Room: tall rows, horizontal hairlines only, sentence-case muted headers. */
 .data-table {
@@ -1828,6 +1950,9 @@ button.matrix-cell:hover .matrix-word {
 .cell-strong {
   font-weight: 500;
 }
+.cell-nowrap {
+  white-space: nowrap;
+}
 .cell-actions {
   text-align: right;
   white-space: nowrap;
@@ -1836,6 +1961,86 @@ button.matrix-cell:hover .matrix-word {
 /* A table that must not scroll sideways: below 880px of card its rows become cards. */
 .table-card {
   container: rows / inline-size;
+  overflow-x: auto;
+}
+.table-card-wide {
+  container: rows-wide / inline-size;
+}
+.row-cards {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.row-cards .cell-pill {
+  white-space: nowrap;
+}
+/* Wide 7-column lease tables stack into cards below 1040px of card so mono usernames and UTC
+   timestamps never wrap mid-token or clip the Revoke button at 1280px desktop width. */
+@container rows-wide (width < 1040px) {
+  .row-cards thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .row-cards,
+  .row-cards tbody {
+    display: block;
+  }
+  .row-cards tbody tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.65rem;
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .row-cards tbody tr:last-child {
+    border-bottom: none;
+  }
+  .row-cards tbody td {
+    display: block;
+    height: auto;
+    padding: 0;
+    border: none;
+  }
+  .row-cards tbody tr:hover td {
+    background: none;
+  }
+  .row-cards .cell-main {
+    flex: 1 1 calc(100% - 7.5rem);
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .row-cards .cell-verb {
+    order: 1;
+    margin-left: auto;
+  }
+  .row-cards .cell-pill {
+    order: 2;
+    white-space: normal;
+  }
+  .row-cards .cell-meta {
+    order: 3;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--text-muted);
+    font-size: 0.86rem;
+  }
+  .row-cards .cell-nowrap {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .row-cards .cell-meta[data-label]::before {
+    content: attr(data-label) ' ';
+  }
+  .row-cards tbody tr:not(:has(.cell-verb)) .cell-main {
+    flex-basis: 100%;
+  }
+  .row-cards tbody td:empty {
+    display: none;
+  }
 }
 @container rows (width < 880px) {
   .row-cards thead {
@@ -1888,6 +2093,10 @@ button.matrix-cell:hover .matrix-word {
     color: var(--text-muted);
     font-size: 0.86rem;
   }
+  .row-cards .cell-nowrap {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
   .row-cards .cell-meta[data-label]::before,
   .row-cards .cell-pills[data-label]::before,
   .row-cards .cell-pill[data-label]::before {
@@ -1906,6 +2115,7 @@ button.matrix-cell:hover .matrix-word {
   /* Pills in cells of their own share the second line; the row's meta cells follow on. */
   .row-cards .cell-pill {
     order: 2;
+    white-space: normal;
   }
   .row-cards tr:has(.cell-pill) .cell-meta {
     order: 3;
@@ -1923,6 +2133,13 @@ button.matrix-cell:hover .matrix-word {
     display: flex;
     flex-wrap: wrap;
     gap: 0.4rem;
+  }
+  /* An invitation's pill carries its expiry, too long to stay on one line in a phone's row card. */
+  #users-table .badge {
+    white-space: normal;
+  }
+  .activity-table .activity-time {
+    overflow-wrap: anywhere;
   }
 }
 
@@ -2924,6 +3141,16 @@ textarea {
   margin-top: 0.15rem;
   font-size: 0.84rem;
 }
+.lease-max {
+  display: block;
+  font-size: 0.8rem;
+}
+.dynamic-roles-table th,
+.dynamic-roles-table td,
+.dynamic-leases-table th,
+.dynamic-leases-table td {
+  padding-inline: 0.6rem;
+}
 .lease-note {
   margin-top: 0.35rem;
   font-size: 0.82rem;
@@ -2936,13 +3163,83 @@ textarea {
   justify-content: flex-end;
   gap: 0.5rem;
 }
-.inline-form input {
+.inline-form > input {
   width: 5.5rem;
   min-height: 2.25rem;
   padding: 0.35rem 0.65rem;
   border-radius: var(--radius-pill);
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+.ttl-stepper {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.15rem;
+  padding: 2px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--bg-inset);
+  transition:
+    border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+.ttl-stepper:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.ttl-stepper input {
+  width: 2.5rem;
+  min-height: 0;
+  padding: 0 0.1rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 0.88rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.ttl-stepper input:focus {
+  border-color: transparent;
+  box-shadow: none;
+}
+.ttl-unit {
+  padding: 0 0.2rem 0 0.1rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  user-select: none;
+}
+.ttl-step-button {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 1.7rem;
+  height: 1.7rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+.ttl-step-button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.ttl-step-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ttl-step-button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .credential-table th {
   width: 11rem;
@@ -2951,13 +3248,24 @@ textarea {
   overflow-wrap: anywhere;
 }
 @media (max-width: 1199px) {
-  .inline-form input {
+  .inline-form > input {
     min-height: 2.75rem;
+  }
+  .ttl-stepper {
+    min-height: 2.75rem;
+  }
+  .ttl-step-button {
+    width: 2.75rem;
+    height: 2.75rem;
   }
 }
 @container rows (width < 880px) {
+  .row-cards .lease-max {
+    display: inline;
+  }
   .row-cards .inline-form {
     width: 100%;
+    flex-wrap: wrap;
     justify-content: flex-start;
   }
   .row-cards .cell-verb:has(.inline-form) {
@@ -2967,7 +3275,7 @@ textarea {
     margin-top: 0.35rem;
   }
   .row-cards .inline-form .button {
-    flex: 1;
+    flex: 1 1 7rem;
   }
 }
 @media (max-width: 520px) {
@@ -3015,6 +3323,18 @@ input:not([type='checkbox'], [type='radio']),
 textarea,
 select {
   min-height: 2.75rem;
+}
+
+/* Strip native number spinbuttons so numeric fields match the rounded input system. */
+input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+  font-variant-numeric: tabular-nums;
+}
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 input::placeholder,
@@ -3580,7 +3900,12 @@ fieldset {
   background: var(--danger-soft);
 }
 .cell-wrap {
-  max-width: 340px;
+  min-width: 14rem;
+  max-width: 28rem;
+  overflow-wrap: break-word;
+}
+#audit-table .cell-wrap {
+  min-width: 16rem;
 }
 
 /* ---- Row overflow menu (details/summary) ---------------------------------------- */
@@ -3612,13 +3937,19 @@ fieldset {
   text-align: left;
 }
 
+#users-table th,
+#users-table td {
+  padding-inline: 0.6rem;
+}
 #users-table .cell-actions > app-row-menu {
   margin-left: 0.4rem;
 }
-/* An invitation's pill carries its expiry, too long to stay on one line in a phone's row card. */
-#users-table .badge,
+/* Invitation expiry pills wrap cleanly at spaces so the 6-column Users table fits 1280px without
+   clipping the row actions menu. */
+#users-table td:nth-child(5) .badge,
 .invitation-panel .badge {
   white-space: normal;
+  word-break: normal;
 }
 .invitation-panel fieldset {
   display: flex;
@@ -4203,9 +4534,8 @@ app-license-page .trust-line svg {
 }
 
 /* ---- My activity ----------------------------------------------------- */
-.activity-table .cell-main,
-.activity-table .activity-time {
-  overflow-wrap: anywhere;
+.activity-table .cell-main {
+  overflow-wrap: break-word;
 }
 .activity-resource {
   display: block;

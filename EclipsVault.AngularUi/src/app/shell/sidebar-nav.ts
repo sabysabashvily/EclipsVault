@@ -1,5 +1,5 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, computed, inject, input } from '@angular/core';
+import { Component, computed, inject, input, output } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { filter, map } from 'rxjs';
@@ -20,6 +20,8 @@ const subpages: Readonly<Record<string, RegExp>> = {
 })
 export class SidebarNav {
   readonly areas = input.required<readonly string[]>();
+  readonly collapsed = input(false);
+  readonly expandRequested = output<void>();
   protected readonly sections = computed(() => sidebarFor(this.areas()));
   private readonly router = inject(Router);
   private readonly url = toSignal(
@@ -48,5 +50,13 @@ export class SidebarNav {
 
   protected groupActive(group: SidebarGroup): boolean {
     return group.children.some((link) => this.holds(link));
+  }
+
+  /** In compact icon-rail mode, clicking a group icon expands the sidebar and opens that group. */
+  protected groupSummaryClicked(event: MouseEvent, group: HTMLDetailsElement): void {
+    if (!this.collapsed()) return;
+    event.preventDefault();
+    group.open = true;
+    this.expandRequested.emit();
   }
 }

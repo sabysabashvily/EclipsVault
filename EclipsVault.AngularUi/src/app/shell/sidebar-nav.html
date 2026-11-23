@@ -7,10 +7,21 @@
     }
     @for (item of section.items; track item.label) {
       @if ('children' in item) {
-        <details class="nav-group" [attr.aria-label]="item.label" [open]="groupActive(item)">
-          <summary class="nav-item nav-group-summary" [class.has-active]="groupActive(item)">
+        <details
+          #groupDetails
+          class="nav-group"
+          [attr.aria-label]="item.label"
+          [open]="groupActive(item)"
+        >
+          <summary
+            class="nav-item nav-group-summary"
+            [class.has-active]="groupActive(item)"
+            [attr.aria-label]="collapsed() ? item.label : null"
+            [attr.title]="collapsed() ? item.label : null"
+            (click)="groupSummaryClicked($event, groupDetails)"
+          >
             <app-nav-icon [icon]="item.icon" />
-            <span>{{ item.label }}</span>
+            <span class="nav-label">{{ item.label }}</span>
             <svg
               class="nav-chevron"
               viewBox="0 0 24 24"
@@ -46,8 +57,10 @@
     [routerLink]="entry.url"
     [class.active]="holds(entry)"
     [attr.aria-current]="active(entry) ? 'page' : holds(entry) ? 'true' : null"
+    [attr.aria-label]="collapsed() ? entry.label : null"
+    [attr.title]="collapsed() ? entry.label : null"
   >
     <app-nav-icon [icon]="entry.icon" />
-    {{ entry.label }}
+    <span class="nav-label">{{ entry.label }}</span>
   </a>
 </ng-template>

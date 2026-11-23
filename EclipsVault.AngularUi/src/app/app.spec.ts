@@ -31,7 +31,11 @@ describe('App shell', () => {
     return fixture.nativeElement as HTMLElement;
   }
 
-  afterEach(() => backend.verify());
+  afterEach(() => {
+    localStorage.removeItem('eclipsvault.sidebar.collapsed');
+    vi.restoreAllMocks();
+    backend.verify();
+  });
 
   it('shows the problem code instead of a blank sidebar when /api/ui/me fails', async () => {
     const shell = await render((request) =>
@@ -103,5 +107,76 @@ describe('App shell', () => {
     expect(notice?.querySelector('strong')?.textContent).toBe('Running unlicensed.');
     expect(notice?.textContent).toContain('No license key is installed. This changes nothing.');
     expect(notice?.querySelector('a')?.getAttribute('href')).toBe('/License');
+  });
+
+  it('collapses and expands the desktop sidebar, persisting the preference across loads', async () => {
+    const shell = await render((request) => request.flush(me));
+    const sidebar = shell.querySelector<HTMLElement>('aside.sidebar')!;
+    const toggle = shell.querySelector<HTMLButtonElement>('.sidebar-toggle')!;
+
+    expect(sidebar.classList).not.toContain('is-collapsed');
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(toggle.getAttribute('aria-label')).toBe('Collapse sidebar');
+
+    toggle.click();
+    await TestBed.inject(ApplicationRef).whenStable();
+
+    expect(sidebar.classList).toContain('is-collapsed');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.getAttribute('aria-label')).toBe('Expand sidebar');
+    expect(localStorage.getItem('eclipsvault.sidebar.collapsed')).toBe('1');
+
+    TestBed.resetTestingModule();
+    const reloaded = await render((request) => request.flush(me));
+    const reloadedSidebar = reloaded.querySelector<HTMLElement>('aside.sidebar')!;
+    const reloadedToggle = reloaded.querySelector<HTMLButtonElement>('.sidebar-toggle')!;
+
+    expect(reloadedSidebar.classList).toContain('is-collapsed');
+    expect(reloadedToggle.getAttribute('aria-expanded')).toBe('false');
+
+    reloadedToggle.click();
+    await TestBed.inject(ApplicationRef).whenStable();
+
+    expect(reloadedSidebar.classList).not.toContain('is-collapsed');
+    expect(reloadedToggle.getAttribute('aria-expanded')).toBe('true');
+    expect(localStorage.getItem('eclipsvault.sidebar.collapsed')).toBe('0');
+  });
+
+  it('expands a collapsed sidebar and opens the clicked group when a rail group icon is clicked', async () => {
+    localStorage.setItem('eclipsvault.sidebar.collapsed', '1');
+    const shell = await render((request) => request.flush(me));
+    const sidebar = shell.querySelector<HTMLElement>('aside.sidebar')!;
+    const administration = shell.querySelector<HTMLDetailsElement>(
+      'details.nav-group[aria-label="Administration"]',
+    )!;
+    const summary = administration.querySelector<HTMLElement>('summary')!;
+
+    expect(sidebar.classList).toContain('is-collapsed');
+    expect(administration.open).toBe(false);
+
+    summary.click();
+    await TestBed.inject(ApplicationRef).whenStable();
+
+    expect(sidebar.classList).not.toContain('is-collapsed');
+    expect(administration.open).toBe(true);
+    expect(localStorage.getItem('eclipsvault.sidebar.collapsed')).toBe('0');
+  });
+
+  it('stays usable when localStorage throws while reading or saving sidebar state', async () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('Storage disabled', 'SecurityError');
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Storage disabled', 'SecurityError');
+    });
+
+    const shell = await render((request) => request.flush(me));
+    const sidebar = shell.querySelector<HTMLElement>('aside.sidebar')!;
+    const toggle = shell.querySelector<HTMLButtonElement>('.sidebar-toggle')!;
+
+    expect(sidebar.classList).not.toContain('is-collapsed');
+    toggle.click();
+    await TestBed.inject(ApplicationRef).whenStable();
+    expect(sidebar.classList).toContain('is-collapsed');
   });
 });

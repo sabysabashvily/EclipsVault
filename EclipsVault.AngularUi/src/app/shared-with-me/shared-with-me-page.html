@@ -58,7 +58,8 @@
                     share.sensitivityLabel
                   }}</span>
                 </td>
-                <td class="cell-meta muted" data-label="Shared by">{{ share.sharedBy }}</td>
+                <!-- prettier-ignore -->
+                <td class="cell-meta cell-nowrap muted" data-label="Shared by">{{ share.sharedBy }}</td>
                 <td
                   class="cell-pill"
                   [attr.data-label]="share.accessUntilUtc && !ends.tone ? 'Access until' : null"

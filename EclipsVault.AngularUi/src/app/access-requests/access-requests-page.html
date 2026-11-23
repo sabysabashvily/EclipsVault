@@ -154,7 +154,8 @@
                     badges[request.status].label
                   }}</span>
                 </td>
-                <td class="cell-meta muted" data-label="Requested">{{ requestedAt(request) }}</td>
+                <!-- prettier-ignore -->
+                <td class="cell-meta cell-nowrap muted" data-label="Requested">{{ requestedAt(request) }}</td>
                 <td class="cell-meta muted" data-label="· Decision">{{ decision(request) }}</td>
                 <td class="cell-actions cell-verb">
                   @if (request.status === 'Pending') {

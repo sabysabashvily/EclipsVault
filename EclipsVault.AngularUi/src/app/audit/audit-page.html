@@ -166,13 +166,13 @@
         <tbody>
           @for (entry of filtered(); track entry.entryId) {
             <tr [class.row-critical]="entry.isCritical">
-              <td class="mono muted" [title]="entry.exact">{{ entry.exact }}</td>
-              <td>
+              <td class="mono muted cell-nowrap" [title]="entry.exact">{{ entry.exact }}</td>
+              <td class="cell-nowrap">
                 <span [class]="'badge tone-' + entry.tone">{{ entry.actionLabel }}</span>
               </td>
-              <td class="mono">{{ entry.resource }}</td>
-              <td>{{ entry.actor }}</td>
-              <td class="mono muted">{{ entry.sourceIp }}</td>
+              <td class="mono cell-nowrap">{{ entry.resource }}</td>
+              <td class="cell-nowrap">{{ entry.actor }}</td>
+              <td class="mono muted cell-nowrap">{{ entry.sourceIp }}</td>
               <td class="muted cell-wrap">{{ entry.details }}</td>
             </tr>
           }
