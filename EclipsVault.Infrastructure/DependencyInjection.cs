@@ -67,6 +67,16 @@ public static class DependencyInjection
         services.AddSingleton<AuditChain>();
         services.AddScoped<AuditSaveChangesInterceptor>();
 
+        // No default. Choosing PostgreSQL for an unset value would make an upgraded SQL Server
+        // install read its connection string as PostgreSQL. Check the provider before the
+        // connection string so a fresh launch with neither setting still reports the provider error.
+        var provider = configuration.GetValue<string?>("Database:Provider");
+        if (string.IsNullOrEmpty(provider))
+        {
+            throw new InvalidOperationException(
+                "Database:Provider is not set. Set it to 'SqlServer' or 'Postgres' (environment variable Database__Provider).");
+        }
+
         // The connection string is deliberately absent from appsettings.json so credentials
         // are never committed. It must be supplied by the environment (ConnectionStrings__DefaultConnection)
         // or a secret store; the local dev value lives in appsettings.Development.json.
@@ -74,15 +84,6 @@ public static class DependencyInjection
             ?? throw new InvalidOperationException(
                 "Database connection string 'DefaultConnection' is not configured. Set the " +
                 "ConnectionStrings__DefaultConnection environment variable (or a secret store).");
-
-        // No default. Choosing PostgreSQL for an unset value would make an upgraded SQL Server
-        // install read its connection string as PostgreSQL.
-        var provider = configuration.GetValue<string?>("Database:Provider");
-        if (string.IsNullOrEmpty(provider))
-        {
-            throw new InvalidOperationException(
-                "Database:Provider is not set. Set it to 'SqlServer' or 'Postgres' (environment variable Database__Provider).");
-        }
 
         services.AddDbContext<EclipsVaultDbContext>((sp, options) => options
             .UseVaultDatabase(provider, connectionString)

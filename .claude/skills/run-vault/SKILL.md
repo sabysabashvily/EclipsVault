@@ -58,9 +58,10 @@ macOS has no `timeout`, hence `perl`. Running the dll rather than `dotnet run` m
 starts the app as a child process that survives when the parent is killed. Ready when
 `curl -sk -o /dev/null https://localhost:7443/` succeeds; stop with `pkill -f EclipsVault.Web.dll`.
 
-The vault finds its database in `appsettings.Development.json`. That file must set
-`Database:Provider` to `Postgres` or `SqlServer`; the template uses `Postgres` for the compose
-database. The vault refuses to start when the setting is missing. To override it, add
+The vault reads `Database:Provider` from `appsettings.Development.json` or the `Database__Provider`
+environment variable (`Postgres` or `SqlServer`) and refuses to start when neither supplies it.
+The template sets `Postgres` for the compose database; older local settings that pointed at SQL
+Server without a provider need `SqlServer`. To override the file for one run, add
 `Database__Provider=Postgres` and
 `ConnectionStrings__DefaultConnection="Host=localhost;Port=5432;Database=EclipsVaultUmbraDb;Username=eclipsvault;Password=dev-postgres-password"`
 to the start command's variables.

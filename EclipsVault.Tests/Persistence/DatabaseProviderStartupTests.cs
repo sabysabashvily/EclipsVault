@@ -35,6 +35,25 @@ public class DatabaseProviderStartupTests
     }
 
     [Fact]
+    public void Missing_provider_is_reported_before_missing_connection_string()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => Build(new Dictionary<string, string?>()));
+
+        Assert.Equal(MissingProvider, exception.Message);
+    }
+
+    [Fact]
+    public void Empty_provider_is_reported_before_missing_connection_string()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => Build(new Dictionary<string, string?>
+        {
+            ["Database:Provider"] = "",
+        }));
+
+        Assert.Equal(MissingProvider, exception.Message);
+    }
+
+    [Fact]
     public void SqlServer_registers_the_SQL_Server_engine()
     {
         using var services = Register("SqlServer");
