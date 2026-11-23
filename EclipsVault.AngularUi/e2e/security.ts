@@ -11,6 +11,10 @@ export function securityVerdict(page: Page) {
   return page.locator('.title-row > .badge');
 }
 
+export function securityStatus(page: Page) {
+  return page.getByRole('main').getByRole('status');
+}
+
 export function checksNeedingYou(page: Page) {
   return page.getByRole('list', { name: 'Needs you', exact: true });
 }

@@ -39,6 +39,7 @@ import {
   failingRows,
   passingChecks,
   passingRows,
+  securityStatus,
   securityVerdict,
   verifySecurityCheckup,
 } from './security';
@@ -1668,7 +1669,7 @@ test('Security checkup loads, reports a fetch failure, and retries in place', as
   const requested = page.waitForRequest('**/api/ui/security');
   await page.goto('/Security');
   await requested;
-  await expect(page.getByRole('status')).toHaveText('Loading your security checkup…');
+  await expect(securityStatus(page)).toHaveText('Loading your security checkup…');
   await expect(page.getByRole('list', { name: /^(Needs you|Passing)$/ })).toHaveCount(0);
   release();
   await expect(page.getByRole('alert')).toHaveText(
@@ -1728,9 +1729,10 @@ test('a session revoked from another browser signs in again and returns to My ac
     await signIn(second);
     const first = (await otherSessionIds(second)).filter((id) => !othersOfFirst.includes(id));
     expect(first).toHaveLength(1);
-    await new SignedInDevices(second).signOutSession(first[0]!);
+    const devices = new SignedInDevices(second);
+    await devices.signOutSession(first[0]!);
     await second.getByRole('alertdialog').getByRole('button', { name: 'Continue' }).click();
-    await expect(second.getByRole('status')).toHaveText(
+    await expect(devices.status).toHaveText(
       'That session was signed out — it loses access on its next request.',
     );
   });
