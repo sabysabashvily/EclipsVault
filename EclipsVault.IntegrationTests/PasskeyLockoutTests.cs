@@ -80,6 +80,34 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
     }
 
     [Fact]
+    public async Task A_valid_passkey_of_an_account_awaiting_activation_signs_nothing_in()
+    {
+        var owner = await vault.SignInNewAccountAsync("it-passkey-invited", IPAddress.Parse("203.0.113.190"));
+        var account = await ProfileHttp.AccountAsync(vault, "it-passkey-invited");
+        using var authenticator = new PasskeyAuthenticator();
+        await ProfileHttp.RegisterPasskeyAsync(owner, authenticator, "Invited account key");
+        using (var setup = vault.Services.CreateScope())
+        {
+            await setup.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().Users.Where(user => user.Id == account.Id)
+                .ExecuteUpdateAsync(set => set.SetProperty(user => user.AwaitingActivation, true));
+        }
+
+        var browser = vault.CreateSession(source: IPAddress.Parse("203.0.113.191"));
+        var token = await AuthApi.AnonymousTokenAsync(browser);
+        var options = (await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/passkey/begin", token, new { }))).GetProperty("publicKey");
+        var before = await AuditTrail.HeadAsync(vault);
+
+        var result = await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/passkey/complete", token,
+            new { credential = authenticator.Assert(options) }), HttpStatusCode.BadRequest);
+
+        Assert.Equal("passkey_failed", result.GetProperty("code").GetString());
+        Assert.Equal("This passkey could not be verified.", result.GetProperty("title").GetString());
+        Assert.Null(browser.SessionCookie);
+        Assert.Equal(0, Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id)).SignCount);
+        Assert.Equal([AuditAction.LoginFailed], await ProfileHttp.EventsAfterAsync(vault, before, account.Id));
+    }
+
+    [Fact]
     public async Task A_passkey_read_before_another_sign_in_advanced_its_counter_signs_in_without_counting_a_failure()
     {
         var owner = await vault.SignInNewAccountAsync("it-passkey-overlap", IPAddress.Parse("203.0.113.183"));

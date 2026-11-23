@@ -338,10 +338,11 @@ public sealed class AuthApiTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task Unknown_locked_and_disabled_usernames_get_the_same_answer()
+    public async Task Unknown_locked_disabled_and_invited_usernames_get_the_same_answer()
     {
         await vault.SignInNewAccountAsync("it-auth-locked", IPAddress.Parse("100.74.174.28"), password: Password);
         await vault.SignInNewAccountAsync("it-auth-disabled", IPAddress.Parse("100.74.174.28"), password: Password);
+        await vault.SignInNewAccountAsync("it-auth-invited", IPAddress.Parse("100.74.174.28"), password: Password);
         using (var setup = vault.Services.CreateScope())
         {
             var db = setup.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
@@ -349,6 +350,8 @@ public sealed class AuthApiTests(VaultFixture vault)
                 .ExecuteUpdateAsync(set => set.SetProperty(user => user.LockedUntilUtc, DateTimeOffset.UtcNow.AddHours(1)));
             await db.Users.Where(user => user.Username == "it-auth-disabled")
                 .ExecuteUpdateAsync(set => set.SetProperty(user => user.IsDisabled, true));
+            await db.Users.Where(user => user.Username == "it-auth-invited")
+                .ExecuteUpdateAsync(set => set.SetProperty(user => user.AwaitingActivation, true));
         }
 
         // The right password, where there is one: still nothing tells the caller the account exists.
@@ -356,6 +359,7 @@ public sealed class AuthApiTests(VaultFixture vault)
 
         Assert.Equal(unknown, await PasswordAnswerAsync("it-auth-locked"));
         Assert.Equal(unknown, await PasswordAnswerAsync("it-auth-disabled"));
+        Assert.Equal(unknown, await PasswordAnswerAsync("it-auth-invited"));
         Assert.Equal("sign_in_failed", JsonDocument.Parse(unknown).RootElement.GetProperty("code").GetString());
     }
 

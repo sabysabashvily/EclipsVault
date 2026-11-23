@@ -28,7 +28,7 @@ public sealed class ActivationAuditFailureTests(AuditFailureFixture failure)
         try
         {
             await UiApiFailureContractTests.AssertProblemAsync(
-                await ActivationApi.CompleteAsync(visitor, token, Password, await ActivationApi.FreshCodeAsync(secret)), 503, "audit_unavailable");
+                await ActivationApi.CompleteAsync(visitor, token, Password, ActivationApi.FirstCode(secret)), 503, "audit_unavailable");
 
             var account = await ProfileHttp.AccountAsync(Vault, "it-act-audit");
             Assert.True(account.AwaitingActivation);
@@ -50,6 +50,6 @@ public sealed class ActivationAuditFailureTests(AuditFailureFixture failure)
         }
 
         Assert.Equal(HttpStatusCode.NoContent,
-            (await ActivationApi.CompleteAsync(visitor, token, Password, await ActivationApi.FreshCodeAsync(secret))).StatusCode);
+            (await ActivationApi.CompleteAsync(visitor, token, Password, ActivationApi.FirstCode(secret))).StatusCode);
     }
 }

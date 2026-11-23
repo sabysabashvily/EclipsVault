@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Security.Cryptography;
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Authentication;
@@ -14,10 +15,17 @@ using EclipsVault.Infrastructure.Persistence.Interceptors;
 using EclipsVault.Infrastructure.Persistence.Locking;
 using EclipsVault.Infrastructure.Persistence.Repositories;
 using EclipsVault.Infrastructure.Security;
+using EclipsVault.Web.Authentication;
+using EclipsVault.Web.Authorization;
+using EclipsVault.Web.Extensions;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -103,20 +111,54 @@ public abstract class AccountInvitationUpgradeDatabases : IAsyncLifetime
             VALUES ({Guid.NewGuid()}, {userId}, {RandomNumberGenerator.GetBytes(16)}, {RandomNumberGenerator.GetBytes(32)}, 1, 'Key', {DateTimeOffset.UtcNow})
             """);
 
-    public static Task InsertAuditRowAsync(
-        EclipsVaultDbContext context,
-        long sequence,
-        AuditAction action,
-        Guid userId,
-        string username)
-        => context.Database.ExecuteSqlAsync($"""
-            INSERT INTO "AuditLogs" ("Id", "TimestampUtc", "UserId", "Username", "SourceIp",
-                "Action", "ResourceType", "ResourceId", "Details", "IsCritical",
-                "Sequence", "PreviousHash", "EntryHash", "HashVersion")
-            VALUES ({Guid.NewGuid()}, {DateTimeOffset.UtcNow}, {userId}, {username}, '127.0.0.1',
-                {(int)action}, 'User', {userId}, 'pre-migration row', {false},
-                {sequence}, {new string('0', 64)}, {Convert.ToHexString(RandomNumberGenerator.GetBytes(32))}, 2)
-            """);
+    /// <summary>
+    /// Records sign-in history in <paramref name="database"/> the way the vault does: through the audit sink, the
+    /// group committer and the interceptor that chains each row. The audit tables are the same before and after
+    /// the invitation upgrade, so the current model writes them.
+    /// </summary>
+    public async Task WriteAuditHistoryAsync(string database, params (AuditAction Action, Guid UserId, string Username)[] events)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<IAuditContext>(new HistoryActor());
+        services.AddSingleton(ChainLocker());
+        services.AddSingleton<AuditChain>();
+        services.AddScoped<AuditSaveChangesInterceptor>();
+        services.AddDbContext<EclipsVaultDbContext>((provider, options) => options
+            .UseVaultDatabase(Provider, ConnectionStringFor(database))
+            .AddInterceptors(provider.GetRequiredService<AuditSaveChangesInterceptor>()));
+        services.AddSingleton<AuditGroupCommitter>();
+        await using var provider = services.BuildServiceProvider();
+        var committer = provider.GetRequiredService<AuditGroupCommitter>();
+        await committer.StartAsync(default);
+        try
+        {
+            var sink = new AuditSink(committer, provider.GetRequiredService<IAuditContext>(), TimeProvider.System, NullLogger<AuditSink>.Instance);
+            foreach (var (action, userId, username) in events)
+            {
+                await sink.WriteAsync(new AuditEntry
+                {
+                    Action = action,
+                    ResourceType = "User",
+                    ResourceId = userId,
+                    ActorUserId = userId,
+                    ActorUsername = username,
+                }, default);
+            }
+        }
+        finally
+        {
+            await committer.StopAsync(default);
+        }
+    }
+
+    private sealed class HistoryActor : IAuditContext
+    {
+        public Guid? UserId => null;
+        public string? Username => null;
+        public string? SourceIp => "127.0.0.1";
+    }
 
     private EclipsVaultDbContext Context(string database)
     {
@@ -163,18 +205,18 @@ public abstract class AccountInvitationUpgradeTests(AccountInvitationUpgradeData
         await AccountInvitationUpgradeDatabases.InsertPasskeyAsync(pre, passkeyUserId);
         await AccountInvitationUpgradeDatabases.InsertPreMigrationUserAsync(pre, loginSucceededUserId, "signed-in-reset", "signedin@eclipsvault.local",
             ClearanceLevel.Standard, false, totpEnabled: false, totpSecret: "RESETPENDINGSEED", credentialGeneration: 5, BaseTime.AddMinutes(3));
-        await AccountInvitationUpgradeDatabases.InsertAuditRowAsync(pre, 1, AuditAction.LoginSucceeded, loginSucceededUserId, "signed-in-reset");
         await AccountInvitationUpgradeDatabases.InsertPreMigrationUserAsync(pre, passkeyLoginUserId, "passkey-login-removed", "passkeylogin@eclipsvault.local",
             ClearanceLevel.Standard, false, totpEnabled: false, totpSecret: null, credentialGeneration: 4, BaseTime.AddMinutes(4));
-        await AccountInvitationUpgradeDatabases.InsertAuditRowAsync(pre, 2, AuditAction.PasskeyLogin, passkeyLoginUserId, "passkey-login-removed");
         await AccountInvitationUpgradeDatabases.InsertPreMigrationUserAsync(pre, failedOnlyUserId, "failed-only", "failed.only@eclipsvault.local",
             ClearanceLevel.Standard, false, totpEnabled: false, totpSecret: "FAILEDPENDINGSEED", credentialGeneration: 0, BaseTime.AddMinutes(5));
-        await AccountInvitationUpgradeDatabases.InsertAuditRowAsync(pre, 3, AuditAction.LoginFailed, failedOnlyUserId, "failed-only");
-        await AccountInvitationUpgradeDatabases.InsertAuditRowAsync(pre, 4, AuditAction.UserCreated, failedOnlyUserId, "failed-only");
         await AccountInvitationUpgradeDatabases.InsertPreMigrationUserAsync(pre, neverUsedAdminId, "vault-admin", "vault-admin@eclipsvault.local",
             ClearanceLevel.TopSecret, false, totpEnabled: false, totpSecret: "ADMINPENDINGSEED", credentialGeneration: 1, BaseTime.AddMinutes(6));
+        await databases.WriteAuditHistoryAsync(dbName,
+            (AuditAction.LoginSucceeded, loginSucceededUserId, "signed-in-reset"),
+            (AuditAction.PasskeyLogin, passkeyLoginUserId, "passkey-login-removed"),
+            (AuditAction.LoginFailed, failedOnlyUserId, "failed-only"),
+            (AuditAction.UserCreated, failedOnlyUserId, "failed-only"));
 
-        var preMigrationStamp = new SessionStamp(2, "rev-before");
         await AccountInvitationUpgradeDatabases.UpgradeAsync(pre);
 
         var post = databases.FreshContext(dbName);
@@ -208,20 +250,62 @@ public abstract class AccountInvitationUpgradeTests(AccountInvitationUpgradeData
         Assert.Null(users[neverUsedAdminId].TotpSecret);
 
         Assert.Equal(4, await post.AuditLogs.CountAsync());
+    }
 
-        // Pre-migration pending stamp and SSO assertion are refused after migration.
+    [Fact]
+    public async Task A_sign_in_or_single_sign_on_begun_before_the_upgrade_gets_no_session_after_it()
+    {
+        const string dbName = "pre-upgrade-proofs";
+        var pre = await databases.CreateBeforeInvitationsAsync(dbName);
+        var neverUsedId = Guid.NewGuid();
+        await AccountInvitationUpgradeDatabases.InsertPreMigrationUserAsync(pre, neverUsedId, "never-used", "never.used.1@eclipsvault.local",
+            ClearanceLevel.Standard, false, totpEnabled: false, totpSecret: "COPIEDPENDINGSEED", credentialGeneration: 2, BaseTime);
+        // What a node handed out before the upgrade, under the account's generation then: a pending sign-in
+        // cookie, and a single sign-on decision about to become a session.
+        var signedInBefore = UserDto.From(new User
+        {
+            Id = neverUsedId,
+            Username = "never-used",
+            DisplayName = "never-used",
+            Email = "never.used.1@eclipsvault.local",
+            ProjectKey = "GLOBAL",
+            Clearance = ClearanceLevel.Standard,
+            CredentialGeneration = 2,
+        });
+        var stampBefore = new SessionStamp(2, "rev-before");
+        var pendingCookie = VaultClaimsFactory.CreatePendingMfaPrincipal(signedInBefore, stampBefore);
+
+        await AccountInvitationUpgradeDatabases.UpgradeAsync(pre);
+
+        var post = databases.FreshContext(dbName);
+        Assert.False(await PendingCookieIsAcceptedAsync(post, pendingCookie));
+        Assert.False(await IssueSessionAsync(post, signedInBefore, stampBefore, new SignInAudit(AuditAction.LoginSucceeded, "Single sign-on")));
         var auth = BuildAuthService(post, "rev-before");
-        await Assert.ThrowsAsync<StaleProofException>(() => auth.BeginTotpEnrollmentAsync(neverUsedId, preMigrationStamp, default));
-        await Assert.ThrowsAsync<StaleProofException>(() => auth.CompleteTotpEnrollmentAsync(neverUsedId, preMigrationStamp, "123456", default));
-        // Even a stamp with the post-migration generation (in-flight SSO / old node) is refused because AwaitingActivation is true.
-        var postMigrationStamp = new SessionStamp(users[neverUsedId].CredentialGeneration, "rev-before");
-        await Assert.ThrowsAsync<StaleProofException>(() => auth.BeginTotpEnrollmentAsync(neverUsedId, postMigrationStamp, default));
-        await Assert.ThrowsAsync<StaleProofException>(() => auth.VerifyTotpAsync(neverUsedId, postMigrationStamp, "123456", default));
+        await Assert.ThrowsAsync<StaleProofException>(() => auth.BeginTotpEnrollmentAsync(neverUsedId, stampBefore, default));
+        await Assert.ThrowsAsync<StaleProofException>(() => auth.CompleteTotpEnrollmentAsync(neverUsedId, stampBefore, "123456", default));
+    }
 
-        var ssoAudit = new RecordingAuditSink();
-        var sso = new SsoSignInService(new UserRepository(post, TimeProvider.System), ssoAudit, new FixedRevocation("rev-before"), new SsoPolicy(true));
-        var ssoDecision = await sso.SignInAsync(new ExternalIdentity("https://idp.test", "sub-1", "never.used.1@eclipsvault.local", true, ["mfa"]), default);
-        Assert.Equal(SsoOutcome.NotActivated, ssoDecision.Outcome);
+    [Fact]
+    public async Task A_proof_under_the_generation_the_upgrade_committed_still_gets_no_session_while_the_account_awaits_activation()
+    {
+        const string dbName = "post-upgrade-stamp";
+        var pre = await databases.CreateBeforeInvitationsAsync(dbName);
+        var neverUsedId = Guid.NewGuid();
+        await AccountInvitationUpgradeDatabases.InsertPreMigrationUserAsync(pre, neverUsedId, "never-used", "never.used.1@eclipsvault.local",
+            ClearanceLevel.Standard, false, totpEnabled: false, totpSecret: "COPIEDPENDINGSEED", credentialGeneration: 2, BaseTime);
+        await AccountInvitationUpgradeDatabases.UpgradeAsync(pre);
+        var post = databases.FreshContext(dbName);
+        var migrated = await post.Users.AsNoTracking().SingleAsync(u => u.Id == neverUsedId);
+        var stamp = new SessionStamp(migrated.CredentialGeneration, "rev-before");
+
+        Assert.False(await PendingCookieIsAcceptedAsync(post, VaultClaimsFactory.CreatePendingMfaPrincipal(UserDto.From(migrated), stamp)));
+        Assert.False(await IssueSessionAsync(post, UserDto.From(migrated), stamp, new SignInAudit(AuditAction.LoginSucceeded, "Single sign-on")));
+        var auth = BuildAuthService(post, "rev-before");
+        await Assert.ThrowsAsync<StaleProofException>(() => auth.BeginTotpEnrollmentAsync(neverUsedId, stamp, default));
+        await Assert.ThrowsAsync<StaleProofException>(() => auth.VerifyTotpAsync(neverUsedId, stamp, "123456", default));
+        var sso = new SsoSignInService(new UserRepository(post, TimeProvider.System), new RecordingAuditSink(), new FixedRevocation("rev-before"), new SsoPolicy(true));
+        var decision = await sso.SignInAsync(new ExternalIdentity("https://idp.test", "sub-1", "never.used.1@eclipsvault.local", true, ["mfa"]), default);
+        Assert.Equal(SsoOutcome.NotActivated, decision.Outcome);
     }
 
     [Fact]
@@ -265,8 +349,28 @@ public abstract class AccountInvitationUpgradeTests(AccountInvitationUpgradeData
         var check = await auth.ValidateCredentialsAsync("vault-admin", existingPassword, default);
         Assert.Equal(CredentialStatus.RequiresTotpEnrollment, check.Status);
         Assert.Equal(vaultAdminId, check.User!.Id);
+        var enrollment = await auth.BeginTotpEnrollmentAsync(vaultAdminId, check.Stamp!, default);
+        var enrolled = await auth.CompleteTotpEnrollmentAsync(vaultAdminId, check.Stamp!,
+            Totp.Code(enrollment.SecretBase32, Totp.CurrentStep()), default);
+        Assert.NotNull(enrolled);
+        var cookies = new CookieJar();
+        Assert.True(await IssueSessionAsync(post, enrolled, check.Stamp!, new SignInAudit(AuditAction.LoginSucceeded, "Password + TOTP enrollment"), "rev-1", cookies));
+        Assert.Equal(vaultAdminId, cookies.SignedIn?.GetUserId());
+    }
 
-        // Replacing the generated address of a migrated account makes resend deliver to the replaced address.
+    [Fact]
+    public async Task A_migrated_accounts_replaced_address_is_the_one_resend_delivers_to()
+    {
+        const string dbName = "migrated-address";
+        var pre = await databases.CreateBeforeInvitationsAsync(dbName);
+        var vaultAdminId = Guid.NewGuid();
+        var standardId = Guid.NewGuid();
+        await AccountInvitationUpgradeDatabases.InsertPreMigrationUserAsync(pre, vaultAdminId, "vault-admin", "vault-admin@eclipsvault.local",
+            ClearanceLevel.TopSecret, false, totpEnabled: true, totpSecret: "ENROLLEDSECRET", credentialGeneration: 0, BaseTime);
+        await AccountInvitationUpgradeDatabases.InsertPreMigrationUserAsync(pre, standardId, "standard-one", "standard.one.1@eclipsvault.local",
+            ClearanceLevel.Standard, false, totpEnabled: false, totpSecret: null, credentialGeneration: 0, BaseTime.AddHours(1));
+        await AccountInvitationUpgradeDatabases.UpgradeAsync(pre);
+
         var chain = new AuditChain(databases.ChainLocker());
         var actor = new TestAdminActor(vaultAdminId);
         var interceptor = new AuditSaveChangesInterceptor(actor, chain, TimeProvider.System, NullLogger<AuditSaveChangesInterceptor>.Instance);
@@ -348,6 +452,62 @@ public abstract class AccountInvitationUpgradeTests(AccountInvitationUpgradeData
             attempt,
             new FixedRevocation(revocationVersion),
             TimeProvider.System);
+    }
+
+    /// <summary>Runs <paramref name="cookie"/> through the pending sign-in cookie's check on the upgraded database.</summary>
+    private static async Task<bool> PendingCookieIsAcceptedAsync(EclipsVaultDbContext post, ClaimsPrincipal cookie)
+    {
+        var context = new CookieValidatePrincipalContext(Request(post, "rev-before", new CookieJar()),
+            new AuthenticationScheme(AuthSchemes.MfaPending, null, typeof(CookieAuthenticationHandler)),
+            new CookieAuthenticationOptions(), new AuthenticationTicket(cookie, AuthSchemes.MfaPending));
+        await SessionCookieValidation.ValidatePendingPrincipalAsync(context);
+        return context.Principal is not null;
+    }
+
+    /// <summary>Asks the vault's session issuer, on the upgraded database, to turn a proof into a session.</summary>
+    private static Task<bool> IssueSessionAsync(EclipsVaultDbContext post, UserDto user, SessionStamp stamp, SignInAudit audit,
+        string revocationVersion = "rev-before", CookieJar? cookies = null)
+    {
+        var issuer = new SessionIssuer(new UserRepository(post, TimeProvider.System), new FixedRevocation(revocationVersion),
+            new UnlistedSessions(), new DirectAttempt(), NullLogger<SessionIssuer>.Instance);
+        return issuer.SignInAsync(Request(post, revocationVersion, cookies ?? new CookieJar()), user, stamp, audit, default);
+    }
+
+    private static DefaultHttpContext Request(EclipsVaultDbContext post, string revocationVersion, CookieJar cookies)
+        => new()
+        {
+            RequestServices = new ServiceCollection()
+                .AddSingleton<IUserRepository>(new UserRepository(post, TimeProvider.System))
+                .AddSingleton<ISessionRevocationService>(new FixedRevocation(revocationVersion))
+                .AddSingleton<IAuthenticationService>(cookies)
+                .BuildServiceProvider(),
+        };
+
+    /// <summary>Keeps the session cookie a sign-in would set, in place of a browser.</summary>
+    private sealed class CookieJar : IAuthenticationService
+    {
+        public ClaimsPrincipal? SignedIn { get; private set; }
+
+        public Task SignInAsync(HttpContext context, string? scheme, ClaimsPrincipal principal, AuthenticationProperties? properties)
+        {
+            SignedIn = principal;
+            return Task.CompletedTask;
+        }
+
+        public Task SignOutAsync(HttpContext context, string? scheme, AuthenticationProperties? properties) => Task.CompletedTask;
+        public Task<AuthenticateResult> AuthenticateAsync(HttpContext context, string? scheme) => throw new NotSupportedException();
+        public Task ChallengeAsync(HttpContext context, string? scheme, AuthenticationProperties? properties) => throw new NotSupportedException();
+        public Task ForbidAsync(HttpContext context, string? scheme, AuthenticationProperties? properties) => throw new NotSupportedException();
+    }
+
+    /// <summary>A new session is listed after it is issued; nothing here reads the list.</summary>
+    private sealed class UnlistedSessions : ISessionRegistry
+    {
+        public Task RecordSeenAsync(SessionObservation observation, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<IReadOnlyList<ActiveSession>> ListAsync(Guid userId, SessionStamp current, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<bool> RevokeAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<bool> TryRetireForReplacementAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<bool> IsRevokedAsync(Guid userId, Guid sessionId, CancellationToken ct = default) => throw new NotSupportedException();
     }
 
     private sealed class DirectAttempt : IAuthenticationAttempt

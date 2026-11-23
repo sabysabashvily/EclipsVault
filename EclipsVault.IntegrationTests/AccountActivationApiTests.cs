@@ -104,7 +104,7 @@ public sealed class AccountActivationApiTests(InvitationFixture fixture)
         Assert.Equal(inspected.ExpiresAtUtc, shown.RootElement.GetProperty("expiresAtUtc").GetDateTimeOffset());
         var head = await AuditTrail.HeadAsync(Vault);
 
-        var code = await ActivationApi.FreshCodeAsync(secret);
+        var code = ActivationApi.FirstCode(secret);
         var completed = await ActivationApi.CompleteAsync(visitor, token, Password, code);
 
         Assert.Equal(HttpStatusCode.NoContent, completed.StatusCode);
@@ -127,7 +127,7 @@ public sealed class AccountActivationApiTests(InvitationFixture fixture)
             "/api/ui/auth/password", JsonContent.Create(new { username = "it-act-flow", password = Password }));
         Assert.Equal("totp", (await password.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("next").GetString());
         var signedIn = await UiApiRequest.SendWithTokenAsync(person, SignInDocument.TokenOf(password), HttpMethod.Post,
-            "/api/ui/auth/totp", JsonContent.Create(new { code = Totp.NextCode(secret) }));
+            "/api/ui/auth/totp", JsonContent.Create(new { code = Totp.Code(secret, Totp.StepStillAccepted(DateTimeOffset.UtcNow, activated.LastTotpStep)) }));
         Assert.Equal(HttpStatusCode.OK, signedIn.StatusCode);
     }
 
@@ -142,7 +142,7 @@ public sealed class AccountActivationApiTests(InvitationFixture fixture)
 
         await UiApiFailureContractTests.AssertProblemAsync(
             await ActivationApi.CompleteAsync(visitor, token, Password, Totp.Code(secret, Totp.CurrentStep() + 10)), 400, "code_invalid");
-        var shortPassword = await ActivationApi.CompleteAsync(visitor, token, "short", await ActivationApi.FreshCodeAsync(secret));
+        var shortPassword = await ActivationApi.CompleteAsync(visitor, token, "short", ActivationApi.FirstCode(secret));
         Assert.Equal(HttpStatusCode.BadRequest, shortPassword.StatusCode);
         using (var refusal = JsonDocument.Parse(await shortPassword.Content.ReadAsStringAsync()))
         {
@@ -159,7 +159,7 @@ public sealed class AccountActivationApiTests(InvitationFixture fixture)
         Assert.Null(invitation.SpentAtUtc);
         Assert.Equal(secret, invitation.PendingTotpSecret);
         Assert.Equal(HttpStatusCode.NoContent,
-            (await ActivationApi.CompleteAsync(visitor, token, Password, await ActivationApi.FreshCodeAsync(secret))).StatusCode);
+            (await ActivationApi.CompleteAsync(visitor, token, Password, ActivationApi.FirstCode(secret))).StatusCode);
     }
 
     [Fact]
@@ -206,7 +206,7 @@ public sealed class AccountActivationApiTests(InvitationFixture fixture)
         var activator = ActivationApi.Visitor(Vault, "198.18.180.4");
         var usedSecret = await ActivationApi.SecretAsync(activator, used);
         Assert.Equal(HttpStatusCode.NoContent,
-            (await ActivationApi.CompleteAsync(activator, used, Password, await ActivationApi.FreshCodeAsync(usedSecret))).StatusCode);
+            (await ActivationApi.CompleteAsync(activator, used, Password, ActivationApi.FirstCode(usedSecret))).StatusCode);
         await AssertInvalidAsync(used);
 
         var replaced = await InviteAsync("it-act-replaced");
@@ -267,14 +267,9 @@ internal static class ActivationApi
         => await UiApiRequest.SendWithTokenAsync(visitor, await SignInDocument.TokenAsync(visitor, "/Account/Activate"), HttpMethod.Post,
             "/api/ui/auth/activation/complete", JsonContent.Create(new { token, password, code }));
 
-    /// <summary>A code for the current step, not so close to its end that the vault reads it in the next.</summary>
-    public static async Task<string> FreshCodeAsync(string secret)
-    {
-        if (Totp.SecondsLeftInStep() < 5)
-        {
-            await Task.Delay(TimeSpan.FromSeconds(Totp.SecondsLeftInStep() + 1));
-        }
-
-        return Totp.Code(secret, Totp.CurrentStep());
-    }
+    /// <summary>
+    /// A first code for a newly shown authenticator. Nothing is spent yet, and the vault accepts the current step
+    /// for one step either side, so the code still works if the step ends before the vault reads it.
+    /// </summary>
+    public static string FirstCode(string secret) => Totp.Code(secret, Totp.CurrentStep());
 }

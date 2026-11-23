@@ -45,6 +45,8 @@ public sealed class InvitationCollection : ICollectionFixture<InvitationFixture>
 public sealed class AccountInvitationApiTests(InvitationFixture fixture)
 {
     private const string Missing = "/api/ui/users/11111111-1111-1111-1111-111111111111";
+    private const string InvitedPassword = "It-invited-refused-password!";
+    private const string InvitedTotpSecret = "JBSWY3DPEHPK3PXP";
 
     private VaultFixture Vault => fixture.Vault;
 
@@ -57,6 +59,19 @@ public sealed class AccountInvitationApiTests(InvitationFixture fixture)
         Assert.True(response.Headers.CacheControl?.NoStore);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.True(body.RootElement.GetProperty("invitationsAvailable").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Users_list_and_details_say_resend_can_deliver_when_smtp_and_public_url_are_configured()
+    {
+        var admin = await Vault.AdminClientAsync();
+        var administrator = await ProfileHttp.AccountAsync(Vault, "vault-admin");
+
+        using var list = JsonDocument.Parse(await (await admin.GetAsync("/api/ui/users")).Content.ReadAsStringAsync());
+        using var details = JsonDocument.Parse(await (await admin.GetAsync($"/api/ui/users/{administrator.Id}")).Content.ReadAsStringAsync());
+
+        Assert.True(list.RootElement.GetProperty("invitationsAvailable").GetBoolean());
+        Assert.True(details.RootElement.GetProperty("invitationsAvailable").GetBoolean());
     }
 
     [Theory]
@@ -317,116 +332,150 @@ public sealed class AccountInvitationApiTests(InvitationFixture fixture)
         Assert.StartsWith($"{InvitationFixture.ConfiguredPublicUrl}/Account/Activate#", delivered.Link, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task Invitation_endpoints_refuse_active_accounts_taken_emails_and_invalid_emails()
+    [Theory]
+    [InlineData("invitation")]
+    [InlineData("invitation-address")]
+    public async Task Invitation_endpoints_refuse_an_activated_account_with_already_active(string endpoint)
     {
         var admin = await Vault.AdminClientAsync();
-        await Vault.SignInNewAccountAsync("it-inv-active", IPAddress.Parse("198.18.120.40"));
-        var active = await ProfileHttp.AccountAsync(Vault, "it-inv-active");
-        var invited = await SeedInvitedAccountAsync("it-inv-conflicts", "conflicts@example.test");
+        var active = await ProfileHttp.AccountAsync(Vault, VaultFixture.AdminUsername);
 
-        await UiApiFailureContractTests.AssertProblemAsync(
-            await UiApiRequest.SendWithTokenAsync(admin, await UiApiRequest.AntiforgeryTokenAsync(admin),
-                HttpMethod.Post, $"/api/ui/users/{active.Id}/invitation"),
-            409, "already_active");
+        var response = await UiApiRequest.SendWithTokenAsync(admin, await UiApiRequest.AntiforgeryTokenAsync(admin),
+            HttpMethod.Post, $"/api/ui/users/{active.Id}/{endpoint}", JsonContent.Create(new { email = "other@example.test" }));
 
-        await UiApiFailureContractTests.AssertProblemAsync(
-            await UiApiRequest.SendWithTokenAsync(admin, await UiApiRequest.AntiforgeryTokenAsync(admin),
-                HttpMethod.Post, $"/api/ui/users/{active.Id}/invitation-address",
-                JsonContent.Create(new { email = "other@example.test" })),
-            409, "already_active");
-
-        var takenResponse = await UiApiRequest.SendWithTokenAsync(admin, await UiApiRequest.AntiforgeryTokenAsync(admin),
-            HttpMethod.Post, $"/api/ui/users/{invited.Id}/invitation-address",
-            JsonContent.Create(new { email = active.Email.ToUpperInvariant() }));
-        await UiApiFailureContractTests.AssertProblemAsync(takenResponse, 409, "email_taken");
-        var takenBody = await takenResponse.Content.ReadAsStringAsync();
-        Assert.DoesNotContain(active.Username, takenBody, StringComparison.OrdinalIgnoreCase);
-
-        var invalidResponse = await UiApiRequest.SendWithTokenAsync(admin, await UiApiRequest.AntiforgeryTokenAsync(admin),
-            HttpMethod.Post, $"/api/ui/users/{invited.Id}/invitation-address",
-            JsonContent.Create(new { email = "not-an-email" }));
-        await UserFormsApiTests.AssertFieldProblemAsync(invalidResponse, "email", "Enter a valid email address.");
-
-        await UiApiFailureContractTests.AssertProblemAsync(
-            await UiApiRequest.SendWithTokenAsync(admin, await UiApiRequest.AntiforgeryTokenAsync(admin),
-                HttpMethod.Post, Missing + "/invitation"),
-            404, "user_not_found");
-        await UiApiFailureContractTests.AssertProblemAsync(
-            await UiApiRequest.SendWithTokenAsync(admin, await UiApiRequest.AntiforgeryTokenAsync(admin),
-                HttpMethod.Post, Missing + "/invitation-address",
-                JsonContent.Create(new { email = "missing@example.test" })),
-            404, "user_not_found");
+        await UiApiFailureContractTests.AssertProblemAsync(response, 409, "already_active");
     }
 
     [Fact]
-    public async Task Invited_accounts_are_refused_by_password_pending_validation_final_issuance_sso_and_break_glass_even_with_matching_stamp()
+    public async Task Replacing_the_invitation_address_with_a_taken_email_answers_email_taken_without_naming_its_owner()
     {
-        const string password = "It-invited-refused-password-179!";
-        var totpSecret = "JBSWY3DPEHPK3PXP";
-        var invited = await SeedInvitedAccountAsync("it-inv-refused-all", "invited.refused@example.test",
-            clearance: ClearanceLevel.TopSecret, password: password, totpEnabled: true, totpSecret: totpSecret);
+        var admin = await Vault.AdminClientAsync();
+        var owner = await ProfileHttp.AccountAsync(Vault, VaultFixture.AdminUsername);
+        var invited = await SeedInvitedAccountAsync("it-inv-taken", "taken.target@example.test");
 
-        // 1. Password sign-in refused with identical response and LoginFailed "Account awaiting activation".
+        var response = await UiApiRequest.SendWithTokenAsync(admin, await UiApiRequest.AntiforgeryTokenAsync(admin),
+            HttpMethod.Post, $"/api/ui/users/{invited.Id}/invitation-address",
+            JsonContent.Create(new { email = owner.Email.ToUpperInvariant() }));
+
+        await UiApiFailureContractTests.AssertProblemAsync(response, 409, "email_taken");
+        Assert.DoesNotContain(owner.Username, await response.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Replacing_the_invitation_address_with_an_invalid_email_names_the_field()
+    {
+        var admin = await Vault.AdminClientAsync();
+        var invited = await SeedInvitedAccountAsync("it-inv-invalid", "invalid.target@example.test");
+
+        var response = await UiApiRequest.SendWithTokenAsync(admin, await UiApiRequest.AntiforgeryTokenAsync(admin),
+            HttpMethod.Post, $"/api/ui/users/{invited.Id}/invitation-address",
+            JsonContent.Create(new { email = "not-an-email" }));
+
+        await UserFormsApiTests.AssertFieldProblemAsync(response, "email", "Enter a valid email address.");
+    }
+
+    [Theory]
+    [InlineData("invitation")]
+    [InlineData("invitation-address")]
+    public async Task Invitation_endpoints_answer_user_not_found_for_a_missing_account(string endpoint)
+    {
+        var admin = await Vault.AdminClientAsync();
+
+        var response = await UiApiRequest.SendWithTokenAsync(admin, await UiApiRequest.AntiforgeryTokenAsync(admin),
+            HttpMethod.Post, $"{Missing}/{endpoint}", JsonContent.Create(new { email = "missing@example.test" }));
+
+        await UiApiFailureContractTests.AssertProblemAsync(response, 404, "user_not_found");
+    }
+
+    [Fact]
+    public async Task An_invited_accounts_password_is_refused_as_a_wrong_password_and_recorded_as_awaiting_activation()
+    {
+        var invited = await SeedInvitedAccountAsync("it-inv-refused-password", "refused.password@example.test",
+            password: InvitedPassword, totpEnabled: true, totpSecret: InvitedTotpSecret);
         var before = await AuditTrail.HeadAsync(Vault);
-        var passwordBrowser = Vault.CreateSession(source: IPAddress.Parse("198.18.120.21"));
-        var anonToken = await AuthApi.AnonymousTokenAsync(passwordBrowser);
-        var passwordResponse = await AuthApi.PostAsync(passwordBrowser, "/api/ui/auth/password", anonToken,
-            new { username = invited.Username, password });
-        var problem = await ProfileApi.AssertProblemAsync(passwordResponse, 400, "sign_in_failed");
+        var browser = Vault.CreateSession(source: IPAddress.Parse("198.18.120.21"));
+
+        var response = await AuthApi.PostAsync(browser, "/api/ui/auth/password", await AuthApi.AnonymousTokenAsync(browser),
+            new { username = invited.Username, password = InvitedPassword });
+
+        var problem = await ProfileApi.AssertProblemAsync(response, 400, "sign_in_failed");
         Assert.Equal("Invalid username or password.", problem.GetProperty("title").GetString());
         var loginFailed = Assert.Single(await AuditTrail.RowsAfterAsync(Vault, before),
             row => row.Action == AuditAction.LoginFailed && row.ResourceId == invited.Id);
         Assert.Equal("Account awaiting activation", loginFailed.Details);
+    }
 
-        // 2. Pending-sign-in validation refuses even when CredentialGeneration and RevocationVersion still match.
-        var revocation = Vault.Services.GetRequiredService<ISessionRevocationService>();
-        var stamp = new SessionStamp(invited.CredentialGeneration, await revocation.CaptureAsync(invited.Id, default));
-        var pendingBrowser = Vault.CreateSession(source: IPAddress.Parse("198.18.120.22"));
-        AttachPendingCookie(pendingBrowser, invited, stamp);
-        var pendingToken = await AuthApi.AnonymousTokenAsync(pendingBrowser);
-        foreach (var (path, payload) in new (string, object)[]
-        {
-            ("/api/ui/auth/totp", new { code = Totp.Code(totpSecret, Totp.CurrentStep()) }),
-            ("/api/ui/auth/recovery-code", new { code = "ABCD-EFGH" }),
-            ("/api/ui/auth/enrollment", new { }),
-            ("/api/ui/auth/enrollment/confirm", new { code = Totp.Code(totpSecret, Totp.CurrentStep()) })
-        })
-        {
-            AttachPendingCookie(pendingBrowser, invited, stamp);
-            var pendingResponse = await AuthApi.PostAsync(pendingBrowser, path, pendingToken, payload);
-            await ProfileApi.AssertProblemAsync(pendingResponse, 401, "sign_in_expired");
-        }
+    [Theory]
+    [InlineData("totp", "198.18.120.25")]
+    [InlineData("recovery-code", "198.18.120.26")]
+    [InlineData("enrollment", "198.18.120.27")]
+    [InlineData("enrollment/confirm", "198.18.120.28")]
+    public async Task A_pending_sign_in_of_an_invited_account_expires_even_when_its_stamp_still_matches(string step, string source)
+    {
+        var invited = await SeedInvitedAccountAsync($"it-inv-pending-{step.Replace('/', '-')}", $"pending.{step.Replace('/', '.')}@example.test",
+            password: InvitedPassword, totpEnabled: true, totpSecret: InvitedTotpSecret);
+        var browser = Vault.CreateSession(source: IPAddress.Parse(source));
+        AttachPendingCookie(browser, invited, await MatchingStampAsync(invited));
 
-        // 3. Final session issuance refuses even when the stamp still matches and records SignInRefused.
-        var beforeIssuance = await AuditTrail.HeadAsync(Vault);
+        var response = await AuthApi.PostAsync(browser, $"/api/ui/auth/{step}", await AuthApi.AnonymousTokenAsync(browser),
+            new { code = Totp.Code(InvitedTotpSecret, Totp.CurrentStep()) });
+
+        await ProfileApi.AssertProblemAsync(response, 401, "sign_in_expired");
+    }
+
+    [Fact]
+    public async Task Final_session_issuance_refuses_an_invited_account_even_when_its_stamp_still_matches()
+    {
+        var invited = await SeedInvitedAccountAsync("it-inv-refused-issuance", "refused.issuance@example.test",
+            password: InvitedPassword, totpEnabled: true, totpSecret: InvitedTotpSecret);
+        var stamp = await MatchingStampAsync(invited);
+        var before = await AuditTrail.HeadAsync(Vault);
+
         using (var scope = Vault.Services.CreateScope())
         {
             var issuer = scope.ServiceProvider.GetRequiredService<SessionIssuer>();
             var httpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { RequestServices = scope.ServiceProvider };
-            var issued = await issuer.SignInAsync(httpContext, UserDto.From(invited), stamp,
-                new SignInAudit(AuditAction.LoginSucceeded, "Single sign-on"), default);
-            Assert.False(issued);
+            Assert.False(await issuer.SignInAsync(httpContext, UserDto.From(invited), stamp,
+                new SignInAudit(AuditAction.LoginSucceeded, "Single sign-on"), default));
         }
-        var issuanceRows = await ProfileHttp.EventsAfterAsync(Vault, beforeIssuance, invited.Id);
-        Assert.Contains(AuditAction.SignInRefused, issuanceRows);
-        Assert.DoesNotContain(AuditAction.LoginSucceeded, issuanceRows);
 
-        // 4. SSO refuses with NotActivated and redirects to ?sso=refused.
-        var beforeSso = await AuditTrail.HeadAsync(Vault);
-        var ssoResponse = await PostIdpAssertion.InvokeAsync(Vault, invited.Email, "198.18.120.23");
-        Assert.Equal("/Account/Login?sso=refused", ssoResponse.Headers.Location?.OriginalString);
-        var ssoRow = Assert.Single(await AuditTrail.RowsAfterAsync(Vault, beforeSso), row => row.Action == AuditAction.SsoSignInRefused);
-        Assert.Contains("NotActivated", ssoRow.Details!, StringComparison.Ordinal);
-
-        // 5. Break-glass refuses an invited TopSecret administrator.
-        var breakGlassBrowser = Vault.CreateSession(source: IPAddress.Parse("198.18.120.24"));
-        var recoverToken = await AuthApi.AnonymousTokenAsync(breakGlassBrowser, "/Account/Recover");
-        var recoverResponse = await AuthApi.PostAsync(breakGlassBrowser, "/api/ui/auth/recover", recoverToken,
-            new { username = invited.Username, password, code = Totp.Code(totpSecret, Totp.CurrentStep()) });
-        await ProfileApi.AssertProblemAsync(recoverResponse, 400, "recovery_failed");
-        Assert.Null(breakGlassBrowser.SessionCookie);
+        var rows = await ProfileHttp.EventsAfterAsync(Vault, before, invited.Id);
+        Assert.Contains(AuditAction.SignInRefused, rows);
+        Assert.DoesNotContain(AuditAction.LoginSucceeded, rows);
     }
+
+    [Fact]
+    public async Task Single_sign_on_refuses_an_invited_account_as_not_activated()
+    {
+        var invited = await SeedInvitedAccountAsync("it-inv-refused-sso", "refused.sso@example.test",
+            password: InvitedPassword, totpEnabled: true, totpSecret: InvitedTotpSecret);
+        var before = await AuditTrail.HeadAsync(Vault);
+
+        var response = await PostIdpAssertion.InvokeAsync(Vault, invited.Email, "198.18.120.23");
+
+        Assert.Equal("/Account/Login?sso=refused", response.Headers.Location?.OriginalString);
+        var row = Assert.Single(await AuditTrail.RowsAfterAsync(Vault, before), row => row.Action == AuditAction.SsoSignInRefused);
+        Assert.Contains("NotActivated", row.Details!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Break_glass_refuses_an_invited_top_secret_account()
+    {
+        var invited = await SeedInvitedAccountAsync("it-inv-refused-recover", "refused.recover@example.test",
+            clearance: ClearanceLevel.TopSecret, password: InvitedPassword, totpEnabled: true, totpSecret: InvitedTotpSecret);
+        var browser = Vault.CreateSession(source: IPAddress.Parse("198.18.120.24"));
+
+        var response = await AuthApi.PostAsync(browser, "/api/ui/auth/recover", await AuthApi.AnonymousTokenAsync(browser, "/Account/Recover"),
+            new { username = invited.Username, password = InvitedPassword, code = Totp.Code(InvitedTotpSecret, Totp.CurrentStep()) });
+
+        await ProfileApi.AssertProblemAsync(response, 400, "recovery_failed");
+        Assert.Null(browser.SessionCookie);
+    }
+
+    /// <summary>The stamp a sign-in begun now would carry: the account's credential generation and revocation version.</summary>
+    private async Task<SessionStamp> MatchingStampAsync(User invited)
+        => new(invited.CredentialGeneration,
+            await Vault.Services.GetRequiredService<ISessionRevocationService>().CaptureAsync(invited.Id, default));
 
     [Fact]
     public async Task Invited_accounts_are_excluded_from_last_administrator_and_refuse_reset_mfa_while_other_administration_works()
@@ -550,6 +599,19 @@ public sealed class AccountInvitationUnavailableTests(UnconfiguredInvitationsFix
         using var scope = Vault.Services.CreateScope();
         Assert.False(await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().Users
             .AnyAsync(user => user.Username == "it-inv-unavail-create"));
+    }
+
+    [Fact]
+    public async Task Users_list_and_details_say_resend_cannot_deliver_when_mail_or_public_url_is_not_configured()
+    {
+        var admin = await Vault.AdminClientAsync();
+        var administrator = await ProfileHttp.AccountAsync(Vault, "vault-admin");
+
+        using var list = JsonDocument.Parse(await (await admin.GetAsync("/api/ui/users")).Content.ReadAsStringAsync());
+        using var details = JsonDocument.Parse(await (await admin.GetAsync($"/api/ui/users/{administrator.Id}")).Content.ReadAsStringAsync());
+
+        Assert.False(list.RootElement.GetProperty("invitationsAvailable").GetBoolean());
+        Assert.False(details.RootElement.GetProperty("invitationsAvailable").GetBoolean());
     }
 
     [Fact]

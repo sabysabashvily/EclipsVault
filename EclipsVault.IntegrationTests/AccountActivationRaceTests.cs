@@ -18,13 +18,15 @@ namespace EclipsVault.IntegrationTests;
 public abstract class AccountActivationRaceTests(AccountChangeDatabases databases)
 {
     private const string Password = "It-activation-race-password";
-    private static readonly TotpService Authenticator = new(TimeProvider.System);
+    // The authenticator checks codes at one fixed moment, so a code never meets a step boundary.
+    private static readonly DateTimeOffset CheckedAt = DateTimeOffset.UtcNow;
+    private static readonly TotpService Authenticator = new(new StoppedClock(CheckedAt));
 
     [Fact]
     public async Task Two_activations_of_one_invitation_activate_the_account_once()
     {
         var (account, token, seed) = await SeedInvitedAccountAsync("it-race-activate-twice");
-        var code = await FreshCodeAsync(seed);
+        var code = Totp.Code(seed, Totp.StepAt(CheckedAt));
         using var bothChecked = new Barrier(participantCount: 2);
         await using var first = databases.NewRequest();
         await using var second = databases.NewRequest();
@@ -46,7 +48,7 @@ public abstract class AccountActivationRaceTests(AccountChangeDatabases database
     public async Task An_activation_that_commits_inside_a_resends_window_wins_and_the_resend_is_refused()
     {
         var (account, token, seed) = await SeedInvitedAccountAsync("it-race-activate-first");
-        var code = await FreshCodeAsync(seed);
+        var code = Totp.Code(seed, Totp.StepAt(CheckedAt));
         using var noOther = new Barrier(participantCount: 1);
         await using var activating = databases.NewRequest();
         await using var resending = databases.NewRequest();
@@ -71,7 +73,7 @@ public abstract class AccountActivationRaceTests(AccountChangeDatabases database
     public async Task A_resend_that_commits_inside_an_activations_window_wins_and_the_activation_is_refused()
     {
         var (account, token, seed) = await SeedInvitedAccountAsync("it-race-resend-first");
-        var code = await FreshCodeAsync(seed);
+        var code = Totp.Code(seed, Totp.StepAt(CheckedAt));
         using var noOther = new Barrier(participantCount: 1);
         await using var activating = databases.NewRequest();
         await using var resending = databases.NewRequest();
@@ -167,17 +169,6 @@ public abstract class AccountActivationRaceTests(AccountChangeDatabases database
         return (account, token, seed);
     }
 
-    /// <summary>A code for the current step, not so close to its end that the vault reads it in the next.</summary>
-    private static async Task<string> FreshCodeAsync(string seed)
-    {
-        if (Totp.SecondsLeftInStep() < 5)
-        {
-            await Task.Delay(TimeSpan.FromSeconds(Totp.SecondsLeftInStep() + 1));
-        }
-
-        return Totp.Code(seed, Totp.CurrentStep());
-    }
-
     private static Task<AccountInvitation> InvitationOfAsync(AccountRequest request, Guid accountId)
         => request.Context.AccountInvitations.AsNoTracking().SingleAsync(invitation => invitation.UserId == accountId);
 
@@ -265,6 +256,11 @@ public abstract class AccountActivationRaceTests(AccountChangeDatabases database
             Interlocked.Exchange(ref _pending, null)?.Invoke();
             return TimeProvider.System.GetUtcNow();
         }
+    }
+
+    private sealed class StoppedClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
     }
 
     private sealed class CleanBreachScreen : IBreachedPasswordScreen
