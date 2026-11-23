@@ -63,6 +63,9 @@
   /* Hairline borders */
   --border: rgba(255, 255, 255, 0.09);
   --border-strong: rgba(255, 255, 255, 0.16);
+  /* Interactive control and selected-state boundaries meeting WCAG 1.4.11 (>= 3:1). */
+  --border-control: #6c6e78;
+  --nav-active-border: #747681;
 
   --text: #f2f2f4;
   --text-secondary: #b8b8bf;
@@ -504,13 +507,18 @@ body:has(.mobile-navigation[open]) {
   font-weight: 500;
   box-shadow: var(--shadow-sm);
 }
-/* In dark mode, a hairline inner ring separates the graphite active pill from the canvas. */
+/* In dark mode, a >= 3:1 border ring and accent icon tint clearly mark active nav and tabs. */
 :root:not([data-theme='light']) .nav-item.active,
 :root:not([data-theme='light']) .sidebar.is-collapsed .nav-group-summary.has-active,
 :root:not([data-theme='light']) .tab-link.active {
   box-shadow:
-    inset 0 0 0 1px var(--border),
+    inset 0 0 0 1px var(--nav-active-border),
     var(--shadow-sm);
+}
+:root:not([data-theme='light']) .nav-item.active svg,
+:root:not([data-theme='light']) .sidebar.is-collapsed .nav-group-summary.has-active svg {
+  color: var(--accent);
+  opacity: 1;
 }
 .nav-item.active svg {
   opacity: 1;
@@ -535,7 +543,7 @@ body:has(.mobile-navigation[open]) {
 .nav-group-summary .nav-chevron {
   width: 14px;
   height: 14px;
-  margin-left: auto;
+  margin-inline-start: auto;
   opacity: 0.55;
   transition: transform var(--dur) var(--ease);
 }
@@ -555,7 +563,7 @@ body:has(.mobile-navigation[open]) {
   flex-direction: column;
   gap: 2px;
   margin: 2px 0 4px;
-  padding-left: 2.25rem;
+  padding-inline-start: 2.25rem;
 }
 .nav-group-items > .nav-item {
   position: relative;
@@ -565,23 +573,23 @@ body:has(.mobile-navigation[open]) {
 .nav-group-items > .nav-item::before {
   content: '';
   position: absolute;
-  left: calc(0.75rem + 9px - 2.25rem - 0.75px);
+  inset-inline-start: calc(0.75rem + 9px - 2.25rem - 0.75px);
   top: calc(50% - 0.55rem);
   width: calc(2.25rem - 0.75rem - 9px - 2px);
   height: 0.55rem;
-  border-left: 1.5px solid var(--tree-line);
+  border-inline-start: 1.5px solid var(--tree-line);
   border-bottom: 1.5px solid var(--tree-line);
-  border-bottom-left-radius: 0.55rem;
+  border-end-start-radius: 0.55rem;
   pointer-events: none;
 }
 /* One unbroken vertical trunk across all items before the last child's elbow. */
 .nav-group-items > .nav-item:not(:last-child)::after {
   content: '';
   position: absolute;
-  left: calc(0.75rem + 9px - 2.25rem - 0.75px);
+  inset-inline-start: calc(0.75rem + 9px - 2.25rem - 0.75px);
   top: 0;
   bottom: -2px;
-  border-left: 1.5px solid var(--tree-line);
+  border-inline-start: 1.5px solid var(--tree-line);
   pointer-events: none;
 }
 /* Drop cleanly from just beneath the group's icon. */
@@ -1966,13 +1974,10 @@ button.matrix-cell:hover .matrix-word {
   white-space: nowrap;
 }
 
-/* A table that must not scroll sideways: below 880px of card its rows become cards. */
+/* A table that must not scroll sideways: below 880px of card its rows become cards. Keep overflow
+   visible so row overflow menus on the final row are never clipped. */
 .table-card {
   container: rows / inline-size;
-  overflow-x: auto;
-}
-.table-card-wide {
-  container: rows-wide / inline-size;
 }
 .row-cards {
   overflow-wrap: normal;
@@ -1980,75 +1985,6 @@ button.matrix-cell:hover .matrix-word {
 }
 .row-cards .cell-pill {
   white-space: nowrap;
-}
-/* Wide 7-column lease tables stack into cards below 1040px of card so mono usernames and UTC
-   timestamps never wrap mid-token or clip the Revoke button at 1280px desktop width. */
-@container rows-wide (width < 1040px) {
-  .row-cards thead {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-  .row-cards,
-  .row-cards tbody {
-    display: block;
-  }
-  .row-cards tbody tr {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.4rem 0.65rem;
-    padding: 1rem 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .row-cards tbody tr:last-child {
-    border-bottom: none;
-  }
-  .row-cards tbody td {
-    display: block;
-    height: auto;
-    padding: 0;
-    border: none;
-  }
-  .row-cards tbody tr:hover td {
-    background: none;
-  }
-  .row-cards .cell-main {
-    flex: 1 1 calc(100% - 7.5rem);
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
-  .row-cards .cell-verb {
-    order: 1;
-    margin-left: auto;
-  }
-  .row-cards .cell-pill {
-    order: 2;
-    white-space: normal;
-  }
-  .row-cards .cell-meta {
-    order: 3;
-    min-width: 0;
-    overflow-wrap: anywhere;
-    color: var(--text-muted);
-    font-size: 0.86rem;
-  }
-  .row-cards .cell-nowrap {
-    white-space: normal;
-    overflow-wrap: anywhere;
-  }
-  .row-cards .cell-meta[data-label]::before {
-    content: attr(data-label) ' ';
-  }
-  .row-cards tbody tr:not(:has(.cell-verb)) .cell-main {
-    flex-basis: 100%;
-  }
-  .row-cards tbody td:empty {
-    display: none;
-  }
 }
 @container rows (width < 880px) {
   .row-cards thead {
@@ -3159,6 +3095,12 @@ textarea {
 .dynamic-leases-table td {
   padding-inline: 0.6rem;
 }
+.dynamic-roles-table .cell-main,
+.dynamic-leases-table .lease-name,
+.dynamic-leases-table .lease-identity {
+  max-width: 18rem;
+  overflow-wrap: anywhere;
+}
 .lease-note {
   margin-top: 0.35rem;
   font-size: 0.82rem;
@@ -3184,7 +3126,7 @@ textarea {
   align-items: center;
   min-height: 2.15rem;
   padding: 2px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border-control, var(--border-strong));
   border-radius: var(--radius-pill);
   background: var(--bg-inset);
   transition:
@@ -3261,6 +3203,13 @@ textarea {
   }
   .ttl-stepper {
     min-height: 2.75rem;
+  }
+  /* 16px stops iOS zooming on focus, and 2.75rem keeps the numeric touch target >= 44px. */
+  .ttl-stepper input {
+    min-width: 2.75rem;
+    width: 3rem;
+    min-height: 2.75rem;
+    font-size: 1rem;
   }
   .ttl-step-button {
     width: 2.75rem;

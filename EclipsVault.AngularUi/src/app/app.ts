@@ -1,11 +1,13 @@
 import { NgTemplateOutlet } from '@angular/common';
 import {
+  afterNextRender,
   Component,
   computed,
   DestroyRef,
   DOCUMENT,
   ElementRef,
   inject,
+  Injector,
   signal,
   viewChild,
 } from '@angular/core';
@@ -51,6 +53,7 @@ const sidebarCollapsedKey = 'eclipsvault.sidebar.collapsed';
         <header class="topbar">
           @if (compact()) {
             <button
+              #navigationToggle
               type="button"
               class="button navigation-toggle"
               aria-label="Open navigation"
@@ -210,6 +213,7 @@ export class App {
   protected readonly me = inject(CurrentAccount).me;
   protected readonly palette = viewChild(CommandPalette);
   private readonly document = inject(DOCUMENT);
+  private readonly injector = inject(Injector);
   private readonly navigator = this.document.defaultView?.navigator;
   private readonly viewport = this.document.defaultView?.matchMedia?.('(max-width: 1199px)');
   protected readonly pageActions = inject(PageActions);
@@ -225,6 +229,8 @@ export class App {
   protected readonly sidebar = viewChild<ElementRef<HTMLElement>>('sidebar');
   protected readonly navigationDialog =
     viewChild<ElementRef<HTMLDialogElement>>('navigationDialog');
+  protected readonly navigationToggle =
+    viewChild<ElementRef<HTMLButtonElement>>('navigationToggle');
   protected readonly chord = commandChord(
     this.navigator?.platform || this.navigator?.userAgent || '',
   );
@@ -232,8 +238,27 @@ export class App {
   constructor() {
     this.compact.set(this.viewport?.matches ?? false);
     const resized = (event: MediaQueryListEvent) => {
+      const active = this.document.activeElement;
+      const drawerHadFocus =
+        this.navigationOpen() ||
+        (active instanceof Node && !!this.navigationDialog()?.nativeElement.contains(active));
+      const desktopSidebarHadFocus =
+        !this.compact() &&
+        active instanceof Node &&
+        !!this.sidebar()?.nativeElement.contains(active);
       this.closeNavigation();
       this.compact.set(event.matches);
+      if (drawerHadFocus && !event.matches) {
+        afterNextRender(
+          () =>
+            this.sidebar()?.nativeElement.querySelector<HTMLElement>('.sidebar-toggle')?.focus(),
+          { injector: this.injector },
+        );
+      } else if (desktopSidebarHadFocus && event.matches) {
+        afterNextRender(() => this.navigationToggle()?.nativeElement.focus(), {
+          injector: this.injector,
+        });
+      }
     };
     this.viewport?.addEventListener('change', resized);
     inject(DestroyRef).onDestroy(() => this.viewport?.removeEventListener('change', resized));

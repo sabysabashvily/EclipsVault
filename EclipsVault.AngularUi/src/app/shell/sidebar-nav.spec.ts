@@ -76,7 +76,22 @@ describe('SidebarNav', () => {
     summary.click();
     await fixture.whenStable();
 
-    expect(group.open).toBe(true);
+    expect(group.open).toBe(false);
     expect(expanded).toHaveBeenCalledTimes(1);
+
+    fixture.componentRef.setInput('collapsed', false);
+    await fixture.whenStable();
+    expect(group.open).toBe(true);
+  });
+
+  it('closes the active group disclosure while collapsed and restores it when expanded', async () => {
+    const { fixture, group } = await renderAt('/Admin/Users', true);
+
+    expect(group.open).toBe(false);
+
+    fixture.componentRef.setInput('collapsed', false);
+    await fixture.whenStable();
+
+    expect(group.open).toBe(true);
   });
 });

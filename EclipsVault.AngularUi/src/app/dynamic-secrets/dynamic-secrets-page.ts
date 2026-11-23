@@ -14,6 +14,7 @@ import { Observable, finalize } from 'rxjs';
 import { AdministratorWrites } from '../shared/administrator-writes';
 import { ConfirmationDialog } from '../shared/confirmation-dialog';
 import { EmptyState } from '../shared/empty-state';
+import { ScrollRegion } from '../shared/scroll-region';
 import { StatusLine } from '../shared/status-line';
 import { StepUpDialog } from '../shared/step-up-dialog';
 import type { components } from '../ui-api/schema.generated';
@@ -28,7 +29,7 @@ const backendRefused = 'The backend refused to destroy the credential; it may st
 
 @Component({
   selector: 'app-dynamic-secrets-page',
-  imports: [DatePipe, EmptyState, StatusLine, StepUpDialog, ConfirmationDialog],
+  imports: [DatePipe, EmptyState, ScrollRegion, StatusLine, StepUpDialog, ConfirmationDialog],
   providers: [AdministratorWrites],
   templateUrl: './dynamic-secrets-page.html',
 })

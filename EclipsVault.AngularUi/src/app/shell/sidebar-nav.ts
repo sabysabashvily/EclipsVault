@@ -1,5 +1,5 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, computed, inject, input, output } from '@angular/core';
+import { Component, computed, inject, input, linkedSignal, output } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { filter, map } from 'rxjs';
@@ -31,6 +31,11 @@ export class SidebarNav {
     ),
     { initialValue: this.router.url },
   );
+  // Preserves manual open/close choices while collapsing and expanding the rail on the same route.
+  private readonly preferredOpen = linkedSignal({
+    source: this.url,
+    computation: (): Readonly<Record<string, boolean>> => ({}),
+  });
 
   private path(): string {
     return this.url().split(/[?#]/)[0].replace(/\/$/, '').toLowerCase();
@@ -52,11 +57,20 @@ export class SidebarNav {
     return group.children.some((link) => this.holds(link));
   }
 
-  /** In compact icon-rail mode, clicking a group icon expands the sidebar and opens that group. */
-  protected groupSummaryClicked(event: MouseEvent, group: HTMLDetailsElement): void {
-    if (!this.collapsed()) return;
+  /** Collapsed rail hides child links, so disclosure state must report closed until expanded. */
+  protected groupExpanded(group: SidebarGroup): boolean {
+    if (this.collapsed()) return false;
+    return this.preferredOpen()[group.label] ?? this.groupActive(group);
+  }
+
+  protected groupSummaryClicked(event: MouseEvent, group: SidebarGroup): void {
     event.preventDefault();
-    group.open = true;
-    this.expandRequested.emit();
+    if (this.collapsed()) {
+      this.preferredOpen.update((state) => ({ ...state, [group.label]: true }));
+      this.expandRequested.emit();
+      return;
+    }
+    const next = !this.groupExpanded(group);
+    this.preferredOpen.update((state) => ({ ...state, [group.label]: next }));
   }
 }

@@ -179,4 +179,51 @@ describe('App shell', () => {
     await TestBed.inject(ApplicationRef).whenStable();
     expect(sidebar.classList).toContain('is-collapsed');
   });
+
+  it('moves focus to the replacement navigation toggle when resizing across 1200px', async () => {
+    const listeners = new Set<(event: MediaQueryListEvent) => void>();
+    const mediaQuery = {
+      matches: false,
+      media: '(max-width: 1199px)',
+      addEventListener: (_: string, listener: (event: MediaQueryListEvent) => void) =>
+        listeners.add(listener),
+      removeEventListener: (_: string, listener: (event: MediaQueryListEvent) => void) =>
+        listeners.delete(listener),
+    } as unknown as MediaQueryList;
+    // jsdom has no matchMedia, so the shell reads this stand-in for the viewport.
+    const view = document.defaultView!;
+    Object.defineProperty(view, 'matchMedia', { configurable: true, value: () => mediaQuery });
+
+    const shell = await render((request) => request.flush(me));
+    document.body.append(shell);
+    try {
+      const desktopToggle = shell.querySelector<HTMLButtonElement>('.sidebar-toggle')!;
+      desktopToggle.focus();
+      expect(document.activeElement).toBe(desktopToggle);
+
+      for (const listener of listeners) {
+        listener({ matches: true } as MediaQueryListEvent);
+      }
+      await TestBed.inject(ApplicationRef).whenStable();
+
+      const mobileToggle = shell.querySelector<HTMLButtonElement>('.navigation-toggle')!;
+      expect(document.activeElement).toBe(mobileToggle);
+
+      const dialog = shell.querySelector<HTMLDialogElement>('dialog.mobile-navigation')!;
+      dialog.showModal = () => dialog.setAttribute('open', '');
+      dialog.close = () => dialog.removeAttribute('open');
+      mobileToggle.click();
+      await TestBed.inject(ApplicationRef).whenStable();
+
+      for (const listener of listeners) {
+        listener({ matches: false } as MediaQueryListEvent);
+      }
+      await TestBed.inject(ApplicationRef).whenStable();
+
+      expect(document.activeElement).toBe(shell.querySelector('.sidebar-toggle'));
+    } finally {
+      shell.remove();
+      delete (view as Partial<Window>).matchMedia;
+    }
+  });
 });
