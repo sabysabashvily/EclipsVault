@@ -167,6 +167,10 @@ the endpoint table test pins the Top Secret claim on administrator pages. The re
 showed the empty 401 and the missing redirect headers. The browser tests and Vitest checks assert
 the routes and pages a user reaches. See the ledger for review dispositions and the final-head CI run.
 
-The last commit tightens only browser tests. A 404 page must carry a switch to the light theme,
+The browser-test follow-up asks a 404 page to carry a switch to the light theme,
 which proves the preference reached the server. Sidebar navigation has its own assertions and
 retains the original screenshot viewport and motion setting.
+
+Main advanced to `5b5edf7d` when the R26 sign-in redesign landed. Area 9a merged that commit. The
+server pages use the same solid canvas, card radius, shadows, type and spacing as the final R26
+sign-in card. They still use one standalone, script-free stylesheet.
