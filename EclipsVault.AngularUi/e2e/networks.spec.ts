@@ -1,7 +1,6 @@
 import type { BrowserContext } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
-import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { Networks, blockInRunStore } from './networks';
 import { freshTotp, currentTotpStep } from './totp';
 import { savedAdministratorCookies } from './administrator-cookies';
@@ -120,33 +119,17 @@ test('the Denied page link opens Networks', async ({ page }) => {
   await expect(networks.heading).toBeVisible();
 });
 
-test('the Legacy sidebar opens Networks', async ({ page, browserHealth }) => {
-  expectLegacyShell(browserHealth);
-  await page.context().addCookies(administratorCookies);
-  const networks = new Networks(page);
-  await networks.fromSidebar(legacyShell);
-  await expect(networks.heading).toBeVisible();
-});
-
 test('the Angular sidebar opens Networks', async ({ page }) => {
   await page.context().addCookies(administratorCookies);
   const networks = new Networks(page);
-  await networks.fromSidebar('/Access');
-  await expect(networks.heading).toBeVisible();
-});
-
-test('the palette in the Legacy shell opens Networks', async ({ page, browserHealth }) => {
-  expectLegacyShell(browserHealth);
-  await page.context().addCookies(administratorCookies);
-  const networks = new Networks(page);
-  await networks.fromPalette(legacyShell);
+  await networks.fromSidebar();
   await expect(networks.heading).toBeVisible();
 });
 
 test('the palette in the Angular shell opens Networks', async ({ page }) => {
   await page.context().addCookies(administratorCookies);
   const networks = new Networks(page);
-  await networks.fromPalette('/Access');
+  await networks.fromPalette();
   await expect(networks.heading).toBeVisible();
 });
 

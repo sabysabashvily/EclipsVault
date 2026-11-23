@@ -2,7 +2,6 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { test, expect } from './fixtures';
-import { expectLegacyShell, legacyShell, legacyShellHeading } from './legacy-shell';
 import { clearSignInBudget } from './profile-state';
 import { signInNewAccount } from './account-activation';
 import { AccountCreation } from './account-creation';
@@ -24,7 +23,15 @@ import {
   statCards,
   verifySignInHistory,
 } from './sign-ins';
-import { verifySidebar } from './sidebar';
+import { verifyMyAccess } from './access';
+import { AppShell } from './app-shell';
+import {
+  captureSidebar,
+  expectedNavigation,
+  openMyAccessBookmark,
+  readAccountMenu,
+  sidebarNavigation,
+} from './sidebar';
 import {
   allClear,
   atRisk,
@@ -90,12 +97,11 @@ async function otherSessionIds(page: Page): Promise<string[]> {
   return sessions.filter((session) => !session.isCurrent).map((session) => session.sessionId);
 }
 
-test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and return', async ({
+test('sign in, lazy-load My access with Trusted Types, and keep the session in-app', async ({
   page,
   context,
   browserHealth,
 }) => {
-  expectLegacyShell(browserHealth);
   const password = process.env['Seed__AdminPassword'];
   if (!password) throw new Error('Run through npm run e2e with Seed__AdminPassword supplied');
 
@@ -258,15 +264,7 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
   await expect(page).toHaveURL(/\/Access$/);
   await expect(page.locator('.access-matrix tbody tr')).toHaveCount(4);
 
-  // Every sidebar page is the Angular UI's now; the error page is still a Legacy document.
-  const legacyDocument = await page.goto(legacyShell);
-  expect(legacyDocument?.headers()['content-security-policy']).not.toContain('trusted-types');
-  await expect(page.getByRole('heading', { name: legacyShellHeading, exact: true })).toBeVisible();
   await expect(page.locator('.sidebar')).toContainText('Vault Administrator');
-  await page.getByText('Access', { exact: true }).click();
-  await page.getByRole('link', { name: 'My access', exact: true }).click();
-  await expect(page).toHaveURL(/\/Access$/);
-  await expect(page.locator('.access-matrix tbody tr')).toHaveCount(4);
   expect(signInRequests).toEqual([]);
   expect(
     (await context.cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')?.value,
@@ -344,20 +342,11 @@ test("Security checkup shows the administrator's real posture without a passkey 
   });
 });
 
-test('visual parity: the administrator and Standard sidebars match Legacy in both themes and navigate across UIs', async ({
+test('a Standard account signs in after enrolling an authenticator', async ({
   page,
   browserHealth,
-}, info) => {
-  expectLegacyShell(browserHealth);
-  test.setTimeout(180_000);
-  // Reuse the real session established above. Extra sign-ins would exhaust the production per-IP
-  // password budget before the revocation test; the limiter stays fully enabled.
+}) => {
   await page.context().addCookies(administratorCookies);
-  await page.goto('/Access');
-  await test.step('administrator navigation and visual comparison', async () => {
-    await verifySidebar(page, info, 'administrator');
-  });
-
   const username = 'e2e-standard-sidebar';
   const password = `E2e-${randomBytes(24).toString('hex')}`;
   await test.step('invite a Standard account through the administrator UI', async () => {
@@ -378,10 +367,150 @@ test('visual parity: the administrator and Standard sidebars match Legacy in bot
     await signInNewAccount(standard, username, password);
     await expect(standard).toHaveURL(/\/Secrets$/);
   });
-  await test.step('Standard navigation and visual comparison', async () => {
-    await verifySidebar(standard, info, 'standard');
-  });
   standardCookies = await standard.context().cookies();
+});
+
+const sidebarAccounts = [
+  {
+    kind: 'administrator',
+    cookies: () => administratorCookies,
+    accountTitle: 'Your account — Top Secret clearance',
+    identity: ['Vault Administrator', 'Top Secret'],
+  },
+  {
+    kind: 'standard',
+    cookies: () => standardCookies,
+    accountTitle: 'Your account — Standard clearance',
+    identity: ['Standard Sidebar', 'Standard'],
+  },
+] as const;
+
+const sidebarThemes = [
+  { name: 'dark', switchLabel: 'Switch to light' },
+  { name: 'light', switchLabel: 'Switch to dark' },
+] as const;
+
+for (const account of sidebarAccounts) {
+  for (const theme of sidebarThemes) {
+    test(`the ${account.kind} sidebar shows its page links in ${theme.name}`, async ({
+      page,
+      baseURL,
+    }, info) => {
+      await openMyAccessBookmark(page, account.cookies(), baseURL, theme.name);
+      const shell = new AppShell(page);
+      await expect(shell.myAccess).toHaveAttribute('aria-current', 'page');
+      expect(await sidebarNavigation(page)).toEqual(expectedNavigation[account.kind]);
+      await captureSidebar(page, info, `${account.kind}-${theme.name}-angular`);
+    });
+
+    test(`the ${account.kind} account menu shows its identity and actions in ${theme.name}`, async ({
+      page,
+      baseURL,
+    }) => {
+      await openMyAccessBookmark(page, account.cookies(), baseURL, theme.name);
+
+      expect(await readAccountMenu(page)).toEqual({
+        title: account.accountTitle,
+        avatar: expect.any(String),
+        who: account.identity,
+        items: [
+          { label: 'Profile', href: '/Profile' },
+          { label: theme.switchLabel, href: null },
+          { label: 'Sign out', href: null },
+        ],
+      });
+    });
+
+    test(`My access shows the ${account.kind} clearance grid in ${theme.name}`, async ({
+      page,
+      baseURL,
+    }, info) => {
+      await openMyAccessBookmark(page, account.cookies(), baseURL, theme.name);
+
+      await verifyMyAccess(page, info, account.kind, theme.name);
+    });
+  }
+
+  test(`the ${account.kind} My access link keeps the current document and session`, async ({
+    page,
+    baseURL,
+  }) => {
+    await openMyAccessBookmark(page, account.cookies(), baseURL, 'dark');
+    const shell = new AppShell(page);
+    const session = (await page.context().cookies()).find(
+      (cookie) => cookie.name === 'EclipsVault.Session',
+    );
+    expect(session).toBeDefined();
+    const documents: string[] = [];
+    page.on('request', (request) => {
+      if (request.isNavigationRequest() && request.resourceType() === 'document') {
+        documents.push(request.url());
+      }
+    });
+
+    await shell.myAccess.click();
+
+    await expect(page).toHaveURL(/\/Access$/);
+    await expect(shell.myAccess).toHaveAttribute('aria-current', 'page');
+    expect(documents).toEqual([]);
+    expect(
+      (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')
+        ?.value,
+    ).toBe(session?.value);
+  });
+}
+
+test('folding the You group hides its links until it is opened again', async ({
+  page,
+  baseURL,
+}) => {
+  await openMyAccessBookmark(page, standardCookies, baseURL, 'dark');
+  const shell = new AppShell(page);
+  await expect(shell.myAccess).toBeVisible();
+
+  await shell.you.click();
+  await expect(shell.myAccess).toBeHidden();
+  await shell.you.click();
+
+  await expect(shell.youGroup.getByRole('link')).toHaveText([
+    'My access',
+    'Security checkup',
+    'Sign-in history',
+    'Signed-in devices',
+    'My activity',
+    'Your data',
+  ]);
+});
+
+test('the administrator can open the folded Administration group', async ({ page, baseURL }) => {
+  await openMyAccessBookmark(page, administratorCookies, baseURL, 'dark');
+  const shell = new AppShell(page);
+  await expect(shell.administrationGroup.getByRole('link')).toHaveCount(0);
+
+  await shell.administration.click();
+
+  await expect(shell.administrationGroup.getByRole('link')).toHaveText([
+    'Users',
+    'Service accounts',
+    'Networks',
+    'Encryption keys',
+    'Audit log',
+    'Notifications',
+    'License',
+  ]);
+});
+
+test('an administrator sees the licence reminder', async ({ page, baseURL }) => {
+  await openMyAccessBookmark(page, administratorCookies, baseURL, 'dark');
+
+  await expect(page.getByRole('link', { name: 'View license', exact: true })).toBeVisible();
+});
+
+test('a Standard account sees no licence reminder', async ({ page, baseURL }) => {
+  await openMyAccessBookmark(page, standardCookies, baseURL, 'dark');
+  await expect(new AppShell(page).myAccess).toBeVisible();
+
+  await expect(page.getByRole('link', { name: 'View license', exact: true })).toHaveCount(0);
 });
 
 test('a denied My access cell explains itself in a side panel, a bottom sheet on a phone', async ({
@@ -415,80 +544,48 @@ test('a denied My access cell explains itself in a side panel, a bottom sheet on
   await expect(cell).toBeFocused();
 });
 
-test('both UIs share the theme, and the Angular UI applies it before it starts', async ({
-  page,
-  browserHealth,
-}) => {
-  expectLegacyShell(browserHealth);
+test('the Angular UI applies the theme cookie before the bundle starts', async ({ page }) => {
   await page.context().addCookies(administratorCookies);
-  await page.goto(legacyShell);
+  await page.goto('/Access');
   await page.context().addCookies([
     {
       name: 'EclipsVault.Theme',
-      value: 'dark',
+      value: 'light',
       url: new URL('/', page.url()).href,
       secure: true,
     },
   ]);
-  await page.reload();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 
-  await test.step('switched in the Legacy UI, the theme is on the Angular document before Angular runs', async () => {
-    await page.locator('summary.user-card').click();
-    await page.getByRole('menuitem', { name: 'Switch to light', exact: true }).click();
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-
-    // Hold the application bundle, so only the external boot script can have set the theme.
-    let release: () => void = () => undefined;
-    const held = new Promise<void>((resolve) => (release = resolve));
-    const bundle = /\/ui\/main-[\w-]+\.js$/;
-    await page.route(bundle, async (route) => {
-      await held;
-      await route.continue();
-    });
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  const bundle = /\/ui\/main-[\w-]+\.js$/;
+  await page.route(bundle, async (route) => {
+    await held;
+    await route.continue();
+  });
+  try {
     await page.goto('/Access', { waitUntil: 'commit' });
-    await page.waitForFunction(() => document.documentElement.hasAttribute('data-theme'));
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-    await expect(page.locator('app-root')).toBeEmpty();
+  } finally {
     release();
-    await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
-    await page.unroute(bundle);
-  });
-
-  await test.step('switched in the Angular UI, the theme reaches the Legacy UI', async () => {
-    await page.locator('summary.user-card').click();
-    await page.getByRole('menuitem', { name: 'Switch to dark', exact: true }).click();
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-    expect(
-      (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Theme')?.value,
-    ).toBe('dark');
-    await page.goto(legacyShell);
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  });
+  }
+  await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
 });
 
 test("the ⌘K palette offers the sidebar's pages plus New secret and the Sharing tabs, for an administrator and a Standard account", async ({
   page,
   browserHealth,
 }) => {
-  expectLegacyShell(browserHealth);
   expect(standardCookies).not.toHaveLength(0);
   await page.context().addCookies(administratorCookies);
   const standard = await (await browserHealth.newContext()).newPage();
   await standard.context().addCookies(standardCookies);
 
-  await test.step(`administrator: Legacy and Angular palettes list the same destinations`, async () => {
-    await page.goto(legacyShell);
-    // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
-    const legacyChord = await page.locator('.command-trigger kbd').textContent();
-    await openPalette(page);
-    const legacy = await paletteEntries(page);
-    await page.keyboard.press('Escape');
+  await test.step(`administrator: the palette lists the sidebar's pages and the extra destinations`, async () => {
     await page.goto('/Access');
     await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
-    // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
-    await expect(page.locator('.topbar > .search-pill kbd')).toHaveText(legacyChord ?? '');
-    expect(legacyChord).toMatch(/^(⌘K|Ctrl K)$/);
+    // eslint-disable-next-line playwright/no-raw-locators -- The shortcut is shown inside the shell's command button.
+    await expect(page.locator('.topbar > .search-pill kbd')).toHaveText(/^(⌘K|Ctrl K)$/);
     const sidebar = await sidebarPages(page);
     await openPalette(page);
     const angular = await paletteEntries(page);
@@ -499,22 +596,14 @@ test("the ⌘K palette offers the sidebar's pages plus New secret and the Sharin
       ['Go to', 'Shared with me'],
       ['Go to', 'Shared by me'],
     ]);
-    expect([...angular].sort()).toEqual([...legacy].sort());
     expect(angular).toHaveLength(21);
     await expect(page.locator('style, [style]')).toHaveCount(0);
   });
-  await test.step(`standard: Legacy and Angular palettes list the same destinations`, async () => {
-    await standard.goto(legacyShell);
-    // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
-    const legacyChord = await standard.locator('.command-trigger kbd').textContent();
-    await openPalette(standard);
-    const legacy = await paletteEntries(standard);
-    await standard.keyboard.press('Escape');
+  await test.step(`standard: the palette lists the sidebar's pages and the extra destinations`, async () => {
     await standard.goto('/Access');
     await expect(standard.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
-    // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares the displayed shortcut inside each shell command button.
-    await expect(standard.locator('.topbar > .search-pill kbd')).toHaveText(legacyChord ?? '');
-    expect(legacyChord).toMatch(/^(⌘K|Ctrl K)$/);
+    // eslint-disable-next-line playwright/no-raw-locators -- The shortcut is shown inside the shell's command button.
+    await expect(standard.locator('.topbar > .search-pill kbd')).toHaveText(/^(⌘K|Ctrl K)$/);
     const sidebar = await sidebarPages(standard);
     await openPalette(standard);
     const angular = await paletteEntries(standard);
@@ -525,7 +614,6 @@ test("the ⌘K palette offers the sidebar's pages plus New secret and the Sharin
       ['Go to', 'Shared with me'],
       ['Go to', 'Shared by me'],
     ]);
-    expect([...angular].sort()).toEqual([...legacy].sort());
     expect(angular).toHaveLength(14);
     expect(sidebar).not.toContain('Users');
     expect(sidebar).not.toContain('Networks');
@@ -628,7 +716,7 @@ test('palette search lists only secrets the account could already list, never a 
     });
   });
 
-  await test.step('Enter opens the chosen secret in the Legacy UI', async () => {
+  await test.step("Enter opens the chosen secret's details", async () => {
     await searchSecrets(standard, 'Palette_Probe');
     await standard.keyboard.press('Enter');
     await expect(standard).toHaveURL(/\/Secrets\/Details\/[0-9a-f-]{36}$/);
@@ -912,7 +1000,7 @@ test('Sign-in history shows its empty state, and an unfamiliar-location attempt 
       { times: 1 },
     );
     await page.getByRole('link', { name: 'Sign-in history', exact: true }).click();
-    // The Legacy partial's own element, not a host element carrying its class.
+    // The empty state's own element, not a host element carrying its class.
     await expect(page.locator('div.empty-state')).toHaveCount(1);
     await expect(page.locator('.empty-state')).toHaveCount(1);
     await expect(page.locator('.empty-state h3')).toHaveText('No sign-in history yet');

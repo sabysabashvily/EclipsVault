@@ -7,21 +7,6 @@ namespace EclipsVault.IntegrationTests;
 [Collection(VaultCollection.Name)]
 public sealed class RetiredSelfServiceRoutesTests(VaultFixture vault)
 {
-    [Fact]
-    public async Task The_Legacy_sidebar_keeps_links_to_the_Angular_owned_urls()
-    {
-        var client = await vault.AdminClientAsync();
-
-        var page = await VaultFixture.LegacyShellAsync(client);
-
-        Assert.Contains("href=\"/Sessions\"", page, StringComparison.Ordinal);
-        Assert.Contains("href=\"/Data\"", page, StringComparison.Ordinal);
-        Assert.Contains("href=\"/Secrets/SharedByMe\"", page, StringComparison.Ordinal);
-        Assert.Contains("href=\"/Secrets/SharedWithMe\"", page, StringComparison.Ordinal);
-        Assert.Contains("href=\"/AccessRequests\"", page, StringComparison.Ordinal);
-        Assert.Contains("href=\"/DynamicSecrets\"", page, StringComparison.Ordinal);
-    }
-
     [Theory]
     [InlineData("/Sessions/Revoke")]
     [InlineData("/Sessions/RevokeOthers")]

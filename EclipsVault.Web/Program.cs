@@ -217,12 +217,15 @@ try
         }
     });
 
-    builder.Services.AddControllersWithViews(options =>
+    builder.Services.AddControllers(options =>
     {
         // CSRF: every unsafe verb on every controller validates the antiforgery token.
         options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
         options.Filters.Add(new UiApiAntiforgeryFilter());
     });
+    // No Razor view engine, so nothing can render a view, but MVC's view features stay: they register
+    // the antiforgery filters above and TempData (ADR-0034).
+    builder.Services.AddMvcCore().AddViews();
 
     // [ApiController] answers an unreadable body with its own problem, whose messages can quote the
     // value that failed to parse. On the UI API that value can be a password or a code.
@@ -256,7 +259,9 @@ try
     });
 
     // Server-side ceremony state for WebAuthn: the issued challenge is held here between the
-    // "begin" and "complete" calls, so it can never be tampered with by the client.
+    // "begin" and "complete" calls, so it can never be tampered with by the client. Its store is this
+    // process's memory, which Razor's cache tag helper used to register unasked.
+    builder.Services.AddDistributedMemoryCache();
     builder.Services.AddSession(options =>
     {
         options.Cookie.Name = "EclipsVault.Ceremony";
@@ -296,8 +301,8 @@ try
         }
     }
 
-    app.UseHttpsRedirection();
     app.UseMiddleware<SecurityHeadersMiddleware>();
+    app.UseHttpsRedirection();
     app.UseStaticFiles();
     // Before everything that reads the session store or the account, so it still works when they fail.
     app.UseLocalSignOut();
@@ -309,13 +314,16 @@ try
 
     app.MapAngularUi();
 
+    app.MapControllers();
+
     // An unknown UI API path is a Problem Details not-found like any other UI API failure (ADR-0006).
     // It still needs a session: the fallback authorization policy applies to it.
     app.MapFallback("/api/ui/{**path}", UiApiProblem.NotFoundAsync);
 
-    app.MapControllerRoute(
-        name: "default",
-        pattern: "{controller=Home}/{action=Index}/{id?}");
+    // An unknown Public API path says nothing about any resource, so it needs no credential and must
+    // not be challenged with the session cookie (ADR-0034).
+    app.MapFallback("/api/v1/{**path}", context => PublicApiError.WriteAsync(context, StatusCodes.Status404NotFound, "not_found"))
+        .AllowAnonymous();
 
     // Fail fast if the crypto subsystem is misconfigured (missing/invalid KEK).
     using (var scope = app.Services.CreateScope())

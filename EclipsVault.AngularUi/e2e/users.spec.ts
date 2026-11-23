@@ -2,7 +2,6 @@ import type { BrowserContext } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { test, expect } from './fixtures';
-import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { signInNewAccount } from './account-activation';
 import { AccountCreation, emailOf } from './account-creation';
 import { AccountSignIn } from './account-sign-in';
@@ -215,24 +214,18 @@ test('Dashboard Staff accounts opens Users with a loaded avatar', async ({ page 
   await expect.poll(() => users.avatarLoaded('vault-admin')).toBe(true);
 });
 
-test('both sidebars open Users in Angular', async ({ page, browserHealth }) => {
-  expectLegacyShell(browserHealth);
+test('the sidebar opens Users', async ({ page }) => {
   await page.context().addCookies(administratorCookies);
   const users = new Users(page);
-  await users.fromSidebar(legacyShell);
+  await users.fromSidebar();
   await expect(users.heading).toBeVisible();
   await expect(page).toHaveTitle('Users — EclipsVault');
-  await users.fromSidebar('/Access');
-  await expect(users.heading).toBeVisible();
 });
 
-test('both palettes open Users in Angular', async ({ page, browserHealth }) => {
-  expectLegacyShell(browserHealth);
+test('the palette opens Users', async ({ page }) => {
   await page.context().addCookies(administratorCookies);
   const users = new Users(page);
-  await users.fromPalette(legacyShell);
-  await expect(users.heading).toBeVisible();
-  await users.fromPalette('/Access');
+  await users.fromPalette();
   await expect(users.heading).toBeVisible();
 });
 

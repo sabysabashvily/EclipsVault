@@ -53,7 +53,7 @@ public sealed class ProfileDetailsController(
             profile.Email,
             profile.Clearance.ToDisplayName(),
             profile.ProjectKey,
-            Url.Action("Avatar", "Profile", new { v = User.GetAvatarVersion() })!,
+            Url.Action(nameof(AvatarController.Image), "Avatar", new { v = User.GetAvatarVersion() })!,
             profile.HasCustomAvatar,
             profile.TotpEnabled,
             await recovery.CountRemainingAsync(profile.Id, ct),

@@ -54,6 +54,7 @@ export default defineConfig({
             '**/break-glass.spec.ts',
             '**/sso.spec.ts',
             '**/invitations.spec.ts',
+            '**/not-found.spec.ts',
           ],
           use: { ...devices['Desktop Chrome'] },
         },
@@ -101,6 +102,13 @@ export default defineConfig({
           // Needs the administrator session that sign-in saves, and makes its own Standard account.
           name: 'overview',
           testMatch: '**/overview.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          // Needs the administrator session that sign-in saves.
+          name: 'not-found',
+          testMatch: '**/not-found.spec.ts',
           dependencies: ['chromium'],
           use: { ...devices['Desktop Chrome'] },
         },
@@ -157,7 +165,8 @@ export default defineConfig({
         {
           // Users ends with the administrator's own Force logout, which ends the saved session that
           // Networks, Notifications, License, Encryption keys, the Audit log, the Overview, Secrets,
-          // Secret details, Dynamic secrets, My activity, break-glass, single sign-on and invitations reuse.
+          // Secret details, Dynamic secrets, My activity, break-glass, single sign-on, invitations and
+          // the not-found page reuse.
           // Run those projects before Users so they can still use the saved session.
           name: 'users',
           testMatch: '**/users.spec.ts',
@@ -173,6 +182,7 @@ export default defineConfig({
             'break-glass',
             'sso',
             'invitations',
+            'not-found',
           ],
           use: { ...devices['Desktop Chrome'] },
         },

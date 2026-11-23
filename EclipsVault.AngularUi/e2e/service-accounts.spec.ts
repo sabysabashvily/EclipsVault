@@ -2,7 +2,6 @@ import type { BrowserContext } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { test, expect } from './fixtures';
-import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { ServiceAccounts } from './service-accounts';
 import { ServiceAccountCreation } from './service-account-creation';
 import { ServiceAccount } from './service-account';
@@ -135,23 +134,17 @@ test('disables without confirmation and requires fresh proof to enable, restorin
   administratorCookies = await page.context().cookies();
 });
 
-const shells = [legacyShell, '/Access'] as const;
-for (const shell of shells) {
-  test(`both Service accounts navigation entries work from ${shell}`, async ({
-    page,
-    browserHealth,
-  }) => {
-    expectLegacyShell(browserHealth, shell);
-    await page.context().addCookies(administratorCookies);
-    const list = new ServiceAccounts(page);
-    await list.fromSidebar(shell);
-    await expect(list.heading).toBeVisible();
-    await list.fromPalette(shell);
-    await expect(list.heading).toBeVisible();
-    await list.manage(name);
-    await expect(new ServiceAccount(page, name).heading).toBeVisible();
-  });
-}
+test('both Service accounts navigation entries work from /Access', async ({ page }) => {
+  await page.context().addCookies(administratorCookies);
+  const list = new ServiceAccounts(page);
+  await list.fromSidebar();
+  await expect(list.heading).toBeVisible();
+  await list.fromPalette();
+  await expect(list.heading).toBeVisible();
+  await list.manage(name);
+  await expect(new ServiceAccount(page, name).heading).toBeVisible();
+});
+
 const themes = ['dark', 'light'] as const;
 for (const theme of themes) {
   test(`Service accounts and both forms render in ${theme} appearance`, async ({ page }, info) => {

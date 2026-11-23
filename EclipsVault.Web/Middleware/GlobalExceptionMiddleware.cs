@@ -8,9 +8,10 @@ namespace EclipsVault.Web.Middleware;
 /// <summary>
 /// Maps domain exceptions to safe HTTP outcomes. Honey-token trips look like an
 /// ordinary sign-out + not-found to the attacker; audit failures surface as a 503
-/// so callers know the vault chose fail-closed over fail-open. The Legacy UI is
-/// redirected to an error page; the UI API gets the same status as Problem Details
-/// with a stable code (ADR-0006), and neither ever carries the exception's details.
+/// so callers know the vault chose fail-closed over fail-open. Every failure answers
+/// with its real status in its caller's format, never a redirect (ADR-0034): Problem
+/// Details with a stable code on the UI API (ADR-0006), <c>{ "error": "&lt;code&gt;" }</c>
+/// on the Public API, the error page anywhere else. None carries the exception's details.
 /// </summary>
 public sealed class GlobalExceptionMiddleware
 {
@@ -39,6 +40,11 @@ public sealed class GlobalExceptionMiddleware
                 // the trap fired. So the cookie is not deleted here (a sign-out would add Set-Cookie);
                 // the session is already revoked, and its next request gets the 401 that clears it.
                 await UiApiProblem.NotFoundAsync(context);
+            }
+            else if (PublicApiError.IsPublicApi(context.Request))
+            {
+                // Likewise an ordinary not-found. An API key carries no cookie to clear.
+                await PublicApiError.WriteAsync(context, StatusCodes.Status404NotFound, UiApiProblem.NotFoundCode);
             }
             else
             {
@@ -106,7 +112,7 @@ public sealed class GlobalExceptionMiddleware
         }
     }
 
-    /// <summary>Problem Details on the UI API; everywhere else the Legacy UI's error page for the same status.</summary>
+    /// <summary>Problem Details on the UI API, the Public API's error code, and the error page everywhere else.</summary>
     private static Task FailAsync(HttpContext context, int status, string code, string title)
     {
         // A download that failed before its first byte must not answer its error as that file.
@@ -116,7 +122,11 @@ public sealed class GlobalExceptionMiddleware
             return UiApiProblem.WriteAsync(context, status, code, title);
         }
 
-        context.Response.Redirect($"/Home/Error?code={status}");
-        return Task.CompletedTask;
+        if (PublicApiError.IsPublicApi(context.Request))
+        {
+            return PublicApiError.WriteAsync(context, status, code);
+        }
+
+        return ServerPage.ErrorAsync(context, status, title);
     }
 }

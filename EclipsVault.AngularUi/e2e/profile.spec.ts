@@ -4,7 +4,6 @@ import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
 import { signInNewAccount } from './account-activation';
-import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { AccountCreation } from './account-creation';
 import { AccountSignIn } from './account-sign-in';
 import { AppShell } from './app-shell';
@@ -66,11 +65,10 @@ test('Profile opens through production routes after real activation', async ({
   ownerCookies = await owner.context().cookies();
 });
 
-test('both account menus, both palettes and Security checkup open Profile on the same session', async ({
+test('the account menu, the palette and Security checkup open Profile on the same session', async ({
   page,
   browserHealth,
 }) => {
-  expectLegacyShell(browserHealth);
   await page.context().addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   const documents: string[] = [];
@@ -82,7 +80,7 @@ test('both account menus, both palettes and Security checkup open Profile on the
     (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')?.value;
   const original = await session();
 
-  await test.step('the Angular account menu and palette stay in the app', async () => {
+  await test.step('the account menu and palette stay in the app', async () => {
     await page.goto('/Access');
     documents.length = 0;
     await page.getByText('Mailbox Owner', { exact: true }).click();
@@ -100,22 +98,6 @@ test('both account menus, both palettes and Security checkup open Profile on the
     await page.getByRole('link', { name: 'Add a passkey', exact: true }).click();
     await expect(profile.heading).toBeVisible();
     expect(documents).toEqual([]);
-  });
-
-  await test.step('the Legacy account menu and palette load Profile into Angular', async () => {
-    await page.goto(legacyShell);
-    documents.length = 0;
-    await page.getByText('Mailbox Owner', { exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Profile', exact: true }).click();
-    await expect(profile.heading).toBeVisible();
-    expect(documents).toEqual(['/Profile']);
-    await page.goto(legacyShell);
-    documents.length = 0;
-    await openPalette(page);
-    await page.getByRole('combobox').fill('Profile');
-    await page.getByRole('option', { name: /Profile/ }).click();
-    await expect(profile.heading).toBeVisible();
-    expect(documents).toEqual(['/Profile']);
   });
 
   await test.step('deep links keep their titles and a signed-out visit returns after sign-in', async () => {
@@ -982,7 +964,7 @@ test('the server refuses a passkey ceremony after its stored two-minute deadline
   }
 });
 
-test('authenticator reset ends current and copied sessions before Legacy reenrollment', async ({
+test('authenticator reset ends current and copied sessions before reenrollment', async ({
   page,
   browserHealth,
 }) => {
@@ -1130,7 +1112,7 @@ test('an expired prepared change is refused by the real server without a credent
   await profile.cancelVerification.click();
 });
 
-test('reset retains a passkey and refuses deleting the last method until Legacy reenrollment', async ({
+test('reset retains a passkey and refuses deleting the last method until reenrollment', async ({
   page,
   browserHealth,
 }) => {
@@ -1285,7 +1267,7 @@ test('a rejected recovery mutation returns no codes and never replays generation
   expect(commits).toEqual(['POST']);
 });
 
-test('sign-out revocation stands and its audit failure warning reaches Legacy sign-in', async ({
+test('sign-out revocation stands and its audit failure warning reaches sign-in', async ({
   page,
   browserHealth,
 }) => {

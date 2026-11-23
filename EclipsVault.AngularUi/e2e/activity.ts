@@ -167,11 +167,7 @@ export async function verifyMyActivity(
     .addCookies([
       { name: 'EclipsVault.Theme', value: theme, url: new URL('/', page.url()).href, secure: true },
     ]);
-  const served = await page.goto('/Activity');
-  // The Angular UI serves the page, not the Legacy Razor view at the same URL.
-  expect(served?.headers()['content-security-policy']).toContain(
-    "require-trusted-types-for 'script'",
-  );
+  await page.goto('/Activity');
   // eslint-disable-next-line playwright/no-raw-locators -- The theme is an attribute of the document element.
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
   await expect(page).toHaveTitle('My activity — EclipsVault');

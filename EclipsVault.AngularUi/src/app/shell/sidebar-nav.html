@@ -41,21 +41,13 @@
 </nav>
 
 <ng-template #link let-entry>
-  @if (entry.angular) {
-    <a
-      class="nav-item"
-      data-command-angular
-      [routerLink]="entry.url"
-      [class.active]="holds(entry)"
-      [attr.aria-current]="active(entry) ? 'page' : holds(entry) ? 'true' : null"
-    >
-      <app-nav-icon [icon]="entry.icon" />
-      {{ entry.label }}
-    </a>
-  } @else {
-    <a class="nav-item" [href]="entry.url">
-      <app-nav-icon [icon]="entry.icon" />
-      {{ entry.label }}
-    </a>
-  }
+  <a
+    class="nav-item"
+    [routerLink]="entry.url"
+    [class.active]="holds(entry)"
+    [attr.aria-current]="active(entry) ? 'page' : holds(entry) ? 'true' : null"
+  >
+    <app-nav-icon [icon]="entry.icon" />
+    {{ entry.label }}
+  </a>
 </ng-template>

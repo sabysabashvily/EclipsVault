@@ -195,7 +195,6 @@ public sealed class OverviewApiTests(VaultFixture vault)
     [Theory]
     [InlineData("/", "it-overview-root", "10.163.0.11")]
     [InlineData("/Home", "it-overview-home", "10.163.0.12")]
-    [InlineData("/hOmE/InDeX", "it-overview-home-index", "10.163.0.13")]
     public async Task Signed_in_the_overview_paths_serve_the_Angular_document(string path, string username, string source)
     {
         var member = await vault.SignInNewAccountAsync(username, IPAddress.Parse(source));
@@ -206,31 +205,6 @@ public sealed class OverviewApiTests(VaultFixture vault)
         Assert.True(document.Headers.CacheControl?.NoStore);
         Assert.Contains("<app-root>", await document.Content.ReadAsStringAsync());
         Assert.Contains("require-trusted-types-for 'script'", Assert.Single(document.Headers.GetValues("Content-Security-Policy")));
-    }
-
-    [Fact]
-    public async Task Signed_out_the_root_serves_the_landing_page()
-    {
-        var landing = await vault.CreateClient().GetAsync("/");
-
-        Assert.Equal(HttpStatusCode.OK, landing.StatusCode);
-        var html = await landing.Content.ReadAsStringAsync();
-        Assert.Contains("Secrets, kept in the shadow.", html);
-        Assert.Contains("href=\"/Account/Login\">Sign in to the vault</a>", html);
-        Assert.DoesNotContain("<app-root>", html);
-    }
-
-    [Fact]
-    public async Task The_error_page_still_answers_with_its_status_and_title()
-    {
-        var error = await vault.CreateClient().GetAsync("/Home/Error?code=404");
-
-        Assert.Equal(HttpStatusCode.NotFound, error.StatusCode);
-        var html = await error.Content.ReadAsStringAsync();
-        Assert.Contains("404 — Not found", html);
-        // Signed out, the Legacy layout's sidebar offers sign-in.
-        Assert.Contains("<a class=\"nav-item\" href=\"/Account/Login\">", html);
-        Assert.DoesNotContain("<app-root>", html);
     }
 
     [Fact]

@@ -1,5 +1,4 @@
 import { test, expect } from './fixtures';
-import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { savedAdministratorCookies } from './administrator-cookies';
 import { EncryptionKeys } from './encryption';
 import { AppShell } from './app-shell';
@@ -166,35 +165,18 @@ for (const width of [300, 2000]) {
   });
 }
 
-test('the Legacy sidebar opens Encryption keys', async ({ page, browserHealth }) => {
-  expectLegacyShell(browserHealth);
-  await page.context().addCookies(await savedAdministratorCookies());
-  const encryption = new EncryptionKeys(page);
-  await encryption.fromSidebar(legacyShell);
-  await expect(encryption.heading).toBeVisible();
-  await expect(page).toHaveURL(/\/Encryption$/);
-});
-
 test('the Angular sidebar opens Encryption keys', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const encryption = new EncryptionKeys(page);
-  await encryption.fromSidebar('/Access');
+  await encryption.fromSidebar();
   await expect(encryption.heading).toBeVisible();
   await expect(page).toHaveURL(/\/Encryption$/);
-});
-
-test('the palette in the Legacy shell opens Encryption keys', async ({ page, browserHealth }) => {
-  expectLegacyShell(browserHealth);
-  await page.context().addCookies(await savedAdministratorCookies());
-  const encryption = new EncryptionKeys(page);
-  await encryption.fromPalette(legacyShell);
-  await expect(encryption.heading).toBeVisible();
 });
 
 test('the palette in the Angular shell opens Encryption keys', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const encryption = new EncryptionKeys(page);
-  await encryption.fromPalette('/Access');
+  await encryption.fromPalette();
   await expect(encryption.heading).toBeVisible();
 });
 

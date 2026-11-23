@@ -199,19 +199,23 @@ The versioned API service accounts call with an API key. A published contract th
 _Avoid_: REST API, external API
 
 **UI API**:
-The endpoints the Angular UI calls, through a session. Never reachable with an API key. Until the Legacy UI is gone, its command palette also calls the secret search here.
+The endpoints the Angular UI calls, through a session. Never reachable with an API key.
 _Avoid_: Internal API, BFF API, backend
 
 ### The migration
 
 **Legacy UI**:
-The server-rendered pages being replaced. Shrinks to nothing by the end of the migration.
+The Razor pages the Angular UI replaced. Area 9a removed the last of them.
 _Avoid_: Old UI, MVC frontend
+
+**Server page**:
+One of the three pages the vault writes itself, without the Angular UI: access blocked, error and not found. They carry no script.
+_Avoid_: Legacy page, Razor page
 
 **Area**:
 A group of related pages behind one sidebar entry (e.g. Profile, Secrets, Users), named by a stable key such as `users` in `/api/ui/me`. An area migrates as one unit; a migration step may move several at once, as the Administration step moves the administration areas in two parts. At any moment an area belongs wholly to either the Legacy UI or the Angular UI, never both. The one exception was Secrets, which Area 7 moved in parts: from 7a until 7b, its list and New secret were in the Angular UI and Secret details was still Legacy.
 _Avoid_: Module, feature, screen
 
 **Angular UI**:
-The browser application replacing the Legacy UI. It acts only through a session, never with a token of its own.
+The browser application that replaced the Legacy UI. It acts only through a session, never with a token of its own.
 _Avoid_: SPA, client, frontend app

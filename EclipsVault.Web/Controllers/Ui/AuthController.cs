@@ -232,7 +232,7 @@ public sealed class AuthController(
         "This invitation link is not valid. It may have expired or been used. Ask an administrator to send a new one.");
 
     /// <summary>
-    /// Revokes this browser's session, then clears its cookie, as the Legacy sign-out does. Not
+    /// Revokes this browser's session, then clears its cookie. Not
     /// throttled: it tests no credential and must work when a shared network has spent its budget.
     /// </summary>
     [HttpPost("sign-out")]

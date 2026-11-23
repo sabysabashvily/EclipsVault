@@ -25,6 +25,15 @@ function recordDocuments(page: Page): string[] {
   return documents;
 }
 
+test('signed out, the Overview address asks for sign-in and names itself as the return', async ({
+  page,
+}) => {
+  await page.goto('/');
+
+  await expect(page).toHaveURL(/\/Account\/Login\?ReturnUrl=%2F$/);
+  await expect(page.getByLabel('Username')).toBeVisible();
+});
+
 test('an administrator gets the vault figures, its activity and the administration links', async ({
   page,
 }) => {

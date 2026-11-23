@@ -16,7 +16,6 @@ import { AuditPage } from './audit/audit-page';
 import { DynamicSecretsPage } from './dynamic-secrets/dynamic-secrets-page';
 import { EncryptionPage } from './encryption/encryption-page';
 import { NetworksPage } from './networks/networks-page';
-import { OverviewPage } from './overview/overview-page';
 import { ServiceAccountsPage } from './service-accounts/service-accounts-page';
 import { NewServiceAccountPage } from './service-accounts/new-service-account-page';
 import { ServiceAccountPage } from './service-accounts/service-account-page';
@@ -42,18 +41,17 @@ function routeFor(url: string): Route | undefined {
 }
 
 describe('routes', () => {
-  it('opens the Overview at the root', async () => {
+  it.each(['/', '/hOmE'])('opens Overview at %s', async (url) => {
     TestBed.configureTestingModule({
       providers: [...appConfig.providers, provideHttpClientTesting()],
     });
     const harness = await RouterTestingHarness.create();
 
-    expect(await harness.navigateByUrl('/', OverviewPage)).toBeInstanceOf(OverviewPage);
+    await harness.navigateByUrl(url);
+
+    expect(harness.routeNativeElement?.querySelector('h1')?.textContent).toBe('Overview');
     expect(TestBed.inject(Title).getTitle()).toBe('Overview — EclipsVault');
     TestBed.resetTestingModule();
-  });
-  it.each(['/Home', '/hOmE/InDeX'])('opens the Overview at %s', async (url) => {
-    expect(await routeFor(url)?.loadComponent?.()).toBe(OverviewPage);
   });
   it.each(['/ServiceAccounts', '/sErViCeAcCoUnTs/InDeX'])(
     'opens Service accounts at %s',

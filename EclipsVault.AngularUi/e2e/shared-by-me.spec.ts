@@ -6,7 +6,6 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
-import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { createSecret, openPalette } from './palette';
 import { SecretsList } from './secrets-list';
 import { SharedByMe } from './shared-by-me';
@@ -203,36 +202,6 @@ test('the palette opens Shared by me without a document load', async ({ page }) 
   await page.keyboard.press('Enter');
   await expect(new SharedByMe(page).heading).toBeVisible();
   expect(documents).toEqual([]);
-});
-
-test('the Legacy sidebar loads Shared by me into Angular', async ({ page, browserHealth }) => {
-  expectLegacyShell(browserHealth);
-  await openAsIssuer(page, legacyShell);
-  const documents: string[] = [];
-  page.on('request', (request) => {
-    if (request.isNavigationRequest() && request.resourceType() === 'document')
-      documents.push(new URL(request.url()).pathname);
-  });
-  await page.getByText('Sharing', { exact: true }).click();
-  await page.getByRole('link', { name: 'Shared by me', exact: true }).click();
-  await expect(new SharedByMe(page).heading).toBeVisible();
-  await expect(page).toHaveTitle('Shared by me — EclipsVault');
-  expect(documents).toEqual(['/Secrets/SharedByMe']);
-});
-
-test('the Legacy palette loads Shared by me into Angular', async ({ page, browserHealth }) => {
-  expectLegacyShell(browserHealth);
-  await openAsIssuer(page, legacyShell);
-  const documents: string[] = [];
-  page.on('request', (request) => {
-    if (request.isNavigationRequest() && request.resourceType() === 'document')
-      documents.push(new URL(request.url()).pathname);
-  });
-  await openPalette(page);
-  await page.getByRole('combobox').fill('Shared by me');
-  await page.getByRole('option', { name: /Shared by me/ }).click();
-  await expect(new SharedByMe(page).heading).toBeVisible();
-  expect(documents).toEqual(['/Secrets/SharedByMe']);
 });
 
 test('Shared with me opens in-app on the same session from Shared by me', async ({ page }) => {

@@ -14,8 +14,6 @@ namespace EclipsVault.IntegrationTests;
 [Collection(AuditFailureCollection.Name)]
 public sealed class ProfileAuditFailureTests(AuditFailureFixture failure)
 {
-    private const string AuditUnavailablePage = "/Home/Error?code=503";
-
     [Fact]
     public async Task A_refused_audit_event_leaves_the_profile_details_unchanged()
     {

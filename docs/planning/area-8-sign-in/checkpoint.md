@@ -465,3 +465,20 @@ security review approved round 2. Round 3:
 Checks: `scripts/check.sh`, the integration filter at 316/316, `dotnet format`, the agent guardrail tests
 and every Angular gate. Browser specs run in CI only. Details are in `logs/ticket-182/review-ledger.md`,
 "Round 3".
+
+## Delivery: 8b ticket 4, merge of Area 9a (#182)
+
+GPT Sol 6.2 approved round 3 with nits and the Opus delta security review approved it. The merge of
+`main` `854d69a0` (PR #208 Area 9a, PR #207) resolves nine conflicts. It keeps 9a's route table,
+server pages and sign-out contract, and keeps 8b's activation endpoints, route and test changes.
+`AuthController` keeps both: 8b's activation calls and 9a's sign-out comment. 9a's
+`SignOutRevokesSessionTests` helper now passes the activation service. `VaultFixture` drops the Legacy
+shell helpers. The e2e imports drop `legacy-shell`. `playwright.config.ts` runs both `invitations`
+and `not-found`. The `sign-in.spec.ts` suppression count is 52. One gap only showed up in tests:
+9a's `EndpointTableTests` now lists `/Account/Activate` and the two activation calls as anonymous
+(ADR-0033).
+
+Checks: `scripts/check.sh`; the part's integration filter plus every integration class 9a touched
+(`logs/ticket-182/merge-9a/integration-filter.txt`): 564 passed, then `EndpointTableTests` 7/7 after
+the fix. Also `dotnet format`, both EF checks, hooks, and Angular lint, format, 803 Vitest tests,
+build checks, API types, build and audit.

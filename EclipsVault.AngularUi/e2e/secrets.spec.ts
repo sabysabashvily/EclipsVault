@@ -2,7 +2,6 @@ import type { Page } from '@playwright/test';
 import { savedAdministratorCookies } from './administrator-cookies';
 import { AppShell } from './app-shell';
 import { test, expect } from './fixtures';
-import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { NewSecretForm } from './new-secret';
 import { openPalette, searchSecrets } from './palette';
 import { SecretDetails } from './secret-details';
@@ -143,24 +142,20 @@ test('the sidebar opens the Secrets list in place, marking the new secret as exp
   await expect(new SecretDetails(page, created.name).heading).toBeVisible();
 });
 
-for (const shell of ['/Access', legacyShell]) {
-  test(`the palette on ${shell} finds the secret by name, and Enter opens its details`, async ({
-    page,
-    browserHealth,
-  }) => {
-    expectLegacyShell(browserHealth, shell);
-    await page.context().addCookies(await savedAdministratorCookies());
-    await page.goto(shell);
-    await openPalette(page);
-    expect(await searchSecrets(page, 'E2e_Secrets_Cr')).toEqual({
-      status: 200,
-      names: [created.name],
-    });
-    await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(detailsUrl);
-    await expect(new SecretDetails(page, created.name).heading).toBeVisible();
+test('the palette on /Access finds the secret by name, and Enter opens its details', async ({
+  page,
+}) => {
+  await page.context().addCookies(await savedAdministratorCookies());
+  await page.goto('/Access');
+  await openPalette(page);
+  expect(await searchSecrets(page, 'E2e_Secrets_Cr')).toEqual({
+    status: 200,
+    names: [created.name],
   });
-}
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(detailsUrl);
+  await expect(new SecretDetails(page, created.name).heading).toBeVisible();
+});
 
 const destinations = {
   Overview: {
@@ -174,19 +169,10 @@ const destinations = {
   },
 };
 
-const sidebarLinks = [
-  [legacyShell, 'Overview'],
-  [legacyShell, 'Secrets'],
-  [legacyShell, 'New secret'],
-  ['/Access', 'Overview'],
-  ['/Access', 'Secrets'],
-] as const;
-
-for (const [shell, label] of sidebarLinks) {
-  test(`the sidebar on ${shell} opens ${label}`, async ({ page, browserHealth }) => {
-    expectLegacyShell(browserHealth, shell);
+for (const label of ['Overview', 'Secrets'] as const) {
+  test(`the sidebar on /Access opens ${label}`, async ({ page }) => {
     await page.context().addCookies(await savedAdministratorCookies());
-    await page.goto(shell);
+    await page.goto('/Access');
 
     await page.getByRole('link', { name: label, exact: true }).click();
 
@@ -195,7 +181,7 @@ for (const [shell, label] of sidebarLinks) {
   });
 }
 
-// New secret left the Angular sidebar for the palette. Legacy still lists it.
+// New secret left the sidebar for the palette.
 test('the sidebar on /Access omits New secret', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   await page.goto('/Access');
@@ -203,23 +189,20 @@ test('the sidebar on /Access omits New secret', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'New secret', exact: true })).toHaveCount(0);
 });
 
-for (const shell of [legacyShell, '/Access']) {
-  for (const [label, { url, landmark }] of Object.entries(destinations)) {
-    test(`the palette's Go to ${label} on ${shell} opens it`, async ({ page, browserHealth }) => {
-      expectLegacyShell(browserHealth, shell);
-      await page.context().addCookies(await savedAdministratorCookies());
-      await page.goto(shell);
-      await openPalette(page);
+for (const [label, { url, landmark }] of Object.entries(destinations)) {
+  test(`the palette's Go to ${label} on /Access opens it`, async ({ page }) => {
+    await page.context().addCookies(await savedAdministratorCookies());
+    await page.goto('/Access');
+    await openPalette(page);
 
-      await page
-        .getByRole('option')
-        .filter({ has: page.getByText(label, { exact: true }) })
-        .click();
+    await page
+      .getByRole('option')
+      .filter({ has: page.getByText(label, { exact: true }) })
+      .click();
 
-      await expect(page).toHaveURL(url);
-      await expect(landmark(page)).toBeVisible();
-    });
-  }
+    await expect(page).toHaveURL(url);
+    await expect(landmark(page)).toBeVisible();
+  });
 }
 
 test("a secret's Back to list opens the Secrets list", async ({ page }) => {

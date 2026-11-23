@@ -1,6 +1,5 @@
 import type { Page } from '@playwright/test';
 import { openPalette } from './palette';
-import type { legacyShell } from './legacy-shell';
 
 /** Dynamic secrets: roles to issue from, the one-time credential, leases and their dialogs. */
 export class DynamicSecretsPage {
@@ -45,13 +44,13 @@ export class DynamicSecretsPage {
     await this.page.getByRole('heading', { name: 'Roles you can issue' }).waitFor();
   }
 
-  async fromSidebar(path: typeof legacyShell | '/Access'): Promise<void> {
-    await this.page.goto(path);
+  async fromSidebar(): Promise<void> {
+    await this.page.goto('/Access');
     await this.sidebarLink.click();
   }
 
-  async fromPalette(path: typeof legacyShell | '/Access'): Promise<void> {
-    await this.page.goto(path);
+  async fromPalette(): Promise<void> {
+    await this.page.goto('/Access');
     await openPalette(this.page);
     await this.page.getByRole('combobox').fill('Dynamic secrets');
     await this.page.getByRole('option', { name: /Dynamic secrets/ }).click();

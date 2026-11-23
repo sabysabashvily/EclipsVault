@@ -1,0 +1,277 @@
+/* The server pages (access blocked, error, not found; ADR-0034). Only the sign-in card's rules, the
+   tokens they use and the faces they set, copied from EclipsVault.AngularUi/src/styles.css, so these
+   pages look like the sign-in pages without the Angular stylesheet, whose name is hashed. The server
+   stamps data-theme from the sign-in pages' theme cookie: these pages carry no script. */
+
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/geist-variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('/fonts/geist-mono-variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+  --bg: #0b0b0d;
+  --bg-raised: #141416;
+  --bg-raised-2: #1c1c20;
+  --brand-disc: #05060a;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.13);
+  --text: #ededef;
+  --text-muted: #8a8a91;
+  --accent: #ff9f0a;
+  --accent-hover: #ffb84d;
+  --accent-soft: rgba(255, 159, 10, 0.14);
+  --ink-button: #ffffff;
+  --ink-button-text: #0b0b0d;
+  --ink-button-hover: #e4e4e6;
+  --radius-xl: 22px;
+  --radius-pill: 980px;
+  --shadow-card: none;
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur: 200ms;
+  --dur-press: 110ms;
+  --font:
+    'Geist', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue',
+    sans-serif;
+  --mono: 'Geist Mono', ui-monospace, 'SF Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+  --tracking-heading: -0.02em;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #ececea;
+  --bg-raised: #ffffff;
+  --bg-raised-2: #f6f6f4;
+  --brand-disc: #05060a;
+  --border: #e6e6e4;
+  --border-strong: #d6d6d3;
+  --text: #232322;
+  --text-muted: #6c6b67;
+  --accent: #b45f04;
+  --accent-hover: #8f4b00;
+  --accent-soft: rgba(180, 95, 4, 0.11);
+  --ink-button: #2a2a29;
+  --ink-button-text: #ffffff;
+  --ink-button-hover: #3a3a38;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  transition: color var(--dur) var(--ease);
+}
+a:hover {
+  color: var(--accent-hover);
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@keyframes content-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.35rem 0.65rem 1.2rem;
+  font-size: 1.08rem;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+
+.brand-mark {
+  width: 1.05em;
+  height: 1.05em;
+  border-radius: 50%;
+  background: var(--brand-disc);
+  border: 1.5px solid var(--accent);
+  flex-shrink: 0;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 1.2rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: 0.94rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    transform var(--dur-press) ease-out,
+    border-color var(--dur) var(--ease),
+    background var(--dur-press) ease-out,
+    color var(--dur) var(--ease);
+}
+.button:hover {
+  background: var(--bg-raised-2);
+  border-color: var(--border-strong);
+  color: var(--text);
+  text-decoration: none;
+}
+.button:active {
+  transform: scale(0.97);
+}
+.button.primary {
+  background: var(--ink-button);
+  border-color: transparent;
+  color: var(--ink-button-text);
+}
+.button.primary:hover {
+  background: var(--ink-button-hover);
+  color: var(--ink-button-text);
+}
+.button.wide {
+  width: 100%;
+}
+
+.auth-wrap {
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  gap: 1rem;
+}
+
+.auth-brand {
+  width: 100%;
+  max-width: 440px;
+  min-height: 2.75rem;
+  padding: 0.25rem 0;
+  font-size: 1.15rem;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  min-width: 0;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 1.75rem 1.85rem;
+  box-shadow: var(--shadow-card);
+  animation: content-in 280ms var(--ease);
+}
+.auth-card h1 {
+  font-size: clamp(1.45rem, 1.3rem + 0.5vw, 1.65rem);
+  font-weight: 500;
+  line-height: 1.18;
+  letter-spacing: var(--tracking-heading);
+  margin: 0 0 0.5rem;
+  overflow-wrap: anywhere;
+}
+.auth-card > .muted {
+  margin-top: 0;
+  font-size: 0.94rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.auth-card .button.wide {
+  max-width: 100%;
+  min-width: 0;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.3;
+  padding-block: 0.6rem;
+}
+
+.footnote {
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  margin: 1rem 0 0;
+  line-height: 1.5;
+}
+
+/* Down to 300px wide: the card gives up some padding and its button text may wrap. */
+@media (max-width: 480px) {
+  .auth-wrap {
+    padding: 1.25rem 1rem;
+  }
+  .auth-card {
+    padding: 1.35rem 1.15rem;
+  }
+}

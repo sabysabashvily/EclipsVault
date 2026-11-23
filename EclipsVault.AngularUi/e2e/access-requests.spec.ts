@@ -8,7 +8,6 @@ import { AccessRequests } from './access-requests';
 import { feedEntry } from './activity';
 import { Denied } from './denied';
 import { test, expect, type BrowserHealth } from './fixtures';
-import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { createSecret, openPalette } from './palette';
 import { SecretsList } from './secrets-list';
 import { SharedWithMe } from './shared-with-me';
@@ -294,9 +293,7 @@ test("an approval with an expiry reaches the requester's Shared with me", async 
   ]);
 });
 
-test("the requester opens the approved share's Legacy Details from Shared with me", async ({
-  page,
-}) => {
+test("the requester opens the approved share's Details from Shared with me", async ({ page }) => {
   await page.context().addCookies(requesterCookies);
   await page.goto('/Secrets/SharedWithMe');
   const shared = new SharedWithMe(page);
@@ -485,28 +482,6 @@ test('the palette opens Access requests without a document load', async ({ page 
   await page.getByRole('option', { name: /Access requests/ }).click();
   await expect(new AccessRequests(page).myRequest(approved)).toBeVisible();
   expect(documents).toEqual([]);
-});
-
-test('the Legacy sidebar loads Access requests into Angular', async ({ page, browserHealth }) => {
-  expectLegacyShell(browserHealth);
-  await openAsRequester(page, legacyShell);
-  const documents = recordDocuments(page);
-  await page.getByText('Access', { exact: true }).click();
-  await page.getByRole('link', { name: 'Access requests', exact: true }).click();
-  await expect(new AccessRequests(page).myRequest(approved)).toBeVisible();
-  await expect(page).toHaveTitle('Access requests — EclipsVault');
-  expect(documents).toEqual(['/AccessRequests']);
-});
-
-test('the Legacy palette loads Access requests into Angular', async ({ page, browserHealth }) => {
-  expectLegacyShell(browserHealth);
-  await openAsRequester(page, legacyShell);
-  const documents = recordDocuments(page);
-  await openPalette(page);
-  await page.getByRole('combobox').fill('Access requests');
-  await page.getByRole('option', { name: /Access requests/ }).click();
-  await expect(new AccessRequests(page).myRequest(approved)).toBeVisible();
-  expect(documents).toEqual(['/AccessRequests']);
 });
 
 test('Access requests reports a failed fetch and retries without a document load', async ({

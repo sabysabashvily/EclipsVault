@@ -1,6 +1,5 @@
 import { randomBytes } from 'node:crypto';
 import { test as base, expect, type BrowserHealth } from './fixtures';
-import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { signInNewAccount } from './account-activation';
 import { AccountCreation, emailOf } from './account-creation';
 import { savedAdministratorCookies } from './administrator-cookies';
@@ -78,35 +77,18 @@ test('the outbox shows the security notice this run delivered', async ({ page, r
   );
 });
 
-test('the Legacy sidebar opens Notifications', async ({ page, browserHealth }) => {
-  expectLegacyShell(browserHealth);
-  await page.context().addCookies(await savedAdministratorCookies());
-  const notifications = new Notifications(page);
-  await notifications.fromSidebar(legacyShell);
-  await expect(notifications.heading).toBeVisible();
-  await expect(page).toHaveURL(/\/Notifications$/);
-});
-
 test('the Angular sidebar opens Notifications', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const notifications = new Notifications(page);
-  await notifications.fromSidebar('/Access');
+  await notifications.fromSidebar();
   await expect(notifications.heading).toBeVisible();
   await expect(page).toHaveURL(/\/Notifications$/);
-});
-
-test('the palette in the Legacy shell opens Notifications', async ({ page, browserHealth }) => {
-  expectLegacyShell(browserHealth);
-  await page.context().addCookies(await savedAdministratorCookies());
-  const notifications = new Notifications(page);
-  await notifications.fromPalette(legacyShell);
-  await expect(notifications.heading).toBeVisible();
 });
 
 test('the palette in the Angular shell opens Notifications', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const notifications = new Notifications(page);
-  await notifications.fromPalette('/Access');
+  await notifications.fromPalette();
   await expect(notifications.heading).toBeVisible();
 });
 
