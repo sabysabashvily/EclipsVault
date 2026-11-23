@@ -43,7 +43,10 @@ file, tests and commit messages included, and the code-review Standards axis che
   opens; the ordinary vault follows the real clock, so only this host can prove the window rule.
 - A model change needs a migration in both sets: SQL Server (`EclipsVault.Infrastructure`) and PostgreSQL
   (`EclipsVault.Migrations.Postgres`). CI checks both; the exact `dotnet ef` commands are in
-  `.github/workflows/ci.yml`. For Postgres the startup project is `EclipsVault.Web`.
+  `.github/workflows/ci.yml`. For Postgres the startup project is `EclipsVault.Web`. Regenerate
+  `db/sqlserver/migrations.sql` and `db/postgres/migrations.sql` with the commands in `db/README.md`
+  and commit them in the same change. The `migrations` job fails, and names those commands, when
+  either file differs from a fresh generation.
 - Agent guardrail tests: `python3 -I -m unittest discover -s .claude/hooks -p 'test_*.py'`.
 - SBOM: `bash .github/sbom/sbom.sh` writes `sbom/sbom.json`, which the release signs and attests to the
   image. Both generators are locked: the CycloneDX dotnet tool in `dotnet-tools.json`, the CycloneDX
@@ -128,12 +131,26 @@ failure with short retention.
   The long-standing `AuditGroupCommitterTests` hang was fixed in #37, so a hang now is a regression
   to investigate, not a known flake. Test output is buffered: the last test printed is not the one
   that hung. The aborted run's blame `Sequence_*.xml` names the test still in flight.
+- `integration (SqlServer)` can fail with `ContainerNotRunningException` because the pinned SQL Server
+  2025 CU3 image dies at startup. When the container log shows `handle-crash.sh`, `Failed to load LSA`,
+  or build stamp `869cbfe2a28bbc5800059f48feda967144643fd64d79a439b5c6333420172b72`, rerun only that
+  failed job. That is an infrastructure restart, not a test retry. ADR-0035 still forbids retries in
+  code. Any other SQL Server failure is investigated. Move the pin to CU12 or later once that image is
+  on MCR ([microsoft/mssql-docker#974](https://github.com/microsoft/mssql-docker/issues/974)).
 - A newly published advisory can turn CI red with no code change. Against a direct dependency it
   fails restore and build (`NU1902`/`NU1903` are errors here). Against a transitive one, restore and
   build can still pass and only CI's `security-scan` job fails; reproduce it with
   `dotnet list package --vulnerable --include-transitive`. Either way that is the gate working:
   upgrade the package, or pin the transitive one in `Directory.Packages.props` (transitive pinning
   is on), rather than suppress the warning. Microsoft's monthly security release often triggers this.
+- That release also moves the .NET images pinned in the root `Dockerfile`. `security-scan` runs
+  `python3 -I .github/dotnet-image-pin.py`, which reads Microsoft's release index for the pin's
+  channel. It fails, naming the image, when the ASP.NET runtime or SDK tag is behind a security
+  release, and only warns when it is behind a non-security patch. The app loads framework
+  libraries such as `System.Formats.Cbor` from the runtime image, which `dotnet list package
+  --vulnerable` does not see. Move the pin. Never suppress the finding. Security releases also
+  come out of band, and a pin moved before the index lists its version fails with "is not in the .NET
+  10.0 release index" (for that channel) until the index catches up.
 - `dotnet test --no-build` runs whatever binaries are already in `bin/`, possibly from another
   branch. Build first, or the result proves nothing.
 - Never report CI as green unless you have seen the check results yourself (`gh pr checks <n>`).
@@ -183,8 +200,10 @@ failure with short retention.
   scripts, packaging, and browser-suite runs. Any change to encryption, authorization, the audit
   chain, MFA, licensing, or dynamic secrets is not a Cursor ticket; it runs in a local Claude Opus
   5.5 session. A cloud agent handed one stops before writing code and says so, as does one whose
-  brief names a model it is not. GPT Sol 6.1 and Thermos review every pull request before the
-  owner merges it.
+  brief names a model it is not. GPT Sol 6.1 reviews every pull request before the owner merges
+  it; when GPT Sol is unavailable, or wrote the change, a fresh Claude Opus 5.5 session reviews it
+  instead and says so. A cloud agent's pull request may also get a Thermos review in Cursor when
+  one is available; it is not required.
 - A cloud agent works on its own `cursor/…` branch, pushes only that branch, and hands back a pull
   request. `main` is protected, so every change reaches it through a pull request with green CI.
 - Prove a change before handing it back: `scripts/check.sh` for build and tests, and the

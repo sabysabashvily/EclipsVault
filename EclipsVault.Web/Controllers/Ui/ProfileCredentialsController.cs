@@ -10,7 +10,6 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ViewFeatures;
 
 namespace EclipsVault.Web.Controllers.Ui;
 
@@ -27,8 +26,7 @@ namespace EclipsVault.Web.Controllers.Ui;
 public sealed class ProfileCredentialsController(
     VerifiedProfileChanges changes,
     SessionIssuer issuer,
-    IAntiforgery antiforgery,
-    ITempDataDictionaryFactory tempData) : ControllerBase
+    IAntiforgery antiforgery) : ControllerBase
 {
     private const int RegistrationRequestLimit = 64 * 1024;
 
@@ -63,9 +61,7 @@ public sealed class ProfileCredentialsController(
         await changes.ResetAuthenticatorAsync(session, request.OperationId, ct);
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         // Only a completed reset may make sign-in show this one-shot security notice.
-        var notice = tempData.GetTempData(HttpContext);
-        notice[FlashExtensions.TypeKey] = "info";
-        notice[FlashExtensions.MessageKey] = "Your authenticator was reset. Sign in to set up a new one.";
+        SignInNotice.HandOff(Response, SignInNotice.AuthenticatorReset);
         return NoContent();
     }
 

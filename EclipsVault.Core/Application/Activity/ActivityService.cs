@@ -1,3 +1,4 @@
+using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Domain.Enums;
 
 namespace EclipsVault.Core.Application.Activity;
@@ -42,7 +43,8 @@ public sealed class ActivityService : IActivityService
                 // Account-unlock notifications belong to the affected account's history, but the
                 // administrator's request address belongs only in the full audit trail.
                 var sourceIp = r.Action == AuditAction.AccountUnlocked ? "internal" : r.SourceIp;
-                return new ActivityItem(r.TimestampUtc, d.Category, d.Title, d.Severity, r.ResourceName, sourceIp);
+                return new ActivityItem(r.TimestampUtc, d.Category, d.Title, d.Severity,
+                    ActivityDescriber.ResourceNameShownToActor(r.Action, r.ResourceName), sourceIp);
             })
             .ToList();
 

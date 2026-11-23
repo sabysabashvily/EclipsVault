@@ -1,5 +1,7 @@
 import type { Page } from '@playwright/test';
 import { openPalette } from './palette';
+import type { legacyShell } from './legacy-shell';
+import { AppShell } from './app-shell';
 
 export class Users {
   readonly heading;
@@ -46,11 +48,18 @@ export class Users {
   forceLogout(username: string) {
     return this.row(username).getByRole('menuitem', { name: 'Force logout' });
   }
+  editItem(username: string) {
+    return this.row(username).getByRole('menuitem', { name: 'Edit', exact: true });
+  }
   async edit(username: string): Promise<void> {
-    await this.row(username).getByRole('link', { name: 'Edit', exact: true }).click();
+    await this.more(username, 'Edit');
   }
   async disable(username: string): Promise<void> {
-    await this.row(username).getByRole('button', { name: 'Disable', exact: true }).click();
+    await this.more(username, 'Disable');
+  }
+  // The verb a locked or disabled row carries beside its menu; an active row carries none.
+  verbs(username: string) {
+    return this.row(username).getByRole('button', { name: /^(Unlock|Enable|Disable)$/ });
   }
   async enable(username: string): Promise<void> {
     await this.row(username).getByRole('button', { name: 'Enable', exact: true }).click();
@@ -70,11 +79,13 @@ export class Users {
   async verifyCode(): Promise<void> {
     await this.stepUp.getByRole('button', { name: 'Verify and continue' }).click();
   }
-  async fromSidebar(path: '/Secrets' | '/Access'): Promise<void> {
+  async fromSidebar(path: typeof legacyShell | '/Access'): Promise<void> {
     await this.page.goto(path);
+    // The Angular sidebar folds its administration pages into a group; the Legacy one lists them.
+    if (path === '/Access') await new AppShell(this.page).administration.click();
     await this.page.getByRole('link', { name: 'Users', exact: true }).click();
   }
-  async fromPalette(path: '/Secrets' | '/Access'): Promise<void> {
+  async fromPalette(path: typeof legacyShell | '/Access'): Promise<void> {
     await this.page.goto(path);
     await openPalette(this.page);
     await this.page.getByRole('combobox').fill('Users');
@@ -85,7 +96,7 @@ export class Users {
     await row.getByText('More', { exact: true }).click();
     await row.getByRole('menuitem', { name: action, exact: true }).click();
   }
-  async confirm(): Promise<void> {
-    await this.confirmation.getByRole('button', { name: 'Continue', exact: true }).click();
+  async confirm(verb: string): Promise<void> {
+    await this.confirmation.getByRole('button', { name: verb, exact: true }).click();
   }
 }

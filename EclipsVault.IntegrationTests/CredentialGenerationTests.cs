@@ -1,7 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
+using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Web.Extensions;
 using EclipsVault.Web.Models.Ui;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace EclipsVault.IntegrationTests;
@@ -12,21 +14,26 @@ public sealed class CredentialGenerationTests(VaultFixture vault)
     private const string Password = "It-generation-password-2026!";
     private const string ReplacementPassword = "It-replacement-password-2026!";
 
+    /// <summary>
+    /// Passkey sign-in names no account until the assertion arrives. A password change that lands
+    /// once that account is known refuses the sign-in and leaves the counter unspent.
+    /// </summary>
     [Fact]
-    public async Task A_named_key_cannot_finish_a_challenge_from_before_a_password_change()
+    public async Task A_discoverable_challenge_cannot_finish_a_password_change_that_lands_after_the_account_is_known()
     {
-        var owner = await vault.SignInNewAccountAsync("it-generation-named-change", IPAddress.Parse("192.0.2.58"), password: Password);
+        var owner = await vault.SignInNewAccountAsync("it-generation-known-change", IPAddress.Parse("192.0.2.58"), password: Password);
         using var authenticator = new PasskeyAuthenticator();
-        await ProfileHttp.RegisterPasskeyAsync(owner, authenticator, "Named key");
+        await ProfileHttp.RegisterPasskeyAsync(owner, authenticator, "Discoverable key");
+        var account = await ProfileHttp.AccountAsync(vault, "it-generation-known-change");
         var pending = vault.CreateSession(source: IPAddress.Parse("192.0.2.59"));
-        var options = await SignInProof.PostPasskeyAsync(pending.Client, "/Account/PasskeyLoginBegin", new { username = "it-generation-named-change" });
-        await ProfileHttp.ChangePasswordAsync(owner, Password, ReplacementPassword);
+        var options = await SignInProof.PostPasskeyAsync(pending.Client, "/api/ui/auth/passkey/begin", new { });
+        var credential = authenticator.Assert(options.GetProperty("publicKey"));
 
-        var result = await SignInProof.PostPasskeyAsync(pending.Client, "/Account/PasskeyLoginComplete", new { credential = authenticator.Assert(options) });
+        var result = await FinishOnceTheAccountIsKnownAsync(pending, credential,
+            held => AuthApi.AdvanceCredentialGenerationAsync(held, account.Id));
 
-        Assert.False(result.GetProperty("success").GetBoolean());
+        await UiApiFailureContractTests.AssertProblemAsync(result, 400, "passkey_failed");
         Assert.Null(pending.SessionCookie);
-        var account = await ProfileHttp.AccountAsync(vault, "it-generation-named-change");
         Assert.Equal(0, Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id)).SignCount);
     }
 
@@ -39,12 +46,13 @@ public sealed class CredentialGenerationTests(VaultFixture vault)
         var account = await ProfileHttp.AccountAsync(vault, "it-generation-removed");
         var key = Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id));
         var pending = vault.CreateSession(source: IPAddress.Parse("192.0.2.61"));
-        var options = await SignInProof.PostPasskeyAsync(pending.Client, "/Account/PasskeyLoginBegin", new { });
+        var options = await SignInProof.PostPasskeyAsync(pending.Client, "/api/ui/auth/passkey/begin", new { });
         await ProfileHttp.RemovePasskeyAsync(owner, key.Id);
 
-        var result = await SignInProof.PostPasskeyAsync(pending.Client, "/Account/PasskeyLoginComplete", new { credential = authenticator.Assert(options) });
+        var result = await SignInProof.SendPasskeyAsync(pending.Client, "/api/ui/auth/passkey/complete",
+            new { credential = authenticator.Assert(options.GetProperty("publicKey")) });
 
-        Assert.False(result.GetProperty("success").GetBoolean());
+        await UiApiFailureContractTests.AssertProblemAsync(result, 400, "passkey_failed");
         Assert.Null(pending.SessionCookie);
     }
 
@@ -171,21 +179,26 @@ public sealed class CredentialGenerationTests(VaultFixture vault)
         Assert.NotEqual(account.LastTotpStep, (await ProfileHttp.AccountAsync(vault, account.Username)).LastTotpStep);
     }
 
+    /// <summary>
+    /// Signing out everywhere replaces the revocation version. When that lands after the assertion
+    /// has identified the account, the proof is refused and its counter stays where it was.
+    /// </summary>
     [Fact]
-    public async Task A_named_passkey_proof_started_before_signing_out_everywhere_cannot_spend_its_counter()
+    public async Task A_discoverable_proof_cannot_spend_its_counter_when_sign_out_everywhere_lands_after_the_account_is_known()
     {
-        var owner = await vault.SignInNewAccountAsync("it-generation-named", IPAddress.Parse("192.0.2.51"));
+        var owner = await vault.SignInNewAccountAsync("it-generation-signout", IPAddress.Parse("192.0.2.51"));
         using var authenticator = new PasskeyAuthenticator();
-        await ProfileHttp.RegisterPasskeyAsync(owner, authenticator, "Named key");
+        await ProfileHttp.RegisterPasskeyAsync(owner, authenticator, "Discoverable key");
+        var account = await ProfileHttp.AccountAsync(vault, "it-generation-signout");
         var pending = vault.CreateSession(source: IPAddress.Parse("192.0.2.52"));
-        var options = await SignInProof.PostPasskeyAsync(pending.Client, "/Account/PasskeyLoginBegin", new { username = "it-generation-named" });
-        await vault.RevokeAllSessionsOfAsync("it-generation-named");
+        var options = await SignInProof.PostPasskeyAsync(pending.Client, "/api/ui/auth/passkey/begin", new { });
+        var credential = authenticator.Assert(options.GetProperty("publicKey"));
 
-        var result = await SignInProof.PostPasskeyAsync(pending.Client, "/Account/PasskeyLoginComplete", new { credential = authenticator.Assert(options) });
+        var result = await FinishOnceTheAccountIsKnownAsync(pending, credential, async _ =>
+            await vault.Services.GetRequiredService<ISessionRevocationService>().RevokeAsync(account.Id));
 
-        Assert.False(result.GetProperty("success").GetBoolean());
+        await UiApiFailureContractTests.AssertProblemAsync(result, 400, "passkey_failed");
         Assert.Null(pending.SessionCookie);
-        var account = await ProfileHttp.AccountAsync(vault, "it-generation-named");
         Assert.Equal(0, Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id)).SignCount);
     }
 
@@ -196,13 +209,38 @@ public sealed class CredentialGenerationTests(VaultFixture vault)
         using var authenticator = new PasskeyAuthenticator();
         await ProfileHttp.RegisterPasskeyAsync(owner, authenticator, "Discoverable key");
         var pending = vault.CreateSession(source: IPAddress.Parse("192.0.2.54"));
-        var options = await SignInProof.PostPasskeyAsync(pending.Client, "/Account/PasskeyLoginBegin", new { });
+        var options = await SignInProof.PostPasskeyAsync(pending.Client, "/api/ui/auth/passkey/begin", new { });
         await ProfileHttp.ChangePasswordAsync(owner, Password, ReplacementPassword);
 
-        var result = await SignInProof.PostPasskeyAsync(pending.Client, "/Account/PasskeyLoginComplete", new { credential = authenticator.Assert(options) });
+        var result = await SignInProof.SendPasskeyAsync(pending.Client, "/api/ui/auth/passkey/complete",
+            new { credential = authenticator.Assert(options.GetProperty("publicKey")) });
 
-        Assert.True(result.GetProperty("success").GetBoolean());
+        Assert.Equal(HttpStatusCode.OK, result.StatusCode);
         Assert.Equal(2, SessionApi.PrincipalOf(vault, pending).GetSessionStampOrNull()!.CredentialGeneration);
         Assert.Equal(HttpStatusCode.OK, (await pending.Client.GetAsync("/api/ui/me")).StatusCode);
+    }
+
+    /// <summary>
+    /// Completes a discoverable passkey sign-in, pausing once the assertion has identified the
+    /// account and before that reading is checked again. The chain is what the completion waits
+    /// on, so <paramref name="change"/> is ordered without a clock.
+    /// </summary>
+    private async Task<HttpResponseMessage> FinishOnceTheAccountIsKnownAsync(
+        VaultSession pending, object credential, Func<HeldAuditChain, Task> change)
+    {
+        var held = await HeldAuditChain.TakeAsync(vault);
+        var finishing = SignInProof.SendPasskeyAsync(pending.Client, "/api/ui/auth/passkey/complete", new { credential });
+        try
+        {
+            await held.WaitForQueuedWritersAsync(1);
+            await change(held);
+            await held.CommitAsync();
+        }
+        finally
+        {
+            await held.DisposeAsync();
+        }
+
+        return await finishing;
     }
 }

@@ -15,9 +15,9 @@ public sealed class ConcurrentShareRevocationTests(VaultFixture vault)
     {
         var issuer = await vault.SignInNewAccountAsync("it-shares-race-issuer", IPAddress.Parse("192.0.2.110"));
         await vault.SignInNewAccountAsync("it-shares-race-recipient", IPAddress.Parse("192.0.2.111"));
-        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-shares-race-secret");
-        await LegacySharing.ShareAsync(issuer.Client, details, "it-shares-race-recipient");
-        var share = await LegacySharing.ShareOfAsync(vault, details);
+        var details = await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-shares-race-secret");
+        await SecretDetailsApi.ShareAsync(issuer.Client, details, "it-shares-race-recipient");
+        var share = await SecretSharing.ShareOfAsync(vault, details);
         var before = await AuditTrail.HeadAsync(vault);
         using var scope = vault.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
@@ -57,7 +57,7 @@ public sealed class ConcurrentShareRevocationTests(VaultFixture vault)
         }
     }
 
-    private const string SqlServerQueuedChainWriters = """
+    internal const string SqlServerQueuedChainWriters = """
         SELECT COUNT(*) AS [Value] FROM sys.dm_tran_locks
         WHERE resource_type = 'APPLICATION' AND resource_database_id = DB_ID()
             AND request_status = 'WAIT' AND resource_description LIKE '%EclipsVault:AuditChain%'
@@ -66,7 +66,7 @@ public sealed class ConcurrentShareRevocationTests(VaultFixture vault)
     // An advisory lock's key is a hash of its name, so count the lock requests this connection
     // blocks: its transaction holds the chain lock and nothing else. pg_locks is read live, where
     // pg_stat_activity would be read once per transaction and never see a request that came later.
-    private const string PostgresQueuedChainWriters = """
+    internal const string PostgresQueuedChainWriters = """
         SELECT COUNT(*)::int AS "Value" FROM pg_locks
         WHERE NOT granted AND pg_backend_pid() = ANY(pg_blocking_pids(pid))
         """;

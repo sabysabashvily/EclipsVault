@@ -17,6 +17,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using Serilog.Core;
 using Xunit;
 
 namespace EclipsVault.IntegrationTests;
@@ -71,7 +72,23 @@ public sealed partial class VaultFixture : IAsyncLifetime
 
     public bool ProductionWindowNeverOpens { get; init; }
 
-    public bool MalformedLicense { get; init; }
+    /// <summary>A deployment without single sign-on; every other vault offers it.</summary>
+    public bool SsoDisabled { get; init; }
+
+    /// <summary>The token the vault reads from ECLIPSVAULT_LICENSE at startup; none means unlicensed.</summary>
+    public string? License { get; init; }
+
+    /// <summary>A master key the vault loads only to unwrap data keys still sealed under it.</summary>
+    public string? RetiredMasterKey { get; init; }
+
+    /// <summary>Gives the vault a SQL Server database of its own to mint dynamic credentials on.</summary>
+    public bool DynamicSecretsTarget { get; init; }
+
+    /// <summary>The database dynamic credentials are minted on, when <see cref="DynamicSecretsTarget"/> is set.</summary>
+    public string? DynamicTargetConnectionString { get; private set; }
+
+    /// <summary>Every line the vault logs, as its log sinks receive it.</summary>
+    public LogCapture Log { get; } = new();
 
     public async Task InitializeAsync()
     {
@@ -84,11 +101,17 @@ public sealed partial class VaultFixture : IAsyncLifetime
             SetEnvironment("Email__Smtp__Host", Mailbox.Host);
             SetEnvironment("Email__Smtp__Port", Mailbox.Port.ToString(CultureInfo.InvariantCulture));
         }
+        if (DynamicSecretsTarget)
+        {
+            DynamicTargetConnectionString = await _database.StartDynamicTargetAsync();
+            SetEnvironment("DynamicSecrets__TargetConnectionString", DynamicTargetConnectionString);
+        }
 
         using var signingKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         SetEnvironment("Database__Provider", _database.Provider);
         SetEnvironment("ConnectionStrings__DefaultConnection", _database.ConnectionString());
         SetEnvironment("ECLIPSVAULT_KEK", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
+        if (RetiredMasterKey is not null) SetEnvironment("ECLIPSVAULT_KEK_RETIRED", RetiredMasterKey);
         SetEnvironment("ECLIPSVAULT_AUDIT_SIGNING_KEY", Convert.ToBase64String(signingKey.ExportPkcs8PrivateKey()));
         SetEnvironment("DataProtection__KeyRingPath", _keyRing.FullName);
         SetEnvironment("Seed__AdminPassword", _adminPassword);
@@ -108,12 +131,12 @@ public sealed partial class VaultFixture : IAsyncLifetime
         SetEnvironment("DynamicSecrets__ReapIntervalSeconds", "86400");
         // Register the production OIDC correlation cookie for HTTP callback scoping tests.
         // Those start after the IdP assertion, so this authority is never contacted.
-        SetEnvironment("Sso__Enabled", "true");
+        SetEnvironment("Sso__Enabled", SsoDisabled ? "false" : "true");
         SetEnvironment("Sso__TrustIdpMultiFactor", TrustIdpMfa.ToString());
         SetEnvironment("Sso__Authority", "https://idp.example.test/realms/integration");
         SetEnvironment("Sso__ClientId", "integration-vault");
         SetEnvironment("Sso__ClientSecret", Convert.ToHexString(RandomNumberGenerator.GetBytes(32)));
-        if (MalformedLicense) SetEnvironment("ECLIPSVAULT_LICENSE", "not-a-license-token");
+        if (License is not null) SetEnvironment("ECLIPSVAULT_LICENSE", License);
         if (ProductionWindowNeverOpens)
         {
             // The window runs from the start hour up to the end hour, so equal hours never open it.
@@ -127,6 +150,7 @@ public sealed partial class VaultFixture : IAsyncLifetime
                 .ConfigureTestServices(services =>
                 {
                     services.AddMvcCore().AddApplicationPart(typeof(VaultFixture).Assembly);
+                    services.AddSingleton<ILogEventSink>(Log);
                     // Keep the real counter, cache and configured thresholds. Freeze only its window;
                     // TOTP, cookie expiry and all other services retain the production clock.
                     services.AddSingleton<IAuthThrottle>(sp => new InMemoryAuthThrottle(
@@ -325,23 +349,32 @@ public sealed partial class VaultFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// The first sign-in of a new account: the password, then enrolling an authenticator and confirming
-    /// it with a real code.
+    /// The first sign-in of a new account through the Angular sign-in pages' calls: the password, then
+    /// enrolling an authenticator and confirming it with a real code.
     /// </summary>
     private static async Task<string> SignInFirstTimeAsync(HttpClient client, string username, string password)
     {
-        var afterPassword = await PostFormAsync(client, "/Account/Login", new() { ["Username"] = username, ["Password"] = password });
-        var next = afterPassword.Headers.Location?.OriginalString;
-        if (!string.Equals(next, "/Account/EnrollTotp", StringComparison.OrdinalIgnoreCase))
+        var afterPassword = await UiApiRequest.SendWithTokenAsync(client, await SignInDocument.TokenAsync(client), HttpMethod.Post,
+            "/api/ui/auth/password", JsonContent.Create(new { username, password }));
+        var next = afterPassword.IsSuccessStatusCode
+            ? (await afterPassword.Content.ReadFromJsonAsync<EclipsVault.Web.Models.Ui.PasswordStageResponse>())?.Next
+            : null;
+        if (next != "enroll")
         {
             throw new InvalidOperationException(
-                $"The password step ended at '{next}' ({(int)afterPassword.StatusCode}), not at authenticator enrollment.");
+                $"The password step went to '{next}' ({(int)afterPassword.StatusCode}), not to authenticator enrollment.");
         }
 
-        var enrollment = await client.GetStringAsync("/Account/EnrollTotp");
-        var secret = EnrollmentSecret().Match(enrollment) is { Success: true } match
-            ? match.Groups[1].Value
-            : throw new InvalidOperationException("The enrollment page showed no authenticator secret.");
+        // The password step reissued the token for the pending sign-in.
+        var pending = SignInDocument.TokenOf(afterPassword);
+        var enrollment = await UiApiRequest.SendWithTokenAsync(client, pending, HttpMethod.Post, "/api/ui/auth/enrollment");
+        var secret = enrollment.IsSuccessStatusCode
+            ? (await enrollment.Content.ReadFromJsonAsync<EclipsVault.Web.Models.Ui.TotpEnrollmentResponse>())?.SecretBase32
+            : null;
+        if (secret is null)
+        {
+            throw new InvalidOperationException($"Enrollment showed no authenticator secret ({(int)enrollment.StatusCode}).");
+        }
 
         // A code about to expire may reach the vault in the next step, so wait for a fresh one.
         if (Totp.SecondsLeftInStep() < 5)
@@ -349,21 +382,27 @@ public sealed partial class VaultFixture : IAsyncLifetime
             await Task.Delay(TimeSpan.FromSeconds(Totp.SecondsLeftInStep() + 1));
         }
 
-        var response = await PostFormAsync(client, "/Account/EnrollTotp", new() { ["Code"] = Totp.Code(secret, Totp.CurrentStep()) });
-        var landed = response.Headers.Location?.OriginalString ?? string.Empty;
-        if (response.StatusCode != HttpStatusCode.Redirect || landed.StartsWith("/Account/", StringComparison.OrdinalIgnoreCase))
+        var response = await UiApiRequest.SendWithTokenAsync(client, pending, HttpMethod.Post, "/api/ui/auth/enrollment/confirm",
+            JsonContent.Create(new { code = Totp.Code(secret, Totp.CurrentStep()) }));
+        if (response.StatusCode != HttpStatusCode.OK)
         {
-            throw new InvalidOperationException($"Enrollment did not create a session ({(int)response.StatusCode}, '{landed}').");
+            throw new InvalidOperationException($"Enrollment did not create a session ({(int)response.StatusCode}).");
         }
         return secret;
     }
 
-    /// <summary>Posts a form as a browser does: with the antiforgery token from the page that renders it.</summary>
-    private static async Task<HttpResponseMessage> PostFormAsync(
-        HttpClient client, string path, Dictionary<string, string> fields, string? formPage = null)
+    /// <summary>
+    /// A signed-in page the Legacy layout still draws, sidebar and sign-out form included. The error page
+    /// is the last one until Area 9 retires it; it answers with the status it names.
+    /// </summary>
+    public const string LegacyShell = "/Home/Error?code=404";
+
+    /// <summary>The Legacy shell's HTML, as <paramref name="client"/>'s session sees it.</summary>
+    public static async Task<string> LegacyShellAsync(HttpClient client)
     {
-        fields["__RequestVerificationToken"] = FormTokenOf(await client.GetStringAsync(formPage ?? path), formPage ?? path);
-        return await client.PostAsync(path, new FormUrlEncodedContent(fields));
+        using var response = await client.GetAsync(LegacyShell);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        return await response.Content.ReadAsStringAsync();
     }
 
     /// <summary>The antiforgery token a Legacy UI page renders into its forms, where its own scripts read it.</summary>
@@ -380,9 +419,6 @@ public sealed partial class VaultFixture : IAsyncLifetime
 
     [GeneratedRegex("name=\"__RequestVerificationToken\" type=\"hidden\" value=\"([^\"]+)\"")]
     private static partial Regex AntiforgeryField();
-
-    [GeneratedRegex("<code class=\"secret-code\">([A-Z2-7=]+)</code>")]
-    private static partial Regex EnrollmentSecret();
 
 
 }

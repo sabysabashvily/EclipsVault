@@ -7,6 +7,7 @@ import { ConfirmationDialog } from '../shared/confirmation-dialog';
 import { EmptyState } from '../shared/empty-state';
 import { relativeTime, utcTimestamp } from '../shared/relative-time';
 import { StatusLine } from '../shared/status-line';
+import { PagePrimary } from '../shell/page-primary';
 import type { paths } from '../ui-api/schema.generated';
 import { UiApiError } from '../ui-api/ui-api-errors';
 
@@ -29,7 +30,7 @@ function signedOutMessage(count: number): string {
 
 @Component({
   selector: 'app-sessions-page',
-  imports: [RouterLink, ConfirmationDialog, EmptyState, StatusLine],
+  imports: [PagePrimary, RouterLink, ConfirmationDialog, EmptyState, StatusLine],
   templateUrl: './sessions-page.html',
 })
 export class SessionsPage {
@@ -44,13 +45,16 @@ export class SessionsPage {
   protected readonly devices = computed(() => {
     if (!this.sessions.hasValue()) return null;
     const now = new Date();
-    return this.sessions.value().sessions.map((session) => ({
-      ...session,
-      kind: deviceKind(session.device),
-      signedIn: relativeTime(session.createdAtUtc, now),
-      lastActive: relativeTime(session.lastSeenAtUtc, now),
-      lastActiveUtc: utcTimestamp(session.lastSeenAtUtc),
-    }));
+    return this.sessions
+      .value()
+      .sessions.map((session) => ({
+        ...session,
+        kind: deviceKind(session.device),
+        signedIn: relativeTime(session.createdAtUtc, now),
+        lastActive: relativeTime(session.lastSeenAtUtc, now),
+        lastActiveUtc: utcTimestamp(session.lastSeenAtUtc),
+      }))
+      .sort((left, right) => Number(right.isCurrent) - Number(left.isCurrent));
   });
   protected readonly hasOthers = computed(
     () => this.devices()?.some((session) => !session.isCurrent) ?? false,

@@ -3,7 +3,14 @@
     auto_https disable_redirects
 }
 
-https://localhost {
+https://localhost:{$E2E_HTTPS_PORT} {
     tls internal
     reverse_proxy vault:8080
+}
+
+# The identity provider shares the vault's published port on its own name. The browser follows
+# that name, and the vault calls the same URL with the name resolved to this proxy.
+https://keycloak.localhost:{$E2E_HTTPS_PORT} {
+    tls internal
+    reverse_proxy keycloak:8080
 }

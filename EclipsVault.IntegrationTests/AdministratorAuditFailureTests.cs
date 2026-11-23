@@ -201,7 +201,7 @@ public sealed class AdministratorAuditFailureTests(AuditFailureFixture failure)
     }
 
     [Fact]
-    public async Task Own_force_logout_clears_the_cookie_and_keeps_the_unrecorded_warning_at_sign_in()
+    public async Task Own_force_logout_clears_the_cookie_and_leaves_no_flash_for_sign_in()
     {
         var vault = failure.Vault;
         var admin = await vault.SignInNewAccountAsync("it-unrecorded-own-logout", IPAddress.Parse("198.18.109.30"), ClearanceLevel.TopSecret);
@@ -213,8 +213,8 @@ public sealed class AdministratorAuditFailureTests(AuditFailureFixture failure)
             var response = await UiApiRequest.SendWithTokenAsync(admin.Client, token, HttpMethod.Post, $"/api/ui/users/{account.Id}/sign-out");
             await UiApiFailureContractTests.AssertProblemAsync(response, 503, "revoked_unrecorded");
             Assert.Null(admin.SessionCookie);
-            Assert.Contains("All of the user's sessions were revoked, but the vault couldn't record it in the audit trail.",
-                WebUtility.HtmlDecode(await admin.Client.GetStringAsync("/Account/Login")));
+            // The Users page sends this outcome to Login as ?signOut=revoked_unrecorded.
+            SignInDocument.AssertNoTempData(response);
             Assert.Equal(HttpStatusCode.Unauthorized, (await admin.Client.GetAsync("/api/ui/me")).StatusCode);
         }
         finally

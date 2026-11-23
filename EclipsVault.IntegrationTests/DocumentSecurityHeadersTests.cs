@@ -15,6 +15,13 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
     private const string AngularPolicy = LegacyPolicy +
         "; require-trusted-types-for 'script'; trusted-types angular angular#bundler";
 
+    // This vault offers single sign-on, whose form on Login redirects to the identity provider.
+    private const string LoginPolicy =
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
+        "font-src 'self'; connect-src 'self'; object-src 'none'; frame-src 'none'; " +
+        "frame-ancestors 'none'; form-action 'self' https://idp.example.test; base-uri 'self'" +
+        "; require-trusted-types-for 'script'; trusted-types angular angular#bundler";
+
     [Theory]
     [InlineData("/Profile")]
     [InlineData("/pRoFiLe/InDeX")]
@@ -42,6 +49,9 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
     [InlineData("/Data/Index")]
     [InlineData("/data")]
     [InlineData("/DATA/index")]
+    [InlineData("/DynamicSecrets")]
+    [InlineData("/DynamicSecrets/Index")]
+    [InlineData("/dynamicsecrets")]
     [InlineData("/Secrets/SharedByMe")]
     [InlineData("/secrets/sharedbyme")]
     [InlineData("/Secrets/SharedWithMe")]
@@ -50,6 +60,8 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
     [InlineData("/AccessRequests/Index")]
     [InlineData("/accessrequests")]
     [InlineData("/ACCESSREQUESTS/index")]
+    [InlineData("/Account/Denied")]
+    [InlineData("/account/denied?secretId=6d1b2c55-0000-4000-8000-000000000001")]
     public async Task Angular_documents_add_only_the_two_Trusted_Types_directives(string path)
     {
         var client = await vault.AdminClientAsync();
@@ -70,8 +82,8 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
 
     [Theory]
     [InlineData("/Account/Login", HttpStatusCode.Redirect)]
-    [InlineData("/Account/Denied", HttpStatusCode.OK)]
-    [InlineData("/Secrets", HttpStatusCode.OK)]
+    // The error page is the last signed-in page on the Legacy layout.
+    [InlineData("/Home/Error?code=404", HttpStatusCode.NotFound)]
     [InlineData("/Access/NotAnAngularRoute", HttpStatusCode.NotFound)]
     [InlineData("/api/ui/me", HttpStatusCode.OK)]
     [InlineData("/css/site.css", HttpStatusCode.OK)]
@@ -102,6 +114,7 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
         using var login = await client.GetAsync(response.Headers.Location);
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         Assert.Equal("text/html", login.Content.Headers.ContentType?.MediaType);
-        Assert.Equal(LegacyPolicy, Assert.Single(login.Headers.GetValues("Content-Security-Policy")));
+        // The sign-in page itself is an Angular document (ADR-0032).
+        Assert.Equal(LoginPolicy, Assert.Single(login.Headers.GetValues("Content-Security-Policy")));
     }
 }

@@ -8,14 +8,12 @@ export class SharedByMe {
   readonly goToSecrets;
   readonly confirmation;
   readonly cancel;
-  readonly continue;
+  readonly revokeAccess;
   readonly status;
   readonly error;
   readonly retry;
   readonly introduction;
   readonly emptyMessage;
-  readonly emptyState;
-  readonly emptyIcon;
 
   constructor(readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Shared by me', exact: true });
@@ -30,11 +28,14 @@ export class SharedByMe {
     this.goToSecrets = page.getByRole('link', { name: 'Go to your secrets', exact: true });
     this.confirmation = page.getByRole('alertdialog');
     this.cancel = this.confirmation.getByRole('button', { name: 'Cancel', exact: true });
-    this.continue = this.confirmation.getByRole('button', { name: 'Continue', exact: true });
+    this.revokeAccess = this.confirmation.getByRole('button', {
+      name: 'Revoke access',
+      exact: true,
+    });
     this.status = page.getByRole('main').getByRole('status');
     this.error = page.getByRole('main').getByRole('alert');
     this.retry = page.getByRole('button', { name: 'Try again', exact: true });
-    this.introduction = page.getByText("Everyone you've granted access to one of your secrets.", {
+    this.introduction = page.getByText('Revoking takes effect on their next request.', {
       exact: false,
     });
     this.emptyMessage = page.getByText(
@@ -43,11 +44,6 @@ export class SharedByMe {
         exact: false,
       },
     );
-    // The empty state's unlabelled layout and icon containers are read only for visual parity.
-    // eslint-disable-next-line playwright/no-raw-locators
-    this.emptyState = page.locator('.empty-state');
-    // eslint-disable-next-line playwright/no-raw-locators
-    this.emptyIcon = page.locator('.empty-icon');
   }
 
   share(secretName: string) {

@@ -36,12 +36,12 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         var issuer = await vault.SignInNewAccountAsync("it-shares-shape", IPAddress.Parse("192.0.2.80"));
         await vault.SignInNewAccountAsync("it-shares-shape-recipient", IPAddress.Parse("192.0.2.81"));
         var admin = await vault.AdminClientAsync();
-        var older = await LegacySharing.CreateSecretAsync(admin, "it-shares-older");
-        var newer = await LegacySharing.CreateSecretAsync(admin, "it-shares-newer");
-        await LegacySharing.ShareAsync(issuer.Client, older, "it-shares-shape-recipient");
-        await LegacySharing.ShareAsync(issuer.Client, newer, "it-shares-shape-recipient", ttlDays: "7");
-        var olderShare = await LegacySharing.ShareOfAsync(vault, older);
-        var newerShare = await LegacySharing.ShareOfAsync(vault, newer);
+        var older = await SecretSharing.CreateSecretAsync(admin, "it-shares-older");
+        var newer = await SecretSharing.CreateSecretAsync(admin, "it-shares-newer");
+        await SecretDetailsApi.ShareAsync(issuer.Client, older, "it-shares-shape-recipient");
+        await SecretDetailsApi.ShareAsync(issuer.Client, newer, "it-shares-shape-recipient", ttlDays: 7);
+        var olderShare = await SecretSharing.ShareOfAsync(vault, older);
+        var newerShare = await SecretSharing.ShareOfAsync(vault, newer);
 
         var response = await issuer.Client.GetAsync("/api/ui/shared-by-me");
 
@@ -73,12 +73,12 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         var issuerId = SessionApi.PrincipalOf(vault, issuer).GetUserId();
         var otherIssuerId = SessionApi.PrincipalOf(vault, otherIssuer).GetUserId();
         var admin = await vault.AdminClientAsync();
-        var issuedSecret = await LegacySharing.CreateSecretAsync(admin, "it-shares-scope-secret-a");
-        var otherIssuedSecret = await LegacySharing.CreateSecretAsync(admin, "it-shares-scope-secret-b");
-        await LegacySharing.ShareAsync(issuer.Client, issuedSecret, "it-shares-scope-recipient");
-        await LegacySharing.ShareAsync(otherIssuer.Client, otherIssuedSecret, "it-shares-scope-recipient");
-        var issuedShare = await LegacySharing.ShareOfAsync(vault, issuedSecret);
-        var otherIssuedShare = await LegacySharing.ShareOfAsync(vault, otherIssuedSecret);
+        var issuedSecret = await SecretSharing.CreateSecretAsync(admin, "it-shares-scope-secret-a");
+        var otherIssuedSecret = await SecretSharing.CreateSecretAsync(admin, "it-shares-scope-secret-b");
+        await SecretDetailsApi.ShareAsync(issuer.Client, issuedSecret, "it-shares-scope-recipient");
+        await SecretDetailsApi.ShareAsync(otherIssuer.Client, otherIssuedSecret, "it-shares-scope-recipient");
+        var issuedShare = await SecretSharing.ShareOfAsync(vault, issuedSecret);
+        var otherIssuedShare = await SecretSharing.ShareOfAsync(vault, otherIssuedSecret);
         var claimingOtherIssuer = $"?issuerId={otherIssuerId}&issuerUserId={otherIssuerId}&userId={otherIssuerId}&accountId={otherIssuerId}&username=it-shares-scope-b&issuer=it-shares-scope-b";
         var claimingIssuer = $"?issuerId={issuerId}&issuerUserId={issuerId}&userId={issuerId}&accountId={issuerId}&username=it-shares-scope-a&issuer=it-shares-scope-a";
         var before = await AuditTrail.HeadAsync(vault);
@@ -110,9 +110,9 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         var issuer = await vault.SignInNewAccountAsync("it-shares-audit", IPAddress.Parse("192.0.2.97"));
         await vault.SignInNewAccountAsync("it-shares-audit-recipient", IPAddress.Parse("192.0.2.98"));
         var issuerId = SessionApi.PrincipalOf(vault, issuer).GetUserId();
-        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-shares-audit-secret");
-        await LegacySharing.ShareAsync(issuer.Client, details, "it-shares-audit-recipient");
-        var share = await LegacySharing.ShareOfAsync(vault, details);
+        var details = await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-shares-audit-secret");
+        await SecretDetailsApi.ShareAsync(issuer.Client, details, "it-shares-audit-recipient");
+        var share = await SecretSharing.ShareOfAsync(vault, details);
         var before = await AuditTrail.HeadAsync(vault);
 
         var revoked = await UiApiRequest.WriteWithAntiforgeryAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.Id}");
@@ -137,12 +137,12 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         var admin = await vault.SignInNewAccountAsync("it-shares-admin", IPAddress.Parse("192.0.2.85"), ClearanceLevel.TopSecret);
         var other = await vault.SignInNewAccountAsync("it-shares-admin-other", IPAddress.Parse("192.0.2.86"));
         await vault.SignInNewAccountAsync("it-shares-admin-recipient", IPAddress.Parse("192.0.2.87"));
-        var owned = await LegacySharing.CreateSecretAsync(admin.Client, "it-shares-admin-owned");
-        var foreign = await LegacySharing.CreateSecretAsync(admin.Client, "it-shares-admin-foreign");
-        await LegacySharing.ShareAsync(admin.Client, owned, "it-shares-admin-recipient");
-        await LegacySharing.ShareAsync(other.Client, foreign, "it-shares-admin-recipient");
-        var ownedShare = await LegacySharing.ShareOfAsync(vault, owned);
-        var foreignShare = await LegacySharing.ShareOfAsync(vault, foreign);
+        var owned = await SecretSharing.CreateSecretAsync(admin.Client, "it-shares-admin-owned");
+        var foreign = await SecretSharing.CreateSecretAsync(admin.Client, "it-shares-admin-foreign");
+        await SecretDetailsApi.ShareAsync(admin.Client, owned, "it-shares-admin-recipient");
+        await SecretDetailsApi.ShareAsync(other.Client, foreign, "it-shares-admin-recipient");
+        var ownedShare = await SecretSharing.ShareOfAsync(vault, owned);
+        var foreignShare = await SecretSharing.ShareOfAsync(vault, foreign);
         var before = await AuditTrail.HeadAsync(vault);
 
         var shown = await admin.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me");
@@ -158,21 +158,21 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         var account = await SessionAccount.CreateAsync(vault, "it-shares-lost-access", "192.0.2.88");
         var recipient = await vault.SignInNewAccountAsync("it-shares-lost-recipient", IPAddress.Parse("192.0.2.89"), project: "SHARES-LOST");
         var admin = await vault.AdminClientAsync();
-        var details = await LegacySharing.CreateSecretAsync(admin, "it-shares-lost-secret");
-        await LegacySharing.ShareAsync(account.Browser.Client, details, "it-shares-lost-recipient");
-        var share = await LegacySharing.ShareOfAsync(vault, details);
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-shares-lost-secret");
+        await SecretDetailsApi.ShareAsync(account.Browser.Client, details, "it-shares-lost-recipient");
+        var share = await SecretSharing.ShareOfAsync(vault, details);
         var issuerId = SessionApi.PrincipalOf(vault, account.Browser).GetUserId();
         var changed = await UserAccounts.EditRoleAsync(admin, issuerId, ClearanceLevel.Standard, "SHARES-REASSIGNED");
         Assert.Equal(HttpStatusCode.NoContent, changed.StatusCode);
         var issuer = await account.OpenDeviceAsync(recoveryCodeIndex: 0, "192.0.2.96");
-        Assert.StartsWith("/Account/Denied?", (await issuer.Client.GetAsync(details)).Headers.Location?.OriginalString);
-        Assert.Equal(HttpStatusCode.OK, (await recipient.Client.GetAsync(details)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await SecretDetailsApi.GetAsync(issuer.Client, details)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await SecretDetailsApi.GetAsync(recipient.Client, details)).StatusCode);
 
         var list = await issuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me");
         Assert.Equal(share.Id, Assert.Single(list!.Shares).ShareId);
         Assert.Equal(HttpStatusCode.NoContent, (await UiApiRequest.WriteWithAntiforgeryAsync(issuer, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.Id}")).StatusCode);
         Assert.Empty((await issuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me"))!.Shares);
-        Assert.StartsWith("/Account/Denied?", (await recipient.Client.GetAsync(details)).Headers.Location?.OriginalString);
+        Assert.Equal(HttpStatusCode.Forbidden, (await SecretDetailsApi.GetAsync(recipient.Client, details)).StatusCode);
     }
 
     /// <summary>
@@ -185,12 +185,12 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         const string issuerUsername = "it-share-reused-issuer";
         const string recipientUsername = "it-share-reused-recipient";
         const string secretName = "it-share-reused-secret";
-        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), secretName);
+        var details = await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), secretName);
         // Outside the secret's project, so only the share lets the recipient open it.
         var recipient = await vault.SignInNewAccountAsync(recipientUsername, IPAddress.Parse("198.51.100.120"), project: "SHARE-TEST");
-        Assert.StartsWith("/Account/Denied?", (await recipient.Client.GetAsync(details)).Headers.Location?.OriginalString);
+        Assert.Equal(HttpStatusCode.Forbidden, (await SecretDetailsApi.GetAsync(recipient.Client, details)).StatusCode);
         var issuer = await vault.SignInNewAccountAsync(issuerUsername, IPAddress.Parse("198.51.100.121"));
-        await LegacySharing.ShareAsync(issuer.Client, details, recipientUsername);
+        await SecretDetailsApi.ShareAsync(issuer.Client, details, recipientUsername);
         var issuersList = await issuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me");
         var share = Assert.Single(issuersList!.Shares);
         Assert.Equal(secretName, share.SecretName);
@@ -204,7 +204,7 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         var revoke = await UiApiRequest.WriteWithAntiforgeryAsync(replacement, HttpMethod.Delete, $"/api/ui/shared-by-me/{share.ShareId}");
         await UiApiFailureContractTests.AssertProblemAsync(revoke, 404, "share_not_found");
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
-        Assert.Equal(HttpStatusCode.OK, (await recipient.Client.GetAsync(details)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await SecretDetailsApi.GetAsync(recipient.Client, details)).StatusCode);
         Assert.Contains(secretName, await recipient.Client.GetStringAsync("/api/ui/shared-with-me"));
     }
 
@@ -214,14 +214,14 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         var issuer = await vault.SignInNewAccountAsync("it-shares-filter", IPAddress.Parse("192.0.2.90"));
         await vault.SignInNewAccountAsync("it-shares-filter-recipient", IPAddress.Parse("192.0.2.91"));
         var admin = await vault.AdminClientAsync();
-        var expired = await LegacySharing.CreateSecretAsync(admin, "it-shares-expired");
-        var shredded = await LegacySharing.CreateSecretAsync(admin, "it-shares-shredded");
-        var live = await LegacySharing.CreateSecretAsync(admin, "it-shares-live");
-        await LegacySharing.ShareAsync(issuer.Client, expired, "it-shares-filter-recipient");
-        await LegacySharing.ShareAsync(issuer.Client, shredded, "it-shares-filter-recipient");
-        await LegacySharing.ShareAsync(issuer.Client, live, "it-shares-filter-recipient");
-        var expiredShare = await LegacySharing.ShareOfAsync(vault, expired);
-        var shreddedShare = await LegacySharing.ShareOfAsync(vault, shredded);
+        var expired = await SecretSharing.CreateSecretAsync(admin, "it-shares-expired");
+        var shredded = await SecretSharing.CreateSecretAsync(admin, "it-shares-shredded");
+        var live = await SecretSharing.CreateSecretAsync(admin, "it-shares-live");
+        await SecretDetailsApi.ShareAsync(issuer.Client, expired, "it-shares-filter-recipient");
+        await SecretDetailsApi.ShareAsync(issuer.Client, shredded, "it-shares-filter-recipient");
+        await SecretDetailsApi.ShareAsync(issuer.Client, live, "it-shares-filter-recipient");
+        var expiredShare = await SecretSharing.ShareOfAsync(vault, expired);
+        var shreddedShare = await SecretSharing.ShareOfAsync(vault, shredded);
         using (var scope = vault.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
@@ -243,12 +243,12 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
         var issuer = await vault.SignInNewAccountAsync("it-shares-decoy", IPAddress.Parse("192.0.2.99"));
         await vault.SignInNewAccountAsync("it-shares-decoy-recipient", IPAddress.Parse("192.0.2.100"));
         var admin = await vault.AdminClientAsync();
-        var decoy = await LegacySharing.CreateSecretAsync(admin, "it-shares-decoy-flagged");
-        var genuine = await LegacySharing.CreateSecretAsync(admin, "it-shares-decoy-genuine");
-        await LegacySharing.ShareAsync(issuer.Client, decoy, "it-shares-decoy-recipient");
-        await LegacySharing.ShareAsync(issuer.Client, genuine, "it-shares-decoy-recipient");
+        var decoy = await SecretSharing.CreateSecretAsync(admin, "it-shares-decoy-flagged");
+        var genuine = await SecretSharing.CreateSecretAsync(admin, "it-shares-decoy-genuine");
+        await SecretDetailsApi.ShareAsync(issuer.Client, decoy, "it-shares-decoy-recipient");
+        await SecretDetailsApi.ShareAsync(issuer.Client, genuine, "it-shares-decoy-recipient");
 
-        await LegacySharing.MakeDecoyAsync(vault, decoy);
+        await SecretSharing.MakeDecoyAsync(vault, decoy);
 
         var list = await issuer.Client.GetFromJsonAsync<SharedByMeResponse>("/api/ui/shared-by-me");
 
@@ -260,14 +260,14 @@ public sealed class SharedByMeApiTests(VaultFixture vault)
     {
         var issuer = await vault.SignInNewAccountAsync("it-shares-csrf", IPAddress.Parse("192.0.2.92"));
         await vault.SignInNewAccountAsync("it-shares-csrf-recipient", IPAddress.Parse("192.0.2.93"));
-        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-shares-csrf-secret");
-        await LegacySharing.ShareAsync(issuer.Client, details, "it-shares-csrf-recipient");
-        var share = await LegacySharing.ShareOfAsync(vault, details);
+        var details = await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-shares-csrf-secret");
+        await SecretDetailsApi.ShareAsync(issuer.Client, details, "it-shares-csrf-recipient");
+        var share = await SecretSharing.ShareOfAsync(vault, details);
         var before = await AuditTrail.HeadAsync(vault);
 
         await UiApiFailureContractTests.AssertProblemAsync(await issuer.Client.DeleteAsync($"/api/ui/shared-by-me/{share.Id}"), 400, "antiforgery_rejected");
 
-        Assert.Equal(share.Id, (await LegacySharing.ShareOfAsync(vault, details)).Id);
+        Assert.Equal(share.Id, (await SecretSharing.ShareOfAsync(vault, details)).Id);
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 

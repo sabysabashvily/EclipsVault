@@ -1,54 +1,124 @@
-import { Component, DOCUMENT, inject, viewChild } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+import {
+  Component,
+  computed,
+  DestroyRef,
+  DOCUMENT,
+  ElementRef,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { CurrentAccount } from './account/current-account';
 import { AccountMenu } from './shell/account-menu';
 import { CommandPalette, commandChord } from './shell/command-palette';
+import { PageActions } from './shell/page-actions';
+import { shortcutsFor } from './shell/sidebar';
 import { SidebarNav } from './shell/sidebar-nav';
 import { UiApiError } from './ui-api/ui-api-errors';
 
 @Component({
-  imports: [RouterOutlet, SidebarNav, AccountMenu, CommandPalette],
+  imports: [RouterOutlet, SidebarNav, AccountMenu, CommandPalette, NgTemplateOutlet],
   selector: 'app-root',
   template: `
     <div class="shell">
-      <aside #sidebar class="sidebar">
-        <a class="brand" href="/">
-          <span class="brand-mark" aria-hidden="true"></span>
-          <span class="brand-name">EclipsVault</span>
-        </a>
-        @if (me.hasValue()) {
-          <!-- The palette's visible way in, as in the Legacy UI: a shortcut nobody can see is a rumour. -->
-          <button
-            type="button"
-            class="command-trigger"
-            aria-label="Search secrets or jump to a page"
-            (click)="palette()?.open()"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              aria-hidden="true"
+      @if (compact()) {
+        <dialog
+          #navigationDialog
+          id="mobile-navigation"
+          class="mobile-navigation"
+          aria-label="Navigation"
+          tabindex="-1"
+          (click)="navigationClicked($event)"
+          (keydown)="navigationKeydown($event)"
+          (close)="navigationOpen.set(false)"
+        >
+          <div #sidebar class="sidebar">
+            <button
+              type="button"
+              class="button navigation-close"
+              aria-label="Close navigation"
+              autofocus
+              (click)="closeNavigation()"
             >
-              <circle cx="11" cy="11" r="7" />
-              <path d="m20 20-3.5-3.5" />
-            </svg>
-            <span class="command-trigger-label">Search…</span>
-            <kbd>{{ chord }}</kbd>
-          </button>
-          <app-sidebar-nav [areas]="me.value().areas" />
-          <div class="sidebar-footer">
-            <app-account-menu [me]="me.value()" />
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
+                <path d="m6 6 12 12M18 6 6 18" />
+              </svg>
+            </button>
+            <ng-container [ngTemplateOutlet]="sidebarContent" />
           </div>
-        } @else if (me.error(); as error) {
-          <p class="sidebar-error" role="alert">
-            Could not load your account ({{ problemCode(error) }}).
-          </p>
-        }
-      </aside>
+        </dialog>
+      } @else {
+        <aside #sidebar class="sidebar">
+          <ng-container [ngTemplateOutlet]="sidebarContent" />
+        </aside>
+      }
       <main class="content">
+        <!-- Below 1200px the sidebar is a drawer, so the bar carries its button and the logo. The
+             search pill is the palette's visible way in at every width. -->
+        <header class="topbar">
+          @if (compact()) {
+            <button
+              type="button"
+              class="button navigation-toggle"
+              aria-label="Open navigation"
+              aria-haspopup="dialog"
+              aria-controls="mobile-navigation"
+              [attr.aria-expanded]="navigationOpen()"
+              (click)="openNavigation()"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
+                <path d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <a class="brand topbar-brand" href="/">
+              <span class="brand-mark" aria-hidden="true"></span>
+              <span class="brand-name">EclipsVault</span>
+            </a>
+          }
+          @if (me.hasValue()) {
+            <button
+              type="button"
+              class="search-pill"
+              aria-label="Search secrets or jump to a page"
+              (click)="openSearch()"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-3.5-3.5" />
+              </svg>
+              <span class="search-pill-label">Search or jump to…</span>
+              <kbd>{{ chord }}</kbd>
+            </button>
+          }
+          @if (compact() && pageActions.primary(); as action) {
+            <div class="topbar-action">
+              <ng-container [ngTemplateOutlet]="action" />
+            </div>
+          }
+        </header>
         <!-- Shown only when the server sends it: it decides who may see a licence notice (ADR-0012). -->
         @if (me.hasValue() && me.value().licenseNotice; as notice) {
           <div class="notice notice-warn">
@@ -77,18 +147,114 @@ import { UiApiError } from './ui-api/ui-api-errors';
         </footer>
       </main>
     </div>
+    <ng-template #sidebarContent>
+      <a class="brand workspace-card" href="/">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-name">EclipsVault</span>
+      </a>
+      @if (me.hasValue()) {
+        <app-sidebar-nav [areas]="me.value().areas" />
+        <div class="sidebar-footer">
+          <app-account-menu [me]="me.value()" />
+        </div>
+      } @else if (me.error(); as error) {
+        <p class="sidebar-error" role="alert">
+          Could not load your account ({{ problemCode(error) }}).
+        </p>
+      }
+    </ng-template>
     @if (me.hasValue()) {
-      <app-command-palette [sidebar]="sidebar" />
+      @if (sidebar(); as region) {
+        <app-command-palette [sidebar]="region.nativeElement" [shortcuts]="shortcuts()" />
+      }
     }
   `,
 })
 export class App {
   protected readonly me = inject(CurrentAccount).me;
   protected readonly palette = viewChild(CommandPalette);
-  private readonly navigator = inject(DOCUMENT).defaultView?.navigator;
+  private readonly document = inject(DOCUMENT);
+  private readonly navigator = this.document.defaultView?.navigator;
+  private readonly viewport = this.document.defaultView?.matchMedia?.('(max-width: 1199px)');
+  protected readonly pageActions = inject(PageActions);
+  protected readonly compact = this.pageActions.compact;
+  protected readonly navigationOpen = signal(false);
+  protected readonly shortcuts = computed(() =>
+    this.me.hasValue() ? shortcutsFor(this.me.value().areas) : [],
+  );
+  protected readonly sidebar = viewChild<ElementRef<HTMLElement>>('sidebar');
+  protected readonly navigationDialog =
+    viewChild<ElementRef<HTMLDialogElement>>('navigationDialog');
   protected readonly chord = commandChord(
     this.navigator?.platform || this.navigator?.userAgent || '',
   );
+
+  constructor() {
+    this.compact.set(this.viewport?.matches ?? false);
+    const resized = (event: MediaQueryListEvent) => {
+      this.closeNavigation();
+      this.compact.set(event.matches);
+    };
+    this.viewport?.addEventListener('change', resized);
+    inject(DestroyRef).onDestroy(() => this.viewport?.removeEventListener('change', resized));
+  }
+
+  protected openNavigation(): void {
+    const dialog = this.navigationDialog()?.nativeElement;
+    if (!dialog) return;
+    dialog.showModal();
+    this.navigationOpen.set(true);
+  }
+
+  protected closeNavigation(): void {
+    this.navigationDialog()?.nativeElement.close();
+    this.navigationOpen.set(false);
+  }
+
+  protected openSearch(): void {
+    this.closeNavigation();
+    this.palette()?.open();
+  }
+
+  protected navigationClicked(event: MouseEvent): void {
+    if (
+      event.target === event.currentTarget ||
+      (event.target instanceof Element && event.target.closest('a[href]'))
+    ) {
+      this.closeNavigation();
+    }
+  }
+
+  protected navigationKeydown(event: KeyboardEvent): void {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.openSearch();
+    } else if (event.key === 'Tab') {
+      this.keepFocusInNavigation(event);
+    }
+  }
+
+  /** A native modal dialog can tab into browser chrome; wrap focus at its first and last control. */
+  private keepFocusInNavigation(event: KeyboardEvent): void {
+    const dialog = this.navigationDialog()?.nativeElement;
+    if (!dialog) return;
+    // A closed group keeps layout boxes for its hidden children; checkVisibility skips them, as Tab does.
+    const controls = [
+      ...dialog.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), summary'),
+    ].filter((control) => control.checkVisibility());
+    const first = controls[0];
+    const last = controls.at(-1);
+    if (!first || !last) return;
+    const active = this.document.activeElement;
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
 
   protected problemCode(error: Error): string {
     return error instanceof UiApiError ? error.code : 'unknown';

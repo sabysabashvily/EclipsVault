@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Passkeys;
@@ -33,15 +32,15 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
         }
 
         var browser = vault.CreateSession(source: IPAddress.Parse("203.0.113.185"));
-        var page = await browser.Client.GetStringAsync("/Account/Login");
-        var options = await PostSignInJsonAsync(browser.Client, "/Account/PasskeyLoginBegin", page, new { username = account.Username });
+        var token = await AuthApi.AnonymousTokenAsync(browser);
+        var options = (await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/passkey/begin", token, new { }))).GetProperty("publicKey");
         var before = await AuditTrail.HeadAsync(vault);
 
-        var result = await PostSignInJsonAsync(browser.Client, "/Account/PasskeyLoginComplete", page,
-            new { credential = authenticator.AssertWithWrongSignature(options) });
+        var result = await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/passkey/complete", token,
+            new { credential = authenticator.AssertWithWrongSignature(options) }), HttpStatusCode.BadRequest);
 
-        Assert.False(result.GetProperty("success").GetBoolean());
-        Assert.Equal("This passkey could not be verified.", result.GetProperty("error").GetString());
+        Assert.Equal("passkey_failed", result.GetProperty("code").GetString());
+        Assert.Equal("This passkey could not be verified.", result.GetProperty("title").GetString());
         Assert.False(result.TryGetProperty("redirect", out _));
         Assert.Equal(2, (await ProfileHttp.AccountAsync(vault, account.Username)).FailedAccessCount);
         Assert.Equal(0, Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id)).SignCount);
@@ -65,15 +64,15 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
         }
 
         var browser = vault.CreateSession(source: IPAddress.Parse("203.0.113.187"));
-        var page = await browser.Client.GetStringAsync("/Account/Login");
-        var options = await PostSignInJsonAsync(browser.Client, "/Account/PasskeyLoginBegin", page, new { username = account.Username });
+        var token = await AuthApi.AnonymousTokenAsync(browser);
+        var options = (await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/passkey/begin", token, new { }))).GetProperty("publicKey");
         var before = await AuditTrail.HeadAsync(vault);
 
-        var result = await PostSignInJsonAsync(browser.Client, "/Account/PasskeyLoginComplete", page,
-            new { credential = authenticator.AssertWithWrongSignature(options) });
+        var result = await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/passkey/complete", token,
+            new { credential = authenticator.AssertWithWrongSignature(options) }), HttpStatusCode.BadRequest);
 
-        Assert.False(result.GetProperty("success").GetBoolean());
-        Assert.Equal("This passkey could not be verified.", result.GetProperty("error").GetString());
+        Assert.Equal("passkey_failed", result.GetProperty("code").GetString());
+        Assert.Equal("This passkey could not be verified.", result.GetProperty("title").GetString());
         Assert.False(result.TryGetProperty("redirect", out _));
         Assert.Equal(2, (await ProfileHttp.AccountAsync(vault, account.Username)).FailedAccessCount);
         Assert.Equal(0, Assert.Single(await ProfileHttp.PasskeysAsync(vault, account.Id)).SignCount);
@@ -92,8 +91,8 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
         using var second = vault.Services.CreateScope();
         var firstPasskeys = first.ServiceProvider.GetRequiredService<IPasskeyService>();
         var secondPasskeys = second.ServiceProvider.GetRequiredService<IPasskeyService>();
-        var firstCeremony = await firstPasskeys.BeginAssertionAsync(account.Username, default);
-        var secondCeremony = await secondPasskeys.BeginAssertionAsync(account.Username, default);
+        var firstCeremony = await firstPasskeys.BeginAssertionAsync(default);
+        var secondCeremony = await secondPasskeys.BeginAssertionAsync(default);
         var firstResponse = JsonSerializer.Serialize(authenticator.Assert(JsonSerializer.Deserialize<JsonElement>(firstCeremony.OptionsJson)));
         var secondResponse = JsonSerializer.Serialize(authenticator.Assert(JsonSerializer.Deserialize<JsonElement>(secondCeremony.OptionsJson)));
         // The second scope now holds the credential as it was before the first sign-in. Its service
@@ -102,8 +101,8 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
         await second.ServiceProvider.GetRequiredService<IPasskeyCredentialRepository>().FindByCredentialIdAsync(key.CredentialId, default);
         var before = await AuditTrail.HeadAsync(vault);
 
-        var firstOutcome = await firstPasskeys.CompleteAssertionAsync(firstCeremony.Challenge, firstCeremony.NamedAccount, firstResponse, default);
-        var secondOutcome = await secondPasskeys.CompleteAssertionAsync(secondCeremony.Challenge, secondCeremony.NamedAccount, secondResponse, default);
+        var firstOutcome = await firstPasskeys.CompleteAssertionAsync(firstCeremony.Challenge, firstResponse, default);
+        var secondOutcome = await secondPasskeys.CompleteAssertionAsync(secondCeremony.Challenge, secondResponse, default);
 
         Assert.True(firstOutcome.Success);
         Assert.True(secondOutcome.Success);
@@ -137,15 +136,15 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
         using var second = vault.Services.CreateScope();
         var firstPasskeys = first.ServiceProvider.GetRequiredService<IPasskeyService>();
         var secondPasskeys = second.ServiceProvider.GetRequiredService<IPasskeyService>();
-        var firstCeremony = await firstPasskeys.BeginAssertionAsync(account.Username, default);
-        var secondCeremony = await secondPasskeys.BeginAssertionAsync(account.Username, default);
+        var firstCeremony = await firstPasskeys.BeginAssertionAsync(default);
+        var secondCeremony = await secondPasskeys.BeginAssertionAsync(default);
         var firstResponse = JsonSerializer.Serialize(authenticator.AssertWithWrongSignature(JsonSerializer.Deserialize<JsonElement>(firstCeremony.OptionsJson)));
         var secondResponse = JsonSerializer.Serialize(authenticator.AssertWithWrongSignature(JsonSerializer.Deserialize<JsonElement>(secondCeremony.OptionsJson)));
         var before = await AuditTrail.HeadAsync(vault);
 
         var outcomes = await Task.WhenAll(
-            firstPasskeys.CompleteAssertionAsync(firstCeremony.Challenge, firstCeremony.NamedAccount, firstResponse, default),
-            secondPasskeys.CompleteAssertionAsync(secondCeremony.Challenge, secondCeremony.NamedAccount, secondResponse, default));
+            firstPasskeys.CompleteAssertionAsync(firstCeremony.Challenge, firstResponse, default),
+            secondPasskeys.CompleteAssertionAsync(secondCeremony.Challenge, secondResponse, default));
 
         Assert.All(outcomes, outcome => Assert.False(outcome.Success));
         var stored = await ProfileHttp.AccountAsync(vault, account.Username);
@@ -173,11 +172,11 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
 
         using var request = vault.Services.CreateScope();
         var passkeys = request.ServiceProvider.GetRequiredService<IPasskeyService>();
-        var ceremony = await passkeys.BeginAssertionAsync(account.Username, default);
+        var ceremony = await passkeys.BeginAssertionAsync(default);
         var response = JsonSerializer.Serialize(authenticator.Assert(JsonSerializer.Deserialize<JsonElement>(ceremony.OptionsJson)));
         var before = await AuditTrail.HeadAsync(vault);
 
-        var outcome = await passkeys.CompleteAssertionAsync(ceremony.Challenge, ceremony.NamedAccount, response, default);
+        var outcome = await passkeys.CompleteAssertionAsync(ceremony.Challenge, response, default);
 
         Assert.False(outcome.Success);
         Assert.NotNull((await ProfileHttp.AccountAsync(vault, account.Username)).LockedUntilUtc);
@@ -201,11 +200,11 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
 
         using var request = vault.Services.CreateScope();
         var passkeys = request.ServiceProvider.GetRequiredService<IPasskeyService>();
-        var ceremony = await passkeys.BeginAssertionAsync(account.Username, default);
+        var ceremony = await passkeys.BeginAssertionAsync(default);
         var response = JsonSerializer.Serialize(authenticator.Assert(JsonSerializer.Deserialize<JsonElement>(ceremony.OptionsJson)));
         var before = await AuditTrail.HeadAsync(vault);
 
-        var outcome = await passkeys.CompleteAssertionAsync(ceremony.Challenge, ceremony.NamedAccount, response, default);
+        var outcome = await passkeys.CompleteAssertionAsync(ceremony.Challenge, response, default);
 
         Assert.True(outcome.Success);
         Assert.Equal(0, (await ProfileHttp.AccountAsync(vault, account.Username)).FailedAccessCount);
@@ -220,14 +219,5 @@ public sealed class PasskeyLockoutTests(VaultFixture vault)
         var http = new DefaultHttpContext { RequestServices = scope.ServiceProvider };
         return scope.ServiceProvider.GetRequiredService<SessionIssuer>().SignInAsync(
             http, outcome.User!, outcome.Stamp!, new SignInAudit(AuditAction.PasskeyLogin, "Passwordless sign-in with a passkey"), default);
-    }
-
-    private static async Task<JsonElement> PostSignInJsonAsync(HttpClient client, string path, string page, object body)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(body) };
-        request.Headers.Add("RequestVerificationToken", VaultFixture.FormTokenOf(page, "/Account/Login"));
-        using var response = await client.SendAsync(request);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 }

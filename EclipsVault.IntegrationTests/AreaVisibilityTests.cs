@@ -25,7 +25,7 @@ public sealed class AreaVisibilityTests(VaultFixture vault)
     [Fact]
     public async Task A_standard_account_is_offered_only_session_areas()
     {
-        var session = await vault.SignInNewAccountAsync("it-standard-areas");
+        var session = await vault.SignInNewAccountAsync("it-standard-areas", IPAddress.Parse("2001:db8:175:1::1"));
         var response = await session.Client.GetAsync("/api/ui/me");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -51,6 +51,8 @@ public sealed class AreaVisibilityTests(VaultFixture vault)
     [InlineData("/License", "198.18.110.209")]
     [InlineData("/Notifications/Index", "198.18.110.210")]
     [InlineData("/License/Index", "198.18.110.211")]
+    [InlineData("/Encryption/Index", "198.18.110.212")]
+    [InlineData("/Audit/Index", "198.18.110.213")]
     public async Task A_standard_account_cannot_open_an_administration_page(string path, string source)
     {
         var session = await vault.SignInNewAccountAsync("it-area-denied-" + source.Split('.').Last(), IPAddress.Parse(source));

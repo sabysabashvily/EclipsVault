@@ -13,8 +13,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize, Subscription } from 'rxjs';
-import { PAGE_LOCATION } from '../shell/command-palette';
-import { signInUrl, StepUpProof, UiApiError } from '../ui-api/ui-api-errors';
+import { SessionSignOut, signInUrl, StepUpProof, UiApiError } from '../ui-api/ui-api-errors';
 import type { components } from '../ui-api/schema.generated';
 
 @Component({
@@ -30,7 +29,7 @@ import type { components } from '../ui-api/schema.generated';
     >
       <h2 [id]="titleId">Confirm it's you</h2>
       @if (proof() === 'code') {
-        <p>Enter an authenticator code to continue.</p>
+        <p>{{ detail() || 'Enter an authenticator code to continue.' }}</p>
         <form (submit)="verify($event, code.value)">
           <div class="field">
             <label [for]="codeId">Authenticator code</label>
@@ -55,7 +54,7 @@ import type { components } from '../ui-api/schema.generated';
           </div>
         </form>
       } @else {
-        <p>Sign in again to continue.</p>
+        <p>{{ detail() || 'Sign in again to continue.' }}</p>
         <p class="field-error" role="alert">{{ error() }}</p>
         <div class="button-row">
           <button type="button" class="button" (click)="finish(false)">Cancel</button>
@@ -72,24 +71,26 @@ export class StepUpDialog {
   protected readonly titleId = `step-up-title-${StepUpDialog.nextId++}`;
   protected readonly codeId = `${this.titleId}-code`;
   protected readonly proof = signal<StepUpProof>('code');
+  protected readonly detail = signal('');
   protected readonly busy = signal(false);
   protected readonly error = signal('');
   readonly decision = output<boolean>();
   private readonly document = inject(DOCUMENT);
   protected readonly signIn = signInUrl(this.document.location);
   private readonly http = inject(HttpClient);
-  private readonly location = inject(PAGE_LOCATION);
+  private readonly sessionSignOut = inject(SessionSignOut);
   private readonly injector = inject(Injector);
   private readonly destroyRef = inject(DestroyRef);
   private readonly dialog = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
   private opener: Element | null = null;
   private verification: Subscription | undefined;
 
-  open(proof: StepUpProof): void {
+  open(proof: StepUpProof, detail = ''): void {
     if (this.dialog().nativeElement.open) return;
     const active = this.document.activeElement;
     this.opener = active?.closest('details')?.querySelector('summary') ?? active;
     this.proof.set(proof);
+    this.detail.set(detail);
     this.error.set('');
     afterNextRender(
       () => {
@@ -128,18 +129,15 @@ export class StepUpDialog {
     if (this.busy()) return;
     this.busy.set(true);
     this.error.set('');
-    this.verification = this.http
-      .post('/Account/Logout', null, { responseType: 'text' })
-      .pipe(
-        takeUntilDestroyed(this.destroyRef),
-        finalize(() => this.busy.set(false)),
-      )
+    // The shared sign-out leaves for sign-in, so only a failure comes back to the dialog.
+    this.verification = this.sessionSignOut
+      .end(this.signIn)
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: () => {
-          this.finish(false);
-          this.location.assign(this.signIn);
+        error: () => {
+          this.busy.set(false);
+          this.error.set('Could not sign out. Reload the page to try again.');
         },
-        error: () => this.error.set('Could not sign out. Reload the page to try again.'),
       });
   }
 

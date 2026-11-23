@@ -35,13 +35,18 @@ public sealed class AccessRequestReviewers(IAccessRequestService requests, IAuth
 
     /// <summary>False for an unknown request too, so a refusal reveals nothing about the id.</summary>
     public async Task<bool> MayDecideAsync(ClaimsPrincipal caller, Guid requestId, CancellationToken ct)
-        => await requests.FindForReviewAsync(requestId, ct) is { } candidate && await MayDecideAsync(caller, candidate, AccessKind.Read);
+        => await FindDecidableAsync(caller, requestId, ct) is not null;
+
+    /// <summary>The request and its secret when this caller may decide it; null for an unknown request too.</summary>
+    public async Task<AccessRequestForReview?> FindDecidableAsync(ClaimsPrincipal caller, Guid requestId, CancellationToken ct)
+        => await requests.FindForReviewAsync(requestId, ct) is { } candidate && await MayDecideAsync(caller, candidate, AccessKind.Read)
+            ? candidate
+            : null;
 
     private async Task<bool> MayDecideAsync(ClaimsPrincipal caller, AccessRequestForReview candidate, AccessKind access)
     {
         var isSomeoneElse = caller.GetUserIdOrNull() is { } callerId && callerId != candidate.Request.RequesterUserId;
-        var mayShareFromProject = caller.IsAdmin()
-            || string.Equals(caller.GetProject(), candidate.Secret.ProjectKey, StringComparison.OrdinalIgnoreCase);
+        var mayShareFromProject = SecretChangeRight.Allows(caller.IsAdmin(), caller.GetProject(), candidate.Secret.ProjectKey);
 
         return isSomeoneElse
             && mayShareFromProject

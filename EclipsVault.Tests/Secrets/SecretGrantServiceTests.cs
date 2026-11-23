@@ -78,14 +78,15 @@ public class SecretGrantServiceTests
         public Task<IReadOnlyList<Secret>> ListExpiredAsync(DateTimeOffset asOfUtc, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<Secret>> ListExpiringAsync(DateTimeOffset asOfUtc, DateTimeOffset horizonUtc, CancellationToken ct) => throw new NotSupportedException();
         public Task MarkExpiryNoticeSentAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> ExistsByNameAsync(string name, CancellationToken ct) => throw new NotSupportedException();
         public Task AddAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
         public Task UpdateAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
         public Task DeleteAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
-        public Task RotateAsync(Secret secret, SecretVersion archivedVersion, CancellationToken ct) => throw new NotSupportedException();
-        public Task ShredAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
+        public Task RotateAsync(Secret secret, byte[] readWrappedDek, SecretVersion archivedVersion, AuditAction recordedAs, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> ShredAsync(Secret secret, byte[] readWrappedDek, DateTimeOffset readExpiresAtUtc, CancellationToken ct) => throw new NotSupportedException();
+        public Task ReloadAsync(Secret secret, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<SecretVersion>> ListVersionsAsync(Guid secretId, CancellationToken ct) => throw new NotSupportedException();
         public Task<SecretVersion?> FindVersionAsync(Guid secretId, Guid versionId, CancellationToken ct) => throw new NotSupportedException();
-        public Task<int> CountVersionsAsync(Guid secretId, CancellationToken ct) => throw new NotSupportedException();
     }
 
     private sealed class FakeUsers(User recipient) : IUserRepository
@@ -217,7 +218,7 @@ public class SecretGrantServiceTests
         var grants = new FakeGrants(grant: null) { ForRecipient = active };
         var service = SharingService(grants, Carol, SecretOf(SensitivityLevel.Internal));
 
-        var refused = await Assert.ThrowsAsync<SharingException>(
+        var refused = await Assert.ThrowsAsync<ShareExistsException>(
             () => service.GrantAsync(active.SecretId, "carol", ttlDays: null, CancellationToken.None));
 
         Assert.Equal("'carol' already has a grant on this secret.", refused.Message);
@@ -244,7 +245,7 @@ public class SecretGrantServiceTests
         var grants = new FakeGrants(grant: null) { SaveSucceeds = false };
         var service = SharingService(grants, Carol, SecretOf(SensitivityLevel.Internal));
 
-        var refused = await Assert.ThrowsAsync<SharingException>(
+        var refused = await Assert.ThrowsAsync<ShareExistsException>(
             () => service.GrantAsync(Guid.NewGuid(), "carol", ttlDays: null, CancellationToken.None));
 
         Assert.Equal("They already have a share on this secret.", refused.Message);

@@ -1,9 +1,12 @@
 import { refreshAdministratorProof } from './administrator-proof';
 import { AccountCreation } from './account-creation';
+import { AppShell } from './app-shell';
 import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
+import { expectLegacyShell, legacyShell } from './legacy-shell';
+import { clearSignInBudget } from './profile-state';
 import { createSecret, openPalette } from './palette';
 import { SecretsList } from './secrets-list';
 import { SharedByMe } from './shared-by-me';
@@ -11,7 +14,8 @@ import { SharedWithMe } from './shared-with-me';
 import { freshTotp } from './totp';
 
 test.describe.configure({ mode: 'serial' });
-const recipientUsername = 'e2e-share-recipient';
+// Long and unbroken, so the width checks cover a name with no break opportunity of its own.
+const recipientUsername = 'e2esharerecipientfromthefinancedirectoryofacme01';
 let recipientCookies: Awaited<ReturnType<BrowserContext['cookies']>> = [];
 let secretDetails = '';
 
@@ -50,8 +54,7 @@ test('an issuer shares two real secrets with a colleague outside their project',
   await expect(page).toHaveURL(/\/Admin\/Users$/);
 
   // Earlier sign-in scenarios use the same proxy source; keep the production limiter enabled.
-  const windowMilliseconds = 120_000;
-  await page.waitForTimeout(windowMilliseconds - (Date.now() % windowMilliseconds) + 1_000);
+  clearSignInBudget();
   const recipient = await (await browserHealth.newContext()).newPage();
   await recipient.goto('/Account/Login');
   await recipient.getByLabel('Username').fill(recipientUsername);
@@ -67,12 +70,17 @@ test('an issuer shares two real secrets with a colleague outside their project',
 
   await createSecret(page, 'E2e_Shared_No_Expiry', 'Internal');
   secretDetails = new URL(page.url()).pathname;
+  // The page's own request for the secret is refused before the recipient lands on Denied.
+  browserHealth.expectConsoleError({
+    text: /status of 403/,
+    url: /\/api\/ui\/secrets\/[0-9a-f-]{36}$/,
+  });
   await recipient.goto(secretDetails);
   await expect(recipient).toHaveURL(/\/Account\/Denied\?/);
   await page.getByLabel('User to share with').fill(recipientUsername);
   await page.getByRole('button', { name: 'Share access', exact: true }).click();
   await expect(
-    page.getByText("Access to 'E2e_Shared_No_Expiry' was shared with e2e-share-recipient.", {
+    page.getByText(`Access to 'E2e_Shared_No_Expiry' was shared with ${recipientUsername}.`, {
       exact: true,
     }),
   ).toBeVisible();
@@ -85,23 +93,14 @@ test('an issuer shares two real secrets with a colleague outside their project',
   await page.getByLabel('Access expires in days').fill('7');
   await page.getByRole('button', { name: 'Share access', exact: true }).click();
   await expect(
-    page.getByText("Access to 'E2e_Shared_Expiring' was shared with e2e-share-recipient.", {
+    page.getByText(`Access to 'E2e_Shared_Expiring' was shared with ${recipientUsername}.`, {
       exact: true,
     }),
   ).toBeVisible();
 });
 
-for (const [theme, textColor, dangerColor, accent, accentBackground] of [
-  [
-    'dark',
-    'rgb(237, 238, 242)',
-    'rgb(255, 69, 58)',
-    'rgb(255, 159, 10)',
-    'rgba(255, 159, 10, 0.14)',
-  ],
-  ['light', 'rgb(28, 29, 34)', 'rgb(215, 0, 21)', 'rgb(180, 95, 4)', 'rgba(180, 95, 4, 0.12)'],
-]) {
-  test(`visual parity: Shared by me preserves its table and revoke styles in ${theme}`, async ({
+for (const theme of ['dark', 'light']) {
+  test(`Shared by me lists both shares and their revoke actions in ${theme}`, async ({
     page,
   }, info) => {
     await page.setViewportSize({ width: 1440, height: 1200 });
@@ -110,25 +109,14 @@ for (const [theme, textColor, dangerColor, accent, accentBackground] of [
       .addCookies([{ name: 'EclipsVault.Theme', value: theme, url: process.env['E2E_BASE_URL']! }]);
     const shares = await openAsIssuer(page);
     await expect(shares.rows).toHaveCount(2);
-    await expect(shares.heading).toHaveCSS('color', textColor);
-    await expect(shares.heading).toHaveCSS('font-size', '24px');
-    await expect(shares.heading).toHaveCSS('font-weight', '620');
-    await expect(shares.introduction).toHaveCSS('display', 'flex');
-    await expect(page.getByRole('table')).toHaveCSS('border-collapse', 'collapse');
-    await expect(shares.columns.first()).toHaveCSS('text-transform', 'uppercase');
-    await expect(shares.secretOf(shares.rows.first())).toHaveCSS('font-weight', '600');
-    await expect(shares.secretOf(shares.rows.first())).toHaveCSS('padding', '10.4px 11.2px');
-    await expect(shares.rows.first().getByRole('button')).toHaveCSS('color', dangerColor);
-    await expect(shares.rows.first().getByRole('button')).toHaveCSS(
-      'background-color',
-      'rgba(0, 0, 0, 0)',
-    );
+    await expect(shares.heading).toBeVisible();
+    await expect(shares.rows.getByRole('button', { name: 'Revoke', exact: true })).toHaveCount(2);
     const path = info.outputPath(`${theme}-shared-by-me.png`);
     await page.screenshot({ path, fullPage: true });
     await info.attach(`${theme}-shared-by-me`, { path, contentType: 'image/png' });
   });
 
-  test(`visual parity: Shared by me preserves its empty state and share icon in ${theme}`, async ({
+  test(`Shared by me explains the empty list and offers the Secrets link in ${theme}`, async ({
     page,
   }) => {
     await page.context().addCookies(recipientCookies);
@@ -142,12 +130,6 @@ for (const [theme, textColor, dangerColor, accent, accentBackground] of [
       "When you grant a colleague access to one of your secrets, it shows up here so you can keep track of who can see what — and revoke access when it's no longer needed.",
     );
     await expect(shares.goToSecrets).toBeVisible();
-    await expect(shares.emptyState).toHaveCSS('text-align', 'center');
-    await expect(shares.emptyState).toHaveCSS('padding', '48px 24px');
-    await expect(shares.emptyIcon).toHaveCSS('width', '54px');
-    await expect(shares.emptyIcon).toHaveCSS('height', '54px');
-    await expect(shares.emptyIcon).toHaveCSS('color', accent);
-    await expect(shares.emptyIcon).toHaveCSS('background-color', accentBackground);
   });
 }
 
@@ -170,7 +152,9 @@ test('Shared by me is served as the titled Angular document', async ({ page }) =
   );
 });
 
-test('Shared by me lists shares newest first under the Legacy columns', async ({ page }) => {
+test('Shared by me lists shares soonest-ending first, the close one as a yellow pill', async ({
+  page,
+}) => {
   const shares = await openAsIssuer(page);
   await expect(shares.columns).toHaveText([
     'Secret',
@@ -186,29 +170,36 @@ test('Shared by me lists shares newest first under the Legacy columns', async ({
   await expect(shares.sharedOnOf(shares.rows.first())).toHaveText(
     /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
   );
+  // Shared for 7 days a moment ago, so it ends within the week: the pill counts the days left.
   await expect(shares.accessUntilOf(shares.rows.first())).toHaveText(
-    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
+    /^In 6 days · \d{1,2} [A-Z][a-z]{2}( \d{4})?$/,
   );
+  await expect(
+    page.getByText(/^2 shares you gave · soonest ends \d{1,2} [A-Z][a-z]{2}/),
+  ).toBeVisible();
 });
 
-test('Shared by me shows "no expiry" for a share without an expiry', async ({ page }) => {
+test('Shared by me shows "No expiry" for a share without an expiry', async ({ page }) => {
   const shares = await openAsIssuer(page);
-  await expect(shares.accessUntilOf(shares.share('E2e_Shared_No_Expiry'))).toHaveText('no expiry');
+  await expect(shares.accessUntilOf(shares.share('E2e_Shared_No_Expiry'))).toHaveText('No expiry');
 });
 
-test('the sidebar opens Shared by me in-app with its Sharing group active', async ({ page }) => {
+test('the Secrets card tab opens Shared by me in-app while keeping Secrets active in the sidebar', async ({
+  page,
+}) => {
   await openAsIssuer(page, '/Access');
   const documents: string[] = [];
   page.on('request', (request) => {
     if (request.isNavigationRequest() && request.resourceType() === 'document')
       documents.push(request.url());
   });
-  await page.getByText('Sharing', { exact: true }).click();
-  const link = page.getByRole('link', { name: 'Shared by me', exact: true });
-  await link.click();
+  const shell = new AppShell(page);
+  await shell.secrets.click();
+  const tab = new SecretsList(page).tab('Shared by me');
+  await tab.click();
   await expect(new SharedByMe(page).heading).toBeVisible();
-  await expect(link).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('group').filter({ has: link })).toHaveJSProperty('open', true);
+  await expect(tab).toHaveAttribute('aria-current', 'page');
+  await expect(shell.secrets).toHaveAttribute('aria-current', 'true');
   expect(documents).toEqual([]);
 });
 
@@ -226,8 +217,9 @@ test('the palette opens Shared by me without a document load', async ({ page }) 
   expect(documents).toEqual([]);
 });
 
-test('the Legacy sidebar loads Shared by me into Angular', async ({ page }) => {
-  await openAsIssuer(page, '/Secrets');
+test('the Legacy sidebar loads Shared by me into Angular', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
+  await openAsIssuer(page, legacyShell);
   const documents: string[] = [];
   page.on('request', (request) => {
     if (request.isNavigationRequest() && request.resourceType() === 'document')
@@ -240,8 +232,9 @@ test('the Legacy sidebar loads Shared by me into Angular', async ({ page }) => {
   expect(documents).toEqual(['/Secrets/SharedByMe']);
 });
 
-test('the Legacy palette loads Shared by me into Angular', async ({ page }) => {
-  await openAsIssuer(page, '/Secrets');
+test('the Legacy palette loads Shared by me into Angular', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
+  await openAsIssuer(page, legacyShell);
   const documents: string[] = [];
   page.on('request', (request) => {
     if (request.isNavigationRequest() && request.resourceType() === 'document')
@@ -311,8 +304,9 @@ test('Cancel and Escape keep access while confirmation names the recipient and s
     if (request.method() === 'DELETE') writes.push(request.url());
   });
   await revoke.click();
-  await expect(shares.confirmation).toHaveAccessibleName(
-    "Revoke e2e-share-recipient's access to 'E2e_Shared_No_Expiry'? They lose access on their next request.",
+  await expect(shares.confirmation).toHaveAccessibleName(`Revoke ${recipientUsername}'s access?`);
+  await expect(shares.confirmation).toHaveAccessibleDescription(
+    `Revoke ${recipientUsername}'s access to 'E2e_Shared_No_Expiry'? They lose access on their next request.`,
   );
   await expect(shares.cancel).toBeFocused();
   await page.keyboard.press('Enter');
@@ -321,7 +315,7 @@ test('Cancel and Escape keep access while confirmation names the recipient and s
   await revoke.click();
   await expect(shares.cancel).toBeFocused();
   await page.keyboard.press('Shift+Tab');
-  await expect(shares.continue).toBeFocused();
+  await expect(shares.revokeAccess).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(shares.cancel).toBeFocused();
   await page.keyboard.press('Escape');
@@ -329,6 +323,35 @@ test('Cancel and Escape keep access while confirmation names the recipient and s
   await expect(revoke).toBeFocused();
   expect(writes).toEqual([]);
 });
+
+test('on a phone each share is a card and Revoke opens a bottom sheet', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  const shares = await openAsIssuer(page);
+  const revoke = page.getByRole('button', { name: 'Revoke', exact: true });
+  await expect(revoke).toHaveCount(2);
+  await expect(revoke.first()).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
+  await revoke.first().click();
+  await expect(shares.revokeAccess).toBeVisible();
+  // The sheet slides up; once it settles it spans the width and sits on the bottom edge.
+  await expect
+    .poll(async () => {
+      const box = await shares.confirmation.boundingBox();
+      return box && [Math.round(box.x), Math.round(box.width), Math.round(box.y + box.height)];
+    })
+    .toEqual([0, 375, 800]);
+  await page.keyboard.press('Escape');
+  await expect(shares.confirmation).not.toBeVisible();
+});
+
+for (const width of [300, 2000]) {
+  test(`Shared by me has no sideways scroll at ${width}px with shares listed`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openAsIssuer(page);
+    await expect(page.getByRole('button', { name: 'Revoke', exact: true })).toHaveCount(2);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  });
+}
 
 test('a refused revocation announces the audit failure and keeps the share', async ({
   page,
@@ -348,7 +371,7 @@ test('a refused revocation announces the audit failure and keeps the share', asy
     .share('E2e_Shared_No_Expiry')
     .getByRole('button', { name: 'Revoke', exact: true })
     .click();
-  await shares.continue.click();
+  await shares.revokeAccess.click();
   await expect(shares.error).toHaveText(title);
   await expect(shares.rows).toHaveCount(2);
 });
@@ -369,11 +392,16 @@ test('revoking a real share ends the recipient browser access on its next reques
     .getByRole('button', { name: 'Revoke', exact: true })
     .click();
   const deleted = page.waitForRequest((request) => request.method() === 'DELETE');
-  await shares.continue.click();
+  await shares.revokeAccess.click();
   expect((await deleted).headers()['requestverificationtoken']).toBeTruthy();
   await expect(shares.status).toHaveText('Access revoked.');
   await expect(shares.rows).toHaveCount(1);
   await expect(shares.share('E2e_Shared_No_Expiry')).toHaveCount(0);
+  // The recipient's next request for the secret is refused, so its page lands on Denied.
+  browserHealth.expectConsoleError({
+    text: /status of 403/,
+    url: /\/api\/ui\/secrets\/[0-9a-f-]{36}$/,
+  });
   await recipient.goto(secretDetails);
   await expect(recipient).toHaveURL(/\/Account\/Denied\?/);
   await expect(

@@ -3,39 +3,33 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
-using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace EclipsVault.IntegrationTests;
 
+/// <summary>
+/// The return URL a sign-in page carries in its address. The pages pass it with each call, and the
+/// server judges it only when the last factor succeeds (ADR-0032).
+/// </summary>
 [Collection(VaultCollection.Name)]
-public sealed partial class SignInReturnUrlTests(VaultFixture vault)
+public sealed class SignInReturnUrlTests(VaultFixture vault)
 {
     private static int _nextAddress;
-    private const int MaximumRedirectHops = 5;
 
     [Fact]
     public async Task Enrollment_completion_honors_a_local_target()
     {
         var (username, password) = await CreateAccountAsync();
-        using var client = NewClient();
-        var login = await client.GetStringAsync("/Account/Login");
-        var afterPassword = await PostFormAsync(client, "/Account/Login", login, new()
-        {
-            ["Username"] = username,
-            ["Password"] = password
-        });
-        Assert.Equal("/Account/EnrollTotp", afterPassword.Headers.Location?.OriginalString);
-        var enrollment = await client.GetStringAsync("/Account/EnrollTotp");
-        var secret = EnrollmentSecret().Match(enrollment).Groups[1].Value;
-        Assert.NotEmpty(secret);
-        var response = await PostFormAsync(client, "/Account/EnrollTotp", enrollment, new()
-        {
-            ["Code"] = Totp.Code(secret, Totp.CurrentStep()),
-            ["ReturnUrl"] = "/Access"
-        });
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/Access", response.Headers.Location?.OriginalString);
+        var browser = NewSession();
+        var token = await AuthApi.PendingAsync(browser, username, password, next: "enroll");
+        var secret = await EnrollmentSecretAsync(browser, token);
+
+        var signedIn = await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/enrollment/confirm", token,
+            new { code = Totp.Code(secret, Totp.CurrentStep()), returnUrl = "/Access" }));
+
+        Assert.Equal("/Access", signedIn.GetProperty("redirect").GetString());
     }
 
     [Theory]
@@ -44,50 +38,28 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
     public async Task Password_and_initial_enrollment_return_only_after_the_second_factor(string returnUrl, string expected)
     {
         var (username, password) = await CreateAccountAsync();
-        using var client = NewClient();
-        var loginPath = WithReturnUrl("/Account/Login", returnUrl);
-        var login = await client.GetStringAsync(loginPath);
-        Assert.Equal(returnUrl, HiddenReturnUrl(login));
+        var browser = NewSession();
+        Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync(WithReturnUrl("/Account/Login", returnUrl))).StatusCode);
 
-        var afterPassword = await PostFormAsync(client, "/Account/Login", login, new()
-        {
-            ["Username"] = username,
-            ["Password"] = password,
-            ["ReturnUrl"] = HiddenReturnUrl(login)
-        });
-        Assert.Equal(WithReturnUrl("/Account/EnrollTotp", returnUrl), afterPassword.Headers.Location?.OriginalString);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/ui/me")).StatusCode);
+        var afterPassword = await AuthApi.JsonAsync(await AuthApi.PasswordAsync(browser, username, password, returnUrl));
+        Assert.Equal("enroll", afterPassword.GetProperty("next").GetString());
+        var token = AuthApi.ReissuedToken(browser);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await browser.Client.GetAsync("/api/ui/me")).StatusCode);
 
-        var enrollment = await client.GetStringAsync(afterPassword.Headers.Location);
-        Assert.Equal(returnUrl, HiddenReturnUrl(enrollment));
-        var secret = EnrollmentSecret().Match(enrollment).Groups[1].Value;
-        Assert.NotEmpty(secret);
-        var malformed = await PostFormAsync(client, "/Account/EnrollTotp", enrollment, new()
-        {
-            ["Code"] = "bad",
-            ["ReturnUrl"] = HiddenReturnUrl(enrollment)
-        });
-        Assert.Equal(HttpStatusCode.OK, malformed.StatusCode);
-        enrollment = await malformed.Content.ReadAsStringAsync();
-        Assert.Equal(returnUrl, HiddenReturnUrl(enrollment));
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/ui/me")).StatusCode);
-        var expired = await PostFormAsync(client, "/Account/EnrollTotp", enrollment, new()
-        {
-            ["Code"] = Totp.Code(secret, Totp.CurrentStep() - 10),
-            ["ReturnUrl"] = HiddenReturnUrl(enrollment)
-        });
-        Assert.Equal(HttpStatusCode.OK, expired.StatusCode);
-        enrollment = await expired.Content.ReadAsStringAsync();
-        Assert.Equal(returnUrl, HiddenReturnUrl(enrollment));
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/ui/me")).StatusCode);
-        var response = await PostFormAsync(client, "/Account/EnrollTotp", enrollment, new()
-        {
-            ["Code"] = Totp.Code(secret, Totp.CurrentStep()),
-            ["ReturnUrl"] = HiddenReturnUrl(enrollment)
-        });
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal(expected, response.Headers.Location?.OriginalString);
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/ui/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync(WithReturnUrl("/Account/EnrollTotp", returnUrl))).StatusCode);
+        var secret = await EnrollmentSecretAsync(browser, token);
+        await ProfileApi.AssertProblemAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/enrollment/confirm", token,
+            new { code = "bad", returnUrl }), 400, "validation_failed");
+        Assert.Equal(HttpStatusCode.Unauthorized, (await browser.Client.GetAsync("/api/ui/me")).StatusCode);
+        await UiApiFailureContractTests.AssertProblemAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/enrollment/confirm", token,
+            new { code = Totp.Code(secret, Totp.CurrentStep() - 10), returnUrl }), 400, "code_invalid");
+        Assert.Equal(HttpStatusCode.Unauthorized, (await browser.Client.GetAsync("/api/ui/me")).StatusCode);
+
+        var signedIn = await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/enrollment/confirm", token,
+            new { code = Totp.Code(secret, Totp.CurrentStep()), returnUrl }));
+
+        Assert.Equal(expected, signedIn.GetProperty("redirect").GetString());
+        Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync("/api/ui/me")).StatusCode);
     }
 
     [Theory]
@@ -95,70 +67,32 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
     [InlineData("https://outside.example/", "/Secrets")]
     public async Task Password_totp_and_alternate_methods_keep_the_target_across_errors(string returnUrl, string expected)
     {
-        var (username, password, secret, enrolled) = await EnrollAccountAsync();
+        var (username, password, secret, enrolled, step) = await EnrollAccountAsync();
         enrolled.Dispose();
-        using var client = NewClient();
-        var login = await client.GetStringAsync(WithReturnUrl("/Account/Login", returnUrl));
-        var emptyPassword = await PostFormAsync(client, "/Account/Login", login, new()
-        {
-            ["Username"] = username,
-            ["Password"] = "",
-            ["ReturnUrl"] = HiddenReturnUrl(login)
-        });
-        Assert.Equal(HttpStatusCode.OK, emptyPassword.StatusCode);
-        login = await emptyPassword.Content.ReadAsStringAsync();
-        Assert.Equal(returnUrl, HiddenReturnUrl(login));
-        var incorrectPassword = await PostFormAsync(client, "/Account/Login", login, new()
-        {
-            ["Username"] = username,
-            ["Password"] = "incorrect-password",
-            ["ReturnUrl"] = HiddenReturnUrl(login)
-        });
-        Assert.Equal(HttpStatusCode.OK, incorrectPassword.StatusCode);
-        login = await incorrectPassword.Content.ReadAsStringAsync();
-        Assert.Equal(returnUrl, HiddenReturnUrl(login));
+        var browser = NewSession();
+        Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync(WithReturnUrl("/Account/Login", returnUrl))).StatusCode);
+        await ProfileApi.AssertProblemAsync(await AuthApi.PasswordAsync(browser, username, "", returnUrl), 400, "validation_failed");
+        await UiApiFailureContractTests.AssertProblemAsync(
+            await AuthApi.PasswordAsync(browser, username, "incorrect-password", returnUrl), 400, "sign_in_failed");
 
-        var passwordResponse = await PostFormAsync(client, "/Account/Login", login, new()
-        {
-            ["Username"] = username,
-            ["Password"] = password,
-            ["ReturnUrl"] = HiddenReturnUrl(login)
-        });
-        Assert.Equal(WithReturnUrl("/Account/Totp", returnUrl), passwordResponse.Headers.Location?.OriginalString);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/ui/me")).StatusCode);
-        var totp = await client.GetStringAsync(passwordResponse.Headers.Location);
-        var malformed = await PostFormAsync(client, "/Account/Totp", totp, new()
-        {
-            ["Code"] = "bad",
-            ["ReturnUrl"] = HiddenReturnUrl(totp)
-        });
-        Assert.Equal(HttpStatusCode.OK, malformed.StatusCode);
-        totp = await malformed.Content.ReadAsStringAsync();
-        Assert.Equal(returnUrl, HiddenReturnUrl(totp));
-        var expired = await PostFormAsync(client, "/Account/Totp", totp, new()
-        {
-            ["Code"] = Totp.Code(secret, Totp.CurrentStep() - 10),
-            ["ReturnUrl"] = HiddenReturnUrl(totp)
-        });
-        Assert.Equal(HttpStatusCode.OK, expired.StatusCode);
-        totp = await expired.Content.ReadAsStringAsync();
-        Assert.Equal(returnUrl, HiddenReturnUrl(totp));
+        var afterPassword = await AuthApi.JsonAsync(await AuthApi.PasswordAsync(browser, username, password, returnUrl));
+        Assert.Equal("totp", afterPassword.GetProperty("next").GetString());
+        var token = AuthApi.ReissuedToken(browser);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await browser.Client.GetAsync("/api/ui/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync(WithReturnUrl("/Account/Totp", returnUrl))).StatusCode);
+        await ProfileApi.AssertProblemAsync(
+            await AuthApi.PostAsync(browser, "/api/ui/auth/totp", token, new { code = "bad", returnUrl }), 400, "validation_failed");
+        await UiApiFailureContractTests.AssertProblemAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/totp", token,
+            new { code = Totp.Code(secret, Totp.CurrentStep() - 10), returnUrl }), 400, "code_invalid");
 
-        var recoveryPath = LinkTo(totp, "RecoveryCode");
-        Assert.Equal(WithReturnUrl("/Account/RecoveryCode", returnUrl), recoveryPath);
-        var recovery = await client.GetStringAsync(recoveryPath);
-        Assert.Equal(returnUrl, HiddenReturnUrl(recovery));
-        var totpPath = LinkTo(recovery, "Totp");
-        Assert.Equal(WithReturnUrl("/Account/Totp", returnUrl), totpPath);
-        totp = await client.GetStringAsync(totpPath);
-        var signedIn = await PostFormAsync(client, "/Account/Totp", totp, new()
-        {
-            ["Code"] = Totp.Code(secret, Totp.CurrentStep()),
-            ["ReturnUrl"] = HiddenReturnUrl(totp)
-        });
-        Assert.Equal(HttpStatusCode.Redirect, signedIn.StatusCode);
-        Assert.Equal(expected, signedIn.Headers.Location?.OriginalString);
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/ui/me")).StatusCode);
+        // The alternate method and the way back are pages of the same pending sign-in.
+        Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync(WithReturnUrl("/Account/RecoveryCode", returnUrl))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync(WithReturnUrl("/Account/Totp", returnUrl))).StatusCode);
+        var signedIn = await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/totp", token,
+            new { code = Totp.Code(secret, Totp.StepStillAccepted(ServerNow(), step)), returnUrl }));
+
+        Assert.Equal(expected, signedIn.GetProperty("redirect").GetString());
+        Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync("/api/ui/me")).StatusCode);
     }
 
     [Theory]
@@ -166,7 +100,7 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
     [InlineData("https://outside.example/", "/Secrets")]
     public async Task Recovery_code_completion_checks_the_target_and_creates_a_real_session(string returnUrl, string expected)
     {
-        var (username, password, secret, enrolled) = await EnrollAccountAsync();
+        var (username, password, secret, enrolled, _) = await EnrollAccountAsync();
         using (enrolled)
         {
             var operationId = await VerifyProfileChangeAsync(enrolled, password, secret, new { kind = "ReplaceRecoveryCodes" });
@@ -174,71 +108,45 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
             var code = generated.GetProperty("codes")[0].GetString()!;
             Assert.NotEmpty(code);
 
-            using var client = NewClient();
-            var afterPassword = await PostFormAsync(client, "/Account/Login", await client.GetStringAsync("/Account/Login"), new()
-            {
-                ["Username"] = username,
-                ["Password"] = password,
-                ["ReturnUrl"] = returnUrl
-            });
-            var recovery = await client.GetStringAsync(LinkTo(await client.GetStringAsync(afterPassword.Headers.Location), "RecoveryCode"));
-            var malformed = await PostFormAsync(client, "/Account/RecoveryCode", recovery, new()
-            {
-                ["Code"] = "bad",
-                ["ReturnUrl"] = HiddenReturnUrl(recovery)
-            });
-            Assert.Equal(HttpStatusCode.OK, malformed.StatusCode);
-            recovery = await malformed.Content.ReadAsStringAsync();
-            Assert.Equal(returnUrl, HiddenReturnUrl(recovery));
-            Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/ui/me")).StatusCode);
-            var unknownCode = await PostFormAsync(client, "/Account/RecoveryCode", recovery, new()
-            {
-                ["Code"] = "ZZZZZ-ZZZZZ",
-                ["ReturnUrl"] = HiddenReturnUrl(recovery)
-            });
-            Assert.Equal(HttpStatusCode.OK, unknownCode.StatusCode);
-            recovery = await unknownCode.Content.ReadAsStringAsync();
-            Assert.Equal(returnUrl, HiddenReturnUrl(recovery));
-            Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/ui/me")).StatusCode);
-            var signedIn = await PostFormAsync(client, "/Account/RecoveryCode", recovery, new()
-            {
-                ["Code"] = code,
-                ["ReturnUrl"] = HiddenReturnUrl(recovery)
-            });
-            Assert.Equal(HttpStatusCode.Redirect, signedIn.StatusCode);
-            Assert.Equal(expected, signedIn.Headers.Location?.OriginalString);
-            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/ui/me")).StatusCode);
+            var browser = NewSession();
+            Assert.Equal("totp", (await AuthApi.JsonAsync(await AuthApi.PasswordAsync(browser, username, password, returnUrl))).GetProperty("next").GetString());
+            var token = AuthApi.ReissuedToken(browser);
+            Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync(WithReturnUrl("/Account/RecoveryCode", returnUrl))).StatusCode);
+            await ProfileApi.AssertProblemAsync(
+                await AuthApi.PostAsync(browser, "/api/ui/auth/recovery-code", token, new { code = "bad", returnUrl }), 400, "validation_failed");
+            Assert.Equal(HttpStatusCode.Unauthorized, (await browser.Client.GetAsync("/api/ui/me")).StatusCode);
+            await UiApiFailureContractTests.AssertProblemAsync(
+                await AuthApi.PostAsync(browser, "/api/ui/auth/recovery-code", token, new { code = "ZZZZZ-ZZZZZ", returnUrl }), 400, "code_invalid");
+            Assert.Equal(HttpStatusCode.Unauthorized, (await browser.Client.GetAsync("/api/ui/me")).StatusCode);
+
+            var signedIn = await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/recovery-code", token, new { code, returnUrl }));
+
+            Assert.Equal(expected, signedIn.GetProperty("redirect").GetString());
+            Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync("/api/ui/me")).StatusCode);
         }
     }
 
     [Fact]
     public async Task A_second_factor_page_that_expired_mid_sign_in_does_not_become_a_redirect_loop()
     {
-        var (username, password, secret, enrolled) = await EnrollAccountAsync();
+        var (username, password, secret, enrolled, step) = await EnrollAccountAsync();
         enrolled.Dispose();
-        using var client = NewClient();
+        var browser = NewSession();
         // Past the MFA-pending cookie's six minutes, the second-factor page challenges like any
         // other page and names itself as the place to come back to.
-        var challenge = await client.GetAsync("/Account/Totp");
+        var challenge = await browser.Client.GetAsync("/Account/Totp");
         Assert.Equal(HttpStatusCode.Redirect, challenge.StatusCode);
-        var login = await client.GetStringAsync(challenge.Headers.Location);
-        Assert.Equal("/Account/Totp", HiddenReturnUrl(login));
+        Assert.Equal("/Account/Login", challenge.Headers.Location?.AbsolutePath);
+        var returnUrl = QueryHelpers.ParseQuery(challenge.Headers.Location!.Query)["ReturnUrl"].ToString();
+        Assert.Equal("/Account/Totp", returnUrl);
+        Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync(challenge.Headers.Location)).StatusCode);
 
-        var afterPassword = await PostFormAsync(client, "/Account/Login", login, new()
-        {
-            ["Username"] = username,
-            ["Password"] = password,
-            ["ReturnUrl"] = HiddenReturnUrl(login)
-        });
-        var totp = await client.GetStringAsync(afterPassword.Headers.Location);
-        var response = await PostFormAsync(client, "/Account/Totp", totp, new()
-        {
-            ["Code"] = Totp.Code(secret, Totp.CurrentStep()),
-            ["ReturnUrl"] = HiddenReturnUrl(totp)
-        });
-        response = await FollowRedirectsAsync(client, response);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("/Secrets", response.RequestMessage?.RequestUri?.AbsolutePath);
+        Assert.Equal("totp", (await AuthApi.JsonAsync(await AuthApi.PasswordAsync(browser, username, password, returnUrl))).GetProperty("next").GetString());
+        var signedIn = await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/totp", AuthApi.ReissuedToken(browser),
+            new { code = Totp.Code(secret, Totp.StepStillAccepted(ServerNow(), step)), returnUrl }));
+
+        Assert.Equal("/Secrets", signedIn.GetProperty("redirect").GetString());
+        Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync("/Secrets")).StatusCode);
     }
 
     [Theory]
@@ -280,7 +188,7 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
     [InlineData("/Secrets?q=%C3%A9", "/Secrets?q=%C3%A9")]
     public async Task A_completed_sign_in_returns_neither_to_a_second_factor_page_nor_to_a_non_ascii_target(string target, string expected)
     {
-        var (_, _, _, client) = await EnrollAccountAsync();
+        var (_, _, _, client, _) = await EnrollAccountAsync();
         using (client)
         {
             // Every Account page but Denied is refused as written, before any decoding, as is any path
@@ -292,30 +200,36 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task A_non_ascii_target_falls_back_instead_of_failing_after_the_code_is_spent()
+    public async Task A_password_sign_in_without_a_return_url_lands_on_the_Secrets_list()
     {
-        var (username, password, secret, enrolled) = await EnrollAccountAsync();
+        var (username, password, secret, enrolled, step) = await EnrollAccountAsync();
         enrolled.Dispose();
-        using var client = NewClient();
-        var afterPassword = await PostFormAsync(client, "/Account/Login", await client.GetStringAsync("/Account/Login"), new()
-        {
-            ["Username"] = username,
-            ["Password"] = password,
-            ["ReturnUrl"] = "/Secrets?q=é"
-        });
-        var totp = await client.GetStringAsync(afterPassword.Headers.Location);
-        Assert.Equal("/Secrets?q=é", HiddenReturnUrl(totp));
-        var signedIn = await PostFormAsync(client, "/Account/Totp", totp, new()
-        {
-            ["Code"] = Totp.Code(secret, Totp.CurrentStep()),
-            ["ReturnUrl"] = HiddenReturnUrl(totp)
-        });
-        Assert.Equal(HttpStatusCode.Redirect, signedIn.StatusCode);
-        Assert.Equal("/Secrets", signedIn.Headers.Location?.OriginalString);
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/ui/me")).StatusCode);
+        var browser = NewSession();
+        var token = await AuthApi.PendingAsync(browser, username, password);
+
+        var signedIn = await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/totp", token,
+            new { code = Totp.Code(secret, Totp.StepStillAccepted(ServerNow(), step)) }));
+
+        Assert.Equal("/Secrets", signedIn.GetProperty("redirect").GetString());
+        Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync("/api/ui/me")).StatusCode);
     }
 
-    // A transport decode must not turn an encoded separator into an external authority.
+    [Fact]
+    public async Task A_non_ascii_target_falls_back_instead_of_failing_after_the_code_is_spent()
+    {
+        var (username, password, secret, enrolled, step) = await EnrollAccountAsync();
+        enrolled.Dispose();
+        var browser = NewSession();
+        Assert.Equal("totp", (await AuthApi.JsonAsync(await AuthApi.PasswordAsync(browser, username, password, "/Secrets?q=é"))).GetProperty("next").GetString());
+
+        var signedIn = await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/totp", AuthApi.ReissuedToken(browser),
+            new { code = Totp.Code(secret, Totp.StepStillAccepted(ServerNow(), step)), returnUrl = "/Secrets?q=é" }));
+
+        Assert.Equal("/Secrets", signedIn.GetProperty("redirect").GetString());
+        Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync("/api/ui/me")).StatusCode);
+    }
+
+    // The target arrives as a JSON string, never transport-decoded; it is judged as written.
     [Theory]
     [InlineData("/Access?view=mine&sort=name#matrix", "/Access?view=mine&sort=name#matrix")]
     [InlineData(null, "/Secrets")]
@@ -337,43 +251,55 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
     [InlineData("/Secrets?q=é", "/Secrets")]
     public async Task Passkey_sign_in_uses_the_server_checked_target_only_after_a_valid_assertion(string? target, string expected)
     {
-        var (username, password, secret, enrolled) = await EnrollAccountAsync();
-        using var authenticator = new PasskeyAuthenticator();
-        using (enrolled)
-        {
-            var operationId = await VerifyProfileChangeAsync(enrolled, password, secret,
-                new { kind = "AddPasskey", passkeyNickname = "Return URL test" });
-            var options = await ProfileRequestAsync(enrolled, "/api/ui/profile/passkeys/registration/begin", new { operationId });
-            var registration = await ProfileRequestAsync(enrolled, "/api/ui/profile/passkeys/registration/complete",
-                new { operationId, credential = authenticator.Register(options.GetProperty("publicKey")) });
-            Assert.NotEqual(Guid.Empty, registration.GetProperty("id").GetGuid());
-        }
+        using var authenticator = await EnrollWithPasskeyAsync();
+        var browser = NewSession();
+        var token = await AuthApi.AnonymousTokenAsync(browser, WithReturnUrl("/Account/Login", target));
+        var signInOptions = (await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/passkey/begin", token,
+            new { returnUrl = target }))).GetProperty("publicKey");
+        Assert.Equal(HttpStatusCode.Unauthorized, (await browser.Client.GetAsync("/api/ui/me")).StatusCode);
 
+        var result = await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/passkey/complete", token,
+            new { credential = authenticator.Assert(signInOptions) }));
 
-
-        using var client = NewClient();
-        var loginPage = await client.GetStringAsync(WithReturnUrl("/Account/Login", target));
-        var signInOptions = await PostJsonAsync(client, "/Account/PasskeyLoginBegin", loginPage, new { username, returnUrl = target });
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/ui/me")).StatusCode);
-        var result = await PostJsonAsync(client, "/Account/PasskeyLoginComplete", loginPage, new { credential = authenticator.Assert(signInOptions) });
-        Assert.True(result.GetProperty("success").GetBoolean());
-        var redirect = result.GetProperty("redirect").GetString();
-        Assert.StartsWith("/Account/Login?ReturnUrl=", redirect, StringComparison.Ordinal);
-        var completionRedirect = await client.GetAsync(redirect);
-        Assert.Equal(HttpStatusCode.Redirect, completionRedirect.StatusCode);
-        Assert.Equal(expected, completionRedirect.Headers.Location?.OriginalString);
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/ui/me")).StatusCode);
+        Assert.Equal(expected, result.GetProperty("redirect").GetString());
+        Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync("/api/ui/me")).StatusCode);
         // Consuming the challenge prevents a replay from issuing another redirect/session.
-        var replay = await PostJsonAsync(client, "/Account/PasskeyLoginComplete", await client.GetStringAsync("/Secrets"), new { credential = new { } });
-        Assert.False(replay.GetProperty("success").GetBoolean());
+        var replay = await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/passkey/complete", AuthApi.ReissuedToken(browser),
+            new { credential = new { } }), HttpStatusCode.Conflict);
+        Assert.Equal("sign_in_restarted", replay.GetProperty("code").GetString());
         Assert.False(replay.TryGetProperty("redirect", out _));
     }
 
     [Fact]
     public async Task A_failed_passkey_attempt_returns_no_target_and_a_retry_replaces_its_target()
     {
-        var (username, password, secret, enrolled) = await EnrollAccountAsync();
-        using var authenticator = new PasskeyAuthenticator();
+        using var authenticator = await EnrollWithPasskeyAsync();
+        var browser = NewSession();
+        var token = await AuthApi.AnonymousTokenAsync(browser, WithReturnUrl("/Account/Login", "/Access#matrix"));
+        var timedOut = await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/passkey/complete", token,
+            new { credential = new { } }), HttpStatusCode.Conflict);
+        Assert.False(timedOut.TryGetProperty("redirect", out _));
+        token = AuthApi.ReissuedToken(browser);
+        await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/passkey/begin", token, new { returnUrl = "/Access#matrix" }));
+        var failed = await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/passkey/complete", token,
+            new { credential = new { } }), HttpStatusCode.BadRequest);
+        Assert.False(failed.TryGetProperty("redirect", out _));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await browser.Client.GetAsync("/api/ui/me")).StatusCode);
+
+        // A new attempt with no target must replace the failed attempt's destination.
+        var retryOptions = (await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/passkey/begin", token, new { })))
+            .GetProperty("publicKey");
+        var retry = await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/passkey/complete", token,
+            new { credential = authenticator.Assert(retryOptions) }));
+
+        Assert.Equal("/Secrets", retry.GetProperty("redirect").GetString());
+    }
+
+    /// <summary>A new account with a discoverable passkey registered through Profile.</summary>
+    private async Task<PasskeyAuthenticator> EnrollWithPasskeyAsync()
+    {
+        var (_, password, secret, enrolled, _) = await EnrollAccountAsync();
+        var authenticator = new PasskeyAuthenticator();
         using (enrolled)
         {
             var operationId = await VerifyProfileChangeAsync(enrolled, password, secret,
@@ -383,38 +309,7 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
                 new { operationId, credential = authenticator.Register(options.GetProperty("publicKey")) });
             Assert.NotEqual(Guid.Empty, registration.GetProperty("id").GetGuid());
         }
-
-        using (var failedClient = NewClient())
-        {
-            var login = await failedClient.GetStringAsync(WithReturnUrl("/Account/Login", "/Access#matrix"));
-            var timedOut = await PostJsonAsync(failedClient, "/Account/PasskeyLoginComplete", login, new { credential = new { } });
-            Assert.False(timedOut.GetProperty("success").GetBoolean());
-            Assert.False(timedOut.TryGetProperty("redirect", out _));
-            await PostJsonAsync(failedClient, "/Account/PasskeyLoginBegin", login, new { username, returnUrl = "/Access#matrix" });
-            var failed = await PostJsonAsync(failedClient, "/Account/PasskeyLoginComplete", login, new { credential = new { } });
-            Assert.False(failed.GetProperty("success").GetBoolean());
-            Assert.False(failed.TryGetProperty("redirect", out _));
-            Assert.Equal(HttpStatusCode.Unauthorized, (await failedClient.GetAsync("/api/ui/me")).StatusCode);
-            // A new attempt with no target must replace the failed attempt's destination.
-            var retryOptions = await PostJsonAsync(failedClient, "/Account/PasskeyLoginBegin", login, new { username });
-            var retry = await PostJsonAsync(failedClient, "/Account/PasskeyLoginComplete", login, new { credential = authenticator.Assert(retryOptions) });
-            Assert.True(retry.GetProperty("success").GetBoolean());
-            var final = await failedClient.GetAsync(retry.GetProperty("redirect").GetString());
-            Assert.Equal("/Secrets", final.Headers.Location?.OriginalString);
-        }
-    }
-
-    private static async Task<HttpResponseMessage> FollowRedirectsAsync(HttpClient client, HttpResponseMessage response)
-    {
-        for (var hops = 0; hops < MaximumRedirectHops && response.StatusCode == HttpStatusCode.Redirect; hops++)
-        {
-            response = await client.GetAsync(response.Headers.Location);
-        }
-        if (response.StatusCode == HttpStatusCode.Redirect)
-        {
-            throw new InvalidOperationException("Sign-in still redirects after its hop limit: " + response.Headers.Location);
-        }
-        return response;
+        return authenticator;
     }
 
     private static async Task<Guid> VerifyProfileChangeAsync(HttpClient client, string password, string secret, object change)
@@ -428,67 +323,44 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
 
     private static async Task<JsonElement> ProfileRequestAsync(HttpClient client, string path, object body)
     {
-        var me = await client.GetAsync("/api/ui/me");
-        var token = Microsoft.Net.Http.Headers.SetCookieHeaderValue.ParseList(me.Headers.GetValues("Set-Cookie").ToList())
-            .Single(cookie => cookie.Name == "XSRF-TOKEN").Value.ToString();
-        using var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(body) };
-        request.Headers.Add("RequestVerificationToken", token);
-        var response = await client.SendAsync(request);
+        var response = await UiApiRequest.SendWithTokenAsync(client, await UiApiRequest.AntiforgeryTokenAsync(client), HttpMethod.Post,
+            path, JsonContent.Create(body));
         Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
         return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
-    private async Task<(string Username, string Password, string Secret, HttpClient Client)> EnrollAccountAsync()
+    private async Task<(string Username, string Password, string Secret, HttpClient Client, long Step)> EnrollAccountAsync()
     {
         var (username, password) = await CreateAccountAsync();
-        var client = NewClient();
-        var afterPassword = await PostFormAsync(client, "/Account/Login", await client.GetStringAsync("/Account/Login"), new()
-        {
-            ["Username"] = username,
-            ["Password"] = password
-        });
-        Assert.Equal("/Account/EnrollTotp", afterPassword.Headers.Location?.OriginalString);
-        var enrollment = await client.GetStringAsync("/Account/EnrollTotp");
-        var secret = EnrollmentSecret().Match(enrollment).Groups[1].Value;
-        Assert.NotEmpty(secret);
-        var signedIn = await PostFormAsync(client, "/Account/EnrollTotp", enrollment, new()
-        {
-            // Use the previous accepted step so a subsequent ordinary sign-in can use the current
-            // one without replaying enrollment's code or sleeping through a whole authenticator step.
-            ["Code"] = Totp.Code(secret, Totp.CurrentStep() - 1)
-        });
-        Assert.Equal(HttpStatusCode.Redirect, signedIn.StatusCode);
-        return (username, password, secret, client);
+        var browser = NewSession();
+        var token = await AuthApi.PendingAsync(browser, username, password, next: "enroll");
+        var secret = await EnrollmentSecretAsync(browser, token);
+        // The verifier's own clock, read after enrollment began. The step it is on stays accepted if
+        // the check happens in the next step; the previous step does not.
+        var step = Totp.StepStillAccepted(ServerNow());
+        var signedIn = await AuthApi.PostAsync(browser, "/api/ui/auth/enrollment/confirm", token, new { code = Totp.Code(secret, step) });
+        Assert.Equal(HttpStatusCode.OK, signedIn.StatusCode);
+        return (username, password, secret, browser.Client, step);
     }
 
-    private static string LinkTo(string page, string action)
+    /// <summary>Begins enrollment as the EnrollTotp page does and returns the secret it shows.</summary>
+    private static async Task<string> EnrollmentSecretAsync(VaultSession browser, string token)
     {
-        var match = Regex.Match(page, "href=\"(/Account/" + action + "[^\"]*)\"");
-        Assert.True(match.Success, "Missing alternate sign-in method.");
-        return WebUtility.HtmlDecode(match.Groups[1].Value);
+        var enrollment = await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/enrollment", token));
+        var secret = enrollment.GetProperty("secretBase32").GetString();
+        Assert.False(string.IsNullOrEmpty(secret));
+        return secret;
     }
 
-    private static async Task<JsonElement> PostJsonAsync(HttpClient client, string path, string page, object body)
-    {
-        var response = await SendJsonAsync(client, path, page, body);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        return await response.Content.ReadFromJsonAsync<JsonElement>();
-    }
+    private DateTimeOffset ServerNow() => vault.Services.GetRequiredService<TimeProvider>().GetUtcNow();
 
-    private static async Task<HttpResponseMessage> SendJsonAsync(HttpClient client, string path, string page, object body)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(body) };
-        request.Headers.Add("RequestVerificationToken", VaultFixture.FormTokenOf(page, path));
-        return await client.SendAsync(request);
-    }
-
-    private HttpClient NewClient()
+    private VaultSession NewSession()
     {
         // These theories must not share another class's frozen credential-throttle budget.
         var sequence = Interlocked.Increment(ref _nextAddress);
         var high = (sequence >> 16).ToString("x", CultureInfo.InvariantCulture);
         var low = (sequence & ushort.MaxValue).ToString("x", CultureInfo.InvariantCulture);
-        return vault.CreateSession(source: IPAddress.Parse($"2001:db8:91::{high}:{low}")).Client;
+        return vault.CreateSession(source: IPAddress.Parse($"2001:db8:91::{high}:{low}"));
     }
 
     private async Task<(string Username, string Password)> CreateAccountAsync()
@@ -503,24 +375,4 @@ public sealed partial class SignInReturnUrlTests(VaultFixture vault)
 
     private static string WithReturnUrl(string path, string? returnUrl) =>
         returnUrl is null ? path : path + "?ReturnUrl=" + Uri.EscapeDataString(returnUrl);
-
-    private static string HiddenReturnUrl(string page)
-    {
-        var match = ReturnUrlField().Match(page);
-        Assert.True(match.Success, "The sign-in form lost ReturnUrl.");
-        return WebUtility.HtmlDecode(match.Groups[1].Value);
-    }
-
-    private static Task<HttpResponseMessage> PostFormAsync(HttpClient client, string path, string page, Dictionary<string, string> fields)
-    {
-        fields["__RequestVerificationToken"] = VaultFixture.FormTokenOf(page, path);
-        return client.PostAsync(path, new FormUrlEncodedContent(fields));
-    }
-
-    [GeneratedRegex("<input[^>]*name=\"ReturnUrl\"[^>]*value=\"([^\"]*)\"")]
-    private static partial Regex ReturnUrlField();
-
-    [GeneratedRegex("<code class=\"secret-code\">([A-Z2-7=]+)</code>")]
-    private static partial Regex EnrollmentSecret();
-
 }

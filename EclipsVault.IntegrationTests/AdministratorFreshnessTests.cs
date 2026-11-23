@@ -87,7 +87,8 @@ public sealed class AdministratorFreshnessTests(VaultFixture vault)
         Assert.Equal(target.CredentialGeneration, (await ProfileHttp.AccountAsync(vault, "it-fresh-reset-target")).CredentialGeneration);
         await AssertStepUpAsync(response, "code");
     }
-    internal static async Task AssertStepUpAsync(HttpResponseMessage response, string proof)
+    internal static async Task AssertStepUpAsync(HttpResponseMessage response, string proof,
+        string title = "Confirm it's you before granting access.")
     {
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.True(response.Headers.CacheControl?.NoStore);
@@ -96,7 +97,7 @@ public sealed class AdministratorFreshnessTests(VaultFixture vault)
         Assert.Equal(["code", "proof", "status", "title"], body.RootElement.EnumerateObject().Select(member => member.Name).Order());
         Assert.Equal(403, body.RootElement.GetProperty("status").GetInt32());
         Assert.Equal("step_up_required", body.RootElement.GetProperty("code").GetString());
-        Assert.Equal("Confirm it's you before granting access.", body.RootElement.GetProperty("title").GetString());
+        Assert.Equal(title, body.RootElement.GetProperty("title").GetString());
         Assert.Equal(proof, body.RootElement.GetProperty("proof").GetString());
     }
 }

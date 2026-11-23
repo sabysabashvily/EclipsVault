@@ -31,6 +31,7 @@ export default defineConfig({
         {
           name: 'chromium',
           testIgnore: [
+            '**/activity.spec.ts',
             '**/sessions.spec.ts',
             '**/data.spec.ts',
             '**/shared-by-me.spec.ts',
@@ -43,7 +44,22 @@ export default defineConfig({
             '**/networks.spec.ts',
             '**/notifications.spec.ts',
             '**/license.spec.ts',
+            '**/encryption.spec.ts',
+            '**/audit.spec.ts',
+            '**/theme-foundation.spec.ts',
+            '**/overview.spec.ts',
+            '**/secrets.spec.ts',
+            '**/secret-details.spec.ts',
+            '**/dynamic-secrets.spec.ts',
+            '**/break-glass.spec.ts',
+            '**/sso.spec.ts',
           ],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          name: 'theme-foundation',
+          testMatch: '**/theme-foundation.spec.ts',
+          dependencies: ['chromium'],
           use: { ...devices['Desktop Chrome'] },
         },
         {
@@ -65,11 +81,90 @@ export default defineConfig({
           use: { ...devices['Desktop Chrome'] },
         },
         {
+          // Reads the page and writes nothing, so it needs only the administrator session that
+          // sign-in saves.
+          name: 'encryption',
+          testMatch: '**/encryption.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          // Needs the administrator session that sign-in saves. It creates the identity provider's
+          // vault accounts before Users ends that session.
+          name: 'sso',
+          testMatch: '**/sso.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          // Needs the administrator session that sign-in saves, and makes its own Standard account.
+          name: 'overview',
+          testMatch: '**/overview.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          // Needs the administrator session that sign-in saves. It blocks the address every browser
+          // in the run shares, and recovery lifts it before the next project starts.
+          name: 'break-glass',
+          testMatch: '**/break-glass.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          // Needs the administrator session that sign-in saves.
+          name: 'secrets',
+          testMatch: '**/secrets.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          // Needs the administrator session and authenticator that sign-in saves, and makes its own
+          // share recipient.
+          name: 'secret-details',
+          testMatch: '**/secret-details.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          // Needs the administrator session that sign-in saves and its authenticator.
+          name: 'dynamic-secrets',
+          testMatch: '**/dynamic-secrets.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          // Needs the administrator session that sign-in saves.
+          name: 'activity',
+          testMatch: '**/activity.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
+          name: 'audit',
+          testMatch: '**/audit.spec.ts',
+          dependencies: ['chromium'],
+          use: { ...devices['Desktop Chrome'] },
+        },
+        {
           // Users ends with the administrator's own Force logout, which ends the saved session that
-          // Networks, Notifications and License reuse, so they run first.
+          // Networks, Notifications, License, Encryption keys, the Audit log, the Overview, Secrets,
+          // Secret details, Dynamic secrets, My activity, break-glass and single sign-on reuse.
+          // Run those projects before Users so they can still use the saved session.
           name: 'users',
           testMatch: '**/users.spec.ts',
-          dependencies: ['license'],
+          dependencies: [
+            'activity',
+            'license',
+            'encryption',
+            'audit',
+            'overview',
+            'secrets',
+            'secret-details',
+            'dynamic-secrets',
+            'break-glass',
+            'sso',
+          ],
           use: { ...devices['Desktop Chrome'] },
         },
         {

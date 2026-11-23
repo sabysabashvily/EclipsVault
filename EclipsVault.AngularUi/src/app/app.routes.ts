@@ -1,13 +1,14 @@
 import { Routes, UrlMatcher } from '@angular/router';
 
 // Every path here must also be listed in the server's route table (AngularUiRoutes.cs), which is
-// what serves this app at that URL. Paths keep the Legacy UI's URLs so bookmarks keep working.
+// what serves this app at that URL; the Overview's are served by HomeController.Index instead. Paths
+// keep the Legacy UI's URLs so bookmarks keep working.
 
 /**
  * Matches `path` ignoring case, as the server and the Legacy UI's routes do, so a bookmark to
  * `/access` opens the page instead of an unmatched route.
  */
-function legacyPath(path: string): UrlMatcher {
+export function legacyPath(path: string): UrlMatcher {
   const expected = path.toLowerCase().split('/');
   return (segments) =>
     segments.length === expected.length &&
@@ -37,6 +38,7 @@ const sharedWithMe = () =>
   import('./shared-with-me/shared-with-me-page').then((m) => m.SharedWithMePage);
 const accessRequests = () =>
   import('./access-requests/access-requests-page').then((m) => m.AccessRequestsPage);
+const denied = () => import('./denied/denied-page').then((m) => m.DeniedPage);
 
 const profile = () => import('./profile/profile-page').then((m) => m.ProfilePage);
 const password = () => import('./profile/change-password-page').then((m) => m.ChangePasswordPage);
@@ -47,8 +49,17 @@ const serviceAccounts = () =>
 const notifications = () =>
   import('./notifications/notifications-page').then((m) => m.NotificationsPage);
 const license = () => import('./license/license-page').then((m) => m.LicensePage);
+const encryption = () => import('./encryption/encryption-page').then((m) => m.EncryptionPage);
+const audit = () => import('./audit/audit-page').then((m) => m.AuditPage);
+const overview = () => import('./overview/overview-page').then((m) => m.OverviewPage);
+const secrets = () => import('./secrets/secrets-page').then((m) => m.SecretsPage);
+const dynamicSecrets = () =>
+  import('./dynamic-secrets/dynamic-secrets-page').then((m) => m.DynamicSecretsPage);
 
 export const routes: Routes = [
+  { path: '', pathMatch: 'full', loadComponent: overview, title: 'Overview — EclipsVault' },
+  { matcher: legacyPath('Home'), loadComponent: overview, title: 'Overview — EclipsVault' },
+  { matcher: legacyPath('Home/Index'), loadComponent: overview, title: 'Overview — EclipsVault' },
   {
     matcher: legacyPath('Notifications'),
     loadComponent: notifications,
@@ -61,6 +72,18 @@ export const routes: Routes = [
   },
   { matcher: legacyPath('License'), loadComponent: license, title: 'License — EclipsVault' },
   { matcher: legacyPath('License/Index'), loadComponent: license, title: 'License — EclipsVault' },
+  { matcher: legacyPath('Audit'), loadComponent: audit, title: 'Audit log — EclipsVault' },
+  { matcher: legacyPath('Audit/Index'), loadComponent: audit, title: 'Audit log — EclipsVault' },
+  {
+    matcher: legacyPath('Encryption'),
+    loadComponent: encryption,
+    title: 'Encryption keys — EclipsVault',
+  },
+  {
+    matcher: legacyPath('Encryption/Index'),
+    loadComponent: encryption,
+    title: 'Encryption keys — EclipsVault',
+  },
   {
     matcher: legacyPath('ServiceAccounts'),
     loadComponent: serviceAccounts,
@@ -112,6 +135,27 @@ export const routes: Routes = [
     matcher: legacyPath('Profile/RecoveryCodes'),
     redirectTo: '/Profile?recoveryCodes=display-once',
   },
+  { matcher: legacyPath('Secrets'), loadComponent: secrets, title: 'Secrets — EclipsVault' },
+  { matcher: legacyPath('Secrets/Index'), loadComponent: secrets, title: 'Secrets — EclipsVault' },
+  {
+    matcher: legacyPath('Secrets/Create'),
+    loadComponent: () => import('./secrets/new-secret-page').then((m) => m.NewSecretPage),
+    title: 'New secret — EclipsVault',
+  },
+  {
+    matcher: detailsPath('Secrets', 'Details'),
+    loadComponent: () => import('./secrets/secret-details-page').then((m) => m.SecretDetailsPage),
+  },
+  {
+    matcher: legacyPath('DynamicSecrets'),
+    loadComponent: dynamicSecrets,
+    title: 'Dynamic secrets — EclipsVault',
+  },
+  {
+    matcher: legacyPath('DynamicSecrets/Index'),
+    loadComponent: dynamicSecrets,
+    title: 'Dynamic secrets — EclipsVault',
+  },
   {
     matcher: legacyPath('Secrets/SharedByMe'),
     loadComponent: sharedByMe,
@@ -131,6 +175,11 @@ export const routes: Routes = [
     matcher: legacyPath('AccessRequests/Index'),
     loadComponent: accessRequests,
     title: 'Access requests — EclipsVault',
+  },
+  {
+    matcher: legacyPath('Account/Denied'),
+    loadComponent: denied,
+    title: 'Access denied — EclipsVault',
   },
   {
     matcher: legacyPath('Sessions'),

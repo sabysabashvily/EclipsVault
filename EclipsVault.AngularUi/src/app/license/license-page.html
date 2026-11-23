@@ -1,9 +1,22 @@
 <div class="page-header">
   <div>
-    <h1>License</h1>
-    <p class="page-sub">
-      How this vault is licensed. Licensing is soft — your secrets, and every baseline protection,
-      are never gated.
+    <div class="title-row">
+      <h1>License</h1>
+      @if (license.hasValue()) {
+        <span [class]="'badge tone-' + tones[license.value().status]">{{
+          license.value().status
+        }}</span>
+      }
+    </div>
+    @if (license.hasValue()) {
+      <p class="page-sub">{{ license.value().message }}</p>
+    }
+    <p class="trust-line">
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <rect x="3" y="11" width="18" height="11" rx="2" />
+        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+      </svg>
+      Secrets and baseline protection stay available whatever the licence says.
     </p>
   </div>
 </div>
@@ -13,67 +26,93 @@
   <p role="alert">Could not load license. Try again.</p>
   <button type="button" class="button" (click)="license.reload()">Try again</button>
 } @else if (license.hasValue()) {
-  <section class="panel">
-    <div class="panel-header">
-      <h2>Status</h2>
-      <span [class]="'badge tone-' + tones[license.value().status]">{{
-        license.value().status
-      }}</span>
-    </div>
-    <p class="hint muted">{{ license.value().message }}</p>
-    @if (license.value().licence; as claims) {
-      <dl class="detail-grid">
-        <dt>Licensed to</dt>
-        <dd>{{ claims.issuedTo }}</dd>
-        <dt>Tier</dt>
-        <dd>{{ claims.tier }}</dd>
+  @if (license.value().licence; as claims) {
+    <section class="panel">
+      <div class="panel-header"><h2>Licence</h2></div>
+      <dl class="facts">
+        <div>
+          <dt>Issued to</dt>
+          <dd>{{ claims.issuedTo }}</dd>
+        </div>
+        <div>
+          <dt>Tier</dt>
+          <dd>{{ claims.tier }}</dd>
+        </div>
         @if (claims.contact?.trim()) {
-          <dt>Contact</dt>
-          <dd>{{ claims.contact }}</dd>
+          <div>
+            <dt>Contact</dt>
+            <dd>{{ claims.contact }}</dd>
+          </div>
         }
-        <dt>License id</dt>
-        <dd class="mono">{{ claims.licenseId }}</dd>
-        <dt>Issued</dt>
-        <dd>{{ claims.issuedAtUtc | date: "yyyy-MM-dd HH:mm 'UTC'" : 'UTC' }}</dd>
-        <dt>Expires</dt>
-        <dd>
-          {{
-            claims.expiresAtUtc
-              ? (claims.expiresAtUtc | date: "yyyy-MM-dd HH:mm 'UTC'" : 'UTC')
-              : 'never — perpetual'
-          }}
-        </dd>
-        <dt>Updates included until</dt>
-        <dd>
-          {{
-            claims.updatesUntilUtc
-              ? (claims.updatesUntilUtc | date: "yyyy-MM-dd HH:mm 'UTC'" : 'UTC')
-              : '—'
-          }}
-        </dd>
-        <dt>Node allowance</dt>
-        <dd>{{ claims.maxNodes === 0 ? 'unlimited' : claims.maxNodes }}</dd>
+        <div>
+          <dt>Licence id</dt>
+          <dd class="mono">{{ claims.licenseId }}</dd>
+        </div>
+        <div>
+          <dt>Issued</dt>
+          <dd>{{ claims.issuedAtUtc | date: "yyyy-MM-dd HH:mm 'UTC'" : 'UTC' }}</dd>
+        </div>
+        <div>
+          <dt>Expires</dt>
+          <dd>
+            {{
+              claims.expiresAtUtc
+                ? (claims.expiresAtUtc | date: "yyyy-MM-dd HH:mm 'UTC'" : 'UTC')
+                : 'never — perpetual'
+            }}
+          </dd>
+        </div>
+        <div>
+          <dt>Updates until</dt>
+          <dd>
+            {{
+              claims.updatesUntilUtc
+                ? (claims.updatesUntilUtc | date: "yyyy-MM-dd HH:mm 'UTC'" : 'UTC')
+                : '—'
+            }}
+          </dd>
+        </div>
+        <div>
+          <dt>Nodes</dt>
+          <dd>{{ claims.maxNodes === 0 ? 'unlimited' : claims.maxNodes }}</dd>
+        </div>
       </dl>
-    }
-    @if (license.value().updatesLapsed) {
-      <div class="notice notice-warn">
-        <span
-          ><strong>Your update window has ended.</strong> The vault keeps working and still receives
-          security patches; renew to receive new feature releases.</span
-        >
+    </section>
+  }
+  @if (license.value().updatesLapsed) {
+    <section class="notice notice-warn">
+      <span class="notice-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 2" />
+        </svg>
+      </span>
+      <div class="notice-body">
+        <p>
+          <strong>Your update window has ended.</strong> The vault keeps working and still receives
+          security patches; renew to receive new feature releases.
+        </p>
       </div>
-    }
-    @if (license.value().beyondTier.length) {
-      <div class="notice notice-warn">
-        <span
-          ><strong>In use beyond your tier:</strong> {{ license.value().beyondTier.join(', ') }}.
-          These keep working — licensing is soft — but are not covered by your current tier.</span
-        >
+    </section>
+  }
+  @if (license.value().beyondTier.length) {
+    <section class="notice notice-warn">
+      <span class="notice-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+          <path d="M12 9v4M12 17h.01" />
+        </svg>
+      </span>
+      <div class="notice-body">
+        <p>
+          <strong>In use beyond your tier:</strong> {{ license.value().beyondTier.join(', ') }}.
+          These keep working — licensing is soft — but are not covered by your current tier.
+        </p>
       </div>
-    }
-  </section>
+    </section>
+  }
   <section class="panel">
-    <div class="panel-header"><h2>Installing a license</h2></div>
+    <div class="panel-header"><h2>Installing a licence</h2></div>
     <p class="hint muted">
       Set the <code>ECLIPSVAULT_LICENSE</code> environment variable to your license token, or point
       <code>License:FilePath</code> at a file that holds the token, then restart. The token is

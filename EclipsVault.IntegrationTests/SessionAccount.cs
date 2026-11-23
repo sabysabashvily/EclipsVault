@@ -22,21 +22,9 @@ internal sealed class SessionAccount(VaultFixture vault, string username, string
     {
         var session = vault.CreateSession(source: IPAddress.Parse(address));
         session.Client.DefaultRequestHeaders.UserAgent.ParseAdd("curl/8.0");
-        var login = await session.Client.GetStringAsync("/Account/Login");
-        var passwordStep = await session.Client.PostAsync("/Account/Login", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(login, "/Account/Login"),
-            ["Username"] = username,
-            ["Password"] = password
-        }));
-        Assert.Equal(HttpStatusCode.Redirect, passwordStep.StatusCode);
-        var recovery = await session.Client.GetStringAsync("/Account/RecoveryCode");
-        var secondFactor = await session.Client.PostAsync("/Account/RecoveryCode", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(recovery, "/Account/RecoveryCode"),
-            ["Code"] = recoveryCodes[recoveryCodeIndex]
-        }));
-        Assert.Equal(HttpStatusCode.Redirect, secondFactor.StatusCode);
+        var pending = await AuthApi.PendingAsync(session, username, password);
+        var secondFactor = await AuthApi.PostAsync(session, "/api/ui/auth/recovery-code", pending, new { code = recoveryCodes[recoveryCodeIndex] });
+        Assert.Equal(HttpStatusCode.OK, secondFactor.StatusCode);
         Assert.NotNull(session.SessionCookie);
         return session;
     }

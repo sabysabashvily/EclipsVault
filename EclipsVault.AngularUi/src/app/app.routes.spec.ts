@@ -1,4 +1,9 @@
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { TestBed } from '@angular/core/testing';
+import { Title } from '@angular/platform-browser';
 import { Route, UrlSegment, UrlSegmentGroup } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
+import { appConfig } from './app.config';
 import { ProfilePage } from './profile/profile-page';
 import { ChangePasswordPage } from './profile/change-password-page';
 import { AccessPage } from './access/access-page';
@@ -7,7 +12,11 @@ import { ActivityPage } from './activity/activity-page';
 import { NewUserPage } from './users/new-user-page';
 import { EditUserPage } from './users/edit-user-page';
 import { UsersPage } from './users/users-page';
+import { AuditPage } from './audit/audit-page';
+import { DynamicSecretsPage } from './dynamic-secrets/dynamic-secrets-page';
+import { EncryptionPage } from './encryption/encryption-page';
 import { NetworksPage } from './networks/networks-page';
+import { OverviewPage } from './overview/overview-page';
 import { ServiceAccountsPage } from './service-accounts/service-accounts-page';
 import { NewServiceAccountPage } from './service-accounts/new-service-account-page';
 import { ServiceAccountPage } from './service-accounts/service-account-page';
@@ -16,6 +25,9 @@ import { SignInsPage } from './sign-ins/sign-ins-page';
 import { SecurityPage } from './security/security-page';
 import { SessionsPage } from './sessions/sessions-page';
 import { DataPage } from './data/data-page';
+import { NewSecretPage } from './secrets/new-secret-page';
+import { SecretDetailsPage } from './secrets/secret-details-page';
+import { SecretsPage } from './secrets/secrets-page';
 import { SharedByMePage } from './shared-by-me/shared-by-me-page';
 import { SharedWithMePage } from './shared-with-me/shared-with-me-page';
 
@@ -30,6 +42,19 @@ function routeFor(url: string): Route | undefined {
 }
 
 describe('routes', () => {
+  it('opens the Overview at the root', async () => {
+    TestBed.configureTestingModule({
+      providers: [...appConfig.providers, provideHttpClientTesting()],
+    });
+    const harness = await RouterTestingHarness.create();
+
+    expect(await harness.navigateByUrl('/', OverviewPage)).toBeInstanceOf(OverviewPage);
+    expect(TestBed.inject(Title).getTitle()).toBe('Overview — EclipsVault');
+    TestBed.resetTestingModule();
+  });
+  it.each(['/Home', '/hOmE/InDeX'])('opens the Overview at %s', async (url) => {
+    expect(await routeFor(url)?.loadComponent?.()).toBe(OverviewPage);
+  });
   it.each(['/ServiceAccounts', '/sErViCeAcCoUnTs/InDeX'])(
     'opens Service accounts at %s',
     async (url) => {
@@ -50,6 +75,18 @@ describe('routes', () => {
   });
   it.each(['/ServiceAccounts/Details/new', '/ServiceAccounts/Create/extra'])(
     'leaves %s unmatched',
+    (url) => {
+      expect(routeFor(url)).toBeUndefined();
+    },
+  );
+  it.each([
+    '/Secrets/Details/11111111-1111-1111-1111-111111111111',
+    '/sEcReTs/dEtAiLs/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA',
+  ])('opens a secret at %s', async (url) => {
+    expect(await routeFor(url)?.loadComponent?.()).toBe(SecretDetailsPage);
+  });
+  it.each(['/Secrets/Details/new', '/Secrets/Details/11111111-1111-1111-1111-111111111111/extra'])(
+    'leaves an invalid Secret details path %s unmatched',
     (url) => {
       expect(routeFor(url)).toBeUndefined();
     },
@@ -80,6 +117,39 @@ describe('routes', () => {
     expect(route?.title).toBe('Networks — EclipsVault');
     expect(await route?.loadComponent?.()).toBe(NetworksPage);
   });
+  it.each(['/Encryption', '/eNcRyPtIoN/iNdEx'])('opens Encryption keys at %s', async (url) => {
+    const route = routeFor(url);
+    expect(route?.title).toBe('Encryption keys — EclipsVault');
+    expect(await route?.loadComponent?.()).toBe(EncryptionPage);
+  });
+  it.each(['/Audit', '/aUdIt/iNdEx'])('opens the Audit log at %s', async (url) => {
+    const route = routeFor(url);
+    expect(route?.title).toBe('Audit log — EclipsVault');
+    expect(await route?.loadComponent?.()).toBe(AuditPage);
+  });
+  it.each(['/Audit/Verify', '/Audit/CreateCheckpoint', '/Audit/Export'])(
+    'leaves the retired %s unmatched',
+    (url) => {
+      expect(routeFor(url)).toBeUndefined();
+    },
+  );
+  it.each(['/DynamicSecrets', '/dYnAmIcSeCrEtS/iNdEx'])(
+    'opens Dynamic secrets at %s',
+    async (url) => {
+      const route = routeFor(url);
+      expect(route?.title).toBe('Dynamic secrets — EclipsVault');
+      expect(await route?.loadComponent?.()).toBe(DynamicSecretsPage);
+    },
+  );
+  it.each(['/DynamicSecrets/Issue', '/DynamicSecrets/Revoke', '/DynamicSecrets/Index/extra'])(
+    'leaves the retired %s unmatched',
+    (url) => {
+      expect(routeFor(url)).toBeUndefined();
+    },
+  );
+  it('leaves the retired /Encryption/Rotate unmatched', () => {
+    expect(routeFor('/Encryption/Rotate')).toBeUndefined();
+  });
   it.each(['/Admin/Networks/extra', '/Admin/Network'])(
     'leaves an invalid Networks path %s unmatched',
     (url) => {
@@ -106,6 +176,22 @@ describe('routes', () => {
     'returns a direct recovery-code visit at %s to Profile without plaintext',
     (url) => {
       expect(routeFor(url)?.redirectTo).toBe('/Profile?recoveryCodes=display-once');
+    },
+  );
+  it.each(['/Secrets', '/Secrets/Index', '/secrets', '/SECRETS/index'])(
+    'opens Secrets at %s',
+    async (url) => {
+      const route = routeFor(url);
+      expect(route?.title).toBe('Secrets — EclipsVault');
+      expect(await route?.loadComponent?.()).toBe(SecretsPage);
+    },
+  );
+  it.each(['/Secrets/Create', '/secrets/create', '/sEcReTs/cReAtE'])(
+    'opens New secret at %s',
+    async (url) => {
+      const route = routeFor(url);
+      expect(route?.title).toBe('New secret — EclipsVault');
+      expect(await route?.loadComponent?.()).toBe(NewSecretPage);
     },
   );
   it.each(['/Secrets/SharedByMe', '/secrets/sharedbyme', '/sEcReTs/sHaReDbYmE'])(
@@ -192,7 +278,6 @@ describe('routes', () => {
   );
 
   it.each([
-    '/',
     '/Index',
     '/Accessories',
     '/Access/Index/extra',
@@ -207,8 +292,10 @@ describe('routes', () => {
     '/DataExport',
     '/Data/Index/extra',
     '/Data/Download',
-    '/Secrets',
     '/Secrets/Details',
+    '/Secrets/Index/extra',
+    '/Secrets/Create/extra',
+    '/Secrets/Search',
     '/Secrets/SharedWithMe/extra',
     '/Secrets/SharedByMe/extra',
   ])('leaves %s unmatched', (url) => {

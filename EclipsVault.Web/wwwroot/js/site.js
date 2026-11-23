@@ -20,7 +20,6 @@ document.addEventListener('DOMContentLoaded', () => {
     wireRowLinks();
     wireAutoSubmit();
     wireMenus();
-    wirePasskeys();
     wirePasswordBreachCheck();
     wireRevealToggles();
     wirePasswordStrength();
@@ -213,52 +212,6 @@ function labelThemeToggles() {
     });
 }
 
-// --- WebAuthn / passkeys ---------------------------------------------------------
-// The remaining Legacy ceremony is passwordless sign-in; registration belongs to Angular Profile.
-function wirePasskeys() {
-    const loginButton = document.querySelector('[data-passkey-login]');
-    if (!loginButton) return;
-    if (!window.PublicKeyCredential) return disablePasskeyUi(loginButton);
-    loginButton.addEventListener('click', () => loginWithPasskey(loginButton));
-}
-
-async function loginWithPasskey(button) {
-    const status = document.querySelector('[data-passkey-status]');
-    const usernameInput = button.dataset.username ? document.querySelector(button.dataset.username) : null;
-    try {
-        setPasskeyStatus(status, 'Follow the prompt on your device…', false);
-        button.disabled = true;
-
-        const options = await passkeyPost('/Account/PasskeyLoginBegin', {
-            username: usernameInput ? usernameInput.value : null,
-            returnUrl: button.dataset.returnUrl || null
-        }).then(readJson);
-        options.challenge = base64urlToBuffer(options.challenge);
-        options.allowCredentials = (options.allowCredentials || []).map(withBufferId);
-
-        const assertion = await navigator.credentials.get({ publicKey: options });
-        const result = await passkeyPost('/Account/PasskeyLoginComplete', {
-            credential: {
-                id: assertion.id,
-                clientDataJSON: bufferToBase64url(assertion.response.clientDataJSON),
-                authenticatorData: bufferToBase64url(assertion.response.authenticatorData),
-                signature: bufferToBase64url(assertion.response.signature),
-                userHandle: assertion.response.userHandle ? bufferToBase64url(assertion.response.userHandle) : null
-            }
-        }).then(readJson);
-
-        if (result.success) {
-            window.location.href = result.redirect;
-        } else {
-            setPasskeyStatus(status, result.error || 'Sign-in failed.', true);
-            button.disabled = false;
-        }
-    } catch (err) {
-        setPasskeyStatus(status, friendlyPasskeyError(err), true);
-        button.disabled = false;
-    }
-}
-
 // --- Live breached-password check ------------------------------------------------
 // An input marked data-breach-check="<url>" is screened (debounced) against the
 // compromised-password corpus once it reaches the minimum length; the verdict is shown
@@ -424,9 +377,9 @@ function scorePassword(value) {
 // copy of the navigation *and* of its authorization, and the copy would rot: the day someone
 // adds an admin page, the palette would happily show it to everyone.
 //
-// Secrets come from /Secrets/Search, which runs the same ABAC enumeration filter as the Secrets
-// list. See the comment on SecretsController.Search — a name is a disclosure, and the palette
-// is not allowed to be a way around that.
+// Secrets come from the UI API's /api/ui/secrets/search, which runs the same ABAC enumeration filter
+// as the Secrets list. See SecretSearch — a name is a disclosure, and the palette is not allowed to be
+// a way around that.
 function wireCommandPalette() {
     // Every marked container, not just the nav: Profile lives in the account menu at the foot of
     // the sidebar, and harvesting only the nav would leave it out of the palette entirely.
@@ -632,58 +585,3 @@ function wireCommandPalette() {
     }
 }
 
-function passkeyPost(url, body) {
-    const token = document.querySelector('input[name="__RequestVerificationToken"]');
-    return fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'RequestVerificationToken': token ? token.value : ''
-        },
-        body: body === undefined ? undefined : JSON.stringify(body)
-    });
-}
-
-async function readJson(response) {
-    if (!response.ok) throw new Error('The server rejected the request.');
-    return response.json();
-}
-
-function withBufferId(descriptor) {
-    return Object.assign({}, descriptor, { id: base64urlToBuffer(descriptor.id) });
-}
-
-function setPasskeyStatus(el, message, isError) {
-    if (!el) return;
-    el.textContent = message;
-    el.classList.toggle('status-error', isError);
-    el.classList.toggle('status-ok', !isError && message !== '');
-}
-
-function disablePasskeyUi(button) {
-    button.disabled = true;
-    button.title = 'This browser does not support passkeys.';
-}
-
-function friendlyPasskeyError(err) {
-    if (err && (err.name === 'NotAllowedError' || err.name === 'AbortError')) {
-        return 'The passkey prompt was dismissed or timed out.';
-    }
-    return (err && err.message) || 'Something went wrong with the passkey.';
-}
-
-function base64urlToBuffer(value) {
-    const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = base64 + '==='.slice((base64.length + 3) % 4);
-    const binary = atob(padded);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return bytes.buffer;
-}
-
-function bufferToBase64url(buffer) {
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}

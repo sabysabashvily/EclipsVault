@@ -1,6 +1,6 @@
 namespace EclipsVault.Web.Services;
 
-/// <summary>What the account is told after signing out everywhere, on the Legacy sign-in page and in the UI API.</summary>
+/// <summary>What the account is told after signing out everywhere, in the UI API's answer and, by its code, on sign-in.</summary>
 public static class SignOutEverywhereMessages
 {
     public static string For(SignOutEverywhereOutcome outcome) => outcome switch

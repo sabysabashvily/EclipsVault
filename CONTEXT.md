@@ -22,8 +22,12 @@ _Avoid_: Token, login, JWT
 The proof that must pass, after the password, before a session exists: an authenticator code or a recovery code. A passkey is both factors at once.
 _Avoid_: 2FA code, OTP
 
+**Pending sign-in**:
+A sign-in whose first proof (a password, or an identity provider without its own second factor) has passed and whose second factor has not. It lives a few minutes, admits only the second-factor step, and never becomes a session if the account's credentials change meanwhile.
+_Avoid_: Half-signed-in, MFA session, partial session
+
 **Step-up**:
-A fresh second factor demanded on a session whose last strong sign-in is too old, before revealing a high-sensitivity secret or before an administrator grants lasting access.
+A fresh second factor demanded on a session whose last strong sign-in is too old, before revealing or sharing a high-sensitivity secret, issuing a dynamic credential for such a role, or before an administrator grants lasting access.
 _Avoid_: Re-login, re-auth prompt, sudo mode
 
 **Account verification**:
@@ -31,7 +35,7 @@ Fresh proof using an existing credential of the signed-in vault account, require
 _Avoid_: Step-up (when an account change is meant)
 
 **Credential generation**:
-The current revision of a vault account's sign-in credentials and access, which identifies the sessions and pending proofs that still belong to them. An administrator's change of the account's clearance, project or enabled state starts a new one.
+The current revision of a vault account's sign-in credentials and access, which identifies the sessions and pending proofs that still belong to them. An administrator's change of the account's clearance, project or enabled state starts a new one. Account activation starts a new one, and so does the migration that places a never-used account into awaiting activation.
 _Avoid_: Authentication time, session age
 
 **Session revocation version**:
@@ -50,6 +54,14 @@ _Avoid_: Disable MFA, turn off two-step sign-in
 The one way a vault administrator signs back in from a blocked network: all factors at once, audited, lifting the block on their own range.
 _Avoid_: Emergency login, unblock
 
+**Invitation**:
+A single-use, expiring link sent to a new vault account's email, through which its person sets the account's first credentials.
+_Avoid_: Activation email, signup link
+
+**Account activation**:
+The invited person choosing the account's password and enrolling its authenticator in one step. Before it, the account cannot sign in by any route.
+_Avoid_: Onboarding, first sign-in
+
 **Service account**:
 A non-interactive identity for an application. It never has a session; it calls the vault with an API key.
 _Avoid_: Bot, machine user
@@ -57,6 +69,48 @@ _Avoid_: Bot, machine user
 **API key**:
 The credential a service account presents, optionally narrowed below its account by a scope.
 _Avoid_: Token, bearer token
+
+### Secrets
+
+**Secret**:
+A named value the vault holds sealed. Its project, environment and sensitivity decide who may open it.
+_Avoid_: Credential (when the stored value is meant), key
+
+**Reveal**:
+Decrypting a secret's current value, or an archived version, for one response, recorded before decryption.
+_Avoid_: View (that is the metadata), decrypt
+
+**Secret version**:
+An earlier value of a secret, archived when the secret is rotated or restored.
+_Avoid_: Revision, history entry
+
+**Secret rotation**:
+Replacing a secret's value and archiving the old one as a secret version.
+_Avoid_: Master key rotation (that re-wraps data keys)
+
+**Managed secret**:
+A secret that is a real account's password on a backend, which the vault can change there itself.
+_Avoid_: Managed credential
+
+**Decoy**:
+A planted secret nobody should open. Opening one signs the session out and blocks its network range, though that request is answered exactly as for a secret that does not exist.
+_Avoid_: Honey token (in prose), trap
+
+**Access denial**:
+A refused attempt to open or act on a secret, recorded with the access policy's reasons.
+_Avoid_: View (a denial is never a view)
+
+**Dynamic role**:
+The recipe for creating dynamic credentials on one backend, carrying the same three access attributes as a secret.
+_Avoid_: Template
+
+**Dynamic credential**:
+A credential the vault creates on a backend on request, shows once and never stores.
+_Avoid_: Dynamic secret (the page's name), temporary password
+
+**Lease**:
+The vault's record of one dynamic credential: who holds it, until when, and how it ended.
+_Avoid_: Token
 
 ### Administration
 
@@ -76,10 +130,42 @@ _Avoid_: Ban, IP ban
 The record of every email the vault composed, with its delivery outcome. A delivery record, not a mailbox.
 _Avoid_: Mailbox, inbox, email log
 
+### Encryption
+
+**Master key**:
+The key that wraps every secret's data key. The vault loads one current master key and any retired ones, and never stores or shows them.
+_Avoid_: KEK (in prose), root key, encryption key
+
+**Data key**:
+The key that encrypts one secret value. It is stored only wrapped by a master key, and a new value gets a new data key.
+_Avoid_: DEK (in prose), secret key
+
+**Master key rotation**:
+Re-wrapping the data keys of secret values and their archived versions under the current master key. It never decrypts or re-encrypts those values and does not rotate the Data Protection key ring. Retired master keys remain necessary while stored data, that ring or backups need them.
+_Avoid_: Re-encryption, secret rotation (that changes a secret's value)
+
+### Audit
+
+**Audit trail**:
+The append-only record of every audited action, each entry chained to the one before by its hash. Viewing, verifying, checkpointing and exporting it are audited actions too.
+_Avoid_: Audit log (the page's name), history
+
+**Checkpoint**:
+The vault's signature over the audit trail's newest entry at one moment. It proves the entries up to it unchanged to anyone holding the vault's public key. Verify checks only the checkpoints the current signing key signed.
+_Avoid_: Snapshot, attestation (the panel's name)
+
+**Audit bundle**:
+A file holding the whole audit trail, a fresh checkpoint over its newest entry and the public key, verifiable offline without the vault.
+_Avoid_: Export file, backup
+
+**Signing key**:
+The private key the vault signs checkpoints with. Only its public key and fingerprint are ever shown.
+_Avoid_: Audit key, master key (that wraps data keys)
+
 ### Sharing
 
 **Share**:
-Access to one secret, given to one vault account by another, optionally until an expiry. Its issuer can revoke it, and it outlives the issuer's account.
+Read access to one secret, given to one vault account by another, optionally until an expiry. Its recipient may view and reveal the secret, never change, share or delete it. Its issuer can revoke it, as can an administrator or a member of the secret's project, and it outlives the issuer's account.
 _Avoid_: Grant, permission
 
 **Issuer**:
@@ -113,7 +199,7 @@ The versioned API service accounts call with an API key. A published contract th
 _Avoid_: REST API, external API
 
 **UI API**:
-The endpoints only the Angular UI calls, through a session. Never reachable with an API key.
+The endpoints the Angular UI calls, through a session. Never reachable with an API key. Until the Legacy UI is gone, its command palette also calls the secret search here.
 _Avoid_: Internal API, BFF API, backend
 
 ### The migration
@@ -123,7 +209,7 @@ The server-rendered pages being replaced. Shrinks to nothing by the end of the m
 _Avoid_: Old UI, MVC frontend
 
 **Area**:
-A group of related pages behind one sidebar entry (e.g. Profile, Secrets, Users), named by a stable key such as `users` in `/api/ui/me`. An area migrates as one unit; a migration step may move several at once, as the Administration step moves the administration areas in two parts. At any moment an area belongs wholly to either the Legacy UI or the Angular UI, never both.
+A group of related pages behind one sidebar entry (e.g. Profile, Secrets, Users), named by a stable key such as `users` in `/api/ui/me`. An area migrates as one unit; a migration step may move several at once, as the Administration step moves the administration areas in two parts. At any moment an area belongs wholly to either the Legacy UI or the Angular UI, never both. The one exception was Secrets, which Area 7 moved in parts: from 7a until 7b, its list and New secret were in the Angular UI and Secret details was still Legacy.
 _Avoid_: Module, feature, screen
 
 **Angular UI**:

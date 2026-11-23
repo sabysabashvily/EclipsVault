@@ -1,9 +1,9 @@
-import { HttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { Me } from '../account/me';
 import { appConfig } from '../app.config';
-import { AccountMenu, signOut } from './account-menu';
+import { AccountMenu } from './account-menu';
+import { PAGE_LOCATION } from './command-palette';
 
 const me: Me = {
   username: 'devon',
@@ -61,21 +61,31 @@ describe('AccountMenu', () => {
   });
 });
 
-describe('signOut', () => {
+describe('AccountMenu sign-out', () => {
   const assign = vi.fn();
-  const failed = vi.fn();
   let backend: HttpTestingController;
-  let http: HttpClient;
+
+  async function signOut() {
+    const fixture = TestBed.createComponent(AccountMenu);
+    fixture.componentRef.setInput('me', me);
+    await fixture.whenStable();
+    const menu = fixture.nativeElement as HTMLElement;
+    [...menu.querySelectorAll('button')].find((b) => b.textContent?.includes('Sign out'))!.click();
+    await fixture.whenStable();
+    return menu;
+  }
 
   beforeEach(() => {
     assign.mockReset();
-    failed.mockReset();
     // The real application providers, so this is the XSRF wiring the browser gets.
     TestBed.configureTestingModule({
-      providers: [...appConfig.providers, provideHttpClientTesting()],
+      providers: [
+        ...appConfig.providers,
+        provideHttpClientTesting(),
+        { provide: PAGE_LOCATION, useValue: { assign } },
+      ],
     });
     backend = TestBed.inject(HttpTestingController);
-    http = TestBed.inject(HttpClient);
     document.cookie = 'XSRF-TOKEN=request-token-from-me; path=/';
   });
 
@@ -84,24 +94,40 @@ describe('signOut', () => {
     backend.verify();
   });
 
-  it('posts to the existing sign-out endpoint with the token in the header antiforgery accepts, then goes to sign-in', () => {
-    signOut(http, { assign }, failed);
+  it('posts the UI API sign-out with the token in the header antiforgery accepts, then goes to sign-in', async () => {
+    await signOut();
 
-    const request = backend.expectOne({ method: 'POST', url: '/Account/Logout' });
+    const request = backend.expectOne({ method: 'POST', url: '/api/ui/auth/sign-out' });
     expect(request.request.headers.get('RequestVerificationToken')).toBe('request-token-from-me');
     expect(assign).not.toHaveBeenCalled();
-    request.flush('<!doctype html>');
+    request.flush(null, { status: 204, statusText: 'No Content' });
 
     expect(assign).toHaveBeenCalledExactlyOnceWith('/Account/Login');
-    expect(failed).not.toHaveBeenCalled();
   });
 
-  it('stays on the page and reports a refused sign-out', () => {
-    signOut(http, { assign }, failed);
+  it('goes to sign-in with the local-clear warning when the vault could not revoke the session', async () => {
+    const menu = await signOut();
 
-    backend.expectOne('/Account/Logout').flush('', { status: 400, statusText: 'Bad Request' });
+    backend.expectOne('/api/ui/auth/sign-out').flush(
+      {
+        status: 503,
+        code: 'sign_out_incomplete',
+        title: "This browser's cookie was cleared. Other devices may still be signed in.",
+      },
+      { status: 503, statusText: 'Service Unavailable' },
+    );
+
+    expect(assign).toHaveBeenCalledExactlyOnceWith('/Account/Login?signOut=sign_out_incomplete');
+    expect(menu.querySelector('.menu-error')).toBeNull();
+  });
+
+  it('stays on the page and reports a sign-out that did not complete', async () => {
+    const menu = await signOut();
+
+    backend.expectOne('/api/ui/auth/sign-out').error(new ProgressEvent('error'));
+    TestBed.tick();
 
     expect(assign).not.toHaveBeenCalled();
-    expect(failed).toHaveBeenCalledOnce();
+    expect(menu.querySelector('.menu-error')?.textContent).toContain('Could not sign out.');
   });
 });

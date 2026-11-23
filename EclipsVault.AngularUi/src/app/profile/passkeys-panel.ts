@@ -49,7 +49,12 @@ export class PasskeysPanel {
   protected remove(key: ProfilePasskey, event: Event): void {
     this.changes().start<void>(
       {
-        confirmation: 'Remove this passkey? You will no longer be able to sign in with it.',
+        confirmation: 'You will no longer be able to sign in with it.',
+        decision: {
+          title: `Remove the passkey “${key.nickname}”?`,
+          confirm: 'Remove passkey',
+          note: 'Saved to the audit log',
+        },
         change: { kind: 'RemovePasskey', passkeyId: key.id },
         intent: `Remove the passkey “${key.nickname}”. Any other signed-in devices will be signed out.`,
         commit: (operationId) =>

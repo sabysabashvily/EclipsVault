@@ -8,8 +8,26 @@
     </p>
   </div>
   @if (hasOthers()) {
-    <button type="button" class="button" [disabled]="busy()" (click)="ask('others')">
-      Sign out all other sessions
+    <button
+      *appPagePrimary
+      type="button"
+      class="button primary"
+      [disabled]="busy()"
+      (click)="ask('others')"
+      aria-label="Sign out all other sessions"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M15 3h4v18h-4M3 12h12m-4-4 4 4-4 4" />
+      </svg>
+      <span class="action-label">Sign out all other sessions</span>
     </button>
   }
 </div>
@@ -26,19 +44,11 @@
     />
   } @else {
     <section class="panel">
-      <ul class="activity-feed">
+      <ul class="device-list" aria-label="Signed-in devices">
         @for (session of devices; track session.sessionId) {
-          <li class="feed-item" [class.session-current]="session.isCurrent">
-            <span class="feed-icon">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
+          <li>
+            <span class="attention-icon" [class.tone-ok]="session.isCurrent" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
                 @switch (session.kind) {
                   @case ('phone') {
                     <rect x="7" y="3" width="10" height="18" rx="2" />
@@ -55,33 +65,29 @@
                 }
               </svg>
             </span>
-            <div class="feed-body">
+            <div>
               <div class="feed-title-row">
-                <span class="feed-title">{{ session.device }}</span>
+                <span class="device-name">{{ session.device }}</span>
                 @if (session.isCurrent) {
                   <span class="badge tone-ok">This device</span>
                 }
               </div>
-              <div class="feed-meta">
+              <p class="device-meta">
                 <span class="mono">{{ session.ipAddress }}</span>
-                · signed in {{ session.signedIn }} · last active
-                <span [title]="session.lastActiveUtc">{{ session.lastActive }}</span>
-              </div>
+                · signed in {{ session.signedIn }} · last seen
+                <time [title]="session.lastActiveUtc">{{ session.lastActive }}</time>
+              </p>
             </div>
-            <div class="feed-action">
-              @if (session.isCurrent) {
-                <span class="muted current-pill">Current</span>
-              } @else {
-                <button
-                  type="button"
-                  class="button danger small"
-                  [disabled]="busy()"
-                  (click)="ask({ sessionId: session.sessionId })"
-                >
-                  Sign out
-                </button>
-              }
-            </div>
+            @if (!session.isCurrent) {
+              <button
+                type="button"
+                class="button small"
+                [disabled]="busy()"
+                (click)="ask({ sessionId: session.sessionId })"
+              >
+                Sign out
+              </button>
+            }
           </li>
         }
       </ul>

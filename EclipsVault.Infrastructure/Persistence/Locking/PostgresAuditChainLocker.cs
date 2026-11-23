@@ -39,6 +39,6 @@ public sealed class PostgresAuditChainLocker : IAuditChainLocker
     /// different lock, and serialise against nobody. The chain would fork on day one, silently, and
     /// only under load. SHA-256 is fixed for all time, which is the only property that matters here.
     /// </summary>
-    private static long KeyFor(string resource)
+    internal static long KeyFor(string resource)
         => BitConverter.ToInt64(SHA256.HashData(Encoding.UTF8.GetBytes(resource)), 0);
 }

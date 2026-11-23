@@ -70,6 +70,16 @@ function submit(page: ParentNode): void {
   if (!form) throw new Error('No form');
   form.dispatchEvent(new Event('submit', { cancelable: true }));
 }
+function openDialog(page: ParentNode): HTMLElement {
+  const dialog = [...page.querySelectorAll('dialog')].find((item) => item.hasAttribute('open'));
+  if (!dialog) throw new Error('No open dialog');
+  return dialog;
+}
+async function confirmIssue(page: ParentNode, fixture: ComponentFixture<unknown>): Promise<void> {
+  submit(page);
+  await fixture.whenStable();
+  button(openDialog(page), 'Issue key').click();
+}
 function render<T>(component: Type<T>, url = `/ServiceAccounts/Details/${id}`) {
   history.replaceState(null, '', url);
   TestBed.configureTestingModule({
@@ -157,13 +167,13 @@ describe('Service accounts list', () => {
       .expectOne('/api/ui/service-accounts')
       .flush({ serviceAccounts: [{ ...details, activeKeys: 2, enabled: false }] });
     await fixture.whenStable();
+    expect(page.textContent).toContain('1 service account · 0 with a live key.');
     expect([...page.querySelectorAll('th')].map((cell) => cell.textContent)).toEqual([
       'Name',
       'Clearance',
       'Project',
       'Active keys',
       'Status',
-      'Created (UTC)',
       '',
     ]);
     expect([...page.querySelectorAll('td')].map((cell) => cell.textContent?.trim())).toEqual([
@@ -172,12 +182,23 @@ describe('Service accounts list', () => {
       'PAYMENTS',
       '2',
       'Disabled',
-      '2026-01-02',
       'Manage',
     ]);
     expect(page.querySelector('tbody a')?.getAttribute('href')).toBe(
       `/ServiceAccounts/Details/${id}`,
     );
+  });
+  it('counts a live key only on enabled accounts', async () => {
+    const { page, fixture } = render(ServiceAccountsPage);
+    backend.expectOne('/api/ui/service-accounts').flush({
+      serviceAccounts: [
+        { ...details, serviceAccountId: 'enabled-with-keys', activeKeys: 2, enabled: true },
+        { ...details, serviceAccountId: 'disabled-with-keys', activeKeys: 1, enabled: false },
+        { ...details, serviceAccountId: 'enabled-without-keys', activeKeys: 0, enabled: true },
+      ],
+    });
+    await fixture.whenStable();
+    expect(page.textContent).toContain('3 service accounts · 1 with a live key.');
   });
   it('announces deletion once after returning from Details', async () => {
     const { page, fixture } = render(ServiceAccountsPage);
@@ -332,13 +353,13 @@ describe('Service account Details', () => {
     expect(page.textContent).toContain('full access');
     expect(page.textContent).toContain('metadata-only');
     expect(page.textContent).toContain('at most Standard');
-    expect(page.textContent).toContain('1 network');
+    expect(page.textContent).toContain('10.8.0.0/24');
     expect(page.textContent).toContain('2026-01-04 05:06');
     expect(page.textContent).toContain('2026-02-03');
     expect(page.textContent).toContain('never');
     expect(
       [...page.querySelectorAll('tbody tr')].map((row) =>
-        row.querySelectorAll('td')[5]?.textContent?.trim(),
+        row.querySelectorAll('td')[7]?.textContent?.trim(),
       ),
     ).toEqual(['Active', 'Expired', 'Revoked']);
     expect(
@@ -364,6 +385,15 @@ describe('Service account Details', () => {
     if (!metadata) throw new Error('No metadata');
     metadata.click();
     submit(page);
+    await fixture.whenStable();
+    const dialog = openDialog(page);
+    expect(dialog.textContent).toContain('Expires in 7 days');
+    expect(dialog.textContent).toContain('At most Standard');
+    expect(dialog.textContent).toContain('Project straße');
+    expect(dialog.textContent).toContain('Metadata only');
+    expect(dialog.textContent).toContain('10.8.0.5, 10.8.0.5');
+    backend.expectNone(path + '/keys');
+    button(dialog, 'Issue key').click();
     const request = backend.expectOne(path + '/keys');
     expect(request.request.body).toEqual({
       expiresInDays: 7,
@@ -374,7 +404,8 @@ describe('Service account Details', () => {
     });
     request.flush({ keyId, prefix: 'evk_prefix', apiKey: oneTimeKey });
     await reload(fixture);
-    expect(page.querySelector('#new-token')?.textContent).toBe(oneTimeKey);
+    expect(page.querySelector('#new-token')?.textContent).toBe('evk_…only');
+    expect(page.textContent).not.toContain(oneTimeKey);
     expect(page.textContent).toContain('API key issued. Copy it now — it will not be shown again.');
     button(page, 'Copy').click();
     await fixture.whenStable();
@@ -385,6 +416,83 @@ describe('Service account Details', () => {
     expect(location.href.includes(oneTimeKey)).toBe(false);
     expect(JSON.stringify(TestBed.inject(ServiceAccountNotices)).includes(oneTimeKey)).toBe(false);
   });
+  it('a failed copy shows the full key and the message', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+    });
+    const { page, fixture } = await loadedDetails();
+    await confirmIssue(page, fixture);
+    backend.expectOne(path + '/keys').flush({ keyId, prefix: 'evk_prefix', apiKey: oneTimeKey });
+    await reload(fixture);
+    button(page, 'Copy').click();
+    await fixture.whenStable();
+
+    expect(page.querySelector('#new-token')?.textContent).toBe(oneTimeKey);
+    expect(page.querySelector('app-status-line [role="alert"]')?.textContent).toContain(
+      'Could not copy the key. Select it and copy it now.',
+    );
+    expect(document.cookie.includes(oneTimeKey)).toBe(false);
+    expect(location.href.includes(oneTimeKey)).toBe(false);
+  });
+  it('a copy of an earlier key that fails after a newer key is issued keeps the newer key masked', async () => {
+    let failFirstCopy: (reason: Error) => void = () => undefined;
+    const firstCopy = new Promise<void>((_, reject) => (failFirstCopy = reject));
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: () => firstCopy },
+    });
+    const { page, fixture } = await loadedDetails();
+    await confirmIssue(page, fixture);
+    backend.expectOne(path + '/keys').flush({ keyId, prefix: 'evk_prefix', apiKey: oneTimeKey });
+    await reload(fixture);
+    button(page, 'Copy').click();
+    await confirmIssue(page, fixture);
+    backend
+      .expectOne(path + '/keys')
+      .flush({ keyId: 'second', prefix: 'evk_second', apiKey: 'evk_second-key-never-copied' });
+    await reload(fixture);
+    failFirstCopy(new Error('denied'));
+    // The page's own handler for the failed copy runs before this one.
+    await firstCopy.catch(() => undefined);
+    await fixture.whenStable();
+
+    expect(page.querySelector('#new-token')?.textContent).toBe('evk_…pied');
+    expect(page.textContent).not.toContain('evk_second-key-never-copied');
+  });
+  it('a successful copy keeps the one-time key masked', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+    const { page, fixture } = await loadedDetails();
+    await confirmIssue(page, fixture);
+    backend.expectOne(path + '/keys').flush({ keyId, prefix: 'evk_prefix', apiKey: oneTimeKey });
+    await reload(fixture);
+    button(page, 'Copy').click();
+    await fixture.whenStable();
+
+    expect(page.querySelector('#new-token')?.textContent).toBe('evk_…only');
+    expect(page.textContent).not.toContain(oneTimeKey);
+  });
+  it('leaving the page clears a key that copy could not take', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+    });
+    const { page, fixture } = await loadedDetails();
+    await confirmIssue(page, fixture);
+    backend.expectOne(path + '/keys').flush({ keyId, prefix: 'evk_prefix', apiKey: oneTimeKey });
+    await reload(fixture);
+    button(page, 'Copy').click();
+    await fixture.whenStable();
+    expect(page.querySelector('#new-token')?.textContent).toBe(oneTimeKey);
+    window.dispatchEvent(new Event('pagehide'));
+
+    expect(page.querySelector('#new-token')?.textContent).toBe('');
+    await fixture.whenStable();
+    expect(page.textContent).not.toContain(oneTimeKey);
+  });
   it.each([
     { event: 'pagehide', target: window },
     { event: 'vault-session-ended', target: document },
@@ -392,10 +500,10 @@ describe('Service account Details', () => {
     'clears the key synchronously on $event and blocks another write',
     async ({ event, target }) => {
       const { page, fixture } = await loadedDetails();
-      submit(page);
+      await confirmIssue(page, fixture);
       backend.expectOne(path + '/keys').flush({ keyId, prefix: 'evk_prefix', apiKey: oneTimeKey });
       await reload(fixture);
-      expect(page.querySelector('#new-token')?.textContent).toBe(oneTimeKey);
+      expect(page.querySelector('#new-token')?.textContent).toBe('evk_…only');
       target.dispatchEvent(new Event(event));
       expect(page.querySelector('#new-token')?.textContent).toBe('');
       await fixture.whenStable();
@@ -405,7 +513,7 @@ describe('Service account Details', () => {
   );
   it('clears on component departure and a reloaded Details never recovers a key', async () => {
     const { fixture, page } = await loadedDetails();
-    submit(page);
+    await confirmIssue(page, fixture);
     backend.expectOne(path + '/keys').flush({ keyId, prefix: 'evk_prefix', apiKey: oneTimeKey });
     await reload(fixture);
     fixture.destroy();
@@ -419,7 +527,7 @@ describe('Service account Details', () => {
   });
   it('shows the expiry field refusal beside the input', async () => {
     const { page, fixture } = await loadedDetails();
-    submit(page);
+    await confirmIssue(page, fixture);
     backend.expectOne(path + '/keys').flush(
       {
         code: 'validation_failed',
@@ -433,7 +541,7 @@ describe('Service account Details', () => {
   });
   it('blocks another issuance after a lost response', async () => {
     const { page, fixture } = await loadedDetails();
-    submit(page);
+    await confirmIssue(page, fixture);
     backend.expectOne(path + '/keys').error(new ProgressEvent('error'));
     await fixture.whenStable();
     expect(page.textContent).toContain(
@@ -491,32 +599,39 @@ describe('Service account Details', () => {
     expect(button(page, 'Disable').matches(':disabled')).toBe(false);
     expect(page.querySelector('dialog[open]')).toBeNull();
   });
-  it.each([
-    { action: 'Issue new key', enabled: true, endpoint: '/keys' },
-    { action: 'Enable', enabled: false, endpoint: '/enable' },
-  ])(
-    'cancelling $action proof restores its keyboard focus without retrying',
-    async ({ action, enabled, endpoint }) => {
-      const { page, fixture } = await loadedDetails({ ...details, enabled });
-      const opener = button(page, action);
-      opener.focus();
-      opener.click();
-      backend
-        .expectOne(path + endpoint)
-        .flush(
-          { code: 'step_up_required', proof: 'code' },
-          { status: 403, statusText: 'Forbidden' },
-        );
-      await fixture.whenStable();
-      button(page.querySelector('app-step-up-dialog')!, 'Cancel').click();
-      await fixture.whenStable();
-      expect(document.activeElement).toBe(opener);
-      expect(page.querySelector('dialog[open]')).toBeNull();
-    },
-  );
+  it('cancelling issuance proof restores keyboard focus to Issue new key without retrying', async () => {
+    const { page, fixture } = await loadedDetails();
+    const opener = button(page, 'Issue new key');
+    opener.focus();
+    opener.click();
+    await fixture.whenStable();
+    button(openDialog(page), 'Issue key').click();
+    backend
+      .expectOne(path + '/keys')
+      .flush({ code: 'step_up_required', proof: 'code' }, { status: 403, statusText: 'Forbidden' });
+    await fixture.whenStable();
+    button(page.querySelector('app-step-up-dialog')!, 'Cancel').click();
+    await fixture.whenStable();
+    expect(document.activeElement).toBe(opener);
+    expect(page.querySelector('dialog[open]')).toBeNull();
+  });
+  it('cancelling enable proof restores keyboard focus to Enable without retrying', async () => {
+    const { page, fixture } = await loadedDetails({ ...details, enabled: false });
+    const opener = button(page, 'Enable');
+    opener.focus();
+    opener.click();
+    backend
+      .expectOne(path + '/enable')
+      .flush({ code: 'step_up_required', proof: 'code' }, { status: 403, statusText: 'Forbidden' });
+    await fixture.whenStable();
+    button(page.querySelector('app-step-up-dialog')!, 'Cancel').click();
+    await fixture.whenStable();
+    expect(document.activeElement).toBe(opener);
+    expect(page.querySelector('dialog[open]')).toBeNull();
+  });
   it('retries issuance exactly once after shared code proof', async () => {
     const { page, fixture } = await loadedDetails();
-    submit(page);
+    await confirmIssue(page, fixture);
     blocked();
     await fixture.whenStable();
     enterProof(page, '123456');
@@ -533,11 +648,11 @@ describe('Service account Details', () => {
   });
   it('ends the stale session before following the sign-in fallback with its return URL', async () => {
     const { page, fixture } = await loadedDetails();
-    submit(page);
+    await confirmIssue(page, fixture);
     blocked('sign_in');
     await fixture.whenStable();
     button(page, 'Sign in again').click();
-    backend.expectOne('/Account/Logout').flush('');
+    backend.expectOne('/api/ui/auth/sign-out').flush('');
     await fixture.whenStable();
     expect(assign).toHaveBeenCalledWith(
       '/Account/Login?ReturnUrl=%2FServiceAccounts%2FDetails%2Faaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',

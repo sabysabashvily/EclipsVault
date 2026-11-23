@@ -4,10 +4,22 @@ import {
   provideHttpClient,
   withInterceptors,
 } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import {
+  HttpTestingController,
+  provideHttpClientTesting,
+  TestRequest,
+} from '@angular/common/http/testing';
 import { DOCUMENT } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { signInUrl, UiApiError, uiApiErrors } from './ui-api-errors';
+import {
+  loginUrl,
+  returnUrlOf,
+  SessionSignOut,
+  signInApiErrors,
+  signInUrl,
+  UiApiError,
+  uiApiErrors,
+} from './ui-api-errors';
 
 describe('uiApiErrors', () => {
   const assign = vi.fn();
@@ -73,7 +85,7 @@ describe('uiApiErrors', () => {
       );
 
     expect(assign).not.toHaveBeenCalled();
-    const logout = backend.expectOne('/Account/Logout');
+    const logout = backend.expectOne('/api/ui/auth/sign-out');
     expect(logout.request.method).toBe('POST');
     logout.flush('');
     expect(assign).toHaveBeenCalledExactlyOnceWith('/Account/Login');
@@ -87,7 +99,9 @@ describe('uiApiErrors', () => {
     backend
       .expectOne('/api/ui/access')
       .flush({ code: 'stale_session' }, { status: 401, statusText: 'Unauthorized' });
-    backend.expectOne('/Account/Logout').flush('', { status: 503, statusText: 'Unavailable' });
+    backend
+      .expectOne('/api/ui/auth/sign-out')
+      .flush('', { status: 503, statusText: 'Unavailable' });
     expect(assign).not.toHaveBeenCalled();
     expect(error).toHaveBeenCalledWith(expect.objectContaining({ code: 'sign_out_failed' }));
 
@@ -95,7 +109,7 @@ describe('uiApiErrors', () => {
     backend
       .expectOne('/api/ui/access')
       .flush({ code: 'stale_session' }, { status: 401, statusText: 'Unauthorized' });
-    backend.expectOne('/Account/Logout').flush('');
+    backend.expectOne('/api/ui/auth/sign-out').flush('');
     expect(assign).toHaveBeenCalledExactlyOnceWith('/Account/Login');
   });
 
@@ -168,7 +182,7 @@ describe('uiApiErrors', () => {
         statusText: 'Unauthorized',
       });
 
-    const logout = await vi.waitFor(() => backend.expectOne('/Account/Logout'));
+    const logout = await vi.waitFor(() => backend.expectOne('/api/ui/auth/sign-out'));
     logout.flush('');
     expect(assign).toHaveBeenCalledExactlyOnceWith('/Account/Login');
   });
@@ -192,6 +206,163 @@ describe('uiApiErrors', () => {
 
     expect(surfaced).toBeInstanceOf(HttpErrorResponse);
     expect(assign).not.toHaveBeenCalled();
+  });
+});
+
+describe('SessionSignOut', () => {
+  const assign = vi.fn();
+  let signOut: SessionSignOut;
+  let backend: HttpTestingController;
+
+  beforeEach(() => {
+    assign.mockReset();
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(withInterceptors([uiApiErrors])),
+        provideHttpClientTesting(),
+        {
+          provide: DOCUMENT,
+          useValue: {
+            dispatchEvent: vi.fn(),
+            location: { pathname: '/Profile', search: '', assign },
+          },
+        },
+      ],
+    });
+    signOut = TestBed.inject(SessionSignOut);
+    backend = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => backend.verify());
+
+  it('posts the UI API sign-out once for every caller, and a caller that leaves does not cancel it', () => {
+    const left = signOut.end().subscribe();
+    signOut.end().subscribe();
+    left.unsubscribe();
+
+    const request = backend.expectOne({ method: 'POST', url: '/api/ui/auth/sign-out' });
+    expect(request.cancelled).toBe(false);
+    request.flush(null, { status: 204, statusText: 'No Content' });
+
+    expect(assign).toHaveBeenCalledExactlyOnceWith('/Account/Login');
+  });
+
+  it('keeps the first caller’s return URL and adds the local-clear warning when revocation was not confirmed', () => {
+    const error = vi.fn();
+    signOut.end('/Account/Login?ReturnUrl=%2FAdmin%2FUsers').subscribe({ error });
+
+    backend
+      .expectOne('/api/ui/auth/sign-out')
+      .flush(
+        { status: 503, code: 'sign_out_incomplete', title: 'Cookie cleared.' },
+        { status: 503, statusText: 'Service Unavailable' },
+      );
+
+    expect(assign).toHaveBeenCalledExactlyOnceWith(
+      '/Account/Login?ReturnUrl=%2FAdmin%2FUsers&signOut=sign_out_incomplete',
+    );
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a lost reply', (request: TestRequest) => request.error(new ProgressEvent('error'))],
+    [
+      'any other refusal',
+      (request: TestRequest) =>
+        request.flush(
+          { status: 503, code: 'audit_unavailable', title: 'Audit down.' },
+          { status: 503, statusText: 'Service Unavailable' },
+        ),
+    ],
+  ])('stays on the page with sign_out_failed after %s, and permits retry', (_, fail) => {
+    const error = vi.fn();
+    signOut.end().subscribe({ error });
+    fail(backend.expectOne('/api/ui/auth/sign-out'));
+
+    expect(assign).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'sign_out_failed',
+        title: 'Could not sign out. Reload the page to try again.',
+      }),
+    );
+
+    signOut.end().subscribe();
+    backend
+      .expectOne('/api/ui/auth/sign-out')
+      .flush(null, { status: 204, statusText: 'No Content' });
+    expect(assign).toHaveBeenCalledExactlyOnceWith('/Account/Login');
+  });
+});
+
+describe('signInApiErrors', () => {
+  const assign = vi.fn();
+  let http: HttpClient;
+  let backend: HttpTestingController;
+
+  beforeEach(() => {
+    assign.mockReset();
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(withInterceptors([signInApiErrors])),
+        provideHttpClientTesting(),
+        {
+          provide: DOCUMENT,
+          useValue: { location: { search: '?returnurl=%2FSecrets%3Fq%3D1', assign } },
+        },
+      ],
+    });
+    http = TestBed.inject(HttpClient);
+    backend = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => backend.verify());
+
+  it('starts an expired sign-in again at Login with a full page load, keeping its return URL', () => {
+    const next = vi.fn();
+    const error = vi.fn();
+    http.post('/api/ui/auth/totp', { code: '123456' }).subscribe({ next, error });
+
+    backend
+      .expectOne('/api/ui/auth/totp')
+      .flush(
+        { status: 401, code: 'sign_in_expired', title: 'Your sign-in expired. Sign in again.' },
+        { status: 401, statusText: 'Unauthorized' },
+      );
+
+    expect(assign).toHaveBeenCalledExactlyOnceWith('/Account/Login?ReturnUrl=%2FSecrets%3Fq%3D1');
+    expect(next).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it('gives the page every other refusal as its code and sentence', () => {
+    let surfaced: unknown;
+    http.post('/api/ui/auth/password', {}).subscribe({ error: (e: unknown) => (surfaced = e) });
+
+    backend
+      .expectOne('/api/ui/auth/password')
+      .flush(
+        { status: 400, code: 'sign_in_failed', title: 'Invalid username or password.' },
+        { status: 400, statusText: 'Bad Request' },
+      );
+
+    expect(surfaced).toEqual(
+      expect.objectContaining({ code: 'sign_in_failed', title: 'Invalid username or password.' }),
+    );
+    expect(assign).not.toHaveBeenCalled();
+  });
+});
+
+describe('loginUrl and returnUrlOf', () => {
+  it('carries a return URL on to Login, and none when there is none', () => {
+    expect(loginUrl('/Secrets?q=1')).toBe('/Account/Login?ReturnUrl=%2FSecrets%3Fq%3D1');
+    expect(loginUrl(null)).toBe('/Account/Login');
+  });
+
+  it('reads the return URL whatever its case, as the vault binds it', () => {
+    expect(returnUrlOf('?ReturnUrl=%2FA')).toBe('/A');
+    expect(returnUrlOf('?returnUrl=%2FB&x=1')).toBe('/B');
+    expect(returnUrlOf('?x=1')).toBeNull();
   });
 });
 

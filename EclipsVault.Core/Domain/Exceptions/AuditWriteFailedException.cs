@@ -5,7 +5,7 @@ namespace EclipsVault.Core.Domain.Exceptions;
 /// if this is thrown, the surrounding operation has been aborted and no secret
 /// material has been (or will be) released.
 /// </summary>
-public sealed class AuditWriteFailedException : DomainException
+public class AuditWriteFailedException : DomainException
 {
     public AuditWriteFailedException(string message, Exception innerException)
         : base(message, innerException)

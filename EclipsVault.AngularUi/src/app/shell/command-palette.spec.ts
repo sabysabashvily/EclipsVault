@@ -171,22 +171,25 @@ describe('CommandPalette', () => {
     assign.mockReset();
     opener = document.createElement('button');
     document.body.append(opener);
+    // The debounce runs on RxJS's scheduler, which uses intervals; Angular's own scheduler uses
+    // timeouts, so faking only intervals moves the debounce by hand and leaves rendering alone.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     backend.verify();
     opener.remove();
   });
 
-  // Real time: Angular's zoneless scheduler runs on the same timers that fake timers would freeze.
-  const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const pause = (ms: number) => vi.advanceTimersByTimeAsync(ms);
 
   /** Lets the debounce elapse and returns the one search request it sent. */
   async function searched(stable: () => Promise<void>, q: string): Promise<TestRequest> {
     await pause(200);
     await stable();
     return backend.expectOne(
-      (request) => request.url === '/Secrets/Search' && request.params.get('q') === q,
+      (request) => request.url === '/api/ui/secrets/search' && request.params.get('q') === q,
     );
   }
 
@@ -254,15 +257,10 @@ describe('CommandPalette', () => {
     ).toEqual(['Secrets', 'New secret', 'Dynamic secrets', 'Security checkup']);
     expect(host.querySelector('[data-probe], .palette-list b')).toBeNull();
     expect(host.querySelector('.palette-meta')?.textContent).toBe('<b>P</b> · Development');
+    // Their colours are checked by the browser's visual parity test for Secrets.
     expect(
-      [...host.querySelectorAll('.palette-item .badge')].map((badge) => [
-        badge.className,
-        badge.textContent?.trim(),
-      ]),
-    ).toEqual([
-      ['badge sens-1', 'Internal'],
-      ['badge sens-4', 'Top Secret'],
-    ]);
+      [...host.querySelectorAll('.palette-item .badge')].map((badge) => badge.textContent?.trim()),
+    ).toEqual(['Internal', 'Top Secret']);
   });
 
   it('cancels a stale search, so an older answer never replaces a newer one', async () => {
@@ -295,11 +293,10 @@ describe('CommandPalette', () => {
     expect(closed.cancelled).toBe(true);
   });
 
-  it('reports a sign-in redirect, a non-JSON answer, an unexpected shape or a refusal, keeping the pages', async () => {
+  it('reports an HTML page, a non-JSON answer, an unexpected shape or a refusal, keeping the pages', async () => {
     const { host, open, type, items, stable } = await render();
     await open();
     const answers: ((request: TestRequest) => void)[] = [
-      // Fetch follows the Legacy UI's sign-in redirect for an expired session to an HTML page.
       (request) =>
         request.flush('<!doctype html><title>Sign in</title>', {
           headers: { 'Content-Type': 'text/html; charset=utf-8' },

@@ -1,53 +1,75 @@
 <div class="page-header">
   <div>
     <h1>Shared with me</h1>
-    <p class="page-sub">Secrets outside your project that someone has granted you access to.</p>
+    @if (sorted().length > 0) {
+      <p class="page-sub">{{ context() }}</p>
+    } @else {
+      <p class="page-sub">Secrets outside your project that someone has granted you access to.</p>
+    }
   </div>
 </div>
 
 @if (shares.hasValue()) {
   <section class="panel">
-    @if (shares.value().shares.length === 0) {
+    <app-secrets-tabs current="shared-with-me" />
+    @if (sorted().length === 0) {
       <app-empty-state
         icon="share"
         heading="Nothing shared with you yet"
         message="This is where secrets from other projects show up when a colleague grants you access to them. There's nothing for you to do here until someone shares one."
       >
-        <a class="button primary" href="/Secrets">Go to your secrets</a>
+        <a class="button primary" routerLink="/Secrets">Go to your secrets</a>
       </app-empty-state>
     } @else {
-      <div class="table-scroll">
-        <table class="data-table">
+      <div class="panel-header">
+        <h2>Secrets shared with you</h2>
+        <span class="sort-note">Sorted by end date, soonest first</span>
+      </div>
+      <div class="table-card">
+        <table class="data-table row-cards">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Project</th>
+              <th>Secret</th>
               <th>Environment</th>
               <th>Sensitivity</th>
               <th>Shared by</th>
               <th>Access until</th>
-              <th></th>
             </tr>
           </thead>
           <tbody>
-            @for (share of shares.value().shares; track share.secretId) {
+            @for (share of sorted(); track share.secretId) {
+              @let ends = expiry(share.accessUntilUtc);
               <tr>
-                <td class="mono cell-strong">{{ share.name }}</td>
-                <td>{{ share.project }}</td>
-                <td>
+                <td class="cell-main">
+                  <a
+                    class="row-link mono cell-strong"
+                    [href]="'/Secrets/Details/' + share.secretId"
+                    >{{ share.name }}</a
+                  >
+                  <span class="row-code mono muted">{{ share.project }}</span>
+                </td>
+                <td class="cell-pill">
                   <span class="badge env-{{ share.environment.toLowerCase() }}">{{
                     share.environment
                   }}</span>
                 </td>
-                <td>
+                <td class="cell-pill">
                   <span class="badge sens-{{ share.sensitivity }}">{{
                     share.sensitivityLabel
                   }}</span>
                 </td>
-                <td class="muted">{{ share.sharedBy }}</td>
-                <td class="muted">{{ accessUntil(share) }}</td>
-                <td class="cell-actions">
-                  <a class="button small" [href]="'/Secrets/Details/' + share.secretId">Open</a>
+                <td class="cell-meta muted" data-label="Shared by">{{ share.sharedBy }}</td>
+                <td
+                  class="cell-pill"
+                  [attr.data-label]="share.accessUntilUtc && !ends.tone ? 'Access until' : null"
+                >
+                  @if (ends.tone) {
+                    <span class="badge tone-{{ ends.tone }}" [title]="ends.title">{{
+                      ends.text
+                    }}</span>
+                  } @else {
+                    <span class="muted">{{ ends.text }}</span>
+                  }
                 </td>
               </tr>
             }
@@ -58,6 +80,7 @@
   </section>
 } @else if (shares.error()) {
   <section class="panel">
+    <app-secrets-tabs current="shared-with-me" />
     <p role="alert">Could not load the secrets shared with you. Try again.</p>
     <button type="button" class="button" (click)="shares.reload()">Try again</button>
   </section>

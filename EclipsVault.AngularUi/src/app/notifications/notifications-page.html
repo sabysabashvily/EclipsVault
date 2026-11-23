@@ -20,7 +20,7 @@
   >
     @switch (notifications.value().delivery) {
       @case ('off') {
-        <strong>⚠ Delivery is off.</strong>
+        <strong>Delivery is off.</strong>
         <span
           >Notifications are recorded as <em>suppressed</em> and never sent. Set
           <code>Email:Enabled=true</code> to dispatch them.</span
@@ -28,7 +28,7 @@
       }
       @case ('smtp') {
         <strong
-          >✓ Delivering via SMTP → <span class="mono">{{ notifications.value().smtpTarget }}</span
+          >Delivering via SMTP to <span class="mono">{{ notifications.value().smtpTarget }}</span
           >.</strong
         >
         <span>Composed emails are sent to your mail server and recorded below.</span>
@@ -36,7 +36,7 @@
       @case ('log') {
         <strong>Development log transport.</strong>
         <span
-          >Emails are composed and recorded below but <strong>not actually sent</strong>. Point
+          >Emails are composed and recorded below but not actually sent. Point
           <code>Email:Sender=Smtp</code> at an SMTP server (e.g. the bundled Mailpit) to deliver
           them.</span
         >
@@ -46,12 +46,12 @@
   <section class="panel">
     <div class="panel-header">
       <h2>Outbox</h2>
-      <app-table-filter
-        label="Filter notifications"
-        placeholder="Filter by recipient, subject, event…"
-        [(query)]="query"
-      />
     </div>
+    <app-table-filter
+      label="Filter notifications"
+      placeholder="Filter by recipient, subject, event…"
+      [(query)]="query"
+    />
     @if (!notifications.value().outbox.length) {
       <app-empty-state
         icon="mail"
@@ -59,7 +59,8 @@
         message="Domain events send email automatically — approving or rejecting an access request, a password change, or provisioning a user. Each one is recorded here with its delivery outcome."
       />
     } @else {
-      <div class="table-scroll">
+      <div class="table-scroll" appScrollRegion role="region" aria-label="Outbox">
+        <p class="table-scroll-hint">Scroll horizontally to see all columns.</p>
         <table class="data-table">
           <thead>
             <tr>
@@ -86,7 +87,7 @@
                     badges[email.status].label
                   }}</span>
                   @if (email.status === 'failed' && email.error) {
-                    <span class="hint muted" [title]="email.error"> ⚠</span>
+                    <span class="outbox-error">{{ email.error }}</span>
                   }
                 </td>
               </tr>

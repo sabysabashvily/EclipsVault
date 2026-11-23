@@ -73,13 +73,15 @@ public sealed class VaultAuthenticationService : IVaultAuthenticationService
         var revocationVersion = await _revocation.CaptureAsync(user.Id, ct);
         return await _attempt.RunAsync(user, async token =>
         {
+            // Hashed before the lockout check, so a locked account answers no faster than any other.
+            var passwordMatches = _hasher.Verify(password, user.PasswordHash, user.PasswordSalt);
             if (user.IsLockedOut(_clock.GetUtcNow()))
             {
                 _attempt.RecordUserEvent(AuditAction.LoginFailed, user, "Account is locked out");
                 return CredentialCheckResult.Invalid;
             }
 
-            if (!_hasher.Verify(password, user.PasswordHash, user.PasswordSalt))
+            if (!passwordMatches)
             {
                 await _failures.RecordAsync(user, AuditAction.LoginFailed, "Password verification failed", token);
                 return CredentialCheckResult.Invalid;

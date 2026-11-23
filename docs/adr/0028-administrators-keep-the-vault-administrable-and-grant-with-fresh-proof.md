@@ -38,6 +38,15 @@ separate role.
   in the meantime. Such a conflict is a restoration failure requiring inspection, not a successful
   restoration. Once a block is lifted, auditing and compensation finish even if the browser leaves.
 
+- **Bulk disclosure needs the same fresh proof as a grant.** Exporting the whole audit trail asks for
+  a sign-in or step-up within `StepUp:MaxAuthAgeMinutes` (Area 6); its step-up asks "Confirm it's
+  you before exporting the audit trail." Viewing, verifying and
+  checkpointing the trail, and master key rotation, never ask: none discloses in bulk or grants access.
+- **Sharing and minting count as granting** (Area 7, ADR-0031). Sharing a secret at or above
+  `StepUp:MinimumSensitivity`, from its page or by approving an access request, and issuing a dynamic
+  credential for such a role need the same fresh proof as revealing it. Revoking a share or a lease
+  never asks.
+
 ## Consequences
 
 - The Notification outbox, block reasons and the audit log are monitoring views. They show secret

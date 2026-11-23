@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -35,7 +34,7 @@ public sealed class EmailIdentitySignInTests(VaultFixture vault)
         var response = await CallBackFromIdentityProviderAsync(" it.email.sso.case@EXAMPLE.test ", "198.51.100.230");
 
         // This vault does not trust the provider's second factor, so the account enrolls its own.
-        Assert.Equal("/Account/EnrollTotp", response.Headers.Location?.OriginalString);
+        Assert.Equal("/Account/EnrollTotp", await PostIdpAssertion.ContinuesToAsync(response));
         var linked = Assert.Single(await AuditTrail.RowsAfterAsync(vault, head), row => row.Action == AuditAction.SsoIdentityLinked);
         Assert.Equal(account.Id, linked.UserId);
         Assert.Equal("it-email-sso-case", linked.Username);
@@ -48,7 +47,9 @@ public sealed class EmailIdentitySignInTests(VaultFixture vault)
         var addressed = await ProvisionAsync("it-email-sso-alias-addressed", "IT-Email-SSO-Alias@Example.Test");
         var head = await AuditTrail.HeadAsync(vault);
 
-        await CallBackFromIdentityProviderAsync("it-email-sso-alias@example.test", "198.51.100.231");
+        var response = await CallBackFromIdentityProviderAsync("it-email-sso-alias@example.test", "198.51.100.231");
+
+        Assert.Equal("/Account/EnrollTotp", await PostIdpAssertion.ContinuesToAsync(response));
 
         var linked = Assert.Single(await AuditTrail.RowsAfterAsync(vault, head), row => row.Action == AuditAction.SsoIdentityLinked);
         Assert.Equal(addressed.Id, linked.UserId);
@@ -63,7 +64,7 @@ public sealed class EmailIdentitySignInTests(VaultFixture vault)
 
         var response = await CallBackFromIdentityProviderAsync("it-email-sso-name-only@example.test", "198.51.100.232");
 
-        Assert.Equal("/Account/Login", response.Headers.Location?.OriginalString);
+        Assert.Equal("/Account/Login?sso=refused", response.Headers.Location?.OriginalString);
         var refused = Assert.Single(await AuditTrail.RowsAfterAsync(vault, head), row => row.Action == AuditAction.SsoSignInRefused);
         Assert.Null(refused.UserId);
         Assert.Equal("it-email-sso-name-only@example.test", refused.Username);
@@ -77,7 +78,7 @@ public sealed class EmailIdentitySignInTests(VaultFixture vault)
 
         var response = await CallBackFromIdentityProviderAsync("it-email-sso-adm\u0131n@example.test", "198.51.100.236");
 
-        Assert.Equal("/Account/Login", response.Headers.Location?.OriginalString);
+        Assert.Equal("/Account/Login?sso=refused", response.Headers.Location?.OriginalString);
         Assert.DoesNotContain(await AuditTrail.RowsAfterAsync(vault, head), row => row.Action == AuditAction.SsoIdentityLinked);
     }
 
@@ -90,29 +91,26 @@ public sealed class EmailIdentitySignInTests(VaultFixture vault)
         var session = vault.CreateSession(source: IPAddress.Parse("198.51.100.233"));
         var head = await AuditTrail.HeadAsync(vault);
 
-        var response = await session.Client.PostAsync("/Account/Login", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["Username"] = "it-email-login-alias@example.test",
-            ["Password"] = password,
-            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(await session.Client.GetStringAsync("/Account/Login"), "/Account/Login"),
-        }));
+        var response = await AuthApi.PasswordAsync(session, "it-email-login-alias@example.test", password);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("Invalid username or password.", await response.Content.ReadAsStringAsync());
+        await UiApiFailureContractTests.AssertProblemAsync(response, 400, "sign_in_failed");
         var failed = Assert.Single(await AuditTrail.RowsAfterAsync(vault, head), row => row.Action == AuditAction.LoginFailed);
         Assert.Null(failed.UserId);
         Assert.Equal("Unknown username or email", failed.Details);
     }
 
+    /// <summary>
+    /// Passkey sign-in takes no username, so naming an account that has a passkey lists nothing.
+    /// </summary>
     [Fact]
-    public async Task Named_passkey_sign_in_offers_the_passkey_of_the_account_with_that_username()
+    public async Task Passkey_sign_in_lists_no_credential_when_the_body_names_an_account_that_has_one()
     {
         var account = await ProvisionAsync("it-email-passkey-named", "it-email-passkey-named@example.test");
         await RegisterPasskeyAsync(account.Id);
 
         var options = await BeginPasskeySignInAsync("it-email-passkey-named", "198.51.100.234");
 
-        Assert.Single(options.GetProperty("allowCredentials").EnumerateArray());
+        Assert.Empty(options.GetProperty("allowCredentials").EnumerateArray());
     }
 
     [Fact]
@@ -133,12 +131,12 @@ public sealed class EmailIdentitySignInTests(VaultFixture vault)
         await ProvisionAsync("it-email-share-alias@example.test", "it-email-share-alias-named@example.test");
         await ProvisionAsync("it-email-share-alias-addressed", "it-email-share-alias@example.test");
         var admin = await vault.AdminClientAsync();
-        var details = await LegacySharing.CreateSecretAsync(admin, "it-email-share-alias-secret");
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-email-share-alias-secret");
 
-        await LegacySharing.ShareAsync(admin, details, "it-email-share-alias@example.test");
+        await SecretDetailsApi.ShareAsync(admin, details, "it-email-share-alias@example.test");
 
         using var scope = vault.Services.CreateScope();
-        var secretId = LegacySharing.SecretIdOf(details);
+        var secretId = SecretSharing.SecretIdOf(details);
         Assert.False(await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().SecretGrants
             .AnyAsync(share => share.SecretId == secretId));
     }
@@ -176,16 +174,8 @@ public sealed class EmailIdentitySignInTests(VaultFixture vault)
     private async Task<JsonElement> BeginPasskeySignInAsync(string username, string source)
     {
         var session = vault.CreateSession(source: IPAddress.Parse(source));
-        var login = await session.Client.GetStringAsync("/Account/Login");
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/Account/PasskeyLoginBegin")
-        {
-            Content = JsonContent.Create(new { username }),
-        };
-        request.Headers.Add("RequestVerificationToken", VaultFixture.FormTokenOf(login, "/Account/Login"));
-
-        var response = await session.Client.SendAsync(request);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        return await response.Content.ReadFromJsonAsync<JsonElement>();
+        var options = await SignInProof.PostPasskeyAsync(session.Client, "/api/ui/auth/passkey/begin", new { username });
+        return options.GetProperty("publicKey");
     }
 
     /// <summary>

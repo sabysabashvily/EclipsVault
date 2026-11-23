@@ -1,3 +1,4 @@
+using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Extensions;
 using EclipsVault.Web.Middleware;
@@ -21,8 +22,70 @@ namespace EclipsVault.Web.Controllers.Ui;
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 [TypeFilter(typeof(AccessRequestProblemFilter))]
 public sealed class AccessRequestsController(
-    IAccessRequestService requests, AccessRequestReviewers reviewers, IAntiforgery antiforgery) : ControllerBase
+    IAccessRequestService requests, AccessRequestReviewers reviewers, IAntiforgery antiforgery,
+    IStepUpService stepUp, IUserRepository users, IAuthorizationService authorization, TimeProvider clock) : ControllerBase
 {
+    /// <summary>
+    /// Whether the Denied page offers the request form for a secret. It records nothing. A decoy trips and
+    /// answers 404 <c>not_found</c>, as on every secret endpoint, and a secret that does not exist answers
+    /// exactly the same, so the answer cannot tell which ids are decoys.
+    /// </summary>
+    [HttpGet("eligibility")]
+    [ProducesResponseType<AccessRequestEligibilityResponse>(StatusCodes.Status200OK, "application/json")]
+    [ProducesResponseType<AccessRequestProblemResponse>(StatusCodes.Status404NotFound, "application/problem+json")]
+    public async Task<ActionResult<AccessRequestEligibilityResponse>> Eligibility([FromQuery] Guid secretId, CancellationToken ct)
+    {
+        var callerId = User.GetUserId();
+        if (callerId == Guid.Empty)
+        {
+            return StaleSession();
+        }
+
+        try
+        {
+            return await requests.FilingRefusalAsync(secretId, callerId, ct) is { } refusal
+                ? new AccessRequestEligibilityResponse(false, AccessRequestProblems.CodeOf(refusal), AccessRequestRules.ExplainToRequester(refusal))
+                : new AccessRequestEligibilityResponse(true, null, null);
+        }
+        catch (SecretNotFoundException)
+        {
+            return UiApiProblem.NotFound();
+        }
+    }
+
+    /// <summary>
+    /// Files a request. It records only its <c>AccessRequested</c> row. A decoy trips and answers 404, and a
+    /// secret that does not exist answers exactly the same.
+    /// </summary>
+    [HttpPost]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<AccessRequestProblemResponse>(StatusCodes.Status404NotFound, "application/problem+json")]
+    [ProducesResponseType<AccessRequestProblemResponse>(StatusCodes.Status409Conflict, "application/problem+json")]
+    public async Task<IActionResult> File([FromBody] AccessRequestFilingRequest filing, CancellationToken ct)
+    {
+        var callerId = User.GetUserId();
+        if (callerId == Guid.Empty)
+        {
+            return StaleSession();
+        }
+
+        AccessRequestCreateResult result;
+        try
+        {
+            // The reviewer reads why this account was refused, so the vault's own access check says it.
+            var secret = await requests.SecretToRequestAsync(filing.SecretId, ct);
+            var access = await authorization.AuthorizeAsync(User, secret, VaultPolicies.SecretAccess);
+            var denialReasons = access.Failure?.FailureReasons.Select(reason => reason.Message).ToList() ?? [];
+            result = await requests.CreateAsync(filing.SecretId, callerId, User.GetUsername(), filing.Reason ?? string.Empty, denialReasons, ct);
+        }
+        catch (SecretNotFoundException)
+        {
+            return UiApiProblem.NotFound();
+        }
+
+        return result.Refusal is { } refusal ? AccessRequestProblems.FilingRefused(refusal) : NoContent();
+    }
+
     [HttpGet]
     [ProducesResponseType<AccessRequestsResponse>(StatusCodes.Status200OK, "application/json")]
     public async Task<ActionResult<AccessRequestsResponse>> Get(CancellationToken ct)
@@ -59,6 +122,7 @@ public sealed class AccessRequestsController(
     [HttpPost("{requestId:guid}/approve")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<AccessRequestProblemResponse>(StatusCodes.Status400BadRequest, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status403Forbidden, "application/problem+json")]
     [ProducesResponseType<AccessRequestProblemResponse>(StatusCodes.Status404NotFound, "application/problem+json")]
     [ProducesResponseType<AccessRequestProblemResponse>(StatusCodes.Status409Conflict, "application/problem+json")]
     public async Task<IActionResult> Approve(Guid requestId, [FromBody] AccessApprovalRequest approval, CancellationToken ct)
@@ -68,9 +132,18 @@ public sealed class AccessRequestsController(
             return StaleSession();
         }
 
-        if (!await reviewers.MayDecideAsync(User, requestId, ct))
+        if (await reviewers.FindDecidableAsync(User, requestId, ct) is not { } candidate)
         {
             return AccessRequestProblems.RequestNotFound();
+        }
+
+        // Approving shares the secret, which needs the fresh proof its reveal needs.
+        if (stepUp.IsRequired(candidate.Secret.Sensitivity, User.GetLastStrongAuthUtc(), clock.GetUtcNow()))
+        {
+            return await users.FindByIdAsync(User.GetUserId(), ct) is { } reviewer
+                ? AdministratorProblems.Problem(StatusCodes.Status403Forbidden, "step_up_required",
+                    "Confirm it's you before sharing this secret.", reviewer.TotpEnabled ? "code" : "sign_in")
+                : StaleSession();
         }
 
         if (approval.ExpiresInDays is not { } days || days is < 0 or > AccessRequestService.LongestExpiryDays)

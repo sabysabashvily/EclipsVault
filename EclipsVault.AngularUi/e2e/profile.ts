@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Page, Route } from '@playwright/test';
 import { setTimeout } from 'node:timers/promises';
 import { clearSignInBudget, readProfileTotpStep } from './profile-state';
 import { currentTotpStep, freshTotp, totp } from './totp';
@@ -68,56 +68,39 @@ export class ProfilePage {
   }
 
   /**
-   * The id of the operation this page is preparing. The body is read in the response predicate,
-   * because a navigation that follows the response drops it before a later read.
+   * The next operation this page prepares. The body is copied as the response passes: Chromium
+   * drops it once the page moves on, and reading it later from the response then fails. Await
+   * this before the action that prepares the operation, then await `prepared`.
    */
-  preparedOperation(): Promise<{ operationId: string }> {
-    let body: { operationId: string } | undefined;
-    let failed: unknown;
-    return this.page
-      .waitForResponse(async (response) => {
-        if (
-          !response.url().endsWith('/api/ui/profile/operations') ||
-          response.request().method() !== 'POST'
-        ) {
-          return false;
-        }
-        try {
-          body = (await response.json()) as { operationId: string };
-        } catch (error) {
-          failed = error;
-        }
-        return true;
-      })
-      .then(() => {
-        if (failed) throw failed;
-        if (!body?.operationId) throw new Error('The prepared operation had no id');
-        return body;
-      });
-  }
-
-  async themeAppearance() {
-    return this.displayName.evaluate((input) => ({
-      background: getComputedStyle(document.body).backgroundColor,
-      text: getComputedStyle(document.body).color,
-      field: getComputedStyle(input).backgroundColor,
-    }));
-  }
-
-  async recoveryAppearance() {
-    return this.codes.first().evaluate((code) => {
-      const style = getComputedStyle(code);
-      const list = getComputedStyle(code.parentElement!);
-      return {
-        background: style.backgroundColor,
-        text: style.color,
-        fontSize: style.fontSize,
-        letterSpacing: style.letterSpacing,
-        radius: style.borderRadius,
-        columns: list.gridTemplateColumns.split(' ').length,
-        gap: list.gap,
-      };
+  async watchPreparedOperation(): Promise<{ prepared: Promise<{ operationId: string }> }> {
+    let settle!: (operation: { operationId: string }) => void;
+    let fail!: (error: unknown) => void;
+    const prepared = new Promise<{ operationId: string }>((resolve, reject) => {
+      settle = resolve;
+      fail = reject;
     });
+    const isPrepare = (url: URL) => url.pathname === '/api/ui/profile/operations';
+    let captured = false;
+    const read = async (route: Route) => {
+      if (route.request().method() !== 'POST' || captured) {
+        await route.fallback();
+        return;
+      }
+      captured = true;
+      try {
+        const response = await route.fetch();
+        const body = (await response.json()) as { operationId?: string };
+        await route.fulfill({ response });
+        if (!body.operationId) throw new Error('The prepared operation had no id');
+        settle({ operationId: body.operationId });
+      } catch (error) {
+        fail(error);
+        throw error;
+      }
+    };
+    void prepared.finally(() => this.page.unroute(isPrepare, read));
+    await this.page.route(isPrepare, read);
+    return { prepared };
   }
 
   /** Fills the dialog with a fresh code and returns the TOTP step it used, which cannot be reused. */
@@ -155,8 +138,12 @@ export class ProfilePage {
     return this.page.getByRole('alert').filter({ hasText: text });
   }
 
+  /** Confirms the open decision dialog, whichever object its button names. */
   async confirm(): Promise<void> {
-    await this.confirmation.getByRole('button', { name: 'Continue', exact: true }).click();
+    await this.confirmation
+      .getByRole('button')
+      .filter({ hasNotText: /^Cancel$/ })
+      .click();
   }
 
   async signOutThisBrowser(): Promise<void> {
@@ -165,7 +152,7 @@ export class ProfilePage {
       (cookie) => cookie.name === 'XSRF-TOKEN',
     );
     if (!token) throw new Error('The signed-in browser has no antiforgery token');
-    await this.page.request.post('/Account/Logout', {
+    await this.page.request.post('/api/ui/auth/sign-out', {
       headers: { RequestVerificationToken: decodeURIComponent(token.value) },
     });
     await this.page.goto('/Account/Login');
@@ -231,30 +218,6 @@ export class ChangePasswordPage {
     await this.newPassword.fill(candidate);
     await this.confirmPassword.fill(candidate);
     await this.submit.click();
-  }
-
-  async meterAppearance() {
-    return this.strength.evaluate((track) => ({
-      height: getComputedStyle(track).height,
-      background: getComputedStyle(track).backgroundColor,
-      fill: getComputedStyle(track.firstElementChild!).backgroundColor,
-      full:
-        track.firstElementChild!.getBoundingClientRect().width ===
-        track.getBoundingClientRect().width,
-    }));
-  }
-
-  async revealIcon(button: 'Show password' | 'Hide password') {
-    // eslint-disable-next-line playwright/no-raw-locators -- Visual parity compares Legacy's eye icon geometry.
-    return this.page
-      .getByRole('button', { name: button, exact: true })
-      .locator('svg')
-      .evaluate((svg) =>
-        [...svg.children].map(
-          (shape) =>
-            `${shape.tagName}:${[...shape.attributes].map((attribute) => `${attribute.name}=${attribute.value}`).join(',')}`,
-        ),
-      );
   }
 }
 

@@ -1,0 +1,170 @@
+<div class="page-header">
+  <div>
+    <h1>Overview</h1>
+    @if (overview.hasValue()) {
+      <p class="page-sub">
+        Welcome back, {{ overview.value().displayName }}. Here is the vault at a glance.
+      </p>
+    }
+  </div>
+  <div class="page-actions">
+    <a class="button primary" routerLink="/Secrets/Create">New secret</a>
+  </div>
+</div>
+@if (overview.isLoading() && !overview.hasValue()) {
+  <p role="status">Loading the overview…</p>
+} @else if (overview.error() && !overview.hasValue()) {
+  <section class="panel">
+    <p role="alert">Could not load the overview. Try again.</p>
+    <button type="button" class="button" (click)="overview.reload()">Try again</button>
+  </section>
+} @else if (overview.hasValue()) {
+  @let snapshot = overview.value();
+  <div class="stat-grid">
+    <a class="stat-card" routerLink="/Secrets">
+      <span class="stat-value">{{ snapshot.totalActiveSecrets }}</span>
+      <span class="stat-label">Active secrets</span>
+      <span class="stat-detail"
+        >{{ snapshot.developmentCount }} dev · {{ snapshot.stagingCount }} staging ·
+        {{ snapshot.productionCount }} prod</span
+      >
+    </a>
+    <a class="stat-card" [class.attention]="expiring() > 0" routerLink="/Secrets">
+      <span class="stat-value">{{ expiring() }}</span>
+      <span class="stat-label">Expiring within 7 days</span>
+      <span class="stat-detail">Shredded automatically at TTL</span>
+    </a>
+    @if (mayOpenAuditLog()) {
+      <a class="stat-card" [class.alert]="critical() > 0" routerLink="/Audit">
+        <span class="stat-value">{{ critical() }}</span>
+        <span class="stat-label">Critical alerts (24 h)</span>
+        <span class="stat-detail">{{
+          critical() > 0 ? 'Review the audit log →' : 'All quiet'
+        }}</span>
+      </a>
+    } @else {
+      <div class="stat-card" [class.alert]="critical() > 0">
+        <span class="stat-value">{{ critical() }}</span>
+        <span class="stat-label">Critical alerts (24 h)</span>
+        <span class="stat-detail">{{
+          critical() > 0 ? 'Reported to administrators' : 'All quiet'
+        }}</span>
+      </div>
+    }
+    @if (mayManageUsers() && snapshot.staffAccounts !== null) {
+      <a class="stat-card" routerLink="/Admin/Users">
+        <span class="stat-value">{{ snapshot.staffAccounts }}</span>
+        <span class="stat-label">Staff accounts</span>
+        <span class="stat-detail">Manage users →</span>
+      </a>
+    }
+  </div>
+
+  @if (expiringSoon().length > 0) {
+    <section class="panel">
+      <div class="panel-header">
+        <h2 id="overview-expiring">Expiring soon</h2>
+        <span class="sort-note">Soonest first</span>
+      </div>
+      <p class="panel-lede">
+        <strong>{{ expiring() }} secret{{ expiring() === 1 ? '' : 's' }}</strong> will expire within
+        7 days and be shredded automatically. Rotate them to extend their life.
+      </p>
+      <ul class="attention-list" aria-labelledby="overview-expiring">
+        @for (secret of expiringSoon(); track secret.secretId) {
+          <!-- The vault's window includes exactly 7 days, where an expiry pill would turn plain. -->
+          @let tone = secret.expiry.tone ?? 'warn';
+          <li>
+            <span class="attention-icon tone-{{ tone }}" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v5l3 2" />
+              </svg>
+            </span>
+            <div class="attention-body">
+              <p class="attention-title mono">{{ secret.name }}</p>
+              <p class="attention-meta">
+                <span class="badge env-{{ secret.environment.toLowerCase() }}">{{
+                  secret.environment
+                }}</span>
+              </p>
+            </div>
+            <span class="badge tone-{{ tone }} attention-chip" [title]="secret.expiry.title">{{
+              secret.expiry.text
+            }}</span>
+            <div class="attention-actions">
+              <a class="button small" [href]="'/Secrets/Details/' + secret.secretId">Rotate</a>
+            </div>
+          </li>
+        }
+      </ul>
+      <a class="button small all-link" routerLink="/Secrets">All secrets</a>
+    </section>
+  }
+
+  <div class="two-col">
+    <section class="panel">
+      <div class="panel-header">
+        <h2 id="overview-activity">
+          {{ snapshot.activityScope === 'vault' ? 'Recent activity' : 'Your recent activity' }}
+        </h2>
+        <div class="panel-header-actions">
+          <span class="sort-note">Newest first</span>
+          @if (mayOpenAuditLog()) {
+            <a class="button small" routerLink="/Audit">Full audit log</a>
+          }
+        </div>
+      </div>
+      @if (events().length === 0) {
+        <p class="muted">No recorded activity yet.</p>
+      } @else {
+        <ul class="activity-list" aria-labelledby="overview-activity">
+          @for (event of events(); track $index) {
+            <li class="activity-item" [class.critical]="event.isCritical">
+              @if (event.isCritical) {
+                <span class="critical-mark">
+                  <svg aria-hidden="true" viewBox="0 0 24 24">
+                    <path
+                      d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"
+                    />
+                    <path d="M12 9v4M12 17h.01" />
+                  </svg>
+                  Critical
+                </span>
+              }
+              <span [class]="'badge tone-' + event.tone">{{ event.actionLabel }}</span>
+              <span class="activity-target mono">{{ event.resource }}</span>
+              <span class="activity-meta">{{ event.actor }} · {{ event.ago }}</span>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+
+    <section class="panel">
+      <div class="panel-header"><h2>Quick actions</h2></div>
+      <div class="quick-actions">
+        <a class="quick-action" routerLink="/Secrets">
+          <strong>Browse secrets</strong>
+          <span class="muted">Metadata only — reveals are audited</span>
+        </a>
+        <a class="quick-action" routerLink="/Secrets/Create">
+          <strong>Store a new secret</strong>
+          <span class="muted">AES-256-GCM envelope encryption</span>
+        </a>
+        @if (mayManageUsers()) {
+          <a class="quick-action" routerLink="/Admin/CreateUser">
+            <strong>Provision a user</strong>
+            <span class="muted">TOTP enrollment at first sign-in</span>
+          </a>
+        }
+        @if (mayManageNetworks()) {
+          <a class="quick-action" routerLink="/Admin/Networks">
+            <strong>Manage trusted networks</strong>
+            <span class="muted">Trust your current IP, lift blocks</span>
+          </a>
+        }
+      </div>
+    </section>
+  </div>
+}

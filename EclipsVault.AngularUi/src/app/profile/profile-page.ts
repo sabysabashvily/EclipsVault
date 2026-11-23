@@ -84,6 +84,13 @@ export class ProfilePage {
       action === 'avatar'
         ? 'Remove your profile picture and go back to the generated avatar?'
         : "Sign out of all sessions now? You'll need to sign in again.",
+      action === 'avatar'
+        ? { title: 'Remove picture?', confirm: 'Remove picture', note: 'Saved to the audit log' }
+        : {
+            title: 'Sign out everywhere?',
+            confirm: 'Sign out everywhere',
+            note: 'Saved to the audit log',
+          },
     );
   }
 
@@ -105,6 +112,11 @@ export class ProfilePage {
       {
         confirmation:
           "Reset your authenticator? You'll be signed out and set up a new one at next sign-in.",
+        decision: {
+          title: 'Reset authenticator?',
+          confirm: 'Reset authenticator',
+          note: 'Saved to the audit log',
+        },
         change: { kind: 'ResetAuthenticator' },
         intent:
           'Reset your authenticator and recovery codes. Every session, including this one, will be signed out.',
@@ -121,10 +133,16 @@ export class ProfilePage {
   }
 
   protected replaceRecoveryCodes(event: Event): void {
+    const replacing = +(this.profile.value()?.recoveryCodesRemaining ?? 0) > 0;
     this.changes().start<NewRecoveryCodes>(
       {
         confirmation:
           'Generate a new set of recovery codes? Any codes you already have will immediately stop working.',
+        decision: {
+          title: replacing ? 'Replace recovery codes?' : 'Generate recovery codes?',
+          confirm: replacing ? 'Replace recovery codes' : 'Generate recovery codes',
+          note: 'Saved to the audit log',
+        },
         change: { kind: 'ReplaceRecoveryCodes' },
         intent:
           'Generate new recovery codes. Your current codes stop working, and any other signed-in devices will be signed out.',

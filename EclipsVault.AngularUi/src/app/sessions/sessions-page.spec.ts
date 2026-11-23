@@ -79,7 +79,7 @@ describe('SessionsPage', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0].textContent).toContain('Chrome on macOS');
     expect(rows[0].textContent).toContain('This device');
-    expect(rows[0].textContent).toContain('Current');
+    expect(rows[0].textContent).toContain('last seen');
     expect(rows[0].querySelector('button')).toBeNull();
     expect(rows[1].textContent).toContain('Safari on iOS');
     expect(rows[1].textContent).toContain('198.51.100.2');
@@ -87,6 +87,27 @@ describe('SessionsPage', () => {
     expect(button(page, 'Sign out')).toBeDefined();
     expect(button(page, 'Sign out all other sessions')).toBeDefined();
     expect(page.querySelector('a')?.getAttribute('href')).toBe('/Profile');
+  });
+
+  it('lists this device before the others whatever order the server used', async () => {
+    const { fixture, page } = render();
+    backend.expectOne('/api/ui/sessions').flush({ sessions: [other, current] });
+    await fixture.whenStable();
+    const rows = page.querySelectorAll('li');
+
+    expect(rows[0].textContent).toContain('Chrome on macOS');
+    expect(rows[0].textContent).toContain('This device');
+    expect(rows[1].textContent).toContain('Safari on iOS');
+    expect(button(page, 'Sign out all other sessions')).toBeDefined();
+  });
+
+  it('hides sign out all other sessions when this device is the only one', async () => {
+    const { fixture, page } = render();
+    backend.expectOne('/api/ui/sessions').flush({ sessions: [current] });
+    await fixture.whenStable();
+
+    expect(page.querySelectorAll('li')).toHaveLength(1);
+    expect(page.textContent).not.toContain('Sign out all other sessions');
   });
 
   it('Cancel sends no request and keeps the device in the list', async () => {

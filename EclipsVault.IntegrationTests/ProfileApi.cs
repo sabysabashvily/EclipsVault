@@ -79,21 +79,9 @@ internal static class ProfileApi
     public static async Task<VaultSession> SecondSessionAsync(VaultFixture vault, ProfileAccount owner, string address)
     {
         var session = vault.CreateSession(source: IPAddress.Parse(address));
-        var login = await session.Client.GetStringAsync("/Account/Login");
-        var password = await session.Client.PostAsync("/Account/Login", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(login, "/Account/Login"),
-            ["Username"] = owner.Stored.Username,
-            ["Password"] = owner.Password,
-        }));
-        Assert.Equal("/Account/Totp", password.Headers.Location?.OriginalString);
-        var page = await session.Client.GetStringAsync("/Account/Totp");
-        var verified = await session.Client.PostAsync("/Account/Totp", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = VaultFixture.FormTokenOf(page, "/Account/Totp"),
-            ["Code"] = await FreshAuthenticatorCodeAsync(owner),
-        }));
-        Assert.Equal(HttpStatusCode.Redirect, verified.StatusCode);
+        var pending = await AuthApi.PendingAsync(session, owner.Stored.Username, owner.Password);
+        var verified = await AuthApi.PostAsync(session, "/api/ui/auth/totp", pending, new { code = await FreshAuthenticatorCodeAsync(owner) });
+        Assert.Equal(HttpStatusCode.OK, verified.StatusCode);
         Assert.NotNull(session.SessionCookie);
         return session;
     }

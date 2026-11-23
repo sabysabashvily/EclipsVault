@@ -26,6 +26,7 @@ public class ActivityDescriberTests
     [InlineData(AuditAction.LoginSucceeded, ActivityCategory.Authentication, ActivitySeverity.Routine)]
     [InlineData(AuditAction.PasskeyLogin, ActivityCategory.Authentication, ActivitySeverity.Routine)]
     [InlineData(AuditAction.SecretRevealed, ActivityCategory.Secrets, ActivitySeverity.Notable)]
+    [InlineData(AuditAction.SecretAccessDenied, ActivityCategory.Secrets, ActivitySeverity.Notable)]
     [InlineData(AuditAction.SecretShared, ActivityCategory.Sharing, ActivitySeverity.Notable)]
     [InlineData(AuditAction.PasswordChanged, ActivityCategory.Account, ActivitySeverity.Notable)]
     [InlineData(AuditAction.HoneyTokenTripped, ActivityCategory.Security, ActivitySeverity.Critical)]
@@ -37,6 +38,16 @@ public class ActivityDescriberTests
         var description = ActivityDescriber.Describe(action);
         Assert.Equal(category, description.Category);
         Assert.Equal(severity, description.Severity);
+    }
+
+    [Theory]
+    [InlineData(AuditAction.AuditLogViewed, "Viewed the audit log")]
+    [InlineData(AuditAction.AuditChainVerified, "Verified the audit chain")]
+    public void Access_to_the_audit_trail_is_routine_administration(AuditAction action, string title)
+    {
+        Assert.Equal(
+            new ActivityDescription(ActivityCategory.Administration, title, ActivitySeverity.Routine),
+            ActivityDescriber.Describe(action));
     }
 
     [Fact]

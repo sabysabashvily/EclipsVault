@@ -1,6 +1,7 @@
 using System.Reflection;
 using EclipsVault.Core.Application.Networks;
 using EclipsVault.Web.Controllers;
+using EclipsVault.Web.Controllers.Ui;
 using EclipsVault.Web.Middleware;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
@@ -16,7 +17,7 @@ namespace EclipsVault.Web.Authorization;
 /// grant each replica its own budget. It is a filter rather than middleware so the throttled
 /// surface stays declared on the controller it protects, and async so the budget can live in Redis.
 ///
-/// Only unsafe methods other than the existing logout action spend the budget. Logout must remain
+/// Only unsafe methods other than the two sign-out actions spend the budget. Sign-out must remain
 /// available when a shared source exhausts its guessing budget, and does not test a credential.
 /// The brute-force surface is the POST that submits a
 /// password, TOTP, recovery code, or passkey assertion — a GET renders a form or is the SSO
@@ -26,8 +27,11 @@ namespace EclipsVault.Web.Authorization;
 /// </summary>
 public sealed class AuthThrottleFilter : IAsyncActionFilter
 {
-    private static readonly MethodInfo LogoutAction = typeof(AccountController)
-        .GetMethod(nameof(AccountController.Logout), [typeof(CancellationToken)])!;
+    private static readonly MethodInfo[] SignOutActions =
+    [
+        typeof(AccountController).GetMethod(nameof(AccountController.Logout), [typeof(CancellationToken)])!,
+        typeof(AuthController).GetMethod(nameof(AuthController.SignOutSession), [typeof(CancellationToken)])!,
+    ];
 
     private readonly IAuthThrottle _throttle;
     private readonly ILogger<AuthThrottleFilter> _logger;
@@ -44,7 +48,7 @@ public sealed class AuthThrottleFilter : IAsyncActionFilter
         // Match the resolved method, not a URL or action-name string: every other unsafe action,
         // including an unknown/new action or another controller's Logout, stays metered by default.
         if (HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method)
-            || context.ActionDescriptor is ControllerActionDescriptor action && action.MethodInfo == LogoutAction)
+            || context.ActionDescriptor is ControllerActionDescriptor action && SignOutActions.Contains(action.MethodInfo))
         {
             await next();
             return;

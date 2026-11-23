@@ -1,6 +1,6 @@
 import { DestroyRef, Component, inject, viewChild } from '@angular/core';
 import { Observable } from 'rxjs';
-import { ConfirmationDialog } from '../shared/confirmation-dialog';
+import { ConfirmationDialog, type DecisionOptions } from '../shared/confirmation-dialog';
 import { ProfileWrites } from './profile-writes';
 import type { PrepareChange, PreparedOperation, VerifiedOperation } from './profile-types';
 import { VerificationDialog } from './verification-dialog';
@@ -9,6 +9,8 @@ import { VerificationDialog } from './verification-dialog';
 export interface CredentialChangeFlow<T> {
   /** Asked first in the shared destructive confirmation; an additive change has none. */
   readonly confirmation?: string;
+  /** How that dialog names the change. Omitted, it keeps Cancel and Continue. */
+  readonly decision?: DecisionOptions;
   readonly change: PrepareChange;
   /** The frozen intent the verification dialog shows. */
   readonly intent: string;
@@ -53,7 +55,7 @@ export class CredentialChange {
     this.flow = flow;
     this.opener = opener;
     this.active = true;
-    if (flow.confirmation) this.confirmation().open(flow.confirmation);
+    if (flow.confirmation) this.confirmation().open(flow.confirmation, flow.decision ?? {});
     else this.prepare();
   }
 

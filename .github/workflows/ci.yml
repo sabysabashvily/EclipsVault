@@ -80,7 +80,7 @@ jobs:
   # and race tests start both engines themselves, so both legs run those.
   integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -252,8 +252,9 @@ jobs:
 
   # The vault targets two database engines, so every model change needs a migration in BOTH sets.
   # One that reaches only one engine leaves the schemas silently different, and nothing notices
-  # until a deployment on the other engine hits a column that was never created. Neither check
-  # needs a database — they compare the model to the committed snapshot.
+  # until a deployment on the other engine hits a column that was never created. None of these
+  # checks needs a database: the first two compare the model to the committed snapshot, and the
+  # last compares the committed idempotent scripts to a fresh generation.
   migrations:
     runs-on: ubuntu-latest
     steps:
@@ -267,8 +268,8 @@ jobs:
       - name: Restore (locked)
         run: dotnet restore --locked-mode
 
-      - name: Install EF tools
-        run: dotnet tool install --global dotnet-ef
+      - name: Restore local tools
+        run: dotnet tool restore
 
       - name: SQL Server migrations match the model
         run: dotnet ef migrations has-pending-model-changes -p EclipsVault.Infrastructure -s EclipsVault.Web -c EclipsVaultDbContext
@@ -277,6 +278,39 @@ jobs:
         env:
           ECLIPSVAULT_DESIGN_PROVIDER: Postgres
         run: dotnet ef migrations has-pending-model-changes -p EclipsVault.Migrations.Postgres -s EclipsVault.Web -c EclipsVaultDbContext
+
+      - name: SQL Server batch splitter keeps an operation in its own batch
+        run: python3 -I -m unittest discover -s db/sqlserver -p 'test_*.py' -v
+
+      # A model change that adds a migration and forgets to regenerate db/ leaves reviewers and
+      # DBAs reading SQL for a schema the vault no longer has. The message names the command that
+      # rewrites the file, which is the same command db/README.md gives.
+      - name: Committed scripts match a fresh idempotent generation
+        run: |
+          set -eu
+          tmp="$(mktemp -d)"
+          dotnet ef migrations script --idempotent \
+            -p EclipsVault.Infrastructure -s EclipsVault.Web -c EclipsVaultDbContext \
+            -o "$tmp/sqlserver.sql"
+          # SQL Server compiles one batch before running it. The splitter puts each operation
+          # in its own batch so a column added and then updated in one migration can apply.
+          python3 -I db/sqlserver/split_batches.py "$tmp/sqlserver.sql"
+          ECLIPSVAULT_DESIGN_PROVIDER=Postgres \
+            dotnet ef migrations script --idempotent \
+            -p EclipsVault.Migrations.Postgres -s EclipsVault.Web -c EclipsVaultDbContext \
+            -o "$tmp/postgres.sql"
+          failed=0
+          if ! cmp -s "$tmp/sqlserver.sql" db/sqlserver/migrations.sql; then
+            echo "::error::db/sqlserver/migrations.sql differs from a fresh generation. Regenerate it with: dotnet tool restore && dotnet ef migrations script --idempotent -p EclipsVault.Infrastructure -s EclipsVault.Web -c EclipsVaultDbContext -o db/sqlserver/migrations.sql && python3 -I db/sqlserver/split_batches.py db/sqlserver/migrations.sql"
+            diff -u db/sqlserver/migrations.sql "$tmp/sqlserver.sql" | head -n 80 || true
+            failed=1
+          fi
+          if ! cmp -s "$tmp/postgres.sql" db/postgres/migrations.sql; then
+            echo "::error::db/postgres/migrations.sql differs from a fresh generation. Regenerate it with: dotnet tool restore && ECLIPSVAULT_DESIGN_PROVIDER=Postgres dotnet ef migrations script --idempotent -p EclipsVault.Migrations.Postgres -s EclipsVault.Web -c EclipsVaultDbContext -o db/postgres/migrations.sql"
+            diff -u db/postgres/migrations.sql "$tmp/postgres.sql" | head -n 80 || true
+            failed=1
+          fi
+          exit "$failed"
 
   security-scan:
     runs-on: ubuntu-latest
@@ -325,6 +359,17 @@ jobs:
       - name: Audit the SBOM tool's npm dependencies
         working-directory: .github/sbom
         run: npm audit --audit-level=high
+
+      # Framework libraries ship in the runtime image, not as NuGet packages, so the audits above
+      # cannot see a .NET security patch. The fix is to move the Dockerfile pin. These run last, and
+      # even when an audit above failed, so one run reports every package and image finding.
+      - name: .NET image pin check tests
+        if: ${{ !cancelled() }}
+        run: python3 -I -m unittest discover -s .github -p 'test_dotnet_image_pin.py' -v
+
+      - name: Pinned .NET images are not behind a security release
+        if: ${{ !cancelled() }}
+        run: python3 -I .github/dotnet-image-pin.py
 
   # The hook that stops coding agents running destructive git commands is itself security code,
   # and its first version had a bypass that only a test exposed. Run its test table on every change

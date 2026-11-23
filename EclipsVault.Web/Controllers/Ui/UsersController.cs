@@ -184,11 +184,8 @@ public sealed class UsersController(IUserAdminService users, AdministratorStepUp
         }
         catch (AuditWriteFailedException)
         {
+            // Signing yourself out this way, the Users page carries the warning on to Login as ?signOut=revoked_unrecorded.
             const string warning = "All of the user's sessions were revoked, but the vault couldn't record it in the audit trail.";
-            if (userId == User.GetUserId())
-            {
-                this.FlashError(warning);
-            }
             return AdministratorProblems.Problem(StatusCodes.Status503ServiceUnavailable, "revoked_unrecorded", warning);
         }
         finally

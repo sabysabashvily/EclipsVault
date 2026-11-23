@@ -93,6 +93,11 @@ public static class DependencyInjection
             ? new PostgresAuditChainLocker()
             : new SqlServerAuditChainLocker());
 
+        // Keeps work that spans several transactions, such as a master key rotation, alone across replicas.
+        services.AddSingleton<ISessionLocker>(_ => DatabaseProvider.IsPostgres(provider)
+            ? new PostgresSessionLocker()
+            : new SqlServerSessionLocker());
+
         // The one place standalone audit rows are written (fail-closed). It commits through the
         // group committer, which is why the same instance is both a singleton and the hosted
         // service: the queue and the loop draining it are one object.
@@ -105,6 +110,7 @@ public static class DependencyInjection
         services.AddScoped<AuthenticationFailures>();
 
         services.AddScoped<ISecretRepository, SecretRepository>();
+        services.AddScoped<IManagedPrincipalLock, ManagedPrincipalLock>();
         services.AddScoped<ISecretGrantRepository, SecretGrantRepository>();
         services.AddScoped<IServiceAccountRepository, ServiceAccountRepository>();
         services.AddScoped<IServiceAccountChanges, ServiceAccountChanges>();

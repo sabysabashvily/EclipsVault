@@ -156,11 +156,11 @@ public sealed class ServiceAccountsApiTests(VaultFixture vault)
         var stale = vault.CreateSession(SessionApi.WithStrongAuthenticationAt(vault, admin, DateTimeOffset.UtcNow.AddMinutes(-11)), IPAddress.Parse("198.18.111.25"));
         await AdministratorFreshnessTests.AssertStepUpAsync(await ServiceAccountsApi.IssueKeyAsync(stale.Client, Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")), "sign_in");
         await AdministratorFreshnessTests.AssertStepUpAsync(await ServiceAccountsApi.SetEnabledAsync(stale.Client, Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), true), "sign_in");
-        Assert.Equal(HttpStatusCode.Redirect, (await UiApiRequest.WriteWithAntiforgeryAsync(stale, HttpMethod.Post, "/Account/Logout")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await UiApiRequest.WriteWithAntiforgeryAsync(stale, HttpMethod.Post, "/api/ui/auth/sign-out")).StatusCode);
         Assert.Null(stale.SessionCookie);
         var login = await stale.Client.GetAsync("/Account/Login?ReturnUrl=%2FServiceAccounts");
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
-        Assert.Contains("/ServiceAccounts", await login.Content.ReadAsStringAsync());
+        Assert.Contains("<app-root>", await login.Content.ReadAsStringAsync(), StringComparison.Ordinal);
     }
 
     [Fact]

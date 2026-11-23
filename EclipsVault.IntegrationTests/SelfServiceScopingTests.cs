@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -72,7 +73,7 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         Assert.DoesNotContain("198.51.100.114", historyBody);
         Assert.Contains("Your account was unlocked", activityBody);
         // The global audit retains the actual source; self-service projections hide it.
-        Assert.Contains("198.51.100.114", await admin.GetStringAsync("/Audit"));
+        Assert.Contains("198.51.100.114", await admin.GetStringAsync("/api/ui/audit"));
         using var history = JsonDocument.Parse(historyBody);
         AssertSummary(history.RootElement, 1, 1, 1, 2, needsAttention: true, lastFailureKind: JsonValueKind.String);
         var unlocked = Assert.Single(history.RootElement.GetProperty("events").EnumerateArray(),
@@ -247,10 +248,6 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         const string unknown = "it-scope-does-not-exist";
         const string source = "198.51.100.90";
         await FailSignInAsync(unknown, source);
-        // The global Audit log proves the fail-closed write occurred, without inspecting a DB row.
-        var audit = await admin.GetStringAsync("/Audit");
-        Assert.Contains(unknown, audit);
-        Assert.Contains(source, audit);
 
         var afterA = await ReadEndpointsAsync(a.Client);
         Assert.Equal(beforeA, afterA);
@@ -273,6 +270,11 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
             Assert.DoesNotContain(unknown, body);
             Assert.DoesNotContain(source, body);
         });
+        // The global Audit log proves the fail-closed write occurred, without inspecting a DB row.
+        // It is read last because opening it is itself the administrator's recorded activity.
+        var audit = await admin.GetStringAsync("/api/ui/audit");
+        Assert.Contains(unknown, audit);
+        Assert.Contains(source, audit);
     }
 
     [Fact]
@@ -288,19 +290,12 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         const string unknown = "it-scope-authenticated-does-not-exist";
         const string source = "198.51.100.97";
         var signedIn = vault.CreateSession(Assert.IsType<Cookie>(a.SessionCookie), IPAddress.Parse(source));
-        // Login's GET redirects a signed-in caller. A token from Secrets is valid for their
-        // current identity and proves this unsafe request genuinely carries A's session.
-        var response = await PostFormAsync(signedIn.Client, "/Account/Login", new()
-        {
-            ["Username"] = unknown,
-            ["Password"] = "An-intentionally-incorrect-password-57!",
-        }, "/Secrets");
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("Invalid username or password.", await response.Content.ReadAsStringAsync());
+        // Login's GET redirects a signed-in caller. A token issued to their current identity
+        // proves this unsafe request genuinely carries A's session.
+        var response = await UiApiRequest.SendWithTokenAsync(signedIn.Client, await UiApiRequest.AntiforgeryTokenAsync(signedIn.Client),
+            HttpMethod.Post, "/api/ui/auth/password", JsonContent.Create(new { username = unknown, password = "An-intentionally-incorrect-password-57!" }));
+        await UiApiFailureContractTests.AssertProblemAsync(response, 400, "sign_in_failed");
         Assert.NotNull(signedIn.SessionCookie);
-        var audit = await admin.GetStringAsync("/Audit");
-        Assert.Contains(unknown, audit);
-        Assert.Contains(source, audit);
 
         var afterA = await ReadEndpointsAsync(a.Client);
         Assert.All(afterA, body => Assert.DoesNotContain(source, body));
@@ -311,6 +306,10 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         var afterAdmin = await ReadEndpointsAsync(admin);
         Assert.All(afterAdmin, body => Assert.DoesNotContain(source, body));
         Assert.Equal(beforeAdmin, afterAdmin);
+        // Read last: opening the audit log is itself the administrator's recorded activity.
+        var audit = await admin.GetStringAsync("/api/ui/audit");
+        Assert.Contains(unknown, audit);
+        Assert.Contains(source, audit);
     }
 
     [Fact]
@@ -353,12 +352,9 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
         var response = await callback.Client.GetAsync("/Account/ExternalCallback");
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/Account/Login", response.Headers.Location?.OriginalString);
+        Assert.Equal("/Account/Login?sso=refused", response.Headers.Location?.OriginalString);
         Assert.Null(callback.Cookies.GetCookies(callback.Client.BaseAddress!)[cookieName]);
         Assert.NotNull(callback.SessionCookie);
-        var audit = await admin.GetStringAsync("/Audit");
-        Assert.Contains(unknown, audit);
-        Assert.Contains(source, audit);
         var afterA = await ReadEndpointsAsync(a.Client);
         Assert.All(afterA, body =>
         {
@@ -380,6 +376,10 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
             Assert.DoesNotContain(source, body);
         });
         Assert.Equal(beforeAdmin, afterAdmin);
+        // Read last: opening the audit log is itself the administrator's recorded activity.
+        var audit = await admin.GetStringAsync("/api/ui/audit");
+        Assert.Contains(unknown, audit);
+        Assert.Contains(source, audit);
     }
 
     [Fact]
@@ -463,33 +463,18 @@ public sealed class SelfServiceScopingTests(VaultFixture vault)
     private async Task FailSignInAsync(string username, string source)
     {
         var anonymous = vault.CreateSession(source: IPAddress.Parse(source));
-        var response = await PostFormAsync(anonymous.Client, "/Account/Login", new()
-        {
-            ["Username"] = username,
-            ["Password"] = "An-intentionally-incorrect-password-57!",
-        });
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("Invalid username or password.", await response.Content.ReadAsStringAsync());
+        var response = await AuthApi.PasswordAsync(anonymous, username, "An-intentionally-incorrect-password-57!");
+        await UiApiFailureContractTests.AssertProblemAsync(response, 400, "sign_in_failed");
         Assert.Null(anonymous.SessionCookie);
     }
 
     private async Task<VaultSession> SignInWithRecoveryCodeAsync(string username, string password, string code, string source)
     {
         var session = vault.CreateSession(source: IPAddress.Parse(source));
-        var passwordStep = await PostFormAsync(session.Client, "/Account/Login", new() { ["Username"] = username, ["Password"] = password });
-        Assert.Equal(HttpStatusCode.Redirect, passwordStep.StatusCode);
-        Assert.Equal("/Account/Totp", passwordStep.Headers.Location?.OriginalString);
-        var secondFactor = await PostFormAsync(session.Client, "/Account/RecoveryCode", new() { ["Code"] = code });
-        Assert.Equal(HttpStatusCode.Redirect, secondFactor.StatusCode);
-        Assert.Equal("/Secrets", secondFactor.Headers.Location?.OriginalString);
+        var pending = await AuthApi.PendingAsync(session, username, password);
+        var secondFactor = await AuthApi.JsonAsync(await AuthApi.PostAsync(session, "/api/ui/auth/recovery-code", pending, new { code }));
+        Assert.Equal("/Secrets", secondFactor.GetProperty("redirect").GetString());
         return session;
-    }
-
-    private static async Task<HttpResponseMessage> PostFormAsync(HttpClient client, string path, Dictionary<string, string> fields, string? formPage = null)
-    {
-        var page = formPage ?? path;
-        fields["__RequestVerificationToken"] = VaultFixture.FormTokenOf(await client.GetStringAsync(page), page);
-        return await client.PostAsync(path, new FormUrlEncodedContent(fields));
     }
 
     private Guid AccountIdOf(VaultSession session)

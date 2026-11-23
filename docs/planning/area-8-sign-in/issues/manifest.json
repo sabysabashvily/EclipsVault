@@ -1,0 +1,122 @@
+{
+ "status": "draft",
+ "confirmed": true,
+ "confirmedOn": "2026-11-11",
+ "repository": "sabysabashvily/EclipsVault",
+ "publishAfter": "Area 7's specs are published (8a is blocked by 7a) and GPT Sol 6.1 closes the r2 corrections on a fresh re-check: the owner-approved A8-3 restoration/guard revision, the A8-6 ticket split and Area 9 reset-message alignment. Nothing is published before that gate.",
+ "placeholders": {
+  "#SPEC": "this part's parent issue number",
+  "#SPEC7A": "part 7a parent issue number",
+  "#SPEC7B": "part 7b parent issue number",
+  "#SPEC7C": "part 7c parent issue number",
+  "#SPEC8A": "part 8a parent issue number",
+  "#SPEC8B": "part 8b parent issue number",
+  "#T<n>": "ticket n of the same part"
+ },
+ "parts": [
+  {
+   "key": "8a",
+   "parent": {
+    "title": "Angular migration — Area 8a: Sign-in",
+    "file": "8a/spec.md"
+   },
+   "blockedByExternal": [
+    "#SPEC7A"
+   ],
+   "tickets": [
+    {
+     "order": 1,
+     "title": "Area 8a · 1/5: Sign-in rules on the server and the auth UI API",
+     "file": "8a/ticket-1.md",
+     "blockedByOrders": []
+    },
+    {
+     "order": 2,
+     "title": "Area 8a · 2/5: Sign-in pages served by the Angular UI",
+     "file": "8a/ticket-2.md",
+     "blockedByOrders": [
+      1
+     ]
+    },
+    {
+     "order": 3,
+     "title": "Area 8a · 3/5: Break-glass recovery served by the Angular UI",
+     "file": "8a/ticket-3.md",
+     "blockedByOrders": [
+      2
+     ]
+    },
+    {
+     "order": 4,
+     "title": "Area 8a · 4/5: Browser test through a real identity provider (Cursor, test infrastructure)",
+     "file": "8a/ticket-4.md",
+     "blockedByOrders": [
+      2
+     ]
+    },
+    {
+     "order": 5,
+     "title": "Area 8a · 5/5: Verify part 8a and prepare its PR",
+     "file": "8a/ticket-5.md",
+     "blockedByOrders": [
+      3,
+      4
+     ]
+    }
+   ]
+  },
+  {
+   "key": "8b",
+   "parent": {
+    "title": "Angular migration — Area 8b: Provisioning by invitation",
+    "file": "8b/spec.md"
+   },
+   "blockedByParts": [
+    "8a"
+   ],
+   "closes": [
+    117
+   ],
+   "tickets": [
+    {
+     "order": 1,
+     "title": "Area 8b · 1/4: Invited accounts and invitations",
+     "file": "8b/ticket-1.md",
+     "blockedByOrders": []
+    },
+    {
+     "order": 2,
+     "title": "Area 8b · 2/4: Account activation on the server",
+     "file": "8b/ticket-2.md",
+     "blockedByOrders": [
+      1
+     ]
+    },
+    {
+     "order": 3,
+     "title": "Area 8b · 3/4: Activation, New user and invitations served by the Angular UI",
+     "file": "8b/ticket-3.md",
+     "blockedByOrders": [
+      2
+     ]
+    },
+    {
+     "order": 4,
+     "title": "Area 8b · 4/4: Verify part 8b and prepare its PR",
+     "file": "8b/ticket-4.md",
+     "blockedByOrders": [
+      3
+     ]
+    }
+   ]
+  }
+ ],
+ "followUps": [],
+ "notesForCoordinator": [
+  "F1 goes into Area 7a ticket 2 before Area 7 is published: logs/area-8/coordinator-handoff.md in the Area 8 grill worktree.",
+  "8a ticket 4 is a Cursor ticket (test infrastructure only); if Cursor cannot take it, 8a ticket 5 does it.",
+  "Link 8a's spec to #93 (its SignInRefusalAuditTests obligation) and 8b's to #117.",
+  "Q27 (2026-11-12) is folded. A8-1 is accepted. A8-5 is Area 9's record; do not edit ADR-0017 from this worktree.",
+  "8a ticket 2 moves the account menu, StaleSessionSignOut and the step-up dialog's Sign in again onto POST /api/ui/auth/sign-out. Area 9 may delete /Account/Logout only after those three callers are gone. Sign-out everywhere uses ?signOut=everywhere, revoked_unrecorded and everywhere_incomplete. sign_out_incomplete stays the local-clear sentence. The authenticator-reset sentence is a one-time handoff, not a query code."
+ ]
+}

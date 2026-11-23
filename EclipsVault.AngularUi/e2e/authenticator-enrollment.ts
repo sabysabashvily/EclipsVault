@@ -11,6 +11,12 @@ export class AuthenticatorEnrollment {
 
   async confirm(code: string): Promise<void> {
     await this.page.getByLabel('Confirmation code').fill(code);
+    // The confirm is a fetch, not a form post: wait for its answer, which carries the session cookie,
+    // so a caller's next navigation or cookie copy cannot cancel or miss it.
+    const answered = this.page.waitForResponse((response) =>
+      response.url().endsWith('/api/ui/auth/enrollment/confirm'),
+    );
     await this.page.getByRole('button', { name: 'Confirm enrollment', exact: true }).click();
+    await answered;
   }
 }

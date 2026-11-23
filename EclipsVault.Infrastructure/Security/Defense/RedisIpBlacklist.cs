@@ -59,7 +59,7 @@ public sealed class RedisIpBlacklist : IIpBlacklist
     public async Task<bool> IsBlockedAsync(IPAddress address, CancellationToken ct = default)
     {
         var network = NetworkRules.ToBlockRange(address, _blockSurroundingRange).ToString();
-        return await _redis.GetDatabase().KeyExistsAsync(Key(network));
+        return await _redis.GetDatabase().KeyExistsAsync([Key(network), GuardKey(network)]) > 0;
     }
 
     public async Task<IReadOnlyList<BlockedRangeDto>> ListAsync(CancellationToken ct = default)
@@ -115,21 +115,114 @@ public sealed class RedisIpBlacklist : IIpBlacklist
         }
     }
 
-    public async Task<bool> UnblockAddressAsync(IPAddress address, CancellationToken ct = default)
+    public async Task<IRecoveryLift> LiftForRecoveryAsync(IPAddress address)
     {
-        // An address is only ever blocked under its own canonical range, so lifting that
-        // one key fully unblocks it (break-glass recovery).
-        var network = NetworkRules.ToBlockRange(address, _blockSurroundingRange).ToString();
-        var removed = await _redis.GetDatabase().KeyDeleteAsync(Key(network));
-        if (removed)
+        // A replica configured for the other block size may have keyed this address either way.
+        var networks = new[] { false, true }
+            .Select(surrounding => NetworkRules.ToBlockRange(address, surrounding).ToString())
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var db = _redis.GetDatabase();
+        var lift = Guid.NewGuid().ToString("N");
+        var removed = new List<(string Network, RedisValue Record)>();
+        var recovery = new RecoveryLift(this, db, lift, networks, removed);
+        // A removal whose reply never came may still have run, and then its record is lost.
+        string? unanswered = null;
+        try
         {
-            _logger.LogWarning("Blacklisted range {Network} lifted via break-glass recovery from {SourceIp}", network, address);
+            // Every range is guarded before any block goes. The guard has no expiry, so only settling the
+            // lift releases it, and no lift of a block touches it.
+            foreach (var network in networks)
+            {
+                await db.SetAddAsync(GuardKey(network), lift);
+            }
+
+            foreach (var network in networks)
+            {
+                unanswered = network;
+                var record = await db.StringGetDeleteAsync(Key(network));
+                unanswered = null;
+                if (record.HasValue)
+                {
+                    removed.Add((network, record));
+                    _logger.LogWarning("Blacklisted range {Network} lifted via break-glass recovery from {SourceIp}", network, address);
+                }
+            }
+        }
+        catch (Exception failure)
+        {
+            // No row can authorize a lift that failed halfway, so what went comes back, and the guard stays.
+            var restored = await recovery.RestoreRemovedAsync() && unanswered is null;
+            _logger.LogCritical(
+                "Break-glass lift failed ({Failure}) after removing {Removed}, possibly removing {Unanswered} with its record unknown (restored: {Restored}); the source stays refused by {Guard}",
+                failure.GetType().Name, string.Join(", ", removed.Select(block => block.Network)), unanswered ?? "nothing else", restored, recovery.Guard);
+            throw;
         }
 
-        return removed;
+        return recovery;
+    }
+
+    private sealed class RecoveryLift(
+        RedisIpBlacklist owner, IDatabase database, string lift, IReadOnlyList<string> guarded, IReadOnlyList<(string Network, RedisValue Record)> removed)
+        : IRecoveryLift
+    {
+        public bool Lifted => removed.Count > 0;
+
+        public string Guard => $"member {lift} of the Redis sets {string.Join(", ", guarded.Select(network => (string)owner.GuardKey(network)!))}";
+
+        public async Task ReleaseAsync()
+        {
+            foreach (var network in guarded)
+            {
+                await database.SetRemoveAsync(owner.GuardKey(network), lift);
+            }
+        }
+
+        public async Task<bool> TryRestoreAsync()
+        {
+            if (!await RestoreRemovedAsync())
+            {
+                return false;
+            }
+
+            try
+            {
+                await ReleaseAsync();
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>Puts back each removed record, keeping a block raised meanwhile. Never throws.</summary>
+        /// <returns>Whether every removed record is confirmed back as it was.</returns>
+        public async Task<bool> RestoreRemovedAsync()
+        {
+            try
+            {
+                var confirmed = true;
+                foreach (var (network, record) in removed)
+                {
+                    // A block raised meanwhile on the same range is kept, and then this one is not back as it was.
+                    confirmed &= await database.StringSetAsync(owner.Key(network), record, when: When.NotExists)
+                        || await database.StringGetAsync(owner.Key(network)) == record;
+                }
+
+                return confirmed;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
     }
 
     private RedisKey Key(string network) => $"{_prefix}:ipblock:{network}";
+
+    // Outside the ipblock: namespace, so neither listing nor any lift of a block can see or remove it.
+    private RedisKey GuardKey(string network) => $"{_prefix}:ipguard:{network}";
 
     /// <summary>Enumerates matching keys across the connected primary endpoints (admin-only, infrequent).</summary>
     private IEnumerable<RedisKey> ScanKeys(string pattern)

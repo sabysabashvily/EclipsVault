@@ -8,12 +8,14 @@ import type { components, paths } from '../ui-api/schema.generated';
 type SignIns = paths['/api/ui/sign-ins']['get']['responses'][200]['content']['application/json'];
 type SignInEvent = components['schemas']['SignInEventResponse'];
 
-const outcomes: Record<SignInEvent['outcome'], { label: string; tone: string; accent: string }> = {
-  Success: { label: 'Success', tone: 'ok', accent: '' },
-  Failed: { label: 'Failed', tone: 'warn', accent: 'sev-warn' },
-  Blocked: { label: 'Blocked', tone: 'danger', accent: 'sev-critical' },
-  Info: { label: 'Info', tone: 'muted', accent: '' },
+const outcomes: Record<SignInEvent['outcome'], { label: string; tone: string }> = {
+  Success: { label: 'Success', tone: 'ok' },
+  Failed: { label: 'Failed', tone: 'warn' },
+  Blocked: { label: 'Blocked', tone: 'danger' },
+  Info: { label: 'Info', tone: 'muted' },
 };
+
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 const methods: Record<SignInEvent['method'], string> = {
   Password: 'Password + 2FA',
@@ -61,7 +63,6 @@ export class SignInsPage {
         ...event,
         outcomeLabel: outcomes[event.outcome].label,
         outcomeTone: outcomes[event.outcome].tone,
-        accent: outcomes[event.outcome].accent,
         methodLabel: methods[event.method],
         location: locations[event.locationFlag],
         ago: relativeTime(event.timestampUtc, now),
@@ -70,9 +71,15 @@ export class SignInsPage {
     };
   });
 
-  /** The header's "N to review" count, or null when no attempt needs a second look. */
-  protected readonly toReview = computed(() => {
-    const summary = this.view()?.summary;
-    return summary?.needsAttention ? summary.suspiciousCount : null;
+  /** The line under the title: what the history holds, or what needs a second look. */
+  protected readonly context = computed(() => {
+    const model = this.view();
+    if (!model || model.events.length === 0)
+      return "Every recent attempt to sign in to your account — successful and rejected — newest first. Only your own sign-ins appear here. An attempt from a location you've never signed in from is flagged so you can spot anything you didn't do.";
+    const { summary } = model;
+    const counts = summary.needsAttention
+      ? `${count(summary.suspiciousCount, 'failed attempt', 'failed attempts')} came from places you've never signed in from`
+      : `${count(Number(summary.successCount), 'sign-in', 'sign-ins')} and ${count(summary.failedCount, 'rejected attempt', 'rejected attempts')}`;
+    return `${counts} · only your own sign-ins appear here.`;
   });
 }

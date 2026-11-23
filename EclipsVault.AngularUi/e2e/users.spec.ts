@@ -2,6 +2,7 @@ import type { BrowserContext } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { test, expect } from './fixtures';
+import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { AccountCreation } from './account-creation';
 import { AccountSignIn } from './account-sign-in';
 import { AuthenticatorEnrollment } from './authenticator-enrollment';
@@ -94,9 +95,13 @@ test('a stale administrator disables then enables through real authenticator ste
   await page.context().addCookies(administratorCookies);
   const users = new Users(page);
   await users.open();
+  await expect(users.verbs(username)).toHaveCount(0);
   await users.disable(username);
-  await users.confirm();
+  await expect(users.confirmation).toHaveAccessibleName(`Disable ${username}?`);
+  await expect(users.confirmation).toContainText('Saved to the audit log');
+  await users.confirm('Disable and sign out');
   await expect(users.row(username)).toContainText('Disabled');
+  await expect(users.verbs(username)).toHaveText(['Enable']);
   // Reuse the original stale cookie so enable still proves its own freshness rule.
   await page.context().addCookies(staleAdministratorCookies);
   await users.open();
@@ -129,6 +134,7 @@ test('unlock clears the account lockout set in the disposable database', async (
   const users = new Users(page);
   await users.open();
   await expect(users.row(username)).toContainText('Locked');
+  await expect(users.verbs(username)).toHaveText(['Unlock']);
   await users.unlock(username);
   await expect(users.status).toContainText('Lockout cleared. The user can sign in again.');
   await expect(users.row(username)).toContainText('Active');
@@ -140,7 +146,7 @@ test('Reset MFA requires enrollment on the next sign-in', async ({ page, browser
   const users = new Users(page);
   await users.open();
   await users.more(username, 'Reset MFA');
-  await users.confirm();
+  await users.confirm('Reset MFA');
   await expect(users.status).toContainText(
     'MFA was reset — the user will enroll a new authenticator at their next sign-in.',
   );
@@ -169,7 +175,7 @@ test('Force logout ends the other account session', async ({ page, browserHealth
   const users = new Users(page);
   await users.open();
   await users.more(username, 'Force logout');
-  await users.confirm();
+  await users.confirm('End their sessions');
   await expect(users.status).toContainText("All of the user's sessions were revoked.");
   const owner = await (await browserHealth.newContext()).newPage();
   await owner.context().addCookies(ownerCookies);
@@ -182,7 +188,7 @@ test('deleting the account removes its row', async ({ page }) => {
   const users = new Users(page);
   await users.open();
   await users.more(username, 'Delete user');
-  await users.confirm();
+  await users.confirm('Delete user');
   await expect(users.status).toContainText('User deleted.');
   await expect(users.row(username)).toHaveCount(0);
 });
@@ -210,20 +216,22 @@ test('Dashboard Staff accounts opens Users with a loaded avatar', async ({ page 
   await expect.poll(() => users.avatarLoaded('vault-admin')).toBe(true);
 });
 
-test('both sidebars open Users in Angular', async ({ page }) => {
+test('both sidebars open Users in Angular', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
   await page.context().addCookies(administratorCookies);
   const users = new Users(page);
-  await users.fromSidebar('/Secrets');
+  await users.fromSidebar(legacyShell);
   await expect(users.heading).toBeVisible();
   await expect(page).toHaveTitle('Users — EclipsVault');
   await users.fromSidebar('/Access');
   await expect(users.heading).toBeVisible();
 });
 
-test('both palettes open Users in Angular', async ({ page }) => {
+test('both palettes open Users in Angular', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
   await page.context().addCookies(administratorCookies);
   const users = new Users(page);
-  await users.fromPalette('/Secrets');
+  await users.fromPalette(legacyShell);
   await expect(users.heading).toBeVisible();
   await users.fromPalette('/Access');
   await expect(users.heading).toBeVisible();
@@ -249,9 +257,7 @@ test('filtering Users by you keeps the signed-in administrator visible', async (
 
 const themes: ('dark' | 'light')[] = ['dark', 'light'];
 for (const theme of themes) {
-  test(`visual parity: Users and both account forms in ${theme} appearance`, async ({
-    page,
-  }, info) => {
+  test(`Users opens both account forms in ${theme} appearance`, async ({ page }, info) => {
     await page.context().addCookies(administratorCookies);
     const users = new Users(page);
     await users.open();
@@ -278,6 +284,8 @@ for (const theme of themes) {
     const more = users.moreTrigger('vault-admin');
     await more.focus();
     await page.keyboard.press('ArrowDown');
+    await expect(users.editItem('vault-admin')).toBeFocused();
+    await page.keyboard.press('ArrowDown');
     await expect(users.forceLogout('vault-admin')).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(more).toBeFocused();
@@ -288,6 +296,31 @@ for (const theme of themes) {
     await expect(more).toBeFocused();
   });
 }
+
+test('on a phone each account is a card and Force logout opens a bottom sheet', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.context().addCookies(administratorCookies);
+  const users = new Users(page);
+  await users.open();
+  const row = users.row('vault-admin');
+  await expect(row).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
+  const name = (await row.getByText(/^vault-admin · /).boundingBox())!;
+  const status = (await row.getByText('Active', { exact: true }).boundingBox())!;
+  expect(status.y).toBeGreaterThan(name.y + name.height);
+  await users.more('vault-admin', 'Force logout');
+  // The sheet slides up; once it settles it spans the width and sits on the bottom edge.
+  await expect
+    .poll(async () => {
+      const box = await users.confirmation.boundingBox();
+      return box && [Math.round(box.x), Math.round(box.width), Math.round(box.y + box.height)];
+    })
+    .toEqual([0, 375, 800]);
+  await page.keyboard.press('Escape');
+  await expect(users.confirmation).toBeHidden();
+});
 
 test('the last enabled administrator cannot demote themselves through Angular Edit', async ({
   page,
@@ -426,10 +459,10 @@ test('own Force logout reaches sign-in and preserves an audit-failure warning', 
   browserHealth.expectConsoleError({ text: /503/, url: /\/api\/ui\/users\/.*\/sign-out$/ });
   rejectAuditWrites(true);
   try {
-    await users.confirm();
-    await expect(page).toHaveURL(/\/Account\/Login$/);
+    await users.confirm('End their sessions');
+    await expect(page).toHaveURL(/\/Account\/Login\?signOut=revoked_unrecorded$/);
     await expect(new AccountSignIn(page).warning).toContainText(
-      "All of the user's sessions were revoked, but the vault couldn't record it in the audit trail.",
+      "You have been signed out of all sessions, but the vault couldn't record it in the audit trail. Tell your administrator.",
     );
     expect((await context.cookies()).some((cookie) => cookie.name === 'EclipsVault.Session')).toBe(
       false,

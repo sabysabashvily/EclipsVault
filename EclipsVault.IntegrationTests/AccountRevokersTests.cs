@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net;
+using System.Net.Http.Json;
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Authentication;
 using EclipsVault.Core.Application.Users;
@@ -84,21 +85,17 @@ public abstract class AccountRevokersTests(VaultFixture vault)
     public async Task A_secret_step_up_renewal_preserves_the_original_version_and_cannot_outlive_sign_out()
     {
         const string username = "it-version-step-up";
-        var details = await LegacySharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-version-step-up-secret", "it-step-up-value");
+        var details = await SecretSharing.CreateSecretAsync(await vault.AdminClientAsync(), "it-version-step-up-secret", "it-step-up-value");
         // A trusted address, so the reveal depends on the session alone.
         var owner = await vault.SignInNewAccountAsync(username, IPAddress.Parse("10.52.0.73"));
         var original = SessionApi.PrincipalOf(vault, owner);
         var originalCookie = owner.SessionCookie!.Value;
         var account = await ProfileHttp.AccountAsync(vault, username);
-        var token = VaultFixture.FormTokenOf(await owner.Client.GetStringAsync(details), details);
+        var proof = await UiApiRequest.WriteWithAntiforgeryAsync(owner, HttpMethod.Post, "/api/ui/step-up",
+            JsonContent.Create(new { code = Totp.NextCode(account.TotpSecret!) }));
+        var response = await SecretDetailsApi.RevealAsync(owner.Client, details);
 
-        var response = await owner.Client.PostAsync(details.Replace("/Details/", "/StepUpReveal/", StringComparison.Ordinal),
-            new FormUrlEncodedContent(new Dictionary<string, string>
-            {
-                ["__RequestVerificationToken"] = token,
-                ["code"] = Totp.NextCode(account.TotpSecret!),
-            }));
-
+        Assert.Equal(HttpStatusCode.NoContent, proof.StatusCode);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("it-step-up-value", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
         Assert.NotEqual(originalCookie, owner.SessionCookie!.Value);
@@ -212,34 +209,22 @@ public abstract class AccountRevokersTests(VaultFixture vault)
             ClearanceLevel.TopSecret, password: password);
         var account = await ProfileHttp.AccountAsync(vault, username);
         var pending = vault.CreateSession(source: IPAddress.Parse("198.18.91.21"));
-        await SignInProof.BeginPasswordAsync(pending.Client, username, password);
-        var token = VaultFixture.FormTokenOf(await pending.Client.GetStringAsync("/Account/Totp"), "/Account/Totp");
+        var token = await AuthApi.PendingAsync(pending, username, password);
         var code = Totp.NextCode(account.TotpSecret!);
         var admin = await vault.AdminClientAsync();
         var changed = await UserAccounts.EditRoleAsync(admin, account.Id, ClearanceLevel.Standard, "ROLE-HTTP");
         Assert.Equal(HttpStatusCode.NoContent, changed.StatusCode);
-        var refused = await pending.Client.PostAsync("/Account/Totp", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = token,
-            ["Code"] = code,
-        }));
+        var refused = await AuthApi.PostAsync(pending, "/api/ui/auth/totp", token, new { code });
 
-        Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
-        Assert.Equal("/Account/Login", refused.Headers.Location?.AbsolutePath);
+        await UiApiFailureContractTests.AssertProblemAsync(refused, 401, "sign_in_expired");
         Assert.Null(pending.SessionCookie);
         Assert.Equal(HttpStatusCode.Unauthorized, (await pending.Client.GetAsync("/api/ui/me")).StatusCode);
         Assert.Equal(account.LastTotpStep, (await ProfileHttp.AccountAsync(vault, username)).LastTotpStep);
 
-        await SignInProof.BeginPasswordAsync(pending.Client, username, password);
-        var freshToken = VaultFixture.FormTokenOf(await pending.Client.GetStringAsync("/Account/Totp"), "/Account/Totp");
-        var signedIn = await pending.Client.PostAsync("/Account/Totp", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["__RequestVerificationToken"] = freshToken,
-            ["Code"] = code,
-        }));
+        var freshToken = await AuthApi.PendingAsync(pending, username, password);
+        var signedIn = await AuthApi.JsonAsync(await AuthApi.PostAsync(pending, "/api/ui/auth/totp", freshToken, new { code }));
 
-        Assert.Equal(HttpStatusCode.Redirect, signedIn.StatusCode);
-        Assert.Equal("/Secrets", signedIn.Headers.Location?.OriginalString);
+        Assert.Equal("/Secrets", signedIn.GetProperty("redirect").GetString());
         Assert.Equal(HttpStatusCode.OK, (await pending.Client.GetAsync("/api/ui/me")).StatusCode);
         var principal = SessionApi.PrincipalOf(vault, pending);
         Assert.Equal(ClearanceLevel.Standard, principal.GetClearance());

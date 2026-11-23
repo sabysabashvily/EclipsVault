@@ -3,8 +3,12 @@ import type { BrowserContext } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
+import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { AccountCreation } from './account-creation';
 import { AccountSignIn } from './account-sign-in';
+import { AppShell } from './app-shell';
+import { AuthenticatorVerification } from './authenticator-verification';
+import { RecoveryCodeSignIn } from './recovery-code-sign-in';
 import { AuthenticatorEnrollment } from './authenticator-enrollment';
 import { openPalette } from './palette';
 import { avatarImage, ChangePasswordPage, freshProfileTotp, ProfilePage } from './profile';
@@ -29,6 +33,7 @@ let password = `E2e-${randomBytes(24).toString('hex')}`;
 let secret = '';
 let lastStep = -1;
 let recoveryProof = '';
+let signInRecoveryCode = '';
 
 // This account belongs only to this flow; sensitive changes never retire another suite's session.
 test('Profile opens through production routes after real enrollment', async ({
@@ -44,12 +49,13 @@ test('Profile opens through production routes after real enrollment', async ({
   ) as { cookies: typeof ownerCookies };
   await page.context().addCookies(administrator.cookies);
   const creation = new AccountCreation(page);
+  const profile = new ProfilePage(page);
+  // The proof and the first sign-in both spend the proxy's one shared credential budget.
+  profile.releaseSignInBudget();
   await refreshAdministratorProof(page);
   await creation.open();
   await creation.createMailboxOwner('e2e-profile-owner', password);
   await expect(page).toHaveURL(/\/Admin\/Users$/);
-  const profile = new ProfilePage(page);
-  profile.releaseSignInBudget();
   const owner = await (await browserHealth.newContext()).newPage();
   const signIn = new AccountSignIn(owner);
   await signIn.open();
@@ -70,6 +76,7 @@ test('both account menus, both palettes and Security checkup open Profile on the
   page,
   browserHealth,
 }) => {
+  expectLegacyShell(browserHealth);
   await page.context().addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   const documents: string[] = [];
@@ -102,13 +109,13 @@ test('both account menus, both palettes and Security checkup open Profile on the
   });
 
   await test.step('the Legacy account menu and palette load Profile into Angular', async () => {
-    await page.goto('/Secrets');
+    await page.goto(legacyShell);
     documents.length = 0;
     await page.getByText('Mailbox Owner', { exact: true }).click();
     await page.getByRole('menuitem', { name: 'Profile', exact: true }).click();
     await expect(profile.heading).toBeVisible();
     expect(documents).toEqual(['/Profile']);
-    await page.goto('/Secrets');
+    await page.goto(legacyShell);
     documents.length = 0;
     await openPalette(page);
     await page.getByRole('combobox').fill('Profile');
@@ -175,84 +182,42 @@ test('the password form refuses mismatched, unchanged and breached choices befor
   expect(prepared).toEqual([]);
 });
 
-test('visual parity: Profile preserves cards and labels in both themes and on a narrow screen', async ({
+test('Profile shows the person and sign-in methods, and nothing scrolls sideways at 300 or 2000px', async ({
   page,
-}, testInfo) => {
+}) => {
   await page.context().addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
   await expect(page.getByRole('heading', { level: 2 })).toHaveText([
-    'Profile picture',
-    'Details',
-    'Access',
-    'Security',
+    'Authenticator',
     'Passkeys',
+    'Recovery codes',
+    'Email',
+    'Password',
+    'Sign out',
   ]);
+  await expect(
+    page.getByText('Every change here is saved to the audit log.', { exact: true }),
+  ).toBeVisible();
   await expect(page.getByLabel('Username', { exact: true })).toBeDisabled();
   await expect(profile.email).toHaveAttribute('readonly', '');
-  await expect(page.getByRole('term')).toHaveText(['Clearance', 'Project']);
   await expect(
     page.getByText(
       'Clearance and project are set by an administrator. Ask one if these need to change.',
       { exact: true },
     ),
   ).toBeVisible();
-  // eslint-disable-next-line playwright/no-raw-locators -- The rows' titles are unlabelled <strong> elements.
-  await expect(page.locator('.settings-row > div > strong')).toHaveText([
-    'Password',
-    'Authenticator (2FA)',
-    'Recovery codes',
-    'Sessions',
-  ]);
   await expect(
-    page.getByText('Argon2id-hashed. Change it if you suspect it has been compromised.'),
+    page.getByText('Change it if you suspect it has been compromised.', { exact: true }),
   ).toBeVisible();
-  const details = await page.getByRole('heading', { name: 'Details', exact: true }).boundingBox();
-  const access = await page.getByRole('heading', { name: 'Access', exact: true }).boundingBox();
-  expect(access!.x).toBeGreaterThan(details!.x + details!.width);
-
-  const signOut = page.getByRole('button', { name: 'Sign out everywhere', exact: true });
-  const colour = (button: typeof signOut) =>
-    button.evaluate((element) => getComputedStyle(element).color);
-  // Literal colours come from the Legacy dark/light palette in site.css. Polled, because a style
-  // read straight after loading can still see the browser's own field colour.
-  await expect
-    .poll(() => profile.themeAppearance())
-    .toEqual({
-      background: 'rgb(10, 11, 15)',
-      text: 'rgb(237, 238, 242)',
-      field: 'rgb(13, 14, 19)',
-    });
-  await expect.poll(() => colour(signOut)).toBe('rgb(255, 69, 58)');
-  await page.screenshot({ path: testInfo.outputPath('profile-dark.png'), fullPage: true });
-  await page.getByText('Mailbox Owner', { exact: true }).click();
-  await page.getByRole('menuitem', { name: /Switch to light/ }).click();
-  // eslint-disable-next-line playwright/no-raw-locators -- Theme is a document attribute shared by both shells.
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  await expect
-    .poll(() => profile.themeAppearance())
-    .toEqual({
-      background: 'rgb(243, 244, 247)',
-      text: 'rgb(28, 29, 34)',
-      field: 'rgb(236, 238, 242)',
-    });
-  await expect.poll(() => colour(signOut)).toBe('rgb(215, 0, 21)');
-  await page.screenshot({ path: testInfo.outputPath('profile-light.png'), fullPage: true });
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(profile.displayName).toBeVisible();
-  const narrowDetails = await page
-    .getByRole('heading', { name: 'Details', exact: true })
-    .boundingBox();
-  const narrowAccess = await page
-    .getByRole('heading', { name: 'Access', exact: true })
-    .boundingBox();
-  expect(narrowAccess!.y).toBeGreaterThan(narrowDetails!.y);
-  expect(Math.abs(narrowAccess!.x - narrowDetails!.x)).toBeLessThan(2);
-  await page.screenshot({ path: testInfo.outputPath('profile-narrow.png'), fullPage: true });
+  await expect(page.getByRole('button', { name: 'Remove passkey', exact: true })).toHaveCount(0);
+  for (const width of [300, 2000]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  }
 });
 
-test('visual parity: Change password keeps its Legacy fields, hint, actions and meter', async ({
+test('Change password shows its fields, hint, meter and a working show/hide in both themes', async ({
   page,
 }, testInfo) => {
   await page.context().addCookies(ownerCookies);
@@ -280,42 +245,19 @@ test('visual parity: Change password keeps its Legacy fields, hint, actions and 
   await page.screenshot({ path: testInfo.outputPath('change-password.png'), fullPage: true });
   await form.newPassword.fill('E2e-meter-92f4ab71-c831-49ed-90d5');
   await expect(form.strength).toHaveAttribute('aria-label', 'Password strength: Very strong');
-  await expect
-    .poll(() => form.meterAppearance())
-    .toEqual({
-      height: '4px',
-      background: 'rgb(13, 14, 19)',
-      fill: 'rgb(48, 209, 88)',
-      full: true,
-    });
-  expect(await form.revealIcon('Show password')).toEqual([
-    'path:d=M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z',
-    'circle:cx=12,cy=12,r=3',
-  ]);
+  await expect(form.newPassword).toHaveAttribute('type', 'password');
   await form.showPassword.click();
-  expect(await form.revealIcon('Hide password')).toEqual([
-    'path:d=M2 12s3.6-7 10-7c2 0 3.8.7 5.2 1.6M22 12s-3.6 7-10 7c-2 0-3.8-.7-5.2-1.6',
-    'path:d=m4 4 16 16',
-  ]);
+  await expect(form.newPassword).toHaveAttribute('type', 'text');
   await form.hidePassword.click();
+  await expect(form.newPassword).toHaveAttribute('type', 'password');
   await page.screenshot({
     path: testInfo.outputPath('change-password-meter-dark.png'),
     fullPage: true,
   });
   await page.getByText('Mailbox Owner', { exact: true }).click();
   await page.getByRole('menuitem', { name: /Switch to light/ }).click();
-  await expect
-    .poll(() => form.meterAppearance())
-    .toEqual({
-      height: '4px',
-      background: 'rgb(236, 238, 242)',
-      fill: 'rgb(26, 127, 55)',
-      full: true,
-    });
-  expect(await form.revealIcon('Show password')).toEqual([
-    'path:d=M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z',
-    'circle:cx=12,cy=12,r=3',
-  ]);
+  await expect(form.strength).toHaveAttribute('aria-label', 'Password strength: Very strong');
+  await expect(form.showPassword).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath('change-password-meter-light.png'),
     fullPage: true,
@@ -330,7 +272,7 @@ test('display name and avatar update the live shell without changing the email',
   await profile.open();
   const email = await profile.email.inputValue();
   await profile.displayName.fill('Profile Browser Owner');
-  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await page.getByRole('button', { name: 'Save display name', exact: true }).click();
   await expect(
     page.getByRole('status').filter({ hasText: 'Your profile was updated.' }),
   ).toBeVisible();
@@ -350,7 +292,7 @@ test('display name and avatar update the live shell without changing the email',
   );
   expect(avatar.headers()['cache-control']).toContain('no-store');
   expect(avatar.headers()['content-type']).toContain('image/png');
-  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove picture', exact: true }).click();
   await profile.confirm();
   await expect(page.getByText('Your profile picture was removed.', { exact: true })).toBeVisible();
   ownerCookies = await page.context().cookies();
@@ -402,7 +344,7 @@ test('a JPEG avatar is cropped into a metadata-free 256 pixel PNG', async ({ pag
   expect(png.readUInt32BE(16)).toBe(256);
   expect(png.readUInt32BE(20)).toBe(256);
   expect(png.includes(comment)).toBe(false);
-  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove picture', exact: true }).click();
   await profile.confirm();
   await expect(page.getByText('Your profile picture was removed.', { exact: true })).toBeVisible();
   ownerCookies = await page.context().cookies();
@@ -490,7 +432,7 @@ test('real password verification renews the current browser and refuses its copi
   await page.getByRole('link', { name: 'Back to profile', exact: true }).click();
   await expect(profile.heading).toBeVisible();
   await profile.displayName.fill('After Password Renewal');
-  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await page.getByRole('button', { name: 'Save display name', exact: true }).click();
   await expect(page.getByText('Your profile was updated.', { exact: true })).toBeVisible();
   ownerCookies = await page.context().cookies();
 });
@@ -565,7 +507,7 @@ test('a wrong mailbox code is refused, then an expired code leaves the active ad
       verifications.push(request.method());
   });
   const active = await profile.email.inputValue();
-  const prepared = profile.preparedOperation();
+  const { prepared } = await profile.watchPreparedOperation();
   await profile.newEmail.fill('e2e-profile-expired@example.test');
   await page.getByRole('button', { name: 'Change email', exact: true }).click();
   lastStep = await profile.fillOwnerVerification(password, secret, lastStep);
@@ -611,7 +553,7 @@ test('an expired account grant requires fresh proof of the same pending mailbox'
   // The previous scenario's send still occupies the rolling minute.
   await waitForMailboxSendBudget();
   const active = await profile.email.inputValue();
-  const prepared = profile.preparedOperation();
+  const { prepared } = await profile.watchPreparedOperation();
   await profile.newEmail.fill('e2e-profile-grant@example.test');
   await page.getByRole('button', { name: 'Change email', exact: true }).click();
   lastStep = await profile.verifyOwner(password, secret, lastStep);
@@ -678,7 +620,7 @@ test('a real SMTP outage leaves email inactive and reports delivery failure', as
   await expect(profile.newEmail).toBeVisible();
 });
 
-test('visual parity: ten recovery codes print once and clear on Done, direct visits and refresh', async ({
+test('ten recovery codes print once and clear on Done, direct visits and refresh', async ({
   page,
   browserHealth,
 }, testInfo) => {
@@ -689,23 +631,13 @@ test('visual parity: ten recovery codes print once and clear on Done, direct vis
   const profile = new ProfilePage(page);
   await profile.open();
   profile.releaseSignInBudget();
-  await page.getByRole('button', { name: 'Generate codes', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate recovery codes', exact: true }).click();
   await profile.confirm();
   lastStep = await profile.verifyOwner(password, secret, lastStep);
   await expect(page).toHaveTitle('Recovery codes — EclipsVault');
   await expect(profile.codes).toHaveCount(10);
   recoveryProof = await profile.codes.first().innerText();
-  await expect
-    .poll(() => profile.recoveryAppearance())
-    .toEqual({
-      background: 'rgb(20, 22, 30)',
-      text: 'rgb(237, 238, 242)',
-      fontSize: '18.4px',
-      letterSpacing: '2.208px',
-      radius: '8px',
-      columns: 2,
-      gap: '9.6px',
-    });
+  signInRecoveryCode = await profile.codes.nth(1).innerText();
   await expect(
     page.getByRole('heading', { name: 'Your recovery codes', exact: true }),
   ).toBeFocused();
@@ -717,17 +649,6 @@ test('visual parity: ten recovery codes print once and clear on Done, direct vis
   await page.getByText('After Password Renewal', { exact: true }).click();
   await page.getByRole('menuitem', { name: /Switch to light/ }).click();
   await expect(profile.codes).toHaveCount(10);
-  await expect
-    .poll(() => profile.recoveryAppearance())
-    .toEqual({
-      background: 'rgb(255, 255, 255)',
-      text: 'rgb(28, 29, 34)',
-      fontSize: '18.4px',
-      letterSpacing: '2.208px',
-      radius: '8px',
-      columns: 2,
-      gap: '9.6px',
-    });
   await page.screenshot({
     path: testInfo.outputPath('recovery-light.png'),
     mask: [profile.codes],
@@ -765,6 +686,94 @@ test('visual parity: ten recovery codes print once and clear on Done, direct vis
   await page.reload();
   await expect(profile.codes).toHaveCount(0);
   ownerCookies = await page.context().cookies();
+});
+
+test('a recovery code entered from the keyboard announces it is spent before Continue', async ({
+  browserHealth,
+}) => {
+  test.setTimeout(240_000);
+  const page = await (await browserHealth.newContext()).newPage();
+  new ProfilePage(page).releaseSignInBudget();
+  const signIn = new AccountSignIn(page);
+  const authenticator = new AuthenticatorVerification(page);
+  const recovery = new RecoveryCodeSignIn(page);
+  await signIn.open();
+
+  await expect(signIn.username).toBeFocused();
+  await page.keyboard.type('e2e-profile-owner');
+  await page.keyboard.press('Tab');
+  await expect(signIn.password).toBeFocused();
+  await page.keyboard.type(password);
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/Account\/Totp$/);
+  await expect(authenticator.code).toBeFocused();
+  await authenticator.recoveryCode.focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/Account\/RecoveryCode$/);
+  await expect(recovery.code).toBeFocused();
+  for (const width of [300, 2000]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.keyboard.type(signInRecoveryCode);
+  await page.keyboard.press('Enter');
+
+  await expect(recovery.notice).toContainText(
+    'that code is now used up. You have 9 recovery codes left.',
+  );
+  await expect(recovery.continue).toBeFocused();
+  for (const width of [300, 2000]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/Secrets$/);
+});
+
+test('a menu sign-out with unconfirmed revocation clears the cookie and shows its warning', async ({
+  browserHealth,
+}) => {
+  test.setTimeout(240_000);
+  const context = await browserHealth.newContext();
+  const page = await context.newPage();
+  new ProfilePage(page).releaseSignInBudget();
+  const signIn = new AccountSignIn(page);
+  await signIn.open();
+  await signIn.submitPassword('e2e-profile-owner', password);
+  await signIn.submitAuthenticatorCode(await freshProfileTotp(secret));
+  lastStep = currentTotpStep();
+  await expect(page).toHaveURL(/\/Secrets$/);
+
+  // The real call clears the cookie; the transport supplies the unconfirmed-revocation outcome.
+  // Production HTTP tests pin the storage failure that returns this answer.
+  await page.route(
+    '**/api/ui/auth/sign-out',
+    async (route) => {
+      const response = await route.fetch();
+      expect(response.status()).toBe(204);
+      await route.fulfill({
+        response,
+        status: 503,
+        contentType: 'application/problem+json',
+        body: JSON.stringify({
+          status: 503,
+          code: 'sign_out_incomplete',
+          title: "This browser's cookie was cleared. Other devices may still be signed in.",
+        }),
+      });
+    },
+    { times: 1 },
+  );
+  browserHealth.expectConsoleError({ text: /status of 503/, url: /\/api\/ui\/auth\/sign-out$/ });
+  await new AppShell(page).signOut('After Password Renewal');
+
+  await expect(page).toHaveURL(/\/Account\/Login\?signOut=sign_out_incomplete$/);
+  await expect(signIn.localSignOutWarning).toBeVisible();
+  expect((await context.cookies()).some((cookie) => cookie.name === 'EclipsVault.Session')).toBe(
+    false,
+  );
 });
 
 test('a UV virtual passkey is added, verifies a frozen change and is removed using a surviving authenticator', async ({
@@ -809,7 +818,7 @@ test('a UV virtual passkey is added, verifies a frozen change and is removed usi
       if (/\/passkey\/complete$/.test(request.url())) completed.push(request.method());
     });
     await cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled: false });
-    await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
+    await page.getByRole('button', { name: 'Replace recovery codes', exact: true }).click();
     await profile.confirm();
     await profile.verificationMethod.selectOption('Passkey');
     const begun = page.waitForResponse(/\/passkey\/begin$/);
@@ -820,7 +829,7 @@ test('a UV virtual passkey is added, verifies a frozen change and is removed usi
     await page.goBack();
     await expect(profile.heading).toBeVisible();
     await expect(profile.verification).not.toBeVisible();
-    await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
+    await page.getByRole('button', { name: 'Replace recovery codes', exact: true }).click();
     await profile.confirm();
     await profile.verificationMethod.selectOption('PasswordAndAuthenticatorCode');
     await expect(profile.verificationPassword).toHaveValue('');
@@ -830,7 +839,7 @@ test('a UV virtual passkey is added, verifies a frozen change and is removed usi
   });
   const beforeProof = await browserHealth.newContext();
   await beforeProof.addCookies(await page.context().cookies());
-  await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
+  await page.getByRole('button', { name: 'Replace recovery codes', exact: true }).click();
   await profile.confirm();
   await profile.verificationMethod.selectOption('Passkey');
   await profile.verifyAccount.click();
@@ -840,7 +849,7 @@ test('a UV virtual passkey is added, verifies a frozen change and is removed usi
   expect((await beforeProof.request.get('/api/ui/me')).status()).toBe(401);
   const beforeRemoval = await browserHealth.newContext();
   await beforeRemoval.addCookies(await page.context().cookies());
-  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove passkey', exact: true }).click();
   await profile.confirm();
   await expect(profile.verificationMethod).not.toContainText('Passkey');
   lastStep = await profile.verifyOwner(password, secret, lastStep);
@@ -885,7 +894,7 @@ test('session loss clears an outstanding UV registration and refuses its late co
     if (request.url().endsWith('/passkeys/registration/complete')) completed.push(request.method());
   });
   try {
-    await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+    await page.getByRole('button', { name: 'Save display name', exact: true }).click();
     await snapshot;
     await expect(page.getByText('Your profile was updated.', { exact: true })).toBeVisible();
     await page.getByLabel('New passkey name').fill('Discarded after session loss');
@@ -999,6 +1008,10 @@ test('authenticator reset ends current and copied sessions before Legacy reenrol
   await expect(
     page.getByText('Your authenticator was reset. Sign in to set up a new one.', { exact: true }),
   ).toBeVisible();
+  // That load took the one-time handoff; a second one shows nothing.
+  await page.reload();
+  await expect(page.getByLabel('Username')).toBeVisible();
+  await expect(page.getByText(/Your authenticator was reset/)).toHaveCount(0);
   expect(
     (await page.context().cookies()).some((cookie) => cookie.name === 'EclipsVault.Session'),
   ).toBe(false);
@@ -1110,7 +1123,7 @@ test('an expired prepared change is refused by the real server without a credent
     text: /status of 409/,
     url: /\/api\/ui\/profile\/operations\/[\da-f-]+\/verify$/,
   });
-  const prepared = profile.preparedOperation();
+  const { prepared } = await profile.watchPreparedOperation();
   await profile.resetAuthenticator.click();
   await profile.confirm();
   const operation = await prepared;
@@ -1155,7 +1168,7 @@ test('reset retains a passkey and refuses deleting the last method until Legacy 
     page.on('request', (request) => {
       if (/\/passkey\/complete$/.test(request.url())) completions.push(request.method());
     });
-    await page.getByRole('button', { name: 'Generate codes', exact: true }).click();
+    await page.getByRole('button', { name: 'Generate recovery codes', exact: true }).click();
     await profile.confirm();
     await profile.verificationMethod.selectOption('Passkey');
     await cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled: false });
@@ -1180,8 +1193,10 @@ test('reset retains a passkey and refuses deleting the last method until Legacy 
     await expect(page).toHaveURL(/\/Secrets$/);
     await profile.open();
     await expect(page.getByText('Surviving UV key', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Remove', exact: true })).toBeDisabled();
-    await expect(page.getByRole('button', { name: 'Generate codes', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Remove passkey', exact: true })).toBeDisabled();
+    await expect(
+      page.getByRole('button', { name: 'Generate recovery codes', exact: true }),
+    ).toBeDisabled();
     await expect(profile.resetAuthenticator).toBeDisabled();
 
     profile.releaseSignInBudget();
@@ -1194,7 +1209,7 @@ test('reset retains a passkey and refuses deleting the last method until Legacy 
     lastStep = currentTotpStep();
     await expect(page).toHaveURL(/\/Secrets$/);
     await profile.open();
-    await page.getByRole('button', { name: 'Remove', exact: true }).click();
+    await page.getByRole('button', { name: 'Remove passkey', exact: true }).click();
     await profile.confirm();
     await expect(profile.verificationMethod).not.toContainText('Passkey');
     lastStep = await profile.verifyOwner(password, secret, lastStep);
@@ -1223,7 +1238,12 @@ test('sign out everywhere ends this and copied sessions, and the account signs i
   await page.getByRole('button', { name: 'Sign out everywhere', exact: true }).click();
   await expect(profile.cancelConfirmation).toBeFocused();
   await profile.confirm();
-  await expect(page).toHaveURL(/\/Account\/Login$/);
+  await expect(page).toHaveURL(/\/Account\/Login\?signOut=everywhere$/);
+  await expect(
+    page.getByText('You have been signed out of all sessions. Sign in again to continue.', {
+      exact: true,
+    }),
+  ).toBeVisible();
   expect((await page.request.get('/api/ui/me')).status()).toBe(401);
   expect((await copied.request.get('/api/ui/me')).status()).toBe(401);
   await new AccountSignIn(page).submitPassword('e2e-profile-owner', password);
@@ -1260,7 +1280,7 @@ test('a rejected recovery mutation returns no codes and never replays generation
     text: /status of 503/,
     url: /\/api\/ui\/profile\/recovery-codes$/,
   });
-  await page.getByRole('button', { name: 'Generate codes', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate recovery codes', exact: true }).click();
   await profile.confirm();
   lastStep = await profile.verifyOwner(password, secret, lastStep);
   await expect(
@@ -1290,12 +1310,70 @@ test('sign-out revocation stands and its audit failure warning reaches Legacy si
   try {
     await page.getByRole('button', { name: 'Sign out everywhere', exact: true }).click();
     await profile.confirm();
-    await expect(page).toHaveURL(/\/Account\/Login$/);
-    await expect(page.getByText(/couldn't record it in the audit trail/)).toBeVisible();
+    await expect(page).toHaveURL(/\/Account\/Login\?signOut=revoked_unrecorded$/);
+    await expect(
+      page.getByText(
+        "You have been signed out of all sessions, but the vault couldn't record it in the audit trail. Tell your administrator.",
+        { exact: true },
+      ),
+    ).toBeVisible();
   } finally {
     rejectAuditWrites(false);
   }
   expect((await copied.request.get('/api/ui/me')).status()).toBe(401);
+  await new AccountSignIn(page).submitPassword('e2e-profile-owner', password);
+  await page.getByLabel('Authenticator code').fill(await freshProfileTotp(secret));
+  lastStep = currentTotpStep();
+  await page.getByRole('button', { name: 'Verify and sign in', exact: true }).click();
+  await expect(page).toHaveURL(/\/Secrets$/);
+  ownerCookies = await page.context().cookies();
+});
+
+test('an unconfirmed sign-out everywhere reaches sign-in with its own warning', async ({
+  page,
+  browserHealth,
+}) => {
+  test.setTimeout(240_000);
+  await page.context().addCookies(ownerCookies);
+  const profile = new ProfilePage(page);
+  await profile.open();
+  profile.releaseSignInBudget();
+  // The integration tests pin when the vault answers sign_out_incomplete; no production screen can
+  // make the session store stop confirming. The real call still signs this browser out, and the
+  // transport reports the outcome the store would have.
+  await page.route(
+    '**/api/ui/profile/sign-out-everywhere',
+    async (route) => {
+      const response = await route.fetch();
+      expect(response.status()).toBe(204);
+      await route.fulfill({
+        response,
+        status: 503,
+        contentType: 'application/problem+json',
+        body: JSON.stringify({
+          status: 503,
+          code: 'sign_out_incomplete',
+          title:
+            "This browser was signed out, but the vault couldn't confirm that your other devices were. Sign in and try again.",
+        }),
+      });
+    },
+    { times: 1 },
+  );
+  browserHealth.expectConsoleError({
+    text: /status of 503/,
+    url: /\/api\/ui\/profile\/sign-out-everywhere$/,
+  });
+  await page.getByRole('button', { name: 'Sign out everywhere', exact: true }).click();
+  await profile.confirm();
+  await expect(page).toHaveURL(/\/Account\/Login\?signOut=everywhere_incomplete$/);
+  await expect(
+    page.getByText(
+      "This browser was signed out, but the vault couldn't confirm that your other devices were. Sign in and try again.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.getByText(/Other devices may still be signed in/)).toHaveCount(0);
   await new AccountSignIn(page).submitPassword('e2e-profile-owner', password);
   await page.getByLabel('Authenticator code').fill(await freshProfileTotp(secret));
   lastStep = currentTotpStep();
@@ -1385,7 +1463,11 @@ test('a committed password with failed session renewal has a truthful sign-in-re
   });
   browserHealth.expectConsoleError({ text: /status of 503/, url: /\/api\/ui\/profile\/password$/ });
   await new ChangePasswordPage(page).changeFromProfile(password, replacement);
-  lastStep = await profile.verifyOwner(password, secret, lastStep);
+  lastStep = await profile.fillOwnerVerification(password, secret, lastStep);
+  const committed = page.waitForResponse('**/api/ui/profile/password');
+  await profile.verifyAccount.click();
+  const response = await committed;
+  expect(response.status()).toBe(503);
   await expect(
     profile.alertSaying(
       'The change was saved, but this browser could not stay signed in. Sign in again to continue.',

@@ -1,6 +1,7 @@
 using EclipsVault.Core.Domain.Exceptions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.Net.Http.Headers;
 
 namespace EclipsVault.Web.Middleware;
 
@@ -52,6 +53,14 @@ public sealed class GlobalExceptionMiddleware
             await FailAsync(context, StatusCodes.Status503ServiceUnavailable, "unblock_unrecorded",
                 UnblockUnrecordedException.FailureMessage);
         }
+        catch (RecoveryIncompleteException ex) when (!context.Response.HasStarted)
+        {
+            // The recorded session's cookie stays; the source's guard keeps every other request refused.
+            _logger.LogCritical(
+                "Break-glass recovery recorded its sign-in, but the block lift could not be settled; the source stays refused by {Guard}",
+                ex.Guard ?? "a guard the store logged when its lift failed");
+            await FailAsync(context, StatusCodes.Status503ServiceUnavailable, "recovery_incomplete", RecoveryIncompleteException.FailureMessage);
+        }
         catch (AuditWriteFailedException ex) when (!context.Response.HasStarted)
         {
             _logger.LogCritical(ex, "Fail-closed: request to {Path} aborted because the audit trail is unavailable", context.Request.Path);
@@ -100,6 +109,8 @@ public sealed class GlobalExceptionMiddleware
     /// <summary>Problem Details on the UI API; everywhere else the Legacy UI's error page for the same status.</summary>
     private static Task FailAsync(HttpContext context, int status, string code, string title)
     {
+        // A download that failed before its first byte must not answer its error as that file.
+        context.Response.Headers.Remove(HeaderNames.ContentDisposition);
         if (UiApiProblem.IsUiApi(context.Request))
         {
             return UiApiProblem.WriteAsync(context, status, code, title);

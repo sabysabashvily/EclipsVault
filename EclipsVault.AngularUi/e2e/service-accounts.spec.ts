@@ -2,6 +2,7 @@ import type { BrowserContext } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { test, expect } from './fixtures';
+import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { ServiceAccounts } from './service-accounts';
 import { ServiceAccountCreation } from './service-account-creation';
 import { ServiceAccount } from './service-account';
@@ -11,6 +12,7 @@ import { AuthenticatorEnrollment } from './authenticator-enrollment';
 import { freshTotp, currentTotpStep } from './totp';
 import { AccountAdministrationActivity } from './account-administration-activity';
 import { savedAdministratorCookies } from './administrator-cookies';
+import { clearSignInBudget } from './profile-state';
 
 test.describe.configure({ mode: 'serial' });
 let administratorCookies: Awaited<ReturnType<BrowserContext['cookies']>> = [];
@@ -42,40 +44,49 @@ test('creates a service account and issues a scoped key through real proof, then
   await expect(details.status).toContainText(
     `Service account '${name}' created. Issue an API key to let it authenticate.`,
   );
-  await details.scoped(await details.sourceIp());
+  const sourceIp = await details.sourceIp();
+  await details.scoped(sourceIp);
   browserHealth.expectConsoleError({ text: /403/, url: /\/api\/ui\/service-accounts\/.*\/keys$/ });
   await details.issue.click();
+  await expect(details.confirmation).toContainText('Metadata only');
+  await expect(details.confirmation).toContainText('At most Standard');
+  await expect(details.confirmation).toContainText('Expires in 7 days');
+  await details.confirmIssue.click();
   await expect(details.stepUp).toBeVisible();
   await details.cancelProof();
   await expect(details.issue).toBeFocused();
   await expect(details.token).toHaveCount(0);
   await details.issue.click();
+  await details.confirmIssue.click();
   await details.prove(await freshTotp(secret, currentTotpStep()));
   await expect(details.status).toContainText(
     'API key issued. Copy it now — it will not be shown again.',
   );
   await expect(details.token).toBeVisible();
-  const apiKey = await details.token.innerText();
+  await expect(details.token).toContainText('…');
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await details.copy.click();
+  const apiKey = await details.clipboard();
   expect(apiKey.startsWith('evk_')).toBe(true);
+  expect(await details.token.innerText()).not.toContain(apiKey);
   expect(page.url().includes(apiKey)).toBe(false);
   const leaked = await page.evaluate(
     (value) =>
-      [document.cookie, JSON.stringify(localStorage), JSON.stringify(sessionStorage)].some(
-        (store) => store.includes(value),
-      ),
+      [
+        document.body.innerText,
+        document.cookie,
+        JSON.stringify(localStorage),
+        JSON.stringify(sessionStorage),
+      ].some((store) => store.includes(value)),
     apiKey,
   );
   expect(leaked).toBe(false);
   expect(
     (await page.request.get('/api/v1/secrets', { headers: { 'X-Api-Key': apiKey } })).status(),
   ).toBe(200);
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
-  await details.copy.click();
-  expect(await details.copiedVisibleKey()).toBe(true);
-  await expect(details.scope).toContainText('metadata-only');
-  await expect(details.scope).toContainText('at most Standard');
-  await expect(details.scope).toContainText('GLOBAL');
-  await expect(details.scope).toContainText('1 network');
+  await expect(details.metadataOnlyKey).toContainText('at most Standard');
+  await expect(details.metadataOnlyKey).toContainText('GLOBAL');
+  await expect(details.metadataOnlyKey).toContainText(sourceIp);
   await details.revoke.click();
   await expect(details.confirmation).toContainText(
     'Any caller using it will stop working immediately.',
@@ -126,9 +137,13 @@ test('disables without confirmation and requires fresh proof to enable, restorin
   administratorCookies = await page.context().cookies();
 });
 
-const shells = ['/Secrets', '/Access'] as const;
+const shells = [legacyShell, '/Access'] as const;
 for (const shell of shells) {
-  test(`both Service accounts navigation entries work from ${shell}`, async ({ page }) => {
+  test(`both Service accounts navigation entries work from ${shell}`, async ({
+    page,
+    browserHealth,
+  }) => {
+    expectLegacyShell(browserHealth, shell);
     await page.context().addCookies(administratorCookies);
     const list = new ServiceAccounts(page);
     await list.fromSidebar(shell);
@@ -141,9 +156,7 @@ for (const shell of shells) {
 }
 const themes = ['dark', 'light'] as const;
 for (const theme of themes) {
-  test(`visual parity: Service accounts and both forms in ${theme} appearance`, async ({
-    page,
-  }, info) => {
+  test(`Service accounts and both forms render in ${theme} appearance`, async ({ page }, info) => {
     await page.context().addCookies(administratorCookies);
     const list = new ServiceAccounts(page);
     await list.open();
@@ -168,13 +181,17 @@ for (const theme of themes) {
     const expiry = await details.expiry.boundingBox();
     const ceiling = await details.ceiling.boundingBox();
     expect(expiry?.y).toBe(ceiling?.y);
-    await expect(details.metadataOnly).toHaveCSS('width', '13px');
-    await expect(details.keyScopes).toHaveCSS('display', 'inline-flex');
-    await expect(details.dangerZone).toHaveCSS('border-top-width', '1px');
+    await expect(details.metadataOnly).toBeVisible();
     await page.screenshot({
       path: info.outputPath(`service-account-${theme}.png`),
       fullPage: true,
     });
+    for (const width of [300, 2000]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+        .toBe(width);
+    }
   });
 
   test(`Service accounts forms and confirmation support the keyboard in ${theme} appearance`, async ({
@@ -211,6 +228,28 @@ for (const theme of themes) {
   });
 }
 
+const longestProjectScope = 'PAYMENTS_SETTLEMENT_RECONCILIATION_EUROPE_WEST_PRODUCTION_BATCH1';
+for (const width of [300, 2000]) {
+  test(`the issue-key confirmation with the longest project scope does not scroll sideways at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.context().addCookies(administratorCookies);
+    await page.goto(detailsUrl);
+    const details = new ServiceAccount(page, name);
+    await details.projectScope.fill(longestProjectScope);
+    await details.issue.click();
+    await expect(details.confirmation).toContainText(`Project ${longestProjectScope}`);
+    await expect
+      .poll(() =>
+        details.confirmation.evaluate((dialog) => dialog.scrollWidth > dialog.clientWidth),
+      )
+      .toBe(false);
+    await details.cancel();
+    await expect(details.confirmation).not.toBeVisible();
+  });
+}
+
 test('a non-administrator reaches Denied from every service-account bookmark', async ({
   page,
   browserHealth,
@@ -221,12 +260,15 @@ test('a non-administrator reaches Denied from every service-account bookmark', a
   await creation.open();
   await creation.createMailboxOwner('e2e-sa-reader', password);
   await expect(page).toHaveURL(/\/Admin\/Users$/);
+  // A first sign-in spends three requests of the proxy's one shared credential budget.
+  clearSignInBudget();
   const reader = await (await browserHealth.newContext()).newPage();
   const signIn = new AccountSignIn(reader);
   await signIn.open();
   await signIn.submitPassword('e2e-sa-reader', password);
   const enrollment = new AuthenticatorEnrollment(reader);
   await enrollment.confirm(await freshTotp(await enrollment.secret.innerText()));
+  await expect(reader).toHaveURL(/\/Secrets$/);
   await reader.goto('/ServiceAccounts');
   await expect(reader).toHaveURL(/\/Account\/Denied/);
   await reader.goto('/ServiceAccounts/Index');

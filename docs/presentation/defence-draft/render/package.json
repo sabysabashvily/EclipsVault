@@ -1,0 +1,12 @@
+{
+  "name": "eclipsvault-defence-diagrams",
+  "private": true,
+  "type": "module",
+  "description": "Renders the defence-draft Mermaid diagrams to SVG with pele. Not part of the Angular UI.",
+  "scripts": {
+    "render": "node render-diagrams.mjs"
+  },
+  "dependencies": {
+    "pele": "1.13.0"
+  }
+}

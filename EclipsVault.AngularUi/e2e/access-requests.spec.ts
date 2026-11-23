@@ -6,8 +6,8 @@ import { readFile } from 'node:fs/promises';
 import { AccessRequests } from './access-requests';
 import { feedEntry } from './activity';
 import { Denied } from './denied';
-import { test, expect } from './fixtures';
-import { lookOf } from './look';
+import { test, expect, type BrowserHealth } from './fixtures';
+import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { createSecret, openPalette } from './palette';
 import { SecretsList } from './secrets-list';
 import { SharedWithMe } from './shared-with-me';
@@ -21,6 +21,8 @@ const rejected = 'E2e_Request_To_Reject';
 const withdrawn = 'E2e_Request_To_Withdraw';
 const byKeyboard = 'E2e_Request_By_Keyboard';
 const aboveClearance = 'E2e_Request_Above_Clearance';
+const filedByKeyboard = 'E2e_Request_Filed_By_Keyboard';
+const projectReason = "Subject project 'E2E-AR' does not match resource project 'GLOBAL'.";
 const filedMessage = 'Access request submitted. A reviewer for this secret will decide.';
 const detailsPaths = new Map<string, string>();
 let requesterCookies: Awaited<ReturnType<BrowserContext['cookies']>> = [];
@@ -49,13 +51,28 @@ async function openAsRequester(page: Page, path = '/AccessRequests'): Promise<Ac
   return new AccessRequests(page);
 }
 
-/** Opens the secret as the requester, is denied, and files from the Legacy Denied page. */
-async function fileRequest(page: Page, secret: string, why = reason): Promise<AccessRequests> {
+/** The details page's own request for a refused secret, which the browser logs as an error. */
+function expectRefusal(browserHealth: BrowserHealth): void {
+  browserHealth.expectConsoleError({
+    text: /status of 403/,
+    url: /\/api\/ui\/secrets\/[0-9a-f-]{36}$/,
+  });
+}
+
+/** Opens the secret as the requester, is denied with the policy's reasons, and files from Denied. */
+async function fileRequest(
+  page: Page,
+  browserHealth: BrowserHealth,
+  secret: string,
+  why = reason,
+): Promise<AccessRequests> {
+  expectRefusal(browserHealth);
   await page.context().addCookies(requesterCookies);
   await page.goto(detailsPaths.get(secret)!);
   await expect(page).toHaveURL(/\/Account\/Denied\?secretId=[0-9a-f-]{36}$/);
   const denied = new Denied(page);
   await expect(denied.heading).toBeVisible();
+  await expect(denied.denial(projectReason)).toBeVisible();
   await denied.reason.fill(why);
   await denied.submit.click();
   // The page shows the outcome once, then drops it from the address.
@@ -104,6 +121,7 @@ test('a requester denied in another project sees the request they filed from the
     [withdrawn, 'Internal'],
     [byKeyboard, 'Internal'],
     [aboveClearance, 'Secret'],
+    [filedByKeyboard, 'Internal'],
   ]) {
     await createSecret(page, secret, sensitivity);
     detailsPaths.set(secret, new URL(page.url()).pathname);
@@ -125,9 +143,10 @@ test('a requester denied in another project sees the request they filed from the
   const before = await openAsRequester(requester);
   await expect(before.noRequests).toBeVisible();
 
-  const requests = await fileRequest(requester, approved);
+  const requests = await fileRequest(requester, browserHealth, approved);
   await expect(requests.announcement(filedMessage)).toBeVisible();
-  await expect(requests.reviewScope).toHaveText('Your project');
+  await expect(requests.verdict).toHaveText('Nothing to review');
+  await expect(requests.reviewScope).toHaveText('Your project · Newest first');
   await expect(requests.nothingToReview).toBeVisible();
   const filed = requests.myRequest(approved);
   await expect(requests.cellsOf(filed)).toHaveText([
@@ -146,7 +165,9 @@ test('a requester denied in another project sees the request they filed from the
 
 test('an under-cleared requester is told a share would not help and offered no form', async ({
   page,
+  browserHealth,
 }) => {
+  expectRefusal(browserHealth);
   await page.context().addCookies(requesterCookies);
   await page.goto(detailsPaths.get(aboveClearance)!);
   const denied = new Denied(page);
@@ -156,10 +177,88 @@ test('an under-cleared requester is told a share would not help and offered no f
   ).toBeVisible();
   await expect(denied.reason).toHaveCount(0);
   await expect(denied.submit).toHaveCount(0);
+  await expect(denied.refusedBecause).toBeVisible();
+
+  // The reasons live only in the navigation that brought the requester here.
+  await page.reload();
+  await expect(denied.generic).toBeVisible();
+  await expect(denied.refusedBecause).toHaveCount(0);
+  await expect(
+    denied.refusal("A share would not help: your clearance is below this secret's sensitivity."),
+  ).toBeVisible();
 });
 
-test('an empty reason is refused in the Legacy words without filing', async ({ page }) => {
-  const refused = await fileRequest(page, rejected, '');
+test('the keyboard alone files a request from Denied', async ({ page, browserHealth }) => {
+  expectRefusal(browserHealth);
+  await page.context().addCookies(requesterCookies);
+  await page.goto(detailsPaths.get(filedByKeyboard)!);
+  const denied = new Denied(page);
+  await expect(denied.requestAccess).toBeVisible();
+  await denied.backToSecrets.focus();
+  await page.keyboard.press('Tab');
+  await expect(denied.reason).toBeFocused();
+  await page.keyboard.type(reason);
+  await page.keyboard.press('Tab');
+  await expect(denied.submit).toBeFocused();
+  await page.keyboard.press('Enter');
+  const requests = new AccessRequests(page);
+  await expect(requests.announcement(filedMessage)).toBeVisible();
+  await expect(requests.myRequest(filedByKeyboard)).toBeVisible();
+});
+
+for (const theme of ['dark', 'light']) {
+  test(`Denied shows its reasons and refusal in the ${theme} theme`, async ({
+    page,
+    browserHealth,
+  }, info) => {
+    expectRefusal(browserHealth);
+    await useTheme(page, theme);
+    await page.context().addCookies(requesterCookies);
+    await page.goto(detailsPaths.get(aboveClearance)!);
+    const denied = new Denied(page);
+    await expect(denied.refusedBecause).toBeVisible();
+    await expect(denied.requestAccess).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.dataset['theme'])).toBe(theme);
+
+    const path = info.outputPath(`${theme}-denied.png`);
+    await page.screenshot({ path, fullPage: true });
+    await info.attach(`${theme}-denied`, { path, contentType: 'image/png' });
+  });
+}
+
+for (const width of [300, 2000] as const) {
+  test(`Denied has no sideways scroll at ${width}px with reasons and the request form`, async ({
+    page,
+    browserHealth,
+  }) => {
+    expectRefusal(browserHealth);
+    await page.setViewportSize({ width, height: 900 });
+    await page.context().addCookies(requesterCookies);
+    await page.goto(detailsPaths.get(rejected)!);
+    const denied = new Denied(page);
+    await expect(denied.refusedBecause).toBeVisible();
+    await expect(denied.reason).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  });
+}
+
+test('Denied is served as the titled Angular document', async ({ page }) => {
+  await page.context().addCookies(requesterCookies);
+  const response = await page.goto('/Account/Denied');
+  await expect(new Denied(page).generic).toBeVisible();
+  await expect(page).toHaveTitle('Access denied — EclipsVault');
+  expect(response?.headers()['content-security-policy']).toContain(
+    "require-trusted-types-for 'script'",
+  );
+});
+
+test('an empty reason is refused in the Legacy words without filing', async ({
+  page,
+  browserHealth,
+}) => {
+  // The vault refuses the filing itself, which the browser logs as an error.
+  browserHealth.expectConsoleError({ text: /status of 409/, url: /\/api\/ui\/access-requests$/ });
+  const refused = await fileRequest(page, browserHealth, rejected, '');
 
   await expect(refused.error).toHaveText('Add a short reason so a reviewer can decide.');
   await expect(refused.myRequest(approved)).toBeVisible();
@@ -171,29 +270,17 @@ test("an approval with an expiry reaches the requester's Shared with me", async 
   browserHealth,
 }) => {
   const requests = await openAsAdministrator(page);
-  await expect(requests.reviewScope).toHaveText('All projects');
-  await expect(requests.toReview.getByRole('columnheader')).toHaveText([
-    'Secret',
-    'Requester',
-    'Reason',
-    'Denied because',
-    'Requested',
-    '',
-  ]);
+  await expect(requests.verdict).toHaveText('Waiting on you');
+  await expect(requests.reviewScope).toHaveText('All projects · Newest first');
   const request = requests.requestToReview(approved);
-  await expect(requests.cellsOf(request)).toHaveText([
-    `${approved} GLOBAL`,
-    requesterUsername,
-    reason,
-    /Subject project 'E2E-AR' does not match resource project 'GLOBAL'\./,
-    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
-    'Approve Reject',
-  ]);
-  const expiry = requests.expiryOf(request);
-  await expect(expiry).toHaveValue('0');
-  await expect(expiry).toHaveAttribute('title', 'Grant expires in days (0 = no expiry)');
-  await expiry.fill('7');
+  await expect(request).toContainText(`${requesterUsername} · ${reason}`);
+  await expect(request).toContainText(
+    "Denied because: Subject project 'E2E-AR' does not match resource project 'GLOBAL'.",
+  );
   await requests.approveOf(request).click();
+  await expect(requests.expiry).toHaveValue('0');
+  await requests.expiry.fill('7');
+  await requests.approveAndGrant.click();
   await expect(
     requests.announcement('Request approved — a grant was created for the requester.'),
   ).toBeVisible();
@@ -203,8 +290,9 @@ test("an approval with an expiry reaches the requester's Shared with me", async 
   await requester.context().addCookies(requesterCookies);
   await requester.goto('/Secrets/SharedWithMe');
   const shared = new SharedWithMe(requester);
+  // Approved for 7 days a moment ago: the pill counts the whole days left.
   await expect(shared.accessUntilOf(shared.secret(approved))).toHaveText(
-    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
+    /^In 6 days · \d{1,2} [A-Z][a-z]{2}( \d{4})?$/,
   );
   const mine = await openAsRequester(requester);
   await expect(mine.cellsOf(mine.myRequest(approved))).toHaveText([
@@ -232,11 +320,13 @@ test('a reviewer rejects through the confirmation dialog, after cancelling once'
   browserHealth,
 }) => {
   const requester = await (await browserHealth.newContext()).newPage();
-  await expect((await fileRequest(requester, rejected)).announcement(filedMessage)).toBeVisible();
+  await expect(
+    (await fileRequest(requester, browserHealth, rejected)).announcement(filedMessage),
+  ).toBeVisible();
 
   const requests = await openAsAdministrator(page);
   const request = requests.requestToReview(rejected);
-  const question = `Reject ${requesterUsername}'s request for ${rejected}?`;
+  const question = 'Reject this request?';
   await requests.rejectOf(request).click();
   await requests.confirmation(question).getByRole('button', { name: 'Cancel' }).click();
   await expect(requests.confirmation(question)).toBeHidden();
@@ -244,7 +334,7 @@ test('a reviewer rejects through the confirmation dialog, after cancelling once'
   await expect(request).toBeVisible();
 
   await requests.rejectOf(request).click();
-  await requests.confirmation(question).getByRole('button', { name: 'Continue' }).click();
+  await requests.confirmation(question).getByRole('button', { name: 'Reject request' }).click();
   await expect(requests.announcement('Request rejected.')).toBeVisible();
   await expect(request).toHaveCount(0);
 
@@ -256,12 +346,13 @@ test('a reviewer rejects through the confirmation dialog, after cancelling once'
 
 test('the requester withdraws a pending request through the confirmation dialog', async ({
   page,
+  browserHealth,
 }) => {
-  const requests = await fileRequest(page, withdrawn);
+  const requests = await fileRequest(page, browserHealth, withdrawn);
   const request = requests.myRequest(withdrawn);
   const question = `Withdraw your request for ${withdrawn}?`;
   await requests.withdrawOf(request).click();
-  await requests.confirmation(question).getByRole('button', { name: 'Continue' }).click();
+  await requests.confirmation(question).getByRole('button', { name: 'Withdraw request' }).click();
   await expect(requests.announcement('Request withdrawn.')).toBeVisible();
   await expect(requests.cellsOf(request)).toHaveText([
     `${withdrawn} GLOBAL`,
@@ -273,19 +364,51 @@ test('the requester withdraws a pending request through the confirmation dialog'
   ]);
 });
 
-test('the keyboard alone approves through the expiry box', async ({ page, browserHealth }) => {
+test('on a phone the approval opens as a bottom sheet', async ({ page, browserHealth }) => {
   const requester = await (await browserHealth.newContext()).newPage();
-  await expect((await fileRequest(requester, byKeyboard)).announcement(filedMessage)).toBeVisible();
+  await expect(
+    (await fileRequest(requester, browserHealth, byKeyboard)).announcement(filedMessage),
+  ).toBeVisible();
 
+  await page.setViewportSize({ width: 375, height: 800 });
+  const requests = await openAsAdministrator(page);
+  await requests.approveOf(requests.requestToReview(byKeyboard)).click();
+  await expect(requests.approval).toBeVisible();
+  // The sheet slides up; once it settles it spans the width and sits on the bottom edge.
+  await expect
+    .poll(async () => {
+      const box = await requests.approval.boundingBox();
+      return box && [Math.round(box.x), Math.round(box.width), Math.round(box.y + box.height)];
+    })
+    .toEqual([0, 375, 800]);
+  await page.keyboard.press('Escape');
+  await expect(requests.approval).toBeHidden();
+});
+
+for (const width of [300, 2000]) {
+  test(`Access requests has no sideways scroll at ${width}px with a request to review`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const requests = await openAsAdministrator(page);
+    await expect(requests.requestToReview(byKeyboard)).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  });
+}
+
+test('the keyboard alone approves with an end date', async ({ page }) => {
   const requests = await openAsAdministrator(page);
   const request = requests.requestToReview(byKeyboard);
-  await requests.introduction.click();
+  await requests.heading.click();
   await page.keyboard.press('Tab');
-  await expect(requests.expiryOf(request)).toBeFocused();
+  await expect(requests.approveOf(request)).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(requests.expiry).toBeFocused();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.type('3');
   await page.keyboard.press('Tab');
-  await expect(requests.approveOf(request)).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(requests.approveAndGrant).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(
     requests.announcement('Request approved — a grant was created for the requester.'),
@@ -299,6 +422,7 @@ test("the requester's My activity lists their access requests by secret", async 
   await expect(feedEntry(page, 'Requested access to a secret', rejected)).toBeVisible();
   await expect(feedEntry(page, 'Requested access to a secret', withdrawn)).toBeVisible();
   await expect(feedEntry(page, 'Requested access to a secret', byKeyboard)).toBeVisible();
+  await expect(feedEntry(page, 'Requested access to a secret', filedByKeyboard)).toBeVisible();
   await expect(feedEntry(page, 'Cancelled an access request', withdrawn)).toBeVisible();
 });
 
@@ -311,9 +435,7 @@ test("the reviewer's My activity lists their decisions by secret", async ({ page
   await expect(feedEntry(page, 'Approved an access request', byKeyboard)).toBeVisible();
 });
 
-test('with no requests of their own, Browse secrets opens the Legacy Secrets page', async ({
-  page,
-}) => {
+test('with no requests of their own, Browse secrets opens the Secrets list', async ({ page }) => {
   const requests = await openAsAdministrator(page);
   await expect(requests.noRequests).toBeVisible();
   await requests.browseSecrets.click();
@@ -321,38 +443,16 @@ test('with no requests of their own, Browse secrets opens the Legacy Secrets pag
   await expect(page).toHaveURL(/\/Secrets$/);
 });
 
-for (const [theme, accent, accentBackground] of [
-  ['dark', 'rgb(255, 159, 10)', 'rgba(255, 159, 10, 0.14)'],
-  ['light', 'rgb(180, 95, 4)', 'rgba(180, 95, 4, 0.12)'],
-]) {
-  test(`visual parity: Access requests keeps the Legacy page and table look in ${theme}`, async ({
+for (const theme of ['dark', 'light']) {
+  test(`Access requests shows the approved request and empty review queue in ${theme}`, async ({
     page,
   }, info) => {
     await page.setViewportSize({ width: 1440, height: 1200 });
     await useTheme(page, theme);
-    const legacy = new SecretsList(page);
-    await page.context().addCookies(requesterCookies);
-    await legacy.open();
-    await expect(legacy.heading).toBeVisible();
-    // Legacy's Access requests page used the Secrets list's own heading, introduction and table classes.
-    const expected = {
-      heading: await lookOf(legacy.heading),
-      introduction: await lookOf(legacy.introduction),
-      table: await lookOf(page.getByRole('table')),
-      column: await lookOf(legacy.columns.first()),
-    };
-
     const requests = await openAsRequester(page);
+    await expect(requests.heading).toBeVisible();
     await expect(requests.myRequest(approved)).toBeVisible();
-    expect({
-      heading: await lookOf(requests.heading),
-      introduction: await lookOf(requests.introduction),
-      table: await lookOf(requests.mine),
-      column: await lookOf(requests.mine.getByRole('columnheader').first()),
-    }).toEqual(expected);
     await expect(requests.nothingToReview).toBeVisible();
-    await expect(requests.emptyIcon).toHaveCSS('color', accent);
-    await expect(requests.emptyIcon).toHaveCSS('background-color', accentBackground);
     const path = info.outputPath(`${theme}-access-requests.png`);
     await page.screenshot({ path, fullPage: true });
     await info.attach(`${theme}-access-requests`, { path, contentType: 'image/png' });
@@ -375,14 +475,15 @@ test('a mixed-case Access requests bookmark serves the titled Angular page', asy
   await expect(page).toHaveTitle('Access requests — EclipsVault');
 });
 
-test('the sidebar opens Access requests in-app with its Access group active', async ({ page }) => {
+test('the sidebar opens Access requests in-app from its top-level item', async ({ page }) => {
   await openAsRequester(page, '/Access');
   const documents = recordDocuments(page);
   const link = page.getByRole('link', { name: 'Access requests', exact: true });
   await link.click();
   await expect(new AccessRequests(page).myRequest(approved)).toBeVisible();
   await expect(link).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('group').filter({ has: link })).toHaveJSProperty('open', true);
+  // Access requests sits at the top of the sidebar, in no folding group.
+  await expect(page.getByRole('group').filter({ has: link })).toHaveCount(0);
   expect(documents).toEqual([]);
 });
 
@@ -396,8 +497,9 @@ test('the palette opens Access requests without a document load', async ({ page 
   expect(documents).toEqual([]);
 });
 
-test('the Legacy sidebar loads Access requests into Angular', async ({ page }) => {
-  await openAsRequester(page, '/Secrets');
+test('the Legacy sidebar loads Access requests into Angular', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
+  await openAsRequester(page, legacyShell);
   const documents = recordDocuments(page);
   await page.getByText('Access', { exact: true }).click();
   await page.getByRole('link', { name: 'Access requests', exact: true }).click();
@@ -406,8 +508,9 @@ test('the Legacy sidebar loads Access requests into Angular', async ({ page }) =
   expect(documents).toEqual(['/AccessRequests']);
 });
 
-test('the Legacy palette loads Access requests into Angular', async ({ page }) => {
-  await openAsRequester(page, '/Secrets');
+test('the Legacy palette loads Access requests into Angular', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
+  await openAsRequester(page, legacyShell);
   const documents = recordDocuments(page);
   await openPalette(page);
   await page.getByRole('combobox').fill('Access requests');

@@ -1,15 +1,30 @@
 <div class="page-header">
   <div>
     <h1>Your data</h1>
-    <p class="page-sub">
-      Everything EclipsVault holds about your account, in one place. Download a portable copy for
-      your records — or just to see what's stored. Only <em>your</em> data is included.
-    </p>
+    <p class="page-sub">What the vault holds about you, and a copy you can take with you.</p>
   </div>
   @if (data.hasValue()) {
     <div>
-      <button type="button" class="button primary" [disabled]="downloading()" (click)="download()">
-        Download (JSON)
+      <button
+        *appPagePrimary
+        type="button"
+        class="button primary"
+        [disabled]="downloading()"
+        (click)="download()"
+        aria-label="Download your data (JSON)"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M12 3v12m-5-5 5 5 5-5M5 17v4h14v-4" />
+        </svg>
+        <span class="action-label">Download your data (JSON)</span>
       </button>
     </div>
   }
@@ -21,57 +36,65 @@
   @let yours = data.value();
   <section class="panel">
     <div class="panel-header"><h2>Account</h2></div>
-    <dl class="detail-grid">
-      <dt>Username</dt>
-      <dd class="mono">{{ yours.account.username }}</dd>
-      <dt>Display name</dt>
-      <dd>{{ yours.account.displayName }}</dd>
-      <dt>Email</dt>
-      <dd>{{ yours.account.email }}</dd>
-      <dt>Clearance</dt>
-      <dd>{{ yours.account.clearance }}</dd>
-      <dt>Project</dt>
-      <dd>{{ yours.account.projectKey }}</dd>
-      <dt>Profile picture</dt>
-      <dd>{{ yours.account.hasCustomAvatar ? 'Custom image' : 'Generated identicon' }}</dd>
+    <dl class="facts">
+      <div>
+        <dt>Username</dt>
+        <dd class="mono">{{ yours.account.username }}</dd>
+      </div>
+      <div>
+        <dt>Display name</dt>
+        <dd>{{ yours.account.displayName }}</dd>
+      </div>
+      <div>
+        <dt>Email</dt>
+        <dd>{{ yours.account.email }}</dd>
+      </div>
+      <div>
+        <dt>Clearance</dt>
+        <dd>{{ yours.account.clearance }}</dd>
+      </div>
+      <div>
+        <dt>Project</dt>
+        <dd>
+          <code class="code-chip">{{ yours.account.projectKey }}</code>
+        </dd>
+      </div>
+      <div>
+        <dt>Profile picture</dt>
+        <dd>{{ yours.account.hasCustomAvatar ? 'Custom image' : 'Generated identicon' }}</dd>
+      </div>
     </dl>
   </section>
 
   <section class="panel">
-    <div class="panel-header"><h2>What's included</h2></div>
-    <div class="stat-grid">
-      <div class="stat-card">
-        <span class="stat-value">{{ yours.twoStepEnabled ? 'On' : 'Off' }}</span>
-        <span class="stat-label">Two-step sign-in</span>
+    <div class="panel-header"><h2>What the export includes</h2></div>
+    <dl class="facts">
+      <div>
+        <dt>Two-step sign-in</dt>
+        <dd>{{ yours.twoStepEnabled ? 'On' : 'Off' }}</dd>
       </div>
-      <div class="stat-card">
-        <span class="stat-value">{{ yours.passkeyCount }}</span>
-        <span class="stat-label">Passkeys</span>
+      <div>
+        <dt>Passkeys</dt>
+        <dd>{{ yours.passkeyCount }}</dd>
       </div>
-      <div class="stat-card">
-        <span class="stat-value">{{ yours.backupCodesRemaining }}</span>
-        <span class="stat-label">Backup codes left</span>
+      <div>
+        <dt>Backup codes</dt>
+        <dd>{{ yours.backupCodesRemaining }}</dd>
       </div>
-      <div class="stat-card">
-        <span class="stat-value">{{ yours.deviceCount }}</span>
-        <span class="stat-label">Signed-in devices</span>
+      <div>
+        <dt>Signed-in devices</dt>
+        <dd>{{ yours.deviceCount }}</dd>
       </div>
-      <div class="stat-card">
-        <span class="stat-value">{{ yours.accessRequestCount }}</span>
-        <span class="stat-label">Access requests filed</span>
+      <div>
+        <dt>Access requests</dt>
+        <dd>{{ yours.accessRequestCount }}</dd>
       </div>
-      <div class="stat-card">
-        <span class="stat-value">{{ yours.activityCount }}</span>
-        <span class="stat-label">Recent activity entries</span>
+      <div>
+        <dt>Activity entries</dt>
+        <dd>{{ yours.activityCount }}</dd>
       </div>
-    </div>
-  </section>
-
-  <section class="panel">
+    </dl>
     <p class="muted">{{ yours.notice }}</p>
-    <button type="button" class="button primary" [disabled]="downloading()" (click)="download()">
-      Download a copy of my data (JSON)
-    </button>
   </section>
 } @else if (data.error()) {
   <section class="panel">

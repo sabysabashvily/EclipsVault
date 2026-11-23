@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Users;
 using EclipsVault.Core.Domain.Entities;
@@ -56,8 +57,20 @@ internal static class PostIdpAssertion
             HttpOnly = true,
         });
 
-        var response = await callback.Client.GetAsync("/Account/ExternalCallback");
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        return response;
+        return await callback.Client.GetAsync("/Account/ExternalCallback");
+    }
+
+    /// <summary>
+    /// Where a successful callback sends the browser: a page of the vault's own that goes on at once, so
+    /// the next request leaves the provider's cross-site redirect chain and carries the Strict cookies.
+    /// </summary>
+    public static async Task<string> ContinuesToAsync(HttpResponseMessage response)
+    {
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
+        var page = await response.Content.ReadAsStringAsync();
+        var refresh = Assert.Single(Regex.Matches(page, "<meta http-equiv=\"refresh\" content=\"0;url=([^\"]+)\" />")).Groups[1].Value;
+        Assert.Contains($"<a href=\"{refresh}\">Continue to the vault</a>", page, StringComparison.Ordinal);
+        return WebUtility.HtmlDecode(refresh);
     }
 }

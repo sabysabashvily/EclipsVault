@@ -48,20 +48,12 @@ export class SignedInDevices {
   async presentation() {
     return this.rows.evaluateAll((rows) =>
       rows.map((row) => {
-        // Icons and the exact-time tooltip have no accessible text; inspect them only for visual parity.
-        const icon = row.querySelector('.feed-icon')!;
-        const style = getComputedStyle(icon);
         return {
-          device: row.querySelector('.feed-title')?.textContent?.trim(),
+          device: row.querySelector('.device-name')?.textContent?.trim(),
           badges: [...row.querySelectorAll('.badge')].map((badge) => badge.textContent?.trim()),
-          meta: row.querySelector('.feed-meta')?.textContent?.replace(/\s+/g, ' ').trim(),
-          action: row.querySelector('.feed-action')?.textContent?.trim(),
-          tooltip: row.querySelector('[title]')?.getAttribute('title'),
-          shapes: [...icon.querySelector('svg')!.children].map(
-            (shape) =>
-              `${shape.tagName}:${[...shape.attributes].map((attribute) => `${attribute.name}=${attribute.value}`).join(',')}`,
-          ),
-          accent: [style.color, style.backgroundColor],
+          meta: row.querySelector('.device-meta')?.textContent?.replace(/\s+/g, ' ').trim(),
+          action: row.querySelector('button')?.textContent?.trim() ?? '',
+          tooltip: row.querySelector('time')?.getAttribute('title'),
         };
       }),
     );

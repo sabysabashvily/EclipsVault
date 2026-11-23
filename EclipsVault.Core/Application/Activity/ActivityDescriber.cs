@@ -24,6 +24,7 @@ public static class ActivityDescriber
         AuditAction.SecretRotated => new(ActivityCategory.Secrets, "Rotated a secret", ActivitySeverity.Routine),
         AuditAction.SecretVersionRevealed => new(ActivityCategory.Secrets, "Revealed a previous secret version", ActivitySeverity.Notable),
         AuditAction.SecretVersionRestored => new(ActivityCategory.Secrets, "Restored a previous secret version", ActivitySeverity.Notable),
+        AuditAction.SecretAccessDenied => new(ActivityCategory.Secrets, "Was refused access to a secret", ActivitySeverity.Notable),
 
         // --- Sharing & access requests ----------------------------------------------
         AuditAction.SecretShared => new(ActivityCategory.Sharing, "Shared a secret", ActivitySeverity.Notable),
@@ -89,6 +90,8 @@ public static class ActivityDescriber
         AuditAction.KekRotated => new(ActivityCategory.Administration, "Rotated the key-encryption key", ActivitySeverity.Critical),
         AuditAction.AuditCheckpointCreated => new(ActivityCategory.Administration, "Signed an audit checkpoint", ActivitySeverity.Notable),
         AuditAction.AuditBundleExported => new(ActivityCategory.Administration, "Exported the audit trail", ActivitySeverity.Notable),
+        AuditAction.AuditLogViewed => new(ActivityCategory.Administration, "Viewed the audit log", ActivitySeverity.Routine),
+        AuditAction.AuditChainVerified => new(ActivityCategory.Administration, "Verified the audit chain", ActivitySeverity.Routine),
 
         // --- Licensing (soft — an operational notice, never a security event) --------
         AuditAction.LicenseInvalidProductionUse => new(ActivityCategory.Administration, "Started unlicensed in production", ActivitySeverity.Notable),
@@ -99,6 +102,13 @@ public static class ActivityDescriber
         // Any action added in future still renders as a readable, spaced-out title.
         _ => new(ActivityCategory.Other, Humanize(action), ActivitySeverity.Routine)
     };
+
+    /// <summary>
+    /// The resource name a person may see on a row of their own activity. A denial keeps the refused
+    /// secret's name back: the policy refused them that secret, so their own records must not name it.
+    /// </summary>
+    public static string? ResourceNameShownToActor(AuditAction action, string? resourceName)
+        => action == AuditAction.SecretAccessDenied ? null : resourceName;
 
     /// <summary>Turns an unmapped enum name ("SomeNewAction") into spaced words ("Some new action").</summary>
     private static string Humanize(AuditAction action)

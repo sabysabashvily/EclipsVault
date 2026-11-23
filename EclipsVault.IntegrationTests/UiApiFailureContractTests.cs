@@ -130,7 +130,7 @@ public sealed class UiApiFailureContractTests(VaultFixture vault)
     [Fact]
     public async Task A_revoked_session_gets_401_on_its_next_request()
     {
-        var session = await vault.SignInNewAccountAsync("it-revoked");
+        var session = await vault.SignInNewAccountAsync("it-revoked", IPAddress.Parse("2001:db8:175:1::4"));
         Assert.Equal(HttpStatusCode.OK, (await session.Client.GetAsync("/api/ui/me")).StatusCode);
 
         await vault.RevokeAllSessionsOfAsync("it-revoked");
@@ -184,7 +184,7 @@ public sealed class UiApiFailureContractTests(VaultFixture vault)
         }
         finally
         {
-            await blacklist.UnblockAddressAsync(source);
+            await (await blacklist.LiftForRecoveryAsync(source)).ReleaseAsync();
         }
     }
 

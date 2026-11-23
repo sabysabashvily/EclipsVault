@@ -28,7 +28,7 @@ describe('ProfilePage', () => {
       [...page.querySelectorAll('section > .panel-header > h2')].map(
         (heading) => heading.textContent,
       ),
-    ).toEqual(['Profile picture', 'Details', 'Access', 'Security', 'Passkeys']);
+    ).toEqual(['Authenticator', 'Passkeys', 'Recovery codes', 'Email', 'Password', 'Sign out']);
   });
   it('keeps username and access labels immutable', async () => {
     const { fixture, page } = render();
@@ -43,11 +43,11 @@ describe('ProfilePage', () => {
     await fixture.whenStable();
     expect(page.textContent).toContain('Change it if you suspect it has been compromised.');
   });
-  it('offers no Remove action for a generated avatar', async () => {
+  it('offers no Remove picture action for a generated avatar', async () => {
     const { fixture, page } = render();
     backend.expectOne('/api/ui/profile').flush(profile);
     await fixture.whenStable();
-    expect(button(page, 'Remove')).toBeUndefined();
+    expect(button(page, 'Remove picture')).toBeUndefined();
   });
   it('retries only the snapshot after a failed fetch', async () => {
     const { fixture, page } = render();
@@ -57,7 +57,7 @@ describe('ProfilePage', () => {
     fixture.detectChanges();
     backend.expectOne('/api/ui/profile').flush(profile);
     await fixture.whenStable();
-    expect(page.textContent).toContain('Details');
+    expect(page.textContent).toContain('Authenticator');
     backend.expectNone((request) => request.method !== 'GET');
   });
   it('saves only the display name and refreshes shared account state', async () => {
@@ -65,8 +65,8 @@ describe('ProfilePage', () => {
     backend.expectOne('/api/ui/profile').flush(profile);
     await fixture.whenStable();
     fill(page, 'display-name', 'Renamed');
-    button(page, 'Save changes').click();
-    button(page, 'Save changes').click();
+    button(page, 'Save display name').click();
+    button(page, 'Save display name').click();
     const save = backend.expectOne({ method: 'PATCH', url: '/api/ui/profile/details' });
     expect(save.request.body).toEqual({ displayName: 'Renamed' });
     save.flush({ displayName: 'Renamed' });
@@ -79,17 +79,17 @@ describe('ProfilePage', () => {
     const { fixture, page } = render();
     backend.expectOne('/api/ui/profile').flush({ ...profile, hasCustomAvatar: true });
     await fixture.whenStable();
-    button(page, 'Remove').click();
+    button(page, 'Remove picture').click();
     await fixture.whenStable();
     expect(page.querySelector('dialog[role=alertdialog]')?.textContent).toContain(
       'go back to the generated avatar?',
     );
-    button(page, 'Continue').click();
+    button(page.querySelector('app-confirmation-dialog')!, 'Remove picture').click();
     backend.expectOne({ method: 'DELETE', url: '/api/ui/profile/avatar' }).flush(null);
     fixture.detectChanges();
     refreshed(backend);
     await fixture.whenStable();
-    expect(button(page, 'Remove')).toBeUndefined();
+    expect(button(page.querySelector('.profile-portrait')!, 'Remove picture')).toBeUndefined();
   });
   it('keeps email read-only when SMTP is unavailable and explains why', async () => {
     const { fixture, page } = render();
@@ -141,13 +141,13 @@ describe('ProfilePage', () => {
     const { fixture, page } = render();
     backend.expectOne('/api/ui/profile').flush(profile);
     await fixture.whenStable();
-    button(page, 'Save changes').click();
+    button(page, 'Save display name').click();
     backend.expectOne('/api/ui/profile/details').error(new ProgressEvent('error'));
     await fixture.whenStable();
     expect(page.textContent).toContain('The change may have been saved.');
     backend.expectNone('/api/ui/profile/details');
   });
-  it.each(['Remove', 'Sign out everywhere'])(
+  it.each(['Remove picture', 'Sign out everywhere'])(
     'Cancel restores the enabled %s opener',
     async (openerText) => {
       const { fixture, page } = render();
@@ -164,7 +164,7 @@ describe('ProfilePage', () => {
       backend.expectNone((request) => request.method !== 'GET');
     },
   );
-  it.each(['Remove', 'Sign out everywhere'])(
+  it.each(['Remove picture', 'Sign out everywhere'])(
     'Escape restores the enabled %s opener',
     async (openerText) => {
       const { fixture, page } = render();

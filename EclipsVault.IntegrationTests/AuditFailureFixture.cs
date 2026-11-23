@@ -1,3 +1,5 @@
+using System.Globalization;
+using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,7 +9,12 @@ namespace EclipsVault.IntegrationTests;
 
 public sealed class AuditFailureFixture : IAsyncLifetime
 {
-    public VaultFixture Vault { get; } = new() { Mailbox = new SmtpCapture() };
+    public AuditFailureFixture() => Vault = new() { Mailbox = new SmtpCapture(), RetiredMasterKey = RetiredMasterKey, DynamicSecretsTarget = true };
+
+    /// <summary>Loaded beside the current key, so a test can rotate secrets sealed under it.</summary>
+    public string RetiredMasterKey { get; } = SecretsUnderMasterKey.NewMasterKey();
+
+    public VaultFixture Vault { get; }
 
     public Task InitializeAsync() => Vault.InitializeAsync();
 
@@ -26,6 +33,18 @@ public sealed class AuditFailureFixture : IAsyncLifetime
               ALTER TABLE [dbo].[AuditLogs] WITH NOCHECK
               ADD CONSTRAINT [RejectAuditWrites] CHECK (1 = 0)
               """);
+    }
+
+    /// <summary>Rejects only the rows of <paramref name="action"/>, so a test can fail one row of a sequence.</summary>
+    public async Task RejectAuditWritesOfAsync(AuditAction action)
+    {
+        using var scope = Vault.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+        var value = ((int)action).ToString(CultureInfo.InvariantCulture);
+        var sql = db.Database.IsNpgsql()
+            ? "ALTER TABLE \"AuditLogs\" ADD CONSTRAINT \"RejectAuditWrites\" CHECK (\"Action\" <> " + value + ") NOT VALID"
+            : "ALTER TABLE [dbo].[AuditLogs] WITH NOCHECK ADD CONSTRAINT [RejectAuditWrites] CHECK ([Action] <> " + value + ")";
+        await db.Database.ExecuteSqlRawAsync(sql);
     }
 
     public async Task RestoreAuditWritesAsync()

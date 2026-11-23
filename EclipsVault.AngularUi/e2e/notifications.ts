@@ -1,5 +1,7 @@
 import type { Page } from '@playwright/test';
 import { openPalette } from './palette';
+import type { legacyShell } from './legacy-shell';
+import { AppShell } from './app-shell';
 
 export class Notifications {
   readonly heading;
@@ -7,6 +9,7 @@ export class Notifications {
   readonly noticeParts;
   readonly filter;
   readonly rows;
+  readonly deliveryRecordNote;
   constructor(private readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Notifications', exact: true });
     // eslint-disable-next-line playwright/no-raw-locators -- The Legacy delivery notice has no role of its own; the shell's licence notice is also a .notice.
@@ -15,6 +18,7 @@ export class Notifications {
     this.noticeParts = this.notice.locator('> *');
     this.filter = page.getByRole('searchbox', { name: 'Filter notifications', exact: true });
     this.rows = page.getByRole('row').filter({ has: page.getByRole('cell') });
+    this.deliveryRecordNote = page.getByText('a delivery record, not a mailbox');
   }
   async open(): Promise<void> {
     await this.page.goto('/Notifications');
@@ -31,11 +35,13 @@ export class Notifications {
   subject(recipient: string, subject: string) {
     return this.row(recipient).getByRole('cell', { name: subject });
   }
-  async fromSidebar(path: '/Secrets' | '/Access'): Promise<void> {
+  async fromSidebar(path: typeof legacyShell | '/Access'): Promise<void> {
     await this.page.goto(path);
+    // The Angular sidebar folds its administration pages into a group; the Legacy one lists them.
+    if (path === '/Access') await new AppShell(this.page).administration.click();
     await this.page.getByRole('link', { name: 'Notifications', exact: true }).click();
   }
-  async fromPalette(path: '/Secrets' | '/Access'): Promise<void> {
+  async fromPalette(path: typeof legacyShell | '/Access'): Promise<void> {
     await this.page.goto(path);
     await openPalette(this.page);
     await this.page.getByRole('combobox').fill('Notifications');

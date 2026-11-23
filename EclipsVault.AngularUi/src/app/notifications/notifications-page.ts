@@ -1,3 +1,4 @@
+import { ScrollRegion } from '../shared/scroll-region';
 import { DatePipe, formatDate } from '@angular/common';
 import { httpResource } from '@angular/common/http';
 import { Component, computed, signal } from '@angular/core';
@@ -9,7 +10,7 @@ type Notification = components['schemas']['NotificationResponse'];
 
 @Component({
   selector: 'app-notifications-page',
-  imports: [DatePipe, EmptyState, TableFilter],
+  imports: [ScrollRegion, DatePipe, EmptyState, TableFilter],
   templateUrl: './notifications-page.html',
 })
 export class NotificationsPage {
@@ -27,7 +28,7 @@ export class NotificationsPage {
         email.eventType,
         email.transport,
         this.badges[email.status].label,
-        email.status === 'failed' && email.error ? '⚠' : '',
+        email.error ?? '',
       ]
         .join(' ')
         .toLowerCase()
@@ -35,8 +36,8 @@ export class NotificationsPage {
     );
   });
   protected readonly badges: Record<Notification['status'], { tone: string; label: string }> = {
-    sent: { tone: 'ok', label: 'Sent' },
-    failed: { tone: 'danger', label: 'Failed' },
-    suppressed: { tone: 'muted', label: 'Suppressed' },
+    sent: { tone: 'ok', label: 'sent' },
+    failed: { tone: 'danger', label: 'failed' },
+    suppressed: { tone: 'muted', label: 'suppressed' },
   };
 }

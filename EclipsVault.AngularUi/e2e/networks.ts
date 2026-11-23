@@ -1,6 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import type { Page } from '@playwright/test';
 import { openPalette } from './palette';
+import type { legacyShell } from './legacy-shell';
+import { AppShell } from './app-shell';
 
 export class Networks {
   readonly heading;
@@ -22,7 +24,7 @@ export class Networks {
     this.trustBadge = this.currentAddress.getByText(/^(Trusted|Not trusted)$/);
     this.range = page.getByRole('textbox', { name: 'IP or CIDR', exact: true });
     this.label = page.getByRole('textbox', { name: 'Label', exact: true });
-    this.trust = page.getByRole('button', { name: 'Trust', exact: true });
+    this.trust = page.getByRole('button', { name: 'Add trusted network', exact: true });
     this.confirmation = page.getByRole('alertdialog');
     this.keepBlock = this.confirmation.getByRole('button', { name: 'Cancel', exact: true });
     this.stepUp = page.getByRole('dialog', { name: "Confirm it's you" });
@@ -40,11 +42,14 @@ export class Networks {
   remove(range: string) {
     return this.row(range).getByRole('button', { name: 'Remove', exact: true });
   }
+  block(range: string) {
+    return this.page.getByRole('listitem').filter({ hasText: range });
+  }
   unblock(range: string) {
-    return this.row(range).getByRole('button', { name: 'Unblock', exact: true });
+    return this.block(range).getByRole('button', { name: 'Lift block', exact: true });
   }
   blockedSince(range: string) {
-    return this.row(range).getByRole('cell').nth(2);
+    return this.block(range).getByText(/^\d{2}-\d{2} \d{2}:\d{2}$/);
   }
   async fromDashboard(): Promise<void> {
     await this.page.goto('/');
@@ -54,11 +59,13 @@ export class Networks {
     await this.page.goto('/Account/Denied');
     await this.page.getByRole('link', { name: 'Manage trusted networks', exact: true }).click();
   }
-  async fromSidebar(path: '/Secrets' | '/Access'): Promise<void> {
+  async fromSidebar(path: typeof legacyShell | '/Access'): Promise<void> {
     await this.page.goto(path);
+    // The Angular sidebar folds its administration pages into a group; the Legacy one lists them.
+    if (path === '/Access') await new AppShell(this.page).administration.click();
     await this.page.getByRole('link', { name: 'Networks', exact: true }).click();
   }
-  async fromPalette(path: '/Secrets' | '/Access'): Promise<void> {
+  async fromPalette(path: typeof legacyShell | '/Access'): Promise<void> {
     await this.page.goto(path);
     await openPalette(this.page);
     await this.page.getByRole('combobox').fill('Networks');

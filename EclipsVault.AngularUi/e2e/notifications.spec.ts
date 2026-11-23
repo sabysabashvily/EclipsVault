@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { test, expect } from './fixtures';
+import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { AccountCreation } from './account-creation';
 import { savedAdministratorCookies } from './administrator-cookies';
 import { refreshAdministratorProof } from './administrator-proof';
@@ -31,7 +32,7 @@ test('the outbox shows the provisioning email this run delivered', async ({ page
   const notifications = new Notifications(page);
   await notifications.open();
   await expect(notifications.noticeParts).toHaveText([
-    '✓ Delivering via SMTP → smtp:1025.',
+    'Delivering via SMTP to smtp:1025.',
     'Composed emails are sent to your mail server and recorded below.',
   ]);
   await expect(notifications.cells(delivered.address)).toHaveText([
@@ -40,7 +41,7 @@ test('the outbox shows the provisioning email this run delivered', async ({ page
     delivered.subject,
     'UserProvisioned',
     'Smtp',
-    'Sent',
+    'sent',
   ]);
   await expect(notifications.subject(delivered.address, delivered.subject)).toHaveAttribute(
     'title',
@@ -48,10 +49,11 @@ test('the outbox shows the provisioning email this run delivered', async ({ page
   );
 });
 
-test('the Legacy sidebar opens Notifications', async ({ page }) => {
+test('the Legacy sidebar opens Notifications', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
   await page.context().addCookies(await savedAdministratorCookies());
   const notifications = new Notifications(page);
-  await notifications.fromSidebar('/Secrets');
+  await notifications.fromSidebar(legacyShell);
   await expect(notifications.heading).toBeVisible();
   await expect(page).toHaveURL(/\/Notifications$/);
 });
@@ -64,10 +66,11 @@ test('the Angular sidebar opens Notifications', async ({ page }) => {
   await expect(page).toHaveURL(/\/Notifications$/);
 });
 
-test('the palette in the Legacy shell opens Notifications', async ({ page }) => {
+test('the palette in the Legacy shell opens Notifications', async ({ page, browserHealth }) => {
+  expectLegacyShell(browserHealth);
   await page.context().addCookies(await savedAdministratorCookies());
   const notifications = new Notifications(page);
-  await notifications.fromPalette('/Secrets');
+  await notifications.fromPalette(legacyShell);
   await expect(notifications.heading).toBeVisible();
 });
 
@@ -78,7 +81,7 @@ test('the palette in the Angular shell opens Notifications', async ({ page }) =>
   await expect(notifications.heading).toBeVisible();
 });
 
-test('the sidebar on Notifications returns to the Legacy Secrets list', async ({ page }) => {
+test('the sidebar on Notifications returns to the Secrets list', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const notifications = new Notifications(page);
   await notifications.open();
@@ -93,24 +96,27 @@ test('the sidebar on Notifications opens Your data in the Angular UI', async ({ 
   const notifications = new Notifications(page);
   await notifications.open();
   await expect(notifications.heading).toBeVisible();
-  await new AppShell(page).yourData.click();
+  // Your data is in the You group, which an administration page leaves folded.
+  const shell = new AppShell(page);
+  await shell.you.click();
+  await shell.yourData.click();
   await expect(new YourData(page).heading).toBeVisible();
   await expect(page).toHaveURL(/\/Data$/);
 });
 
-for (const theme of ['dark', 'light'] as const) {
-  test(`visual parity: Notifications in ${theme} appearance`, async ({ page }, info) => {
+for (const width of [300, 2000]) {
+  test(`Notifications does not scroll sideways at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
     await page.context().addCookies(await savedAdministratorCookies());
     const notifications = new Notifications(page);
     await notifications.open();
-    await notifications.useTheme(theme);
-    // eslint-disable-next-line playwright/no-raw-locators -- The theme is an attribute of the document element.
-    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-    await expect(notifications.notice).toHaveClass(/notice-ok/);
     await expect(notifications.row(delivered.address)).toBeVisible();
-    await page.screenshot({ path: info.outputPath(`notifications-${theme}.png`), fullPage: true });
+    await expect(notifications.deliveryRecordNote).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
   });
+}
 
+for (const theme of ['dark', 'light'] as const) {
   test(`the outbox filters by keyboard in ${theme} appearance`, async ({ page }) => {
     await page.context().addCookies(await savedAdministratorCookies());
     const notifications = new Notifications(page);

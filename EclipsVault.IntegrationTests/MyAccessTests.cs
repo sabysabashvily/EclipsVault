@@ -121,10 +121,10 @@ public sealed class MyAccessTests(VaultFixture vault)
 
         // A fresh antiforgery token is available even when /me could not return an identity.
         var xsrf = Assert.IsType<Cookie>(stale.Cookies.GetCookies(stale.Client.BaseAddress!)["XSRF-TOKEN"]);
-        Assert.Equal(HttpStatusCode.BadRequest, (await stale.Client.PostAsync("/Account/Logout", null)).StatusCode);
-        using var logout = new HttpRequestMessage(HttpMethod.Post, "/Account/Logout");
+        await UiApiFailureContractTests.AssertProblemAsync(await stale.Client.PostAsync("/api/ui/auth/sign-out", null), 400, "antiforgery_rejected");
+        using var logout = new HttpRequestMessage(HttpMethod.Post, "/api/ui/auth/sign-out");
         logout.Headers.Add("RequestVerificationToken", xsrf.Value);
-        Assert.Equal(HttpStatusCode.Redirect, (await stale.Client.SendAsync(logout)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await stale.Client.SendAsync(logout)).StatusCode);
         Assert.Null(stale.SessionCookie);
         // Signing out revokes the session on the server too, including the unmodified cookie.
         await UiApiFailureContractTests.AssertProblemAsync(await original.Client.GetAsync("/api/ui/access"), 401, "unauthenticated");

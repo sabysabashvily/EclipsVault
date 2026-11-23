@@ -1,7 +1,6 @@
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.AccessRequests;
 using EclipsVault.Core.Application.Activity;
-using EclipsVault.Core.Application.Auditing;
 using EclipsVault.Core.Application.Mfa;
 using EclipsVault.Core.Application.Profile;
 
@@ -79,7 +78,8 @@ public sealed class PersonalDataExportService : IPersonalDataExportService
 
         var activityList = activity
             .Select(a => new ExportActivityEntry(
-                a.TimestampUtc, ActivityDescriber.Describe(a.Action).Title, a.ResourceName, a.SourceIp))
+                a.TimestampUtc, ActivityDescriber.Describe(a.Action).Title,
+                ActivityDescriber.ResourceNameShownToActor(a.Action, a.ResourceName), a.SourceIp))
             .ToList();
 
         return new PersonalDataExport(
