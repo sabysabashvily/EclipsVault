@@ -243,6 +243,24 @@ public sealed class KekRotationBatchTests : IDisposable
         Assert.Equal("vault:eclipsvault:v1", await db.Secrets.Where(row => row.Id == damaged.Id).Select(row => row.KekId).SingleAsync());
     }
 
+    [Fact]
+    public async Task Under_Vault_Transit_a_row_with_an_empty_wrapped_key_stays_pending_while_the_rest_move()
+    {
+        await using var db = NewContext();
+        await db.Database.EnsureCreatedAsync();
+        var transit = new FakeVaultTransit();
+        var secrets = await SecretsSealedByAsync(db, transit.Engine(), count: 2);
+        var damaged = secrets[0];
+        damaged.WrappedDek = [];
+        await db.SaveChangesAsync();
+        transit.RotateKey();
+
+        var result = await Rotation(db, transit.Engine()).RotateAsync(default);
+
+        Assert.Equal(new KekRotationResult("vault:eclipsvault:v2", 1, 0, 0), result);
+        Assert.Equal("vault:eclipsvault:v1", await db.Secrets.Where(row => row.Id == damaged.Id).Select(row => row.KekId).SingleAsync());
+    }
+
     [Theory]
     [InlineData(HttpStatusCode.BadRequest, "encryption key not found")]
     [InlineData(HttpStatusCode.Forbidden, "permission denied")]
@@ -289,17 +307,25 @@ public sealed class KekRotationBatchTests : IDisposable
     {
         await using var db = NewContext();
         await db.Database.EnsureCreatedAsync();
-        var transit = new FakeVaultTransit();
+        // 55 characters, so two of its key ids joined would not fit the audit row's 128-character name.
+        var transit = new FakeVaultTransit("eclipsvault-production-master-key-for-the-payments-team");
         await SecretsSealedByAsync(db, transit.Engine(), count: 2);
         transit.RotateKey();
         transit.RewrapsBeforeKeyRotation = 1;
 
         var result = await Rotation(db, transit.Engine()).RotateAsync(default);
 
-        Assert.Equal(new KekRotationResult("vault:eclipsvault:v3", 2, 0, 0), result);
+        Assert.Equal(new KekRotationResult("vault:eclipsvault-production-master-key-for-the-payments-team:v3", 2, 0, 0), result);
+        await using var audit = NewContext();
         Assert.Equal(
-            ["Re-wrapped 2 secret(s) and 0 archived version(s) from KEK vault:eclipsvault:v1 to KEK vault:eclipsvault:v2, vault:eclipsvault:v3"],
-            await RotationDetailsAsync());
+            [
+                (
+                    "vault:eclipsvault-production-master-key-for-the-payments-team:v3",
+                    "Re-wrapped 2 secret(s) and 0 archived version(s) from KEK vault:eclipsvault-production-master-key-for-the-payments-team:v1 "
+                    + "to KEK vault:eclipsvault-production-master-key-for-the-payments-team:v2, vault:eclipsvault-production-master-key-for-the-payments-team:v3"
+                ),
+            ],
+            await audit.AuditLogs.Where(row => row.Action == AuditAction.KekRotated).Select(row => ValueTuple.Create(row.ResourceName, row.Details)).ToListAsync());
     }
 
     [Fact]
@@ -371,12 +397,6 @@ public sealed class KekRotationBatchTests : IDisposable
     {
         await using var db = NewContext();
         return await db.AuditLogs.CountAsync(row => row.Action == AuditAction.KekRotated);
-    }
-
-    private async Task<List<string?>> RotationDetailsAsync()
-    {
-        await using var db = NewContext();
-        return await db.AuditLogs.Where(row => row.Action == AuditAction.KekRotated).Select(row => row.Details).ToListAsync();
     }
 
     /// <summary>Fails every count, as a lost connection does once the batches have committed.</summary>

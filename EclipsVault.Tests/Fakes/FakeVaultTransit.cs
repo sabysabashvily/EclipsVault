@@ -14,9 +14,8 @@ namespace EclipsVault.Tests.Fakes;
 /// against it unchanged. Like Vault, a rewrap always re-encrypts, even a ciphertext already on the
 /// latest version.
 /// </summary>
-public sealed class FakeVaultTransit : HttpMessageHandler
+public sealed class FakeVaultTransit(string keyName = "eclipsvault") : HttpMessageHandler
 {
-    public const string KeyName = "eclipsvault";
 
     private const string Token = "fake-transit-token";
     private const int NonceSize = 12;
@@ -50,7 +49,7 @@ public sealed class FakeVaultTransit : HttpMessageHandler
         Options.Create(new VaultOptions
         {
             Address = "http://vault.test:8200",
-            KeyName = KeyName,
+            KeyName = keyName,
             // Names nothing sets, so the engine takes the development token and never the host's VAULT_TOKEN.
             TokenEnvironmentVariable = "ECLIPSVAULT_TEST_UNSET_VAULT_TOKEN",
             DevelopmentToken = Token,
@@ -91,7 +90,7 @@ public sealed class FakeVaultTransit : HttpMessageHandler
         {
             return Data(new
             {
-                name = KeyName,
+                name = keyName,
                 type = "aes256-gcm96",
                 latest_version = LatestVersion,
                 min_decryption_version = MinDecryptionVersion,
@@ -140,6 +139,11 @@ public sealed class FakeVaultTransit : HttpMessageHandler
     private HttpResponseMessage? Decrypt(string ciphertext, out byte[] plaintext)
     {
         plaintext = [];
+        if (ciphertext.Length == 0)
+        {
+            return Errors(HttpStatusCode.BadRequest, "missing ciphertext to decrypt");
+        }
+
         var parts = ciphertext.Split(':');
         if (parts.Length != 3 || parts[0] != "vault")
         {
@@ -190,7 +194,7 @@ public sealed class FakeVaultTransit : HttpMessageHandler
         }
     }
 
-    private static string PathOf(string operation) => $"/v1/transit/{operation}/{KeyName}";
+    private string PathOf(string operation) => $"/v1/transit/{operation}/{keyName}";
 
     private static HttpResponseMessage Data(object data) => new(HttpStatusCode.OK) { Content = JsonContent.Create(new { data }) };
 

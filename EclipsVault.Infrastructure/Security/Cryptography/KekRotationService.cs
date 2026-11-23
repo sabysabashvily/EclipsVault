@@ -166,8 +166,8 @@ public sealed class KekRotationService : IKekRotationService
     /// are still what was read; a row changed, deleted or shredded since is left alone, and counts as
     /// not moved. A changed value is already sealed under the current master key with a new data key.
     /// A row whose re-wrap changes nothing, or whose data key does not open, is not written either.
-    /// The audit row names the master keys the rows actually moved to, which under a key service can
-    /// be a version newer than the one the pass started with.
+    /// The audit row's details name every master key the rows actually moved to, which under a key
+    /// service can be a version newer than the one the pass started with.
     /// </summary>
     private async Task CommitBatchAsync(
         IReadOnlyList<ReadEnvelope> batch, bool areSecrets, ICryptoEngine engine, Action<int> onCommitted)
@@ -225,7 +225,8 @@ public sealed class KekRotationService : IKekRotationService
         {
             Action = AuditAction.KekRotated,
             ResourceType = "Kek",
-            ResourceName = currentIds,
+            // The last row moved went to the newest key, and one id always fits the column.
+            ResourceName = moved[^1].Rewrapped.KekId,
             Details = $"Re-wrapped {secrets} secret(s) and {versions} archived version(s) from KEK {retiredIds} to KEK {currentIds}",
             IsCritical = true
         });

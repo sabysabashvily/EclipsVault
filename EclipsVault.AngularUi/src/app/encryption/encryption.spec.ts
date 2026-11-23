@@ -360,7 +360,15 @@ describe('Encryption keys', () => {
       versionsRewrapped: 0,
       onMissingKeys: 2,
     });
-    await reload(fixture, { ...transitStranded, awaitingRotation: 0 });
+    await reload(fixture, {
+      ...transitStranded,
+      keys: [
+        { kekId: 'vault:eclipsvault:v3', status: 'current', secrets: 8, versions: 0 },
+        { kekId: 'vault:eclipsvault:v2', status: 'retired', secrets: 0, versions: 0 },
+        { kekId: 'vault:eclipsvault:v1', status: 'not_loaded', secrets: 2, versions: 0 },
+      ],
+      awaitingRotation: 0,
+    });
     expect(text(page.querySelector('.notice-ok'))).toContain(
       "2 items remain on versions the key service won't unwrap.",
     );
@@ -462,7 +470,14 @@ describe('Encryption keys', () => {
       versionsRewrapped: 1,
       onMissingKeys: 0,
     });
-    await reload(fixture, settled);
+    await reload(fixture, {
+      ...pendingAfterStop,
+      keys: [
+        { kekId: 'kek-1a2b3c4d', status: 'current', secrets: 16, versions: 4 },
+        { kekId: 'kek-5e6f7a8b', status: 'retired', secrets: 0, versions: 0 },
+      ],
+      awaitingRotation: 0,
+    });
     expect(notices(page)).toEqual(['Re-wrapped 0 secrets and 1 version under the current key']);
   });
 

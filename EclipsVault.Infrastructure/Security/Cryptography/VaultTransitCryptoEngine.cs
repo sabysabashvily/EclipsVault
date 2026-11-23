@@ -111,6 +111,13 @@ public sealed class VaultTransitCryptoEngine : ICryptoEngine
 
     public async Task<SealedSecret> RewrapAsync(SealedSecret sealedSecret, CancellationToken ct)
     {
+        if (sealedSecret.WrappedDek.Length == 0)
+        {
+            // Vault would answer "missing ciphertext to decrypt", which reads as a bad request rather
+            // than a damaged row, so this row's own fault is named here.
+            throw new CryptographicException("The stored wrapped data key is empty.");
+        }
+
         var wrappedDek = Encoding.UTF8.GetString(sealedSecret.WrappedDek);
         // Vault re-wraps the DEK under its latest key version without exposing the DEK.
         var rewrapped = await TransitCallAsync("rewrap", new { ciphertext = wrappedDek }, "ciphertext", ct, refusalIsThisCiphertext: true);
