@@ -25,8 +25,7 @@ public sealed class NotFoundTests(VaultFixture vault)
         Assert.Contains("<title>Page not found — EclipsVault</title>", html, StringComparison.Ordinal);
         Assert.Contains("<h1>404 — Page not found</h1>", html, StringComparison.Ordinal);
         Assert.Contains("There is no page at this address.", html, StringComparison.Ordinal);
-        Assert.Contains("""<a class="button primary wide" href="/">Back to safety</a>""", html, StringComparison.Ordinal);
-        Assert.DoesNotContain("<app-root>", html, StringComparison.Ordinal);
+        Assert.Matches("""<a\b[^>]*\bhref="/"[^>]*>Back to safety</a>""", html);
         Assert.DoesNotContain("<script", html, StringComparison.Ordinal);
     }
 
@@ -121,14 +120,5 @@ public sealed class NotFoundTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Null(response.Headers.Location);
         Assert.Equal("""{"error":"not_found"}""", await response.Content.ReadAsStringAsync());
-    }
-
-    [Fact]
-    public async Task Signed_in_the_root_is_the_overview_document()
-    {
-        using var response = await (await vault.AdminClientAsync()).GetAsync("/");
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("<app-root>", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
     }
 }

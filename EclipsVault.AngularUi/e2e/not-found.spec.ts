@@ -1,5 +1,6 @@
 import { savedAdministratorCookies } from './administrator-cookies';
 import { test, expect } from './fixtures';
+import { NotFoundPage } from './not-found';
 import { Overview } from './overview';
 
 test('an unknown address shows the not-found page, and Back to safety opens the Overview', async ({
@@ -8,36 +9,52 @@ test('an unknown address shows the not-found page, and Back to safety opens the 
 }) => {
   browserHealth.expectConsoleError({ text: /status of 404/, url: /\/e2e-no-such-page$/ });
   await page.context().addCookies(await savedAdministratorCookies());
+  const notFound = new NotFoundPage(page);
 
-  const response = await page.goto('/e2e-no-such-page');
+  const response = await notFound.open('/e2e-no-such-page');
 
   expect(response?.status()).toBe(404);
   await expect(page).toHaveTitle('Page not found — EclipsVault');
-  await expect(
-    page.getByRole('heading', { name: '404 — Page not found', exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText('There is no page at this address.', { exact: true })).toBeVisible();
-  await page.getByRole('link', { name: 'Back to safety', exact: true }).click();
+  await expect(notFound.heading).toBeVisible();
+  await expect(notFound.explanation).toBeVisible();
+  await notFound.backToSafety.click();
   await expect(page).toHaveURL(/\/$/);
   await expect(new Overview(page).heading).toBeVisible();
 });
 
-test('a missing file answers 404, not the Angular document', async ({ page }) => {
+test('a missing file answers with an empty 404', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
 
   const response = await page.request.get('/ui/e2e-missing.js');
 
   expect(response.status()).toBe(404);
-  expect(await response.text()).not.toContain('<app-root');
+  expect(await response.text()).toBe('');
 });
 
-test('signed out, the Overview address asks for sign-in and names itself as the return', async ({
+test('switching to dark in the vault carries the theme to the not-found page', async ({
+  page,
   browserHealth,
 }) => {
-  const page = await (await browserHealth.newContext()).newPage();
+  await page.context().addCookies(await savedAdministratorCookies());
+  await page.goto('/Access');
+  await page.context().addCookies([
+    {
+      name: 'EclipsVault.Theme',
+      value: 'light',
+      url: new URL('/', page.url()).href,
+      secure: true,
+    },
+  ]);
+  await page.reload();
+  await page.getByTitle('Your account — Top Secret clearance', { exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Switch to dark', exact: true }).click();
+  const currentTheme = () => page.evaluate(() => document.documentElement.dataset['theme']);
+  await expect.poll(currentTheme).toBe('dark');
 
-  await page.goto('/');
+  browserHealth.expectConsoleError({ text: /status of 404/, url: /\/e2e-theme-no-such-page$/ });
+  const notFound = new NotFoundPage(page);
+  await notFound.open('/e2e-theme-no-such-page');
 
-  await expect(page).toHaveURL(/\/Account\/Login\?ReturnUrl=%2F$/);
-  await expect(page.getByLabel('Username')).toBeVisible();
+  await expect(notFound.heading).toBeVisible();
+  await expect.poll(currentTheme).toBe('dark');
 });

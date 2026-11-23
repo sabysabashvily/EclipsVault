@@ -77,11 +77,11 @@ public static class ServerPage
     {
         var heading = status switch
         {
-            404 => "Not found",
-            403 => "Access denied",
-            402 => "Licence required",
-            409 => "Secret needs a one-time upgrade",
-            503 => "Vault unavailable (fail-closed)",
+            StatusCodes.Status404NotFound => "Not found",
+            StatusCodes.Status403Forbidden => "Access denied",
+            StatusCodes.Status402PaymentRequired => "Licence required",
+            StatusCodes.Status409Conflict => "Secret needs a one-time upgrade",
+            StatusCodes.Status503ServiceUnavailable => "Vault unavailable (fail-closed)",
             _ => "Something went wrong"
         };
         var requestId = Activity.Current?.Id ?? context.TraceIdentifier;
@@ -98,7 +98,6 @@ public static class ServerPage
         => WriteAsync(context, StatusCodes.Status403Forbidden, "Access blocked",
             BlockedContent.Replace("{0}", development ? DevelopmentHint : string.Empty, StringComparison.Ordinal));
 
-    /// <summary>A path that is not a page.</summary>
     public static Task NotFoundAsync(HttpContext context)
         => WriteAsync(context, StatusCodes.Status404NotFound, "Page not found", $"""
                         <h1>404 — Page not found</h1>

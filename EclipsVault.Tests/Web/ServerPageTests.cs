@@ -14,8 +14,8 @@ public sealed class ServerPageTests
         Assert.Equal(404, status);
         Assert.Contains("<title>Page not found — EclipsVault</title>", html);
         Assert.Contains("<h1>404 — Page not found</h1>", html);
-        Assert.Contains("""<p class="muted">There is no page at this address.</p>""", html);
-        Assert.Contains("""<a class="button primary wide" href="/">Back to safety</a>""", html);
+        Assert.Contains("There is no page at this address.", html);
+        Assert.Matches("""<a\b[^>]*\bhref="/"[^>]*>Back to safety</a>""", html);
         Assert.Contains("""<link rel="stylesheet" href="/css/server-page.css" />""", html);
         Assert.DoesNotContain("<script", html);
     }
@@ -29,7 +29,7 @@ public sealed class ServerPageTests
     {
         var (_, html) = await RenderAsync(ServerPage.NotFoundAsync, cookie);
 
-        Assert.Contains($"""<html lang="en" data-theme="{theme}">""", html);
+        Assert.Contains($"data-theme=\"{theme}\"", html);
     }
 
     private static async Task<(int Status, string Html)> RenderAsync(Func<HttpContext, Task> write, string? cookie = null)

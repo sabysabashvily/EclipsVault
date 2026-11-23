@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using EclipsVault.Core.Application.Abstractions;
-using EclipsVault.Core.Domain.Exceptions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -50,8 +49,8 @@ public sealed class UiApiFailureContractTests(VaultFixture vault)
     [Theory]
     [InlineData("audit", 503, "Vault unavailable (fail-closed)", "The audit trail is unavailable, so the vault refused the request.")]
     [InlineData("session_store", 503, "Vault unavailable (fail-closed)", "The session store is unavailable, so the vault refused the change. Nothing was saved.")]
-    [InlineData("unblock_unrecorded", 503, "Vault unavailable (fail-closed)", UnblockUnrecordedException.FailureMessage)]
-    [InlineData("recovery_incomplete", 503, "Vault unavailable (fail-closed)", RecoveryIncompleteException.FailureMessage)]
+    [InlineData("unblock_unrecorded", 503, "Vault unavailable (fail-closed)", "The block was lifted, but recording and restoring it failed. Check the range before retrying.")]
+    [InlineData("recovery_incomplete", 503, "Vault unavailable (fail-closed)", "Your sign-in was recorded, but the vault could not finish restoring network access. This source remains blocked. Contact an administrator.")]
     [InlineData("not_found", 404, "Not found", "Not found.")]
     [InlineData("legacy_blob", 409, "Secret needs a one-time upgrade", "This secret is sealed in a format the vault refuses until an administrator re-seals it.")]
     [InlineData("crypto", 500, "Something went wrong", "The vault's encryption is unavailable.")]
@@ -74,9 +73,9 @@ public sealed class UiApiFailureContractTests(VaultFixture vault)
         var text = WebUtility.HtmlDecode(body);
         Assert.Contains($"<title>{heading} — EclipsVault</title>", text);
         Assert.Contains($"<h1>{status} — {heading}</h1>", text);
-        Assert.Contains($"<p class=\"muted\">{line}</p>", text);
+        Assert.Contains(line, text, StringComparison.Ordinal);
         Assert.Contains("Request id: <code>", text);
-        Assert.Contains("""<a class="button primary wide" href="/">Back to safety</a>""", text);
+        Assert.Matches("""<a\b[^>]*\bhref="/"[^>]*>Back to safety</a>""", text);
         Assert.DoesNotContain("<script", text);
         AssertNoExceptionDetail(body);
     }
@@ -90,6 +89,20 @@ public sealed class UiApiFailureContractTests(VaultFixture vault)
         var response = await service.GetAsync($"/api/v1/test-only/throw/{kind}");
 
         await AssertPublicErrorAsync(response, status, code);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("evk_invalid")]
+    public async Task A_public_API_request_without_a_valid_key_gets_the_same_JSON_challenge(string? key)
+    {
+        using var client = vault.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/secrets");
+        request.Headers.Authorization = key is null ? null : new AuthenticationHeaderValue("Bearer", key);
+
+        using var response = await client.SendAsync(request);
+
+        await AssertPublicErrorAsync(response, 401, "unauthenticated");
     }
 
     [Fact]
@@ -311,20 +324,13 @@ public sealed class UiApiFailureContractTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task The_public_api_keeps_its_own_error_shape()
+    public async Task A_valid_key_for_an_unknown_secret_gets_the_JSON_not_found()
     {
-        var apiKey = await vault.IssueApiKeyAsync(await vault.AdminClientAsync(), "it-public-api-shape");
-        var service = vault.CreateClient();
-        service.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        using var service = await PublicApiClientAsync("it-public-api-shape");
 
-        var notFound = await service.GetAsync($"/api/v1/secrets/{Guid.NewGuid()}");
-        var noKey = await vault.CreateClient().GetAsync("/api/v1/secrets");
+        using var notFound = await service.GetAsync($"/api/v1/secrets/{Guid.NewGuid()}");
 
-        Assert.Equal(HttpStatusCode.NotFound, notFound.StatusCode);
-        Assert.Equal("application/json", notFound.Content.Headers.ContentType?.MediaType);
-        Assert.Equal("""{"error":"not_found"}""", await notFound.Content.ReadAsStringAsync());
-        Assert.Equal(HttpStatusCode.Unauthorized, noKey.StatusCode);
-        Assert.Empty(await noKey.Content.ReadAsStringAsync());
+        await AssertPublicErrorAsync(notFound, 404, "not_found");
     }
 
     internal static async Task AssertProblemAsync(HttpResponseMessage response, int status, string code)

@@ -8,6 +8,7 @@ using EclipsVault.Infrastructure.Persistence;
 using EclipsVault.Infrastructure.Security;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.HttpsPolicy;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Mvc.Testing.Handlers;
 using Microsoft.AspNetCore.TestHost;
@@ -148,6 +149,8 @@ public sealed partial class VaultFixture : IAsyncLifetime
                 .UseEnvironment("Production")
                 .ConfigureTestServices(services =>
                 {
+                    // TestServer has no listening HTTPS socket for the redirect middleware to discover.
+                    services.Configure<HttpsRedirectionOptions>(options => options.HttpsPort = 443);
                     services.AddMvcCore().AddApplicationPart(typeof(VaultFixture).Assembly);
                     services.AddSingleton<ILogEventSink>(Log);
                     // Keep the real counter, cache and configured thresholds. Freeze only its window;

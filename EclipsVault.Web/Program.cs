@@ -301,8 +301,8 @@ try
         }
     }
 
-    app.UseHttpsRedirection();
     app.UseMiddleware<SecurityHeadersMiddleware>();
+    app.UseHttpsRedirection();
     app.UseStaticFiles();
     // Before everything that reads the session store or the account, so it still works when they fail.
     app.UseLocalSignOut();

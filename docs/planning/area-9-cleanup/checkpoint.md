@@ -160,3 +160,9 @@ final head. The coordinator records the final CI run in the PR body.
 
 To resume, read #194, #197, `logs/ticket-197/final-report.md` and `logs/ticket-197/review-ledger.md`.
 The single PR body is at `logs/ticket-197/pr-body.md`.
+
+The Standards and Spec reviews led to a follow-up commit. A missing or invalid Public API key now
+gets `401 { "error": "unauthenticated" }`. The security headers run on HTTP redirects to HTTPS, and
+the endpoint table test pins the Top Secret claim on administrator pages. The red HTTP tests first
+showed the empty 401 and the missing redirect headers. The browser tests and Vitest checks assert
+the routes and pages a user reaches. See the ledger for review dispositions and the final-head CI run.

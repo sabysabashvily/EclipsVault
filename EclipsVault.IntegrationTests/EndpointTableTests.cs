@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Net;
+using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Web.Authorization;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
@@ -216,5 +218,6 @@ public sealed class EndpointTableTests(VaultFixture vault)
         => endpoint is RouteEndpoint route
            && !route.RoutePattern.RawText!.TrimStart('/').StartsWith("api/", StringComparison.OrdinalIgnoreCase)
            && policy.Requirements.OfType<ClaimsAuthorizationRequirement>()
-               .Any(requirement => requirement.ClaimType == VaultClaimTypes.Clearance);
+               .Any(requirement => requirement.ClaimType == VaultClaimTypes.Clearance
+                   && requirement.AllowedValues?.SequenceEqual([((int)ClearanceLevel.TopSecret).ToString(CultureInfo.InvariantCulture)]) == true);
 }

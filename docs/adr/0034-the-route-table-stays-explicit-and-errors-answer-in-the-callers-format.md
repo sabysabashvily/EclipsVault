@@ -20,7 +20,8 @@ pending sign-in cookie. This ADR replaces the catch-all and settles what each ca
   signs out through `POST /api/ui/auth/sign-out`.
 - **Errors answer in the caller's format, without a redirect.** The UI API keeps Problem Details
   (ADR-0006). The Public API gets `{ "error": "<code>" }` with the real status for every exception the
-  middleware maps, and a blocked network gets `403 { "error": "blocked" }`. Every other request gets a
+  middleware maps. A missing or rejected API key gets `401 { "error": "unauthenticated" }`, and a
+  blocked network gets `403 { "error": "blocked" }`. Every other request gets a
   server page with the real status and the middleware's fixed text for that failure, a request id and
   a link to `/`; never an exception's details. A honey-token trip outside the APIs still signs out and
   redirects to sign-in.
@@ -33,8 +34,9 @@ pending sign-in cookie. This ADR replaces the catch-all and settles what each ca
 - **No landing page.** `/` needs a session; a signed-out visitor is sent to sign-in. The sign-in
   pages are the only anonymous Angular pages (ADR-0032). `/local-sign-out` stays reachable without a
   session because the outage branch runs before authentication.
-- **Headers.** Trusted Types is in the base Content Security Policy for every response (ADR-0013's
-  final step), and every `/api/` response, the Public API's included, is `no-store`.
+- **Headers.** The base Content Security Policy includes Trusted Types (ADR-0013's final step).
+  Every `/api/` response carries `no-store`. The middleware also sets these headers on HTTP
+  requests that redirect to HTTPS.
 - **The surface is pinned on the endpoint table**, not only on controller actions. A test of the
   Production host lists the anonymous endpoints, the pending sign-in endpoints and the administrator
   pages exactly. Every other session endpoint, including the page not-found fallback and `/api/ui/`,

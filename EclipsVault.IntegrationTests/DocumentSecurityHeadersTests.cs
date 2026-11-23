@@ -21,6 +21,19 @@ public sealed class DocumentSecurityHeadersTests(VaultFixture vault)
         "frame-ancestors 'none'; form-action 'self' https://idp.example.test; base-uri 'self'" +
         "; require-trusted-types-for 'script'; trusted-types angular angular#bundler";
 
+    [Fact]
+    public async Task A_public_API_request_over_HTTP_redirects_with_the_security_headers()
+    {
+        using var client = vault.CreateClient();
+
+        using var response = await client.GetAsync("http://localhost/api/v1/secrets");
+
+        Assert.Equal(HttpStatusCode.TemporaryRedirect, response.StatusCode);
+        Assert.Equal("https://localhost/api/v1/secrets", response.Headers.Location?.AbsoluteUri);
+        Assert.Equal(Policy, Assert.Single(response.Headers.GetValues("Content-Security-Policy")));
+        Assert.True(response.Headers.CacheControl?.NoStore);
+    }
+
     [Theory]
     [InlineData("/Profile")]
     [InlineData("/pRoFiLe/InDeX")]

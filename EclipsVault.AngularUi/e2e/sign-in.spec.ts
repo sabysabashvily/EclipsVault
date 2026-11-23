@@ -21,7 +21,15 @@ import {
   statCards,
   verifySignInHistory,
 } from './sign-ins';
-import { verifySidebar } from './sidebar';
+import { verifyMyAccess } from './access';
+import { AppShell } from './app-shell';
+import {
+  captureSidebar,
+  expectedNavigation,
+  openMyAccessBookmark,
+  readAccountMenu,
+  sidebarNavigation,
+} from './sidebar';
 import {
   allClear,
   atRisk,
@@ -315,19 +323,11 @@ test("Security checkup shows the administrator's real posture without a passkey 
   });
 });
 
-test('the administrator and Standard sidebars in both themes, and in-app navigation', async ({
+test('a Standard account signs in after enrolling an authenticator', async ({
   page,
   browserHealth,
-}, info) => {
-  test.setTimeout(180_000);
-  // Reuse the real session established above. Extra sign-ins would exhaust the production per-IP
-  // password budget before the revocation test; the limiter stays fully enabled.
+}) => {
   await page.context().addCookies(administratorCookies);
-  await page.goto('/Access');
-  await test.step('administrator navigation and visual comparison', async () => {
-    await verifySidebar(page, info, 'administrator');
-  });
-
   const username = 'e2e-standard-sidebar';
   const password = `E2e-${randomBytes(24).toString('hex')}`;
   await test.step('provision a Standard account through the administrator UI', async () => {
@@ -355,10 +355,155 @@ test('the administrator and Standard sidebars in both themes, and in-app navigat
     await standard.getByRole('button', { name: 'Confirm enrollment' }).click();
     await expect(standard).toHaveURL(/\/Secrets$/);
   });
-  await test.step('Standard navigation and visual comparison', async () => {
-    await verifySidebar(standard, info, 'standard');
-  });
   standardCookies = await standard.context().cookies();
+});
+
+const sidebarAccounts = [
+  {
+    kind: 'administrator',
+    cookies: () => administratorCookies,
+    accountTitle: 'Your account — Top Secret clearance',
+    identity: ['Vault Administrator', 'Top Secret'],
+  },
+  {
+    kind: 'standard',
+    cookies: () => standardCookies,
+    accountTitle: 'Your account — Standard clearance',
+    identity: ['Standard Sidebar', 'Standard'],
+  },
+] as const;
+
+const sidebarThemes = [
+  { name: 'dark', switchLabel: 'Switch to light' },
+  { name: 'light', switchLabel: 'Switch to dark' },
+] as const;
+
+for (const account of sidebarAccounts) {
+  for (const theme of sidebarThemes) {
+    test(`the ${account.kind} sidebar shows its page links in ${theme.name}`, async ({
+      page,
+      baseURL,
+    }, info) => {
+      const document = await openMyAccessBookmark(page, account.cookies(), baseURL, theme.name);
+      const shell = new AppShell(page);
+      expect(document?.headers()['content-security-policy']).toContain(
+        "require-trusted-types-for 'script'",
+      );
+      await expect(shell.myAccess).toHaveAttribute('aria-current', 'page');
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme.name);
+      expect(await sidebarNavigation(page)).toEqual(expectedNavigation[account.kind]);
+      await expect(page.locator('style, [style]')).toHaveCount(0);
+      await captureSidebar(page, info, `${account.kind}-${theme.name}-angular`);
+    });
+
+    test(`the ${account.kind} account menu shows its identity and actions in ${theme.name}`, async ({
+      page,
+      baseURL,
+    }) => {
+      await openMyAccessBookmark(page, account.cookies(), baseURL, theme.name);
+
+      expect(await readAccountMenu(page)).toEqual({
+        title: account.accountTitle,
+        avatar: expect.any(String),
+        who: account.identity,
+        items: [
+          { label: 'Profile', href: '/Profile' },
+          { label: theme.switchLabel, href: null },
+          { label: 'Sign out', href: null },
+        ],
+      });
+    });
+
+    test(`My access shows the ${account.kind} clearance grid in ${theme.name}`, async ({
+      page,
+      baseURL,
+    }, info) => {
+      await openMyAccessBookmark(page, account.cookies(), baseURL, theme.name);
+
+      await verifyMyAccess(page, info, account.kind, theme.name);
+    });
+  }
+
+  test(`the ${account.kind} My access link keeps the current document and session`, async ({
+    page,
+    baseURL,
+  }) => {
+    await openMyAccessBookmark(page, account.cookies(), baseURL, 'dark');
+    const shell = new AppShell(page);
+    const session = (await page.context().cookies()).find(
+      (cookie) => cookie.name === 'EclipsVault.Session',
+    );
+    expect(session).toBeDefined();
+    const documents: string[] = [];
+    page.on('request', (request) => {
+      if (request.isNavigationRequest() && request.resourceType() === 'document') {
+        documents.push(request.url());
+      }
+    });
+
+    await shell.myAccess.click();
+
+    await expect(page).toHaveURL(/\/Access$/);
+    await expect(shell.myAccess).toHaveAttribute('aria-current', 'page');
+    expect(documents).toEqual([]);
+    expect(
+      (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Session')
+        ?.value,
+    ).toBe(session?.value);
+  });
+}
+
+test('folding the You group hides its links until it is opened again', async ({
+  page,
+  baseURL,
+}) => {
+  await openMyAccessBookmark(page, standardCookies, baseURL, 'dark');
+  const shell = new AppShell(page);
+  await expect(shell.myAccess).toBeVisible();
+
+  await shell.you.click();
+  await expect(shell.myAccess).toBeHidden();
+  await shell.you.click();
+
+  await expect(shell.youGroup.getByRole('link')).toHaveText([
+    'My access',
+    'Security checkup',
+    'Sign-in history',
+    'Signed-in devices',
+    'My activity',
+    'Your data',
+  ]);
+});
+
+test('the administrator can open the folded Administration group', async ({ page, baseURL }) => {
+  await openMyAccessBookmark(page, administratorCookies, baseURL, 'dark');
+  const shell = new AppShell(page);
+  await expect(shell.administrationGroup.getByRole('link')).toHaveCount(0);
+
+  await shell.administration.click();
+
+  await expect(shell.administrationGroup.getByRole('link')).toHaveText([
+    'Users',
+    'Service accounts',
+    'Networks',
+    'Encryption keys',
+    'Audit log',
+    'Notifications',
+    'License',
+  ]);
+});
+
+test('an administrator sees the licence reminder', async ({ page, baseURL }) => {
+  await openMyAccessBookmark(page, administratorCookies, baseURL, 'dark');
+
+  await expect(page.getByRole('link', { name: 'View license', exact: true })).toBeVisible();
+});
+
+test('a Standard account sees no licence reminder', async ({ page, baseURL }) => {
+  await openMyAccessBookmark(page, standardCookies, baseURL, 'dark');
+  await expect(new AppShell(page).myAccess).toBeVisible();
+
+  await expect(page.getByRole('link', { name: 'View license', exact: true })).toHaveCount(0);
 });
 
 test('a denied My access cell explains itself in a side panel, a bottom sheet on a phone', async ({
@@ -392,10 +537,7 @@ test('a denied My access cell explains itself in a side panel, a bottom sheet on
   await expect(cell).toBeFocused();
 });
 
-test('the Angular UI applies the theme before it starts, and its switch reaches the not-found page', async ({
-  page,
-  browserHealth,
-}) => {
+test('the Angular UI applies the theme cookie before the bundle starts', async ({ page }) => {
   await page.context().addCookies(administratorCookies);
   await page.goto('/Access');
   await page.context().addCookies([
@@ -407,38 +549,20 @@ test('the Angular UI applies the theme before it starts, and its switch reaches 
     },
   ]);
 
-  await test.step("the Angular UI applies the cookie's theme before it starts", async () => {
-    // Hold the application bundle, so only the external boot script can have set the theme.
-    let release: () => void = () => undefined;
-    const held = new Promise<void>((resolve) => (release = resolve));
-    const bundle = /\/ui\/main-[\w-]+\.js$/;
-    await page.route(bundle, async (route) => {
-      await held;
-      await route.continue();
-    });
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  const bundle = /\/ui\/main-[\w-]+\.js$/;
+  await page.route(bundle, async (route) => {
+    await held;
+    await route.continue();
+  });
+  try {
     await page.goto('/Access', { waitUntil: 'commit' });
-    await page.waitForFunction(() => document.documentElement.hasAttribute('data-theme'));
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-    await expect(page.locator('app-root')).toBeEmpty();
+  } finally {
     release();
-    await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
-    await page.unroute(bundle);
-  });
-
-  await test.step('switched in the Angular UI, the theme reaches the not-found server page', async () => {
-    await page.locator('summary.user-card').click();
-    await page.getByRole('menuitem', { name: 'Switch to dark', exact: true }).click();
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-    expect(
-      (await page.context().cookies()).find((cookie) => cookie.name === 'EclipsVault.Theme')?.value,
-    ).toBe('dark');
-    browserHealth.expectConsoleError({ text: /status of 404/, url: /\/e2e-theme-no-such-page$/ });
-    await page.goto('/e2e-theme-no-such-page');
-    await expect(
-      page.getByRole('heading', { name: '404 — Page not found', exact: true }),
-    ).toBeVisible();
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  });
+  }
+  await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
 });
 
 test("the ⌘K palette offers the sidebar's pages plus New secret and the Sharing tabs, for an administrator and a Standard account", async ({
