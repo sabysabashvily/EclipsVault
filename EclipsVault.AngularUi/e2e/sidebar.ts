@@ -95,9 +95,11 @@ export async function openMyAccessBookmark(
   theme: 'dark' | 'light',
 ) {
   if (!baseURL) throw new Error('Run with the vault URL configured');
+  await page.setViewportSize({ width: 1440, height: 1200 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.context().addCookies(cookies);
   await page
     .context()
     .addCookies([{ name: 'EclipsVault.Theme', value: theme, url: baseURL, secure: true }]);
-  return page.goto('/aCcEsS/INDEX');
+  await page.goto('/aCcEsS/INDEX');
 }

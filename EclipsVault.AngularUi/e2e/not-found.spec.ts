@@ -31,7 +31,7 @@ test('a missing file answers with an empty 404', async ({ page }) => {
   expect(await response.text()).toBe('');
 });
 
-test('switching to dark in the vault carries the theme to the not-found page', async ({
+test('switching to light in the vault carries the theme to the not-found page', async ({
   page,
   browserHealth,
 }) => {
@@ -40,21 +40,21 @@ test('switching to dark in the vault carries the theme to the not-found page', a
   await page.context().addCookies([
     {
       name: 'EclipsVault.Theme',
-      value: 'light',
+      value: 'dark',
       url: new URL('/', page.url()).href,
       secure: true,
     },
   ]);
   await page.reload();
   await page.getByTitle('Your account — Top Secret clearance', { exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Switch to dark', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Switch to light', exact: true }).click();
   const currentTheme = () => page.evaluate(() => document.documentElement.dataset['theme']);
-  await expect.poll(currentTheme).toBe('dark');
+  await expect.poll(currentTheme).toBe('light');
 
   browserHealth.expectConsoleError({ text: /status of 404/, url: /\/e2e-theme-no-such-page$/ });
   const notFound = new NotFoundPage(page);
   await notFound.open('/e2e-theme-no-such-page');
 
   await expect(notFound.heading).toBeVisible();
-  await expect.poll(currentTheme).toBe('dark');
+  await expect.poll(currentTheme).toBe('light');
 });

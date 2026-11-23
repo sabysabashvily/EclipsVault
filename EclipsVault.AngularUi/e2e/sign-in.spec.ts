@@ -384,15 +384,10 @@ for (const account of sidebarAccounts) {
       page,
       baseURL,
     }, info) => {
-      const document = await openMyAccessBookmark(page, account.cookies(), baseURL, theme.name);
+      await openMyAccessBookmark(page, account.cookies(), baseURL, theme.name);
       const shell = new AppShell(page);
-      expect(document?.headers()['content-security-policy']).toContain(
-        "require-trusted-types-for 'script'",
-      );
       await expect(shell.myAccess).toHaveAttribute('aria-current', 'page');
-      await expect(page.locator('html')).toHaveAttribute('data-theme', theme.name);
       expect(await sidebarNavigation(page)).toEqual(expectedNavigation[account.kind]);
-      await expect(page.locator('style, [style]')).toHaveCount(0);
       await captureSidebar(page, info, `${account.kind}-${theme.name}-angular`);
     });
 

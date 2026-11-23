@@ -21,7 +21,7 @@
   },
   "e2e/sign-in.spec.ts": {
     "playwright/no-raw-locators": {
-      "count": 55
+      "count": 53
     }
   },
   "e2e/sign-ins.ts": {

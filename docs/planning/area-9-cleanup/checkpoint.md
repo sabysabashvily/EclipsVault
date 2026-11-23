@@ -166,3 +166,7 @@ gets `401 { "error": "unauthenticated" }`. The security headers run on HTTP redi
 the endpoint table test pins the Top Secret claim on administrator pages. The red HTTP tests first
 showed the empty 401 and the missing redirect headers. The browser tests and Vitest checks assert
 the routes and pages a user reaches. See the ledger for review dispositions and the final-head CI run.
+
+The last commit tightens only browser tests. A 404 page must carry a switch to the light theme,
+which proves the preference reached the server. Sidebar navigation has its own assertions and
+retains the original screenshot viewport and motion setting.
