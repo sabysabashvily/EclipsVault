@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using EclipsVault.Core.Domain.Enums;
 using Serilog.Events;
@@ -26,13 +27,15 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
         Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, username, password));
         var lease = Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
         Assert.Equal((LeaseStatus.Active, username), (lease.Status, lease.CredentialIdentity));
-        // The target keeps whole seconds, so the role's own expiry is the lease's, truncated.
-        Assert.Equal(lease.ExpiresAtUtc.AddTicks(-(lease.ExpiresAtUtc.Ticks % TimeSpan.TicksPerSecond)),
-            await PostgresDynamicTarget.ValidUntilAsync(vault, username));
+        // The recipe writes the lease's end to the whole second.
+        var validUntil = await PostgresDynamicTarget.ValidUntilAsync(vault, username);
+        Assert.NotNull(validUntil);
+        Assert.Equal(lease.ExpiresAtUtc, validUntil.Value, TimeSpan.FromSeconds(1));
 
         using var revoked = await DynamicSecretsApi.RevokeAsync(admin, lease.Id);
 
-        Assert.Equal("""{"status":"Revoked","revocationNote":null}""", (await DynamicSecretsApi.JsonAsync(revoked)).GetRawText());
+        var answer = await DynamicSecretsApi.JsonAsync(revoked);
+        Assert.Equal(("Revoked", JsonValueKind.Null), (answer.GetProperty("status").GetString(), answer.GetProperty("revocationNote").ValueKind));
         Assert.Empty(await PostgresDynamicTarget.RolesOfRoleAsync(vault, "it_pg_issue"));
         Assert.False(await PostgresDynamicTarget.OpensWithAsync(vault, username, password));
         var rows = await AuditTrail.RowsAfterAsync(vault, before);
@@ -110,8 +113,9 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
         {
             using var revoked = await DynamicSecretsApi.RevokeAsync(admin, lease.Id);
 
-            Assert.Equal("""{"status":"RevocationFailed","revocationNote":"The backend refused to destroy the credential; it may still work."}""",
-                (await DynamicSecretsApi.JsonAsync(revoked)).GetRawText());
+            var answer = await DynamicSecretsApi.JsonAsync(revoked);
+            Assert.Equal(("RevocationFailed", "The backend refused to destroy the credential; it may still work."),
+                (answer.GetProperty("status").GetString(), answer.GetProperty("revocationNote").GetString()));
             Assert.Equal(LeaseStatus.RevocationFailed, Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId)).Status);
             var failure = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before), row => row.ResourceId == lease.Id);
             Assert.Equal((AuditAction.DynamicCredentialRevocationFailed, true), (failure.Action, failure.IsCritical));
@@ -123,6 +127,25 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
         {
             await PostgresDynamicTarget.DropRoleAsync(vault, username);
         }
+    }
+
+    [Fact]
+    public async Task A_revoke_that_leaves_a_session_open_closes_the_lease_as_revocation_failed_with_a_critical_row()
+    {
+        var roleId = await PostgresDynamicTarget.AddRoleAsync(vault, "it_pg_session_left", revocation: PostgresDynamicTarget.DropOnlyRevocation);
+        var admin = await vault.AdminClientAsync();
+        var (username, password) = await DynamicSecretsApi.IssuedCredentialAsync(await DynamicSecretsApi.IssueAsync(admin, roleId));
+        await using var session = await PostgresDynamicTarget.SignInAsync(vault, username, password);
+        var lease = Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
+        var before = await AuditTrail.HeadAsync(vault);
+
+        using var revoked = await DynamicSecretsApi.RevokeAsync(admin, lease.Id);
+
+        Assert.Equal("RevocationFailed", (await DynamicSecretsApi.JsonAsync(revoked)).GetProperty("status").GetString());
+        var failure = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before), row => row.ResourceId == lease.Id);
+        Assert.Equal((AuditAction.DynamicCredentialRevocationFailed, true), (failure.Action, failure.IsCritical));
+        Assert.True(await PostgresDynamicTarget.StillWorksAsync(session));
+        Assert.False(await PostgresDynamicTarget.OpensWithAsync(vault, username, password));
     }
 
     [Fact]

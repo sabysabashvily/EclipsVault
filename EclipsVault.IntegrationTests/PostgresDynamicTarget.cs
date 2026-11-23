@@ -1,38 +1,24 @@
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Infrastructure.Persistence;
 using Npgsql;
 
 namespace EclipsVault.IntegrationTests;
 
 /// <summary>
 /// <c>Postgres</c> dynamic roles, added to the vault as an operator provisions them, and the vault's
-/// PostgreSQL target read as that operator inspects it.
+/// PostgreSQL target read as that operator inspects it. Roles default to the Development seed's own
+/// statements, so the tests exercise the recipes the vault ships.
 /// </summary>
 internal static class PostgresDynamicTarget
 {
-    /// <summary>The Development seed's reader recipe: a login role that expires with its lease and reads every table.</summary>
-    public const string ReaderRecipe = """
-        CREATE ROLE "{{name}}" LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}+00' IN ROLE pg_read_all_data;
-        """;
-
-    /// <summary>The Development seed's revocation: ends the role's sessions and drops it, safe to run again.</summary>
-    public const string RepeatableRevocation = """
-        DO $$
-        BEGIN
-            IF EXISTS (SELECT FROM pg_roles WHERE rolname = '{{name}}') THEN
-                PERFORM pg_terminate_backend(pid, 5000) FROM pg_stat_activity WHERE usename = '{{name}}';
-                REASSIGN OWNED BY "{{name}}" TO CURRENT_USER;
-                DROP OWNED BY "{{name}}";
-                DROP ROLE "{{name}}";
-            END IF;
-        END
-        $$;
-        """;
+    /// <summary>A revocation that drops the role but leaves its sessions running, as a careless recipe would.</summary>
+    public const string DropOnlyRevocation = """DROP ROLE IF EXISTS "{{name}}";""";
 
     /// <summary>A revocation the target always refuses.</summary>
     public const string RefusedRevocation = "DO $$ BEGIN RAISE EXCEPTION 'Revocation refused.'; END $$;";
 
     public static Task<Guid> AddRoleAsync(
-        VaultFixture vault, string name, string creation = ReaderRecipe, string revocation = RepeatableRevocation)
+        VaultFixture vault, string name, string creation = DbSeeder.PostgresReaderRecipe, string revocation = DbSeeder.PostgresRevocation)
         => DynamicSecretsApi.AddRoleAsync(vault, name, creation: creation, revocation: revocation, backend: DynamicSecretBackend.Postgres);
 
     private static string ConnectionString(VaultFixture vault) => vault.PostgresDynamicTargetConnectionString

@@ -2,6 +2,7 @@ using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Infrastructure.Security;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -15,12 +16,25 @@ namespace EclipsVault.Tests.DynamicSecrets;
 /// </summary>
 public class PostgresBackendTargetTests
 {
-    private static PostgresBackend Backend(string? postgresTarget, string? sqlServerTarget = null) =>
+    private static PostgresBackend Backend(string? postgresTarget, string? sqlServerTarget = null, ILogger<PostgresBackend>? logger = null) =>
         new(Options.Create(new DynamicSecretTargetOptions
         {
             PostgresTargetConnectionString = postgresTarget,
             TargetConnectionString = sqlServerTarget,
-        }), NullLogger<PostgresBackend>.Instance);
+        }), logger ?? NullLogger<PostgresBackend>.Instance);
+
+    /// <summary>Keeps every message the backend logs, as its log sinks would receive it.</summary>
+    private sealed class RecordingLogger : ILogger<PostgresBackend>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Messages.Add($"{formatter(state, exception)} {exception}");
+    }
 
     private static DynamicSecretRole Role() => new()
     {
@@ -59,5 +73,31 @@ public class PostgresBackendTargetTests
 
         Assert.Contains("DynamicSecrets:PostgresTargetConnectionString", ex.Message, StringComparison.Ordinal);
         Assert.Contains("CREATEROLE", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("Host=app-pg;Port=not-a-port;Password=Pw4Target9")]
+    [InlineData("Host=app-pg;Colour=blue;Password=Pw4Target9")]
+    public async Task A_malformed_target_refuses_minting_as_nothing_sent_and_logs_the_setting_without_its_value(string connectionString)
+    {
+        var logger = new RecordingLogger();
+
+        await Assert.ThrowsAsync<MintRefusedException>(() =>
+            Backend(connectionString, logger: logger).MintAsync(
+                Role(), "svc_reporting", "Abc123", DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None));
+
+        Assert.Contains(logger.Messages, message => message.Contains("DynamicSecrets:PostgresTargetConnectionString", StringComparison.Ordinal));
+        Assert.DoesNotContain(logger.Messages, message => message.Contains("Pw4Target9", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_malformed_target_fails_revoking_without_logging_its_value()
+    {
+        var logger = new RecordingLogger();
+
+        await Assert.ThrowsAnyAsync<Exception>(() =>
+            Backend("Host=app-pg;Colour=blue;Password=Pw4Target9", logger: logger).RevokeAsync(Role(), "svc_reporting", CancellationToken.None));
+
+        Assert.DoesNotContain(logger.Messages, message => message.Contains("Pw4Target9", StringComparison.Ordinal));
     }
 }
