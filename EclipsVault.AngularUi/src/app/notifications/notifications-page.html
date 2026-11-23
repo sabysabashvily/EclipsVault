@@ -75,9 +75,9 @@
           <tbody>
             @for (email of filtered(); track $index) {
               <tr>
-                <td class="muted cell-nowrap">
-                  {{ email.sentAtUtc | date: 'yyyy-MM-dd HH:mm' : 'UTC' }}
-                </td>
+                <!-- One line: the browser test anchors a timestamp regex on the untrimmed cell text. -->
+                <!-- prettier-ignore -->
+                <td class="muted cell-nowrap">{{ email.sentAtUtc | date: 'yyyy-MM-dd HH:mm' : 'UTC' }}</td>
                 <td class="mono cell-nowrap">{{ email.to }}</td>
                 <td class="cell-strong cell-wrap" [title]="email.body">{{ email.subject }}</td>
                 <td class="cell-nowrap">
