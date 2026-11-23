@@ -1,6 +1,7 @@
 import type { BrowserContext, Page } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { signInNewAccount } from './account-activation';
 import { AccountCreation } from './account-creation';
 import { savedAdministratorCookies } from './administrator-cookies';
 import { refreshAdministratorProof } from './administrator-proof';
@@ -92,22 +93,13 @@ test('the administrator makes the secrets and the share recipient', async ({
     firstName: 'Details',
     lastName: 'Recipient',
     username: recipientUsername,
-    password,
     clearance: 'Elevated',
     project: 'E2E-SD',
   });
-  await expect(page).toHaveURL(/\/Admin\/Users$/);
+  await expect(creation.status).toContainText('Invitation sent to');
 
   const recipient = await (await browserHealth.newContext()).newPage();
-  await recipient.goto('/Account/Login');
-  await recipient.getByLabel('Username').fill(recipientUsername);
-  await recipient.getByLabel('Password', { exact: true }).fill(password);
-  await recipient.getByRole('button', { name: 'Continue', exact: true }).click();
-  await expect(recipient).toHaveURL(/\/Account\/EnrollTotp$/);
-  // eslint-disable-next-line playwright/no-raw-locators -- Enrollment displays the throwaway authenticator seed as unlabelled text.
-  const seed = await recipient.locator('.secret-code').innerText();
-  await recipient.getByLabel('Confirmation code').fill(await freshTotp(seed));
-  await recipient.getByRole('button', { name: 'Confirm enrollment', exact: true }).click();
+  await signInNewAccount(recipient, recipientUsername, password);
   await expect(recipient).toHaveURL(/\/Secrets$/);
   recipientCookies = await recipient.context().cookies();
 });

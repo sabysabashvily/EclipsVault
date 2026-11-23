@@ -65,7 +65,7 @@ public class SignOutRevokesSessionTests
 
         // Sign-out touches only the session registry, the authentication service and antiforgery; the
         // other collaborators belong to the sign-in flows and are never reached here.
-        var controller = new AuthController(null!, null!, null!, null!, null!, null!, null!,
+        var controller = new AuthController(null!, null!, null!, null!, null!, null!, null!, null!,
             new AccountSignOut(null!, sessions, null!, NullLogger<AccountSignOut>.Instance),
             new FixedAntiforgery(), NullLogger<AuthController>.Instance)
         {

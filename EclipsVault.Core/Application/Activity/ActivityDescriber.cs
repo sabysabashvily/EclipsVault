@@ -44,6 +44,7 @@ public static class ActivityDescriber
         AuditAction.RecoveryCodeUsed => new(ActivityCategory.Authentication, "Used a recovery code", ActivitySeverity.Notable),
 
         // --- Account & self-service --------------------------------------------------
+        AuditAction.AccountActivated => new(ActivityCategory.Account, "Activated your account", ActivitySeverity.Notable),
         AuditAction.TotpEnrolled => new(ActivityCategory.Account, "Set up your authenticator", ActivitySeverity.Notable),
         AuditAction.ProfileUpdated => new(ActivityCategory.Account, "Updated your profile", ActivitySeverity.Routine),
         AuditAction.AvatarUpdated => new(ActivityCategory.Account, "Changed your profile picture", ActivitySeverity.Routine),
@@ -72,6 +73,8 @@ public static class ActivityDescriber
 
         // --- Administration ----------------------------------------------------------
         AuditAction.UserCreated => new(ActivityCategory.Administration, "Created a user", ActivitySeverity.Notable),
+        AuditAction.InvitationSent => new(ActivityCategory.Administration, "Sent an account invitation", ActivitySeverity.Notable),
+        AuditAction.InvitationAddressReplaced => new(ActivityCategory.Administration, "Replaced an invitation address", ActivitySeverity.Notable),
         AuditAction.UserDeleted => new(ActivityCategory.Administration, "Deleted a user", ActivitySeverity.Notable),
         AuditAction.UserTotpReset => new(ActivityCategory.Administration, "Reset a user's MFA", ActivitySeverity.Notable),
         AuditAction.UserRoleChanged => new(ActivityCategory.Administration, "Changed a user's role", ActivitySeverity.Notable),

@@ -37,6 +37,7 @@ public sealed class SessionIssuer(
             // The attempt's reload detaches an account deleted while issuance waited for its lock.
             var stillCurrent = await users.ReloadAsync(account, token)
                 && !account.IsDisabled
+                && !account.AwaitingActivation
                 && account.CredentialGeneration == stamp.CredentialGeneration
                 && await revocation.FindAsync(user.Id, token) == stamp.RevocationVersion;
             attempt.RecordUserEvent(stillCurrent ? success.Action : AuditAction.SignInRefused, account, success.Details);
@@ -130,7 +131,7 @@ public sealed class SessionIssuer(
         var account = await users.FindByIdAsync(userId, CancellationToken.None);
         // The mutation may already have tracked this account; issuance must see a later commit too.
         return account is not null && await users.ReloadAsync(account, CancellationToken.None)
-            && !account.IsDisabled && account.CredentialGeneration == credentialGeneration;
+            && !account.IsDisabled && !account.AwaitingActivation && account.CredentialGeneration == credentialGeneration;
     }
 
     private static Task IssueAsync(HttpContext context, ClaimsPrincipal principal)

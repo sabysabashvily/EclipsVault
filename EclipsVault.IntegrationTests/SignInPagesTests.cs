@@ -37,6 +37,9 @@ public sealed class SignInPagesTests(VaultFixture vault)
     [InlineData("GET", "/Account/Recover", AngularPolicy)]
     [InlineData("HEAD", "/Account/Recover", AngularPolicy)]
     [InlineData("GET", "/account/recover/", AngularPolicy)]
+    [InlineData("GET", "/Account/Activate", AngularPolicy)]
+    [InlineData("HEAD", "/Account/Activate", AngularPolicy)]
+    [InlineData("GET", "/account/activate/", AngularPolicy)]
     public async Task An_anonymous_visitor_gets_an_anonymous_sign_in_document_with_a_request_token(string method, string path, string policy)
     {
         var browser = vault.CreateSession(source: NextSource());
@@ -81,6 +84,22 @@ public sealed class SignInPagesTests(VaultFixture vault)
         await AuthApi.PendingAsync(pending, username, Password);
 
         await AssertRecoverAcceptsItsTokenAsync(pending, username);
+    }
+
+    /// <summary>
+    /// An invitation link opened in a browser that is already signed in still reaches Activation, and its
+    /// token passes antiforgery: an unknown token reaches the invitation lookup.
+    /// </summary>
+    [Fact]
+    public async Task A_signed_in_visitor_gets_Activate_with_a_token_its_activation_call_accepts()
+    {
+        var signedIn = await vault.SignInNewAccountAsync("it-pages-activate-" + Guid.NewGuid().ToString("N")[..8], NextSource(), password: Password);
+
+        using var response = await signedIn.Client.GetAsync("/Account/Activate");
+
+        AssertSignInDocument(response);
+        await ProfileApi.AssertProblemAsync(await AuthApi.PostAsync(signedIn, "/api/ui/auth/activation", SignInDocument.TokenOf(response),
+            new { token = "not-an-invitation" }), 404, "invitation_invalid");
     }
 
     /// <summary>The Recover document's token passes antiforgery on the recover call for whoever loaded it.</summary>

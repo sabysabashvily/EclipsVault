@@ -48,7 +48,7 @@ public sealed class DataApiTests(VaultFixture vault)
         Assert.Equal(["clearance", "displayName", "email", "hasCustomAvatar", "projectKey", "username"], NamesOf(shown));
         Assert.Equal("it-data-summary", shown.GetProperty("username").GetString());
         Assert.Equal("Integration Test", shown.GetProperty("displayName").GetString());
-        Assert.StartsWith("integration.test.", shown.GetProperty("email").GetString());
+        Assert.Equal("it-data-summary@example.test", shown.GetProperty("email").GetString());
         Assert.Equal("Elevated", shown.GetProperty("clearance").GetString());
         Assert.Equal("GLOBAL", shown.GetProperty("projectKey").GetString());
         Assert.False(shown.GetProperty("hasCustomAvatar").GetBoolean());

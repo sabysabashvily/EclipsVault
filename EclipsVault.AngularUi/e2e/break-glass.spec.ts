@@ -1,14 +1,13 @@
 import { randomBytes } from 'node:crypto';
+import { signInNewAccount } from './account-activation';
 import { AccountCreation } from './account-creation';
-import { AccountSignIn } from './account-sign-in';
 import { savedAdministratorCookies } from './administrator-cookies';
 import { refreshAdministratorProof } from './administrator-proof';
-import { AuthenticatorEnrollment } from './authenticator-enrollment';
 import { BreakGlass, blockRunClient, clearRunClientBlock } from './break-glass';
 import { test, expect } from './fixtures';
 import { Overview } from './overview';
 import { clearSignInBudget } from './profile-state';
-import { currentTotpStep, freshTotp } from './totp';
+import { freshTotp } from './totp';
 import { Users } from './users';
 import type { paths } from '../src/app/ui-api/schema.generated';
 
@@ -29,25 +28,17 @@ test('an administrator on a blocked network recovers with a password and a real 
     firstName: 'Break',
     lastName: 'Glass',
     username,
-    password,
     clearance: 'Top Secret',
     project: 'GLOBAL',
   });
-  await expect(page).toHaveURL(/\/Admin\/Users$/);
+  await expect(creation.status).toContainText('Invitation sent to');
 
   try {
-    // The new administrator's first sign-in enrolls the authenticator recovery will ask for.
-    const enrolling = await (await browserHealth.newContext()).newPage();
-    const signIn = new AccountSignIn(enrolling);
-    await signIn.open();
-    await signIn.submitPassword(username, password);
-    await expect(enrolling).toHaveURL(/\/Account\/EnrollTotp$/);
-    const enrollment = new AuthenticatorEnrollment(enrolling);
-    const secret = await enrollment.secret.innerText();
-    await enrollment.confirm(await freshTotp(secret));
-    const enrolledStep = currentTotpStep();
-    await expect(enrolling).toHaveURL(/\/Secrets$/);
-    const response = await enrolling.request.get('/api/ui/access');
+    // Activation sets up the authenticator recovery will ask for.
+    const activated = await (await browserHealth.newContext()).newPage();
+    const { secret, step } = await signInNewAccount(activated, username, password);
+    await expect(activated).toHaveURL(/\/Secrets$/);
+    const response = await activated.request.get('/api/ui/access');
     expect(response.status()).toBe(200);
     const access: paths['/api/ui/access']['get']['responses'][200]['content']['application/json'] =
       await response.json();
@@ -66,7 +57,7 @@ test('an administrator on a blocked network recovers with a password and a real 
       await expect(blocked).toHaveURL(/\/Account\/Recover$/);
       await expect(recovery.heading).toBeVisible();
 
-      await recovery.recover(username, password, await freshTotp(secret, enrolledStep));
+      await recovery.recover(username, password, await freshTotp(secret, step));
 
       await expect(recovery.outcome).toHaveText(
         'The intrusion-defence block on your network was lifted and your session restored.',

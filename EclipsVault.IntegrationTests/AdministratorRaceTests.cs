@@ -109,17 +109,21 @@ public abstract class AdministratorRaceTests(AccountChangeDatabases databases)
 
     private static UserAdminService UserAdmin(AccountRequest request, Guid signedInAs, Barrier bothReady) => new(
         request.Users,
-        new UnusedHasher(),
+        new AccountInvitationRepository(request.Context),
+        new UnavailableInvitationDelivery(),
         new UnusedSessionStore(),
         request.RecoveryCodes,
-        new UnusedBreachScreen(),
-        UserDirectoryOptions.Default,
-        new NotificationService(new LoggingEmailSender(NullLogger<LoggingEmailSender>.Instance),
-            new EmailLogRepository(request.Context), request.Users, new NotificationOptions(false), TimeProvider.System),
         new UnusedAuditSink(),
         new CommitterThatWaitsForTheOtherChange(request.Changes, bothReady),
         new SignedIn(signedInAs),
         TimeProvider.System);
+
+    private sealed class UnavailableInvitationDelivery : IAccountInvitationDelivery
+    {
+        public bool Available => false;
+        public Task<bool> TrySendAsync(string address, string displayName, string username, string token, CancellationToken ct)
+            => throw new NotSupportedException();
+    }
 
     /// <summary>
     /// Holds each change at its commit until the other arrives, so both have read their account and
@@ -131,6 +135,12 @@ public abstract class AdministratorRaceTests(AccountChangeDatabases databases)
         {
             WaitForTheOtherChange();
             return inner.CommitAsync(account, entry, ct);
+        }
+
+        public Task<bool> CommitAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct)
+        {
+            WaitForTheOtherChange();
+            return inner.CommitAsync(account, entry, recheck, ct);
         }
 
         public Task<bool> CommitAdministratorChangeAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct)
@@ -151,18 +161,6 @@ public abstract class AdministratorRaceTests(AccountChangeDatabases databases)
         public Guid? UserId => accountId;
         public string? Username => "it-race-administrator";
         public string? SourceIp => "192.0.2.1";
-    }
-
-    private sealed class UnusedHasher : IPasswordHasher
-    {
-        public PasswordHashResult Hash(string password) => throw new NotSupportedException();
-        public bool Verify(string password, byte[] hash, byte[] salt) => throw new NotSupportedException();
-    }
-
-    private sealed class UnusedBreachScreen : IBreachedPasswordScreen
-    {
-        public bool IsCompromised(string password) => throw new NotSupportedException();
-        public int CorpusSize => 0;
     }
 
     private sealed class UnusedSessionStore : ISessionRevocationService

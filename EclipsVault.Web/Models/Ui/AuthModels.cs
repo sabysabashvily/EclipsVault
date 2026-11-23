@@ -43,6 +43,17 @@ public sealed record RecoverRequest(
 
 public sealed record RecoverResponse(bool BlockLifted);
 
+/// <summary>The token from an invitation link's fragment, sent in the body so it never appears in a URL.</summary>
+public sealed record ActivationRequest([Required] string Token);
+
+/// <summary>The invited account and the authenticator its activation enrolls.</summary>
+public sealed record ActivationResponse(string Username, string DisplayName, string SecretBase32, string QrCodeDataUri, DateTimeOffset ExpiresAtUtc);
+
+public sealed record CompleteActivationRequest(
+    [Required] string Token,
+    [Required] string Password,
+    [Required, RegularExpression(@"^\d{6}$")] string Code);
+
 /// <summary>A refused sign-in call. A wrong credential is a 400, never a 401, which means the pending sign-in is gone.</summary>
 public sealed class SignInProblemResponse : ProblemDetails
 {

@@ -101,6 +101,9 @@ public abstract class DelayedProfileCommitTests(AccountChangeDatabases databases
         public Task<bool> CommitAsync(User account, AuditEntry entry, CancellationToken ct)
             => inner.CommitAsync(account, entry, ct);
 
+        public Task<bool> CommitAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct)
+            => inner.CommitAsync(account, entry, recheck, ct);
+
         public Task<bool> CommitAdministratorChangeAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct)
             => throw new NotSupportedException();
     }

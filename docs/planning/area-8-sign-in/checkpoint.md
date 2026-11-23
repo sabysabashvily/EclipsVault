@@ -303,3 +303,182 @@ alone (`logs/ticket-178/security-review-hop.md`): approve, with two test nits fi
 
 Restart: the PR body is `logs/ticket-178/pr-body.md`; the coordinator fills in the CI run and the final
 head, then opens the PR. The PR still needs GPT Sol 6.1 and Thermos before the owner merges.
+
+## Delivery: 8b ticket 1 (#179)
+
+Branch `area-8b-invitations`, stacked on 8a at `c5e077e`. `0a9137b` adds the awaiting-activation state
+and the `AccountInvitations` table, with schema and Q18 data migrations in both sets and both
+`db/*/migrations.sql` regenerated. It adds `POST /api/ui/users/{id}/invitation` (resend) and
+`POST /api/ui/users/{id}/invitation-address` (address replacement), both with fresh proof, and
+`invitationsAvailable` on `GET /api/ui/users/new`. It refuses invited accounts on every sign-in route,
+and adds the `InvitationSent`, `InvitationAddressReplaced` and `AccountActivated` audit actions.
+`POST /api/ui/users` still takes the password body, so F3 and F7 stay visible until #180. F9 was shown
+failing in `logs/ticket-179/f9-failing.txt`, then made impossible: links come only from
+`Identity:PublicUrl`. A Gemini session wrote `0a9137b`; a Claude Opus 5.5 high session took over after
+Gemini's quota ran out. The follow-up commit holds the review fixes and this section.
+
+Checks on `0a9137b`: `scripts/check.sh`, then `check.sh integration` on PostgreSQL with the filter in
+`logs/ticket-179/integration-filter.txt`, `dotnet format`, both pending-model checks, hook tests, and
+every Angular gate including `check:api-types`. After the fixes: `scripts/check.sh` and
+`dotnet format`. Output is in `logs/ticket-179/opus-checks/`. SQL Server (including
+`SqlServerAccountInvitationUpgradeTests`), the full suites and e2e run in CI: run 44946422470 on
+`0a9137b`.
+
+Reviews: a fresh `security-reviewer` (Claude Opus 5.5 high), then one re-check, recorded in
+`logs/ticket-179/review-ledger.md`. Nothing important. Fixed: S2, the `InvitationSent` row now says
+"issued"; S3, step-up records "Account awaiting activation"; S4, the unused C# copy of the selection
+rule is deleted. For #182: S1, race tests for resend and replacement, and the unmapped
+invitation-row unique violation.
+
+Restart: ticket 2 (#180) starts from this commit. It switches create to the email contract, retires
+generated addresses, and adds the activation endpoints and the `404 invitation_invalid` proof.
+
+## Delivery: 8b ticket 2 (#180)
+
+#179 closed first: its CI failed on two fixtures written before the awaiting-activation column and
+the invitation upgrade. `705dc98` fixes them and pins both sides of the upgrade's generation rule;
+CI 45038755227 on `705dc98` is green on all ten jobs.
+
+The #180 commit switches `POST /api/ui/users` to `{ firstName, lastName, username, email, clearance,
+project }`: the account is created awaiting activation with its invitation, `UserCreated` names the
+entered address, and the 201 reports `invitation` (`sent` / `not_delivered`) and `expiresAtUtc`.
+Generated addresses, `Identity:EmailDomain` and the outbox provisioning email are gone; the README
+says so. `POST /api/ui/auth/activation` shows the seed, generated once and stored only while the token
+is current; `POST /api/ui/auth/activation/complete` sets the password under Profile's rules (now
+shared as `PasswordRules.Refusal`), enrolls the authenticator, spends the token, advances the
+generation and records `AccountActivated` in one commit under the account's stamp. Both are anonymous,
+throttled and on the allowlist; unknown, expired, disabled, used, replaced and readdressed tokens get
+one `404 invitation_invalid`. The New user form takes Email with the decision record's hint and shows
+both outcomes in place of the form, so the create no longer sets a Users notice. F3 and F7 were shown
+failing in `logs/ticket-180/f3-f7-failing.txt` and are now impossible.
+
+Helpers: the integration `SignInNewAccountAsync` and the browser suite's `signInNewAccount` invite,
+read the token from the SMTP capture, activate (spending the previous TOTP step) and sign in with
+password and TOTP. Every `VaultFixture` now has a mailbox and `Identity:PublicUrl`; the unavailable
+case moved to its own small fixture. Changed helper signatures are listed in
+`logs/ticket-180/final-report.md`.
+
+Checks: `scripts/check.sh`, `dotnet format`, both pending-model checks (no model change), hook tests,
+`npm run lint`, `npm test -- --watch=false`, `npm run check:api-types` and `npm run test:build-checks`.
+`check.sh integration` on PostgreSQL in slices (`logs/ticket-180/integration-filters.txt`), the last
+of each green. SQL Server, the full suites and every browser spec run in CI.
+
+Reviews: a fresh `security-reviewer` (Claude Opus 5.5 high), then one re-check
+(`logs/ticket-180/review-ledger.md`). Nothing important. Fixed: N1, a disabled account's invitation is
+unusable. For #182: N2, an unrelated administrator change during activation answers "link invalid";
+N3, an inspect racing a disable can show the seed once; and a line in ADR-0033 that disabling pauses an
+invitation while replacing the address revokes it.
+
+Restart: ticket 3 (#181) starts from this commit.
+
+## Delivery: 8b ticket 3 (#181)
+
+Started from `b301b4e` (#180 accepted, CI 45055941173 green). Commits on `area-8b-invitations`:
+- `406cc2e` merges `origin/main` (`6db89e5`, Area 8a PR #201, redesign batches 3b #192 and 4 #202, and #200) cleanly, keeping `#180`'s `AccountDeletionCollection` isolation and regenerating `schema.generated.ts`.
+- `0ebfb83` exposes `awaitingActivation` and usable `invitationExpiresAtUtc` on the Users list and details responses, serves `/Account/Activate` anonymously through `ServeSignInStep` with the Angular CSP and anonymous antiforgery token, adds the Angular Activation page (fragment-only token scrubbed via `replaceState`, EnrollTotp QR/manual secret, Profile password rules and strength meter, redirect to `/Account/Login?activated=1` with Login's ready sentence), adds New user's `invitationsAvailable: false` explanation, adds Users and Edit user status pills plus ConfirmationDialog + StepUpDialog flows for Resend invitation and address replacement (sending no mail itself), updates Overview's "Provision a user" subtitle, and adds `e2e/invitations.spec.ts` (create → SMTP capture → activate → sign in, resend invalidates old link, address replacement invalidates old link without sending mail and resend delivers to the new address, expired link, dark/light themes, keyboard, 300 px layout). Red runs before the code change are in `logs/ticket-181/red-run.txt`.
+- This final commit fixes security review Finding 1 (exposes `isDisabled` on `UserDetailsResponse`, regenerates `schema.generated.ts`, hides the Edit user Invitation panel on disabled accounts to match the Users list) and records this section.
+
+Model handoff note: Claude Opus 5.5 high (`claudeAgent`) produced `406cc2e` and the backend/Angular/unit/integration implementation before hitting its API rate limit right before the browser spec; the owner switched the thread to Gemini 4 Neon (High) to finish `invitations.spec.ts`, integration shape-test updates, the Finding 1 fix, verification, and delivery. Both security review passes ran on Claude Opus 5.5 high (`claudeAgent`).
+
+Public test helpers: no existing public signatures changed. Additive helpers only: `e2e/activation.ts` (new), `smtp-capture.ts` (`invitationCount`), `users-state.ts` (`expireInvitation`), `users.ts` (`resend`, `replaceInvitationAddress`, `resendButton`), `user-role.ts` (invitation panel locators), `account-sign-in.ts` (`activatedNotice`).
+
+Checks (after the Finding 1 fix): `scripts/check.sh` (restore, Release build, 1087 unit tests), PostgreSQL integration filter (`logs/ticket-181/integration-filter.txt`, 6 classes, 111 passed), `dotnet format --verify-no-changes`, both pending-model checks (no model change), 6 guardrail hook tests, Angular `npm run lint` (ng lint, e2e eslint & tsc, lint-checks), `npm run format:check`, 797 Vitest tests (46 files), 15 build checks, `npm run check:api-types`, production `npm run build`, `npm audit --audit-level=high`. SQL Server, full integration suites and browser specs run in CI (pending coordinator push).
+
+Reviews (`logs/ticket-181/review-ledger.md`): fresh `security-reviewer` (Claude Opus 5.5 high, `claudeAgent`) approved `0ebfb83` with 1 Nit and 2 Notes; fresh re-check (Claude Opus 5.5 high, `claudeAgent`) approved the Finding 1 fix with no new issues. Left for `#182`: optional server-side refusal of resend/address-replacement on a disabled invited account (ADR-0033 says disabling pauses an invitation).
+
+Restart: ticket 4 (#182) verifies the whole Area 8b part after CI is green on this head and prepares the PR.
+
+## Delivery: 8b ticket 4 (#182)
+
+Started from `2aa15df0`. CI run `45070482900` passed nine of ten jobs, including SQL Server and
+e2e. Its one PostgreSQL failure was a 700 ns difference between the returned and stored invitation
+expiry. `main` still pointed to `6db89e59`, already merged by #181.
+
+- `a4e0efcf` allows 1 ms in both invitation-expiry assertions that compare the response with a
+  database read. `dc7911b4` documents how disabling, re-enabling and address replacement affect a link.
+- `55065836` clears the old link's pending seed even when inspection wins the race with resend or
+  address replacement. A competing first resend now gets `409 account_changed`. The failing probes
+  are in `logs/ticket-182/red-f1.log` and `logs/ticket-182/f2-probe.log`.
+- `28923174` declares the activation inspect call's 400 response, regenerates the Angular API types,
+  and corrects README and ADR-0033. `b4c45604` gives each activation-versus-resend commit order its own test.
+- This commit preserves username and email conflict responses on SQL Server, names the UTC status
+  timestamp offsets, corrects the first-resend test title, and covers `201 not_delivered` on create
+  with a failed SMTP delivery. Opus wrote and verified those changes. Codex completed delivery after
+  the rate limit.
+
+Final source checks passed. `scripts/check.sh` ran 1,087 unit tests. The guarded PostgreSQL integration
+filter passed 289 tests, including the paired provider race and upgrade fixtures. Formatting, both EF
+pending-model checks, agent guardrail tests and all Angular gates passed, including 797 Vitest tests
+and the high-severity npm audit gate. Evidence is in `logs/ticket-182/part-pg-final.log`,
+`part-pg-final-detail.log` and `gates-final.log`.
+
+The whole part received an Opus 5.5 high security review and GPT Sol 6.2 xhigh Standards and Spec
+reviews. The Opus re-check approved F1 and F2 and raised one response-code nit, fixed in this commit.
+The GPT re-check requested changes. Its remaining test and UI decisions are in
+`logs/ticket-182/review-ledger.md` under “Open for the owner”.
+
+Restart with CI on the commit that adds this section. The coordinator pushes the branch and records
+the exact-head results for both databases, the full browser suite and `e2e:verify-guards`. The PR body
+is in `logs/ticket-182/pr-body.md` with `<run id>` pending final CI.
+
+## Delivery: 8b ticket 4 round 2 (#182, owner 23 November)
+
+Started from `58a975bc`, the PR #204 head. `ce05242b` merges `main` `5b5edf7d` (PR #203, Redesign R26):
+`service-accounts.spec.ts` keeps #203's `/Secrets` check after the invitation sign-in, `styles.css`
+takes R26's auth-card rules and keeps only 8b's readonly-username rule, and the Activation page uses
+R26's enrollment block. The next three commits resolve every open GPT Sol 6.2 finding (S1, S2, S4–S8,
+P1, P2, P4, P5); each item's resolution, and the parts left for the owner, are in
+`logs/ticket-182/review-ledger.md` under "Round 2".
+
+- P4: the Users list and user details report `invitationsAvailable`; Users and Edit user hide Resend and
+  explain why before any confirmation or fresh proof. Vitest drops derived expectations and badge classes.
+- Integration and unit tests: race tests check codes on a stopped clock, single-proof activation helpers
+  no longer wait, the upgrade fixture writes its history through the real audit sink, refusals are one
+  case each, pre-upgrade proofs go through the real cookie check and session issuer on both databases,
+  the preserved administrator enrolls and gets a session, an invited passkey is refused over HTTP, and a
+  unit test pins activation's single commit.
+- Browser specs: invitation, SSO and notification cases set up their own state, codes come from the
+  vault's `Date` header, and the notifications 180 s override is gone. Not run locally (CI only).
+
+Checks on the final source: `scripts/check.sh` (restore, build, unit); the guarded integration filter
+(`logs/ticket-182/round2/integration-filter.txt`) passed 316 tests, PostgreSQL for HTTP and both
+databases for the upgrade and race fixtures; `dotnet format`, both EF pending-model checks, agent
+guardrail tests; Angular lint, format, 802 Vitest tests, build checks, API-type check, build and the
+high-severity audit. Evidence: `logs/ticket-182/round2/`.
+
+Restart: the coordinator pushes to PR #204, runs CI (both databases, full browser suite,
+`e2e:verify-guards`), a fresh GPT Sol 6.2 xhigh PR review and a fresh Opus 5.5 high security delta review.
+
+## Delivery: 8b ticket 4 round 3 (#182)
+
+GPT Sol 6.2 accepted round 2 except S1 and P1 (open in part) and an SSO fixture nit. The Opus delta
+security review approved round 2. Round 3:
+
+- P1: the upgrade tests issue a real protected pending cookie and a real SSO decision at the current
+  schema, roll the schema back to the previous release, run the upgrade, and prove the same cookie and
+  decision are refused on both databases.
+- S1: `SignInNewAccountAsync` chooses steps by the vault's clock and recorded spent step, waiting only on
+  the vault's clock. Browser TOTP helpers choose codes from the vault's `Date` header and never wait on
+  host step boundaries.
+- The SSO browser fixture reuses its accounts after a worker restart.
+
+Checks: `scripts/check.sh`, the integration filter at 316/316, `dotnet format`, the agent guardrail tests
+and every Angular gate. Browser specs run in CI only. Details are in `logs/ticket-182/review-ledger.md`,
+"Round 3".
+
+## Delivery: 8b ticket 4, merge of Area 9a (#182)
+
+GPT Sol 6.2 approved round 3 with nits and the Opus delta security review approved it. The merge of
+`main` `854d69a0` (PR #208 Area 9a, PR #207) resolves nine conflicts. It keeps 9a's route table,
+server pages and sign-out contract, and keeps 8b's activation endpoints, route and test changes.
+`AuthController` keeps both: 8b's activation calls and 9a's sign-out comment. 9a's
+`SignOutRevokesSessionTests` helper now passes the activation service. `VaultFixture` drops the Legacy
+shell helpers. The e2e imports drop `legacy-shell`. `playwright.config.ts` runs both `invitations`
+and `not-found`. The `sign-in.spec.ts` suppression count is 52. One gap only showed up in tests:
+9a's `EndpointTableTests` now lists `/Account/Activate` and the two activation calls as anonymous
+(ADR-0033).
+
+Checks: `scripts/check.sh`; the part's integration filter plus every integration class 9a touched
+(`logs/ticket-182/merge-9a/integration-filter.txt`): 564 passed, then `EndpointTableTests` 7/7 after
+the fix. Also `dotnet format`, both EF checks, hooks, and Angular lint, format, 803 Vitest tests,
+build checks, API types, build and audit.

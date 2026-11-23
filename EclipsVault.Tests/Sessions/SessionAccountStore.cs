@@ -16,8 +16,6 @@ internal sealed class SessionAccountStore : IUserRepository
     public Task<bool> IsEmailTakenAsync(string email, Guid accountId, CancellationToken ct) => throw new NotSupportedException();
 
     public Task<User?> FindByUsernameAsync(string username, CancellationToken ct) => Task.FromResult<User?>(null);
-    public Task<IReadOnlyList<string>> FindEmailsWithPrefixAsync(string localPrefix, string domain, CancellationToken ct)
-        => Task.FromResult<IReadOnlyList<string>>([]);
     public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult(_user);
     public bool Deleted { get; init; }
     public Task<bool> ReloadAsync(User user, CancellationToken ct) => Task.FromResult(!Deleted);

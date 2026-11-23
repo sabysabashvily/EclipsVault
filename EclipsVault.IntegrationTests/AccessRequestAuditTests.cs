@@ -145,8 +145,12 @@ public sealed class AccessRequestAuditTests(VaultFixture vault)
         {
             var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
             // A former display snapshot can be provisioned again; it must not select the recipient.
+            // Move the email too so the replacement account can use the original username's mailbox.
             await db.Users.Where(user => user.Id == pending.RequesterUserId)
-                .ExecuteUpdateAsync(set => set.SetProperty(user => user.Username, "it-request-renamed"));
+                .ExecuteUpdateAsync(set => set
+                    .SetProperty(user => user.Username, "it-request-renamed")
+                    .SetProperty(user => user.Email, "it-request-renamed@example.test")
+                    .SetProperty(user => user.NormalizedEmail, "it-request-renamed@example.test"));
         }
         await vault.SignInNewAccountAsync("it-request-original", IPAddress.Parse("198.51.100.167"));
         var token = await UiApiRequest.AntiforgeryTokenAsync(reviewer.Client);

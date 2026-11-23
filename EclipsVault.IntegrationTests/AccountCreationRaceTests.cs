@@ -1,22 +1,17 @@
 using EclipsVault.Core.Application.Abstractions;
-using EclipsVault.Core.Application.Authentication;
-using EclipsVault.Core.Application.Notifications;
 using EclipsVault.Core.Application.Users;
+using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
-using EclipsVault.Infrastructure.Notifications;
 using EclipsVault.Infrastructure.Persistence.Repositories;
-using EclipsVault.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace EclipsVault.IntegrationTests;
 
 /// <summary>
 /// Two administrators create accounts at once on each database. Both pass the checks before either
-/// saves, so the database's unique indexes decide. A lost username is the check's conflict; a lost
-/// generated address is replaced by the next free one.
+/// saves, so the database's unique indexes decide: a lost username or address is the check's conflict.
 /// </summary>
 public abstract class AccountCreationRaceTests(AccountChangeDatabases databases)
 {
@@ -27,7 +22,7 @@ public abstract class AccountCreationRaceTests(AccountChangeDatabases databases)
         using var bothChecked = new Barrier(participantCount: 2);
         await using var first = databases.NewRequest();
         await using var second = databases.NewRequest();
-        var request = new CreateUserRequest(username, "Race", "Person", "It-race-initial-password", ClearanceLevel.Standard, "GLOBAL");
+        var request = new CreateUserRequest(username, "Race", "Person", "race.person@example.test", ClearanceLevel.Standard, "GLOBAL");
 
         var failures = await Task.WhenAll(
             Task.Run(() => Record.ExceptionAsync(() => UserAdmin(first, bothChecked).CreateAsync(request, default))),
@@ -44,61 +39,61 @@ public abstract class AccountCreationRaceTests(AccountChangeDatabases databases)
     }
 
     [Fact]
-    public async Task Two_creates_for_one_name_with_different_usernames_make_both_accounts_with_the_next_free_addresses()
+    public async Task Two_creates_for_one_mailbox_with_different_usernames_make_one_account_and_answer_the_other_with_the_conflict()
     {
+        const string mailbox = "race.mailbox@example.test";
         using var bothChecked = new Barrier(participantCount: 2);
         await using var first = databases.NewRequest();
         await using var second = databases.NewRequest();
 
         var failures = await Task.WhenAll(
             Task.Run(() => Record.ExceptionAsync(() => UserAdmin(first, bothChecked).CreateAsync(
-                new CreateUserRequest("it-race-address-one", "Address", "Race", "It-race-initial-password", ClearanceLevel.Standard, "GLOBAL"), default))),
+                new CreateUserRequest("it-race-address-one", "Address", "Race", mailbox, ClearanceLevel.Standard, "GLOBAL"), default))),
             Task.Run(() => Record.ExceptionAsync(() => UserAdmin(second, bothChecked).CreateAsync(
-                new CreateUserRequest("it-race-address-two", "Address", "Race", "It-race-initial-password", ClearanceLevel.Standard, "GLOBAL"), default))));
+                new CreateUserRequest("it-race-address-two", "Address", "Race", mailbox, ClearanceLevel.Standard, "GLOBAL"), default))));
 
-        Assert.Equal([null, null], failures);
+        Assert.IsType<EmailAddressTakenException>(Assert.Single(failures, failure => failure is not null));
         await using var check = databases.NewRequest();
-        var addresses = await check.Context.Users.AsNoTracking()
-            .Where(user => user.Username == "it-race-address-one" || user.Username == "it-race-address-two")
-            .Select(user => user.Email)
-            .OrderBy(email => email)
-            .ToListAsync();
-        Assert.Equal(["address.race.1@eclipsvault.local", "address.race.2@eclipsvault.local"], addresses);
+        Assert.Single(await check.Context.Users.AsNoTracking().Where(user => user.Email == mailbox).ToListAsync());
+        Assert.Single(await check.Context.AccountInvitations.AsNoTracking()
+            .Where(invitation => invitation.User!.Email == mailbox).ToListAsync());
     }
 
     private static UserAdminService UserAdmin(AccountRequest request, Barrier bothChecked) => new(
         request.Users,
-        new HasherThatWaitsForTheOtherCreate(bothChecked),
+        new AccountInvitationRepository(request.Context),
+        new UndeliveredInvitations(),
         new UnusedSessionStore(),
         request.RecoveryCodes,
-        new CleanBreachScreen(),
-        UserDirectoryOptions.Default,
-        new NotificationService(new LoggingEmailSender(NullLogger<LoggingEmailSender>.Instance),
-            new EmailLogRepository(request.Context), request.Users, new NotificationOptions(false), TimeProvider.System),
         new UnusedAuditSink(),
-        request.Changes,
+        new CommitterThatWaitsForTheOtherCreate(request.Changes, bothChecked),
         new Administrator(),
         TimeProvider.System);
 
-    /// <summary>
-    /// A create hashes the password after it checks the username and before it saves, so holding each
-    /// create here until the other arrives makes both check before either saves.
-    /// </summary>
-    private sealed class HasherThatWaitsForTheOtherCreate(Barrier bothChecked) : IPasswordHasher
+    /// <summary>Invitations are configured; whether one is delivered after the create commits is not in question here.</summary>
+    private sealed class UndeliveredInvitations : IAccountInvitationDelivery
     {
-        public PasswordHashResult Hash(string password)
-        {
-            Assert.True(bothChecked.SignalAndWait(TimeSpan.FromSeconds(10)), "The other create never reached its save.");
-            return new PasswordHashResult(new byte[32], new byte[16]);
-        }
-
-        public bool Verify(string password, byte[] hash, byte[] salt) => throw new NotSupportedException();
+        public bool Available => true;
+        public Task<bool> TrySendAsync(string address, string displayName, string username, string token, CancellationToken ct)
+            => Task.FromResult(false);
     }
 
-    private sealed class CleanBreachScreen : IBreachedPasswordScreen
+    /// <summary>
+    /// A create checks the username and address before it commits, so holding each create's commit here
+    /// until the other arrives makes both check before either saves.
+    /// </summary>
+    private sealed class CommitterThatWaitsForTheOtherCreate(IAccountChangeCommitter inner, Barrier bothChecked) : IAccountChangeCommitter
     {
-        public bool IsCompromised(string password) => false;
-        public int CorpusSize => 0;
+        public Task<bool> CommitAsync(User account, AuditEntry entry, CancellationToken ct)
+        {
+            Assert.True(bothChecked.SignalAndWait(TimeSpan.FromSeconds(10)), "The other create never reached its commit.");
+            return inner.CommitAsync(account, entry, ct);
+        }
+
+        public Task<bool> CommitAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> CommitAdministratorChangeAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> CommitAsync(User account, AuditAction action, string details, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> CommitAsync(User account, AuditAction action, string details, Func<CancellationToken, Task> recheck, CancellationToken ct) => throw new NotSupportedException();
     }
 
     private sealed class UnusedSessionStore : ISessionRevocationService

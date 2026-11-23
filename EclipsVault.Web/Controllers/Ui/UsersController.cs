@@ -15,7 +15,7 @@ namespace EclipsVault.Web.Controllers.Ui;
 [Authorize(AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme, Policy = VaultPolicies.AdminOnly)]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 [TypeFilter(typeof(AdministratorProblemFilter))]
-public sealed class UsersController(IUserAdminService users, AdministratorStepUp stepUp, UserDirectoryOptions directory) : Controller
+public sealed class UsersController(IUserAdminService users, AdministratorStepUp stepUp) : Controller
 {
     [HttpGet("notice")]
     [ProducesResponseType<UserNoticeResponse>(StatusCodes.Status200OK, "application/json")]
@@ -32,7 +32,8 @@ public sealed class UsersController(IUserAdminService users, AdministratorStepUp
             account.Clearance.ToDisplayName(), account.ProjectKey, account.TotpEnabled,
             account.IsDisabled ? "disabled" : account.IsLockedOut ? "locked" : "active",
             Url.Content($"~/Profile/Avatar?id={account.Id}&seed={Uri.EscapeDataString(account.DisplayName)}&v={(account.HasCustomAvatar ? "c" : "g")}"),
-            account.Id == User.GetUserId())).ToList());
+            account.Id == User.GetUserId(), account.AwaitingActivation, account.InvitationExpiresAtUtc)).ToList(),
+            users.InvitationsAvailable);
     }
 
     private static IReadOnlyList<ClearanceOptionResponse> Clearances => Enum.GetValues<ClearanceLevel>()
@@ -40,7 +41,7 @@ public sealed class UsersController(IUserAdminService users, AdministratorStepUp
 
     [HttpGet("new")]
     [ProducesResponseType<NewUserResponse>(StatusCodes.Status200OK, "application/json")]
-    public ActionResult<NewUserResponse> New() => new NewUserResponse(directory.EmailDomain, Clearances);
+    public ActionResult<NewUserResponse> New() => new NewUserResponse(Clearances, users.InvitationsAvailable);
 
     [HttpGet("{userId:guid}")]
     [ProducesResponseType<UserDetailsResponse>(StatusCodes.Status200OK, "application/json")]
@@ -52,8 +53,9 @@ public sealed class UsersController(IUserAdminService users, AdministratorStepUp
         {
             return AdministratorProblems.UserNotFound();
         }
-        return new UserDetailsResponse(account.Id, account.Username, account.DisplayName, (int)account.Clearance,
-            account.ProjectKey, account.Id == User.GetUserId(), Clearances);
+        return new UserDetailsResponse(account.Id, account.Username, account.DisplayName, account.Email, (int)account.Clearance,
+            account.ProjectKey, account.Id == User.GetUserId(), account.IsDisabled, Clearances, account.AwaitingActivation,
+            account.InvitationExpiresAtUtc, users.InvitationsAvailable);
     }
 
     [HttpPost]
@@ -70,9 +72,48 @@ public sealed class UsersController(IUserAdminService users, AdministratorStepUp
             return required;
         }
         var created = await users.CreateAsync(new CreateUserRequest(request.Username ?? "", request.FirstName ?? "", request.LastName ?? "",
-            request.Password ?? "", (ClearanceLevel)(request.Clearance ?? 0), request.Project ?? ""), ct);
-        Success($"User '{created.Username}' created with email {created.Email}. They can sign in with either and will set up their authenticator on first sign-in.");
-        return Created($"/api/ui/users/{created.Id}", new CreatedUserResponse(created.Id, created.Username, created.Email));
+            request.Email ?? "", (ClearanceLevel)(request.Clearance ?? 0), request.Project ?? ""), ct);
+        // The New user page shows the invitation's outcome itself, so no Users notice repeats it.
+        return Created($"/api/ui/users/{created.Id}", new CreatedUserResponse(created.Id, created.Username, created.Email,
+            created.Invitation.Delivered ? "sent" : "not_delivered", created.Invitation.ExpiresAtUtc));
+    }
+
+    [HttpPost("{userId:guid}/invitation")]
+    [ProducesResponseType<InvitationResponse>(StatusCodes.Status200OK, "application/json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status403Forbidden, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status404NotFound, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status409Conflict, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
+    public async Task<IActionResult> ResendInvitation(Guid userId, CancellationToken ct)
+    {
+        if (await stepUp.RequireAsync(User, AdministratorAction.ResendInvitation, ct) is { } required)
+        {
+            return required;
+        }
+        var sent = await users.ResendInvitationAsync(userId, ct);
+        return sent is null
+            ? AdministratorProblems.UserNotFound()
+            : Ok(new InvitationResponse(sent.Delivered ? "sent" : "not_delivered", sent.ExpiresAtUtc));
+    }
+
+    [HttpPost("{userId:guid}/invitation-address")]
+    [RequestSizeLimit(4096)]
+    [ProducesResponseType<InvitationAddressResponse>(StatusCodes.Status200OK, "application/json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status400BadRequest, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status403Forbidden, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status404NotFound, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status409Conflict, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
+    public async Task<IActionResult> ReplaceInvitationAddress(Guid userId, [FromBody] ReplaceInvitationAddressRequest request, CancellationToken ct)
+    {
+        if (await stepUp.RequireAsync(User, AdministratorAction.ReplaceInvitationAddress, ct) is { } required)
+        {
+            return required;
+        }
+        var email = await users.ReplaceInvitationAddressAsync(userId, request.Email ?? "", ct);
+        return email is null
+            ? AdministratorProblems.UserNotFound()
+            : Ok(new InvitationAddressResponse(email));
     }
 
     [HttpPatch("{userId:guid}/role")]

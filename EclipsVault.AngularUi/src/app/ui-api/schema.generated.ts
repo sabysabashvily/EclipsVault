@@ -893,6 +893,149 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ui/auth/activation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ActivationRequest"];
+                    "text/json": components["schemas"]["ActivationRequest"];
+                    "application/*+json": components["schemas"]["ActivationRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ActivationResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["SignInProblemResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["SignInProblemResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/auth/activation/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CompleteActivationRequest"];
+                    "text/json": components["schemas"]["CompleteActivationRequest"];
+                    "application/*+json": components["schemas"]["CompleteActivationRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProfileProblemResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["SignInProblemResponse"];
+                    };
+                };
+                /** @description Too Many Requests */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["SignInProblemResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["SignInProblemResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ui/auth/sign-out": {
         parameters: {
             query?: never;
@@ -5249,6 +5392,167 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ui/users/{userId}/invitation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    userId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["InvitationResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ui/users/{userId}/invitation-address": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    userId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ReplaceInvitationAddressRequest"];
+                    "text/json": components["schemas"]["ReplaceInvitationAddressRequest"];
+                    "application/*+json": components["schemas"]["ReplaceInvitationAddressRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["InvitationAddressResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ui/users/{userId}/role": {
         parameters: {
             query?: never;
@@ -5754,6 +6058,17 @@ export interface components {
             sensitivityRank: number | string;
             cells: components["schemas"]["AccessCellResponse"][];
         };
+        ActivationRequest: {
+            token: string;
+        };
+        ActivationResponse: {
+            username: string;
+            displayName: string;
+            secretBase32: string;
+            qrCodeDataUri: string;
+            /** Format: date-time */
+            expiresAtUtc: string;
+        };
         ActivityItemResponse: {
             /** Format: date-time */
             timestampUtc: string;
@@ -5849,6 +6164,11 @@ export interface components {
             value: number | string;
             label: string;
         };
+        CompleteActivationRequest: {
+            token: string;
+            password: string;
+            code: string;
+        };
         ConfirmEmailRequest: {
             /** Format: uuid */
             operationId: string;
@@ -5867,6 +6187,10 @@ export interface components {
             userId: string;
             username: string;
             email: string;
+            /** @enum {string} */
+            invitation: "sent" | "not_delivered";
+            /** Format: date-time */
+            expiresAtUtc: string;
         };
         CreateSecretUiRequest: {
             name: null | string;
@@ -5889,7 +6213,7 @@ export interface components {
             firstName?: null | string;
             lastName?: null | string;
             username?: null | string;
-            password?: null | string;
+            email?: null | string;
             /** Format: int32 */
             clearance?: null | number | string;
             project?: null | string;
@@ -6003,6 +6327,15 @@ export interface components {
         };
         /** Format: binary */
         IFormFile: string;
+        InvitationAddressResponse: {
+            email: string;
+        };
+        InvitationResponse: {
+            /** @enum {string} */
+            invitation: "sent" | "not_delivered";
+            /** Format: date-time */
+            expiresAtUtc: string;
+        };
         IssuedDynamicCredentialResponse: {
             /** Format: uuid */
             leaseId: string;
@@ -6115,8 +6448,8 @@ export interface components {
             clearances: components["schemas"]["ClearanceOptionResponse"][];
         };
         NewUserResponse: {
-            emailDomain: string;
             clearances: components["schemas"]["ClearanceOptionResponse"][];
+            invitationsAvailable: boolean;
         };
         NotificationResponse: {
             /** Format: date-time */
@@ -6319,6 +6652,9 @@ export interface components {
             nickname: string;
             /** Format: date-time */
             createdAtUtc: string;
+        };
+        ReplaceInvitationAddressRequest: {
+            email?: null | string;
         };
         RequestToReviewResponse: {
             /** Format: uuid */
@@ -6653,11 +6989,17 @@ export interface components {
             userId: string;
             username: string;
             displayName: string;
+            email: string;
             /** Format: int32 */
             clearance: number | string;
             project: string;
             isYou: boolean;
+            isDisabled: boolean;
             clearances: components["schemas"]["ClearanceOptionResponse"][];
+            awaitingActivation: boolean;
+            /** Format: date-time */
+            invitationExpiresAtUtc: null | string;
+            invitationsAvailable: boolean;
         };
         UserNoticeResponse: {
             message: null | string;
@@ -6678,6 +7020,9 @@ export interface components {
             status: "active" | "locked" | "disabled";
             avatarUrl: string;
             isYou: boolean;
+            awaitingActivation: boolean;
+            /** Format: date-time */
+            invitationExpiresAtUtc: null | string;
         };
         UserRoleRequest: {
             /** Format: int32 */
@@ -6686,6 +7031,7 @@ export interface components {
         };
         UsersResponse: {
             users: components["schemas"]["UserResponse"][];
+            invitationsAvailable: boolean;
         };
         VerifiedOperationRequest: {
             /** Format: uuid */

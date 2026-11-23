@@ -3,7 +3,9 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
+using EclipsVault.Infrastructure.Persistence;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -368,8 +370,15 @@ public sealed class SignInReturnUrlTests(VaultFixture vault)
         var username = "return-" + Guid.NewGuid().ToString("N")[..12];
         var password = "It-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
         var admin = await vault.AdminClientAsync();
-        var created = await UserAccounts.CreateAsync(admin, username, "Return", "Test", password);
+        var created = await UserAccounts.CreateAsync(admin, username, "Return", "Test");
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        await vault.ActivateAsync(UserAccounts.EmailOf(username), password, Totp.CurrentStep());
+        // These tests start at enrollment, so the activated account's authenticator is taken away again.
+        using var scope = vault.Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().Users.Where(user => user.Username == username)
+            .ExecuteUpdateAsync(set => set.SetProperty(user => user.TotpEnabled, false)
+                .SetProperty(user => user.TotpSecret, (string?)null)
+                .SetProperty(user => user.LastTotpStep, (long?)null));
         return (username, password);
     }
 

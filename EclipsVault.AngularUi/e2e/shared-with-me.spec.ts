@@ -1,4 +1,5 @@
 import { refreshAdministratorProof } from './administrator-proof';
+import { signInNewAccount } from './account-activation';
 import { AccountCreation } from './account-creation';
 import { AppShell } from './app-shell';
 import type { BrowserContext, Page } from '@playwright/test';
@@ -10,7 +11,6 @@ import { SecretsList } from './secrets-list';
 import { SharedByMe } from './shared-by-me';
 import { SharedWithMe } from './shared-with-me';
 import { Users } from './users';
-import { freshTotp } from './totp';
 
 test.describe.configure({ mode: 'serial' });
 const recipientUsername = 'e2e-swm-recipient';
@@ -71,11 +71,10 @@ test('a share whose recipient was later under-cleared is not listed for them', a
     firstName: 'Shared',
     lastName: 'Recipient',
     username: recipientUsername,
-    password,
     clearance: 'Elevated',
     project: 'E2E-SWM',
   });
-  await expect(page).toHaveURL(/\/Admin\/Users$/);
+  await expect(creation.status).toContainText('Invitation sent to');
 
   // Sharing refuses an under-cleared recipient, so the share is made first and the clearance
   // lowered after: the state a later change of role leaves behind.
@@ -88,17 +87,8 @@ test('a share whose recipient was later under-cleared is not listed for them', a
   await page.getByRole('button', { name: 'Save role', exact: true }).click();
   await expect(page).toHaveURL(/\/Admin\/Users$/);
 
-  // Two credential posts: the earlier specs leave this window's sign-in budget far from spent.
   const recipient = await (await browserHealth.newContext()).newPage();
-  await recipient.goto('/Account/Login');
-  await recipient.getByLabel('Username').fill(recipientUsername);
-  await recipient.getByLabel('Password', { exact: true }).fill(password);
-  await recipient.getByRole('button', { name: 'Continue', exact: true }).click();
-  await expect(recipient).toHaveURL(/\/Account\/EnrollTotp$/);
-  // eslint-disable-next-line playwright/no-raw-locators -- Enrollment displays the throwaway authenticator seed as unlabelled text.
-  const seed = await recipient.locator('.secret-code').innerText();
-  await recipient.getByLabel('Confirmation code').fill(await freshTotp(seed));
-  await recipient.getByRole('button', { name: 'Confirm enrollment', exact: true }).click();
+  await signInNewAccount(recipient, recipientUsername, password);
   await expect(recipient).toHaveURL(/\/Secrets$/);
   recipientCookies = await recipient.context().cookies();
 

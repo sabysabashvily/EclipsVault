@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using EclipsVault.Core.Application.Sso;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Web.Authentication;
 using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Extensions;
@@ -16,7 +17,8 @@ using Microsoft.AspNetCore.Mvc;
 namespace EclipsVault.Web.Controllers.Ui;
 
 /// <summary>
-/// The sign-in calls a person makes before a session exists, and sign-out (ADR-0016, ADR-0032).
+/// The sign-in calls a person makes before a session exists, account activation by invitation
+/// (ADR-0033), and sign-out (ADR-0016, ADR-0032).
 /// They are the UI API's only anonymous actions, each opened by name; the second-factor calls that
 /// accept a pending sign-in live in <see cref="PendingSignInController"/>. Nothing here tells an
 /// anonymous caller whether an account exists.
@@ -29,6 +31,7 @@ namespace EclipsVault.Web.Controllers.Ui;
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class AuthController(
     IVaultAuthenticationService auth,
+    IAccountActivationService activation,
     IPasskeyService passkeys,
     IPasskeyCeremonyStore passkeyCeremonies,
     IIpBlacklist blacklist,
@@ -171,6 +174,62 @@ public sealed class AuthController(
             }
         }
     }
+
+    /// <summary>
+    /// The invited account and its authenticator seed, for the person holding the emailed token. The seed
+    /// is generated on the first call only; nothing is spent (ADR-0033).
+    /// </summary>
+    [AllowAnonymous]
+    [HttpPost("activation")]
+    [RequestSizeLimit(4096)]
+    [ProducesResponseType<ProfileProblemResponse>(StatusCodes.Status400BadRequest, "application/problem+json")]
+    [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status404NotFound, "application/problem+json")]
+    [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status429TooManyRequests, "application/problem+json")]
+    [ProducesResponseType<ActivationResponse>(StatusCodes.Status200OK, "application/json")]
+    public async Task<ActionResult<ActivationResponse>> InspectActivation([FromBody] ActivationRequest request, CancellationToken ct)
+    {
+        var invitation = await activation.InspectAsync(request.Token, ct);
+        return invitation is null
+            ? InvitationInvalid()
+            : new ActivationResponse(invitation.Username, invitation.DisplayName, invitation.SecretBase32,
+                TotpQrCode.PngDataUri(invitation.OtpAuthUri), invitation.ExpiresAtUtc);
+    }
+
+    /// <summary>
+    /// Activates the invited account: the person's password under Profile's rules and the inspected
+    /// authenticator, in one transaction with <c>AccountActivated</c>. A refused password or code keeps the invitation.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpPost("activation/complete")]
+    [RequestSizeLimit(4096)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ProfileProblemResponse>(StatusCodes.Status400BadRequest, "application/problem+json")]
+    [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status404NotFound, "application/problem+json")]
+    [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status429TooManyRequests, "application/problem+json")]
+    [ProducesResponseType<SignInProblemResponse>(StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
+    public async Task<IActionResult> CompleteActivation([FromBody] CompleteActivationRequest request, CancellationToken ct)
+    {
+        ActivationOutcome outcome;
+        try
+        {
+            outcome = await activation.CompleteAsync(request.Token, request.Password, request.Code, ct);
+        }
+        catch (AccountInputException refused)
+        {
+            return ProfileProblems.InvalidField("password", refused.Message);
+        }
+
+        return outcome switch
+        {
+            ActivationOutcome.Activated => NoContent(),
+            ActivationOutcome.CodeInvalid => ProfileProblems.Problem(StatusCodes.Status400BadRequest, "code_invalid",
+                "The confirmation code did not match. Try again."),
+            _ => InvitationInvalid(),
+        };
+    }
+
+    private static JsonResult InvitationInvalid() => SignInProblems.Problem(StatusCodes.Status404NotFound, "invitation_invalid",
+        "This invitation link is not valid. It may have expired or been used. Ask an administrator to send a new one.");
 
     /// <summary>
     /// Revokes this browser's session, then clears its cookie. Not

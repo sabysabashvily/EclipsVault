@@ -26,6 +26,28 @@
   <p role="alert">Could not load users. Try again.</p>
   <button type="button" class="button" (click)="users.reload()">Try again</button>
 } @else {
+  @if (!invitationsAvailable()) {
+    <div class="notice notice-warn" role="status">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path
+          d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"
+        />
+      </svg>
+      <span>
+        Invitations need email delivery and the vault's public address (<code class="code-chip"
+          >Identity:PublicUrl</code
+        >). Configure both to add accounts.
+      </span>
+    </div>
+  }
   <section class="panel">
     <div class="table-toolbar">
       <app-table-filter
@@ -79,9 +101,8 @@
                 }
               </td>
               <td class="cell-pill">
-                <span [class]="'badge ' + statuses[user.status].tone">{{
-                  statuses[user.status].label
-                }}</span>
+                @let status = accountStatus(user);
+                <span [class]="'badge ' + status.tone">{{ status.label }}</span>
               </td>
               <td class="cell-actions cell-verb">
                 @if (!user.isYou && user.status === 'locked') {
@@ -92,6 +113,21 @@
                     (click)="act('unlock', user)"
                   >
                     Unlock
+                  </button>
+                }
+                @if (
+                  invitationsAvailable() &&
+                  user.awaitingActivation &&
+                  !user.invitationExpiresAtUtc &&
+                  user.status !== 'disabled'
+                ) {
+                  <button
+                    type="button"
+                    class="button small"
+                    [disabled]="busy()"
+                    (click)="act('invitation', user)"
+                  >
+                    Resend invitation
                   </button>
                 }
                 @if (!user.isYou && user.status === 'disabled') {
@@ -111,6 +147,26 @@
                     [routerLink]="['/Admin/EditUser', user.userId]"
                     >Edit</a
                   >
+                  @if (user.awaitingActivation && user.status !== 'disabled') {
+                    @if (invitationsAvailable() && user.invitationExpiresAtUtc) {
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="menu-item"
+                        [disabled]="busy()"
+                        (click)="act('invitation', user)"
+                      >
+                        Resend invitation
+                      </button>
+                    }
+                    <a
+                      role="menuitem"
+                      class="menu-item"
+                      [routerLink]="['/Admin/EditUser', user.userId]"
+                      fragment="invitation"
+                      >Replace invitation address</a
+                    >
+                  }
                   @if (!user.isYou && user.status !== 'disabled') {
                     <button
                       type="button"
@@ -132,15 +188,17 @@
                     Force logout
                   </button>
                   @if (!user.isYou) {
-                    <button
-                      type="button"
-                      role="menuitem"
-                      class="menu-item"
-                      [disabled]="busy()"
-                      (click)="act('reset-mfa', user)"
-                    >
-                      Reset MFA
-                    </button>
+                    @if (!user.awaitingActivation) {
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="menu-item"
+                        [disabled]="busy()"
+                        (click)="act('reset-mfa', user)"
+                      >
+                        Reset MFA
+                      </button>
+                    }
                     <button
                       type="button"
                       role="menuitem"

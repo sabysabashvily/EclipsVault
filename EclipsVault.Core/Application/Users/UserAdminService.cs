@@ -1,3 +1,4 @@
+using System.Net.Mail;
 using EclipsVault.Core.Application.Mfa;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
@@ -6,28 +7,27 @@ using EclipsVault.Core.Domain.Exceptions;
 namespace EclipsVault.Core.Application.Users;
 
 /// <summary>
-/// Administrative user lifecycle. New accounts receive an Argon2id hash with a fresh
-/// random salt, an auto-generated unique email, and enroll TOTP at their first
-/// sign-in; role changes, disabling, and deletions are guarded against locking the
-/// vault out of its own administration.
+/// Administrative user lifecycle. New accounts are invited at the person's own email and hold no
+/// credential until the person activates them (ADR-0033); role changes, disabling, and deletions are
+/// guarded against locking the vault out of its own administration.
 /// </summary>
 public sealed class UserAdminService : IUserAdminService
 {
-    private const int MinimumPasswordLength = 12;
-    private const int MaximumPasswordLength = 256;
+    private const int MaximumEmailLength = 254;
     private const int MaximumProjectKeyLength = 64;
     private const int MaximumNameLength = 64;
 
     /// <summary>The display name column's width, which "First Last" must fit.</summary>
     private const int MaximumDisplayNameLength = 64;
 
+    private const string InvitationsUnavailableMessage =
+        "Invitations need email delivery and the vault's public address (Identity:PublicUrl). Configure both to add accounts.";
+
     private readonly IUserRepository _users;
-    private readonly IPasswordHasher _hasher;
+    private readonly IAccountInvitationRepository _invitations;
+    private readonly IAccountInvitationDelivery _invitationDelivery;
     private readonly ISessionRevocationService _revocation;
     private readonly IMfaRecoveryCodeRepository _recoveryCodes;
-    private readonly IBreachedPasswordScreen _breachScreen;
-    private readonly UserDirectoryOptions _directory;
-    private readonly INotificationService _notifications;
     private readonly IAuditSink _audit;
     private readonly IAccountChangeCommitter _changes;
     private readonly IAuditContext _actor;
@@ -35,29 +35,27 @@ public sealed class UserAdminService : IUserAdminService
 
     public UserAdminService(
         IUserRepository users,
-        IPasswordHasher hasher,
+        IAccountInvitationRepository invitations,
+        IAccountInvitationDelivery invitationDelivery,
         ISessionRevocationService revocation,
         IMfaRecoveryCodeRepository recoveryCodes,
-        IBreachedPasswordScreen breachScreen,
-        UserDirectoryOptions directory,
-        INotificationService notifications,
         IAuditSink audit,
         IAccountChangeCommitter changes,
         IAuditContext actor,
         TimeProvider clock)
     {
         _users = users;
-        _hasher = hasher;
+        _invitations = invitations;
+        _invitationDelivery = invitationDelivery;
         _revocation = revocation;
         _recoveryCodes = recoveryCodes;
-        _breachScreen = breachScreen;
-        _directory = directory;
-        _notifications = notifications;
         _audit = audit;
         _changes = changes;
         _actor = actor;
         _clock = clock;
     }
+
+    public bool InvitationsAvailable => _invitationDelivery.Available;
 
     /// <summary>An administrator's action on an account, attributed to the administrator.</summary>
     private AuditEntry AdministratorEvent(AuditAction action, User account, string details) => new()
@@ -73,13 +71,14 @@ public sealed class UserAdminService : IUserAdminService
     public async Task<IReadOnlyList<UserSummaryDto>> ListAsync(CancellationToken ct)
     {
         var users = await _users.ListAsync(ct);
-        return users.Select(Map).ToList();
+        var invitations = (await _invitations.ListAsync(ct)).ToDictionary(invitation => invitation.UserId);
+        return users.Select(user => Map(user, invitations.GetValueOrDefault(user.Id))).ToList();
     }
 
     public async Task<UserSummaryDto?> GetAsync(Guid userId, CancellationToken ct)
     {
         var user = await _users.FindByIdAsync(userId, ct);
-        return user is null ? null : Map(user);
+        return user is null ? null : Map(user, await _invitations.FindByUserIdAsync(user.Id, ct));
     }
 
     public async Task<CreatedUserDto> CreateAsync(CreateUserRequest request, CancellationToken ct)
@@ -88,12 +87,13 @@ public sealed class UserAdminService : IUserAdminService
         var first = request.FirstName.Trim();
         var last = request.LastName.Trim();
         var displayName = $"{first} {last}";
-        CheckNewAccount(request, username, first, last, displayName);
+        CheckNewAccount(username, first, last, displayName);
+        var email = CheckedEmail(request.Email);
         CheckClearance(request.Clearance);
         var project = CheckedProjectKey(request.ProjectKey);
-        if (_breachScreen.IsCompromised(request.Password))
+        if (!_invitationDelivery.Available)
         {
-            throw new AccountInputException(nameof(CreateUserRequest.Password), "That password has appeared in a known data breach. Choose a different one.");
+            throw new InvitationsUnavailableException(InvitationsUnavailableMessage);
         }
 
         if (await _users.FindByUsernameAsync(username, ct) is not null)
@@ -101,46 +101,40 @@ public sealed class UserAdminService : IUserAdminService
             throw new UsernameTakenException(username);
         }
 
-        var email = await GenerateEmailAsync(first, last, ct);
-        var hashed = _hasher.Hash(request.Password);
+        // The account is not saved yet, so no account's own address is exempt.
+        if (await _users.IsEmailTakenAsync(email, Guid.Empty, ct))
+        {
+            throw new EmailAddressTakenException();
+        }
+
+        var now = _clock.GetUtcNow();
         var user = new User
         {
             Id = Guid.NewGuid(),
             Username = username,
             DisplayName = displayName,
             Email = email,
-            PasswordHash = hashed.Hash,
-            PasswordSalt = hashed.Salt,
             Clearance = request.Clearance,
             ProjectKey = project,
-            CreatedAtUtc = _clock.GetUtcNow()
+            AwaitingActivation = true,
+            CreatedAtUtc = now
         };
-
-        // Another create for the same person's name can take the generated address first. The account
-        // then takes the next free one, once; losing twice in a row means the name is busy right now.
-        if (!await TryCommitNewAccountAsync(user, ct))
-        {
-            user.Email = await GenerateEmailAsync(first, last, ct);
-            if (!await TryCommitNewAccountAsync(user, ct))
-            {
-                throw new AccountChangedException("Another account for the same name was created at the same moment. Try again.");
-            }
-        }
-
-        await _notifications.NotifyUserProvisionedAsync(user.Email, displayName, user.Username, ct);
-        return new CreatedUserDto(user.Id, user.Username, user.Email, displayName);
-    }
-
-    /// <summary>Saves the new account with its UserCreated event.</summary>
-    /// <returns>False when another account took its email address first; nothing was saved.</returns>
-    private async Task<bool> TryCommitNewAccountAsync(User user, CancellationToken ct)
-    {
+        var token = InvitationToken.Generate();
+        var expiresAtUtc = now + InvitationToken.Lifetime;
         _users.StageAddition(user);
+        _invitations.StageAddition(new AccountInvitation
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            TokenHash = InvitationToken.Hash(token),
+            CreatedAtUtc = now,
+            ExpiresAtUtc = expiresAtUtc
+        });
+
         try
         {
             await _changes.CommitAsync(user, AdministratorEvent(AuditAction.UserCreated, user,
                 $"Created '{user.Username}' <{user.Email}> (clearance {user.Clearance}, project {user.ProjectKey})"), ct);
-            return true;
         }
         catch (UsernameTakenException)
         {
@@ -148,22 +142,140 @@ public sealed class UserAdminService : IUserAdminService
         }
         catch (EmailAddressTakenException)
         {
-            // The same username created twice at once also gets the same generated address, and the
-            // database may report that index first. The username is what the administrator chose, so name it.
+            // The same create sent twice at once loses on both indexes, and the database may report the
+            // address first. The username is what the administrator chose, so name it.
             if (await _users.FindByUsernameAsync(user.Username, ct) is not null)
             {
                 throw new UsernameTakenException(user.Username);
             }
 
-            return false;
+            throw;
         }
+
+        var delivered = await _invitationDelivery.TrySendAsync(user.Email, displayName, user.Username, token, ct);
+        return new CreatedUserDto(user.Id, user.Username, user.Email, displayName, new SentInvitationDto(delivered, expiresAtUtc));
+    }
+
+    public async Task<SentInvitationDto?> ResendInvitationAsync(Guid userId, CancellationToken ct)
+    {
+        var user = await _users.FindByIdAsync(userId, ct);
+        if (user is null)
+        {
+            return null;
+        }
+
+        if (!user.AwaitingActivation)
+        {
+            throw new AccountAlreadyActiveException("This account has already been activated.");
+        }
+
+        if (!_invitationDelivery.Available)
+        {
+            throw new InvitationsUnavailableException(InvitationsUnavailableMessage);
+        }
+
+        var existing = await _invitations.FindByUserIdAsync(user.Id, ct);
+        var token = InvitationToken.Generate();
+        var tokenHash = InvitationToken.Hash(token);
+        var now = _clock.GetUtcNow();
+        var expiresAtUtc = now + InvitationToken.Lifetime;
+
+        if (existing is null)
+        {
+            _invitations.StageAddition(new AccountInvitation
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                TokenHash = tokenHash,
+                CreatedAtUtc = now,
+                ExpiresAtUtc = expiresAtUtc
+            });
+        }
+        else
+        {
+            existing.TokenHash = tokenHash;
+            existing.CreatedAtUtc = now;
+            existing.ExpiresAtUtc = expiresAtUtc;
+            existing.SpentAtUtc = null;
+            existing.PendingTotpSecret = null;
+            _invitations.StageReset(existing);
+        }
+
+        await _changes.CommitAsync(user, AdministratorEvent(AuditAction.InvitationSent, user,
+            $"Invitation issued for '{user.Username}' to <{user.Email}>; expires {expiresAtUtc:u}"), ct);
+
+        var delivered = await _invitationDelivery.TrySendAsync(user.Email, user.DisplayName, user.Username, token, ct);
+        return new SentInvitationDto(delivered, expiresAtUtc);
+    }
+
+    public async Task<string?> ReplaceInvitationAddressAsync(Guid userId, string email, CancellationToken ct)
+    {
+        var trimmed = CheckedEmail(email);
+        var user = await _users.FindByIdAsync(userId, ct);
+        if (user is null)
+        {
+            return null;
+        }
+
+        if (!user.AwaitingActivation)
+        {
+            throw new AccountAlreadyActiveException("This account has already been activated.");
+        }
+
+        if (await _users.IsEmailTakenAsync(trimmed, user.Id, ct))
+        {
+            throw new EmailAddressTakenException();
+        }
+
+        var existing = await _invitations.FindByUserIdAsync(user.Id, ct);
+        var hasUnspentToken = existing is not null && existing.SpentAtUtc is null;
+        if (string.Equals(user.Email, trimmed, StringComparison.Ordinal) && !hasUnspentToken)
+        {
+            return user.Email;
+        }
+
+        user.Email = trimmed;
+        if (existing is not null && existing.SpentAtUtc is null)
+        {
+            // Spend the live token in the same transaction so the link already sent cannot activate the account.
+            existing.SpentAtUtc = _clock.GetUtcNow();
+            existing.PendingTotpSecret = null;
+            _invitations.StageReset(existing);
+        }
+
+        await _changes.CommitAsync(user,
+            AdministratorEvent(AuditAction.InvitationAddressReplaced, user,
+                $"Invitation address for '{user.Username}' replaced with <{user.Email}>"),
+            async token =>
+            {
+                if (await _users.IsEmailTakenAsync(trimmed, user.Id, token))
+                {
+                    throw new EmailAddressTakenException();
+                }
+            }, ct);
+
+        return user.Email;
+    }
+
+    private static string CheckedEmail(string email)
+    {
+        var trimmed = email.Trim();
+        if (trimmed.Length is 0 or > MaximumEmailLength
+            || trimmed.Any(char.IsControl)
+            || !MailAddress.TryCreate(trimmed, out var parsed)
+            || !string.Equals(parsed.Address, trimmed, StringComparison.Ordinal))
+        {
+            throw new AccountInputException("Email", "Enter a valid email address.");
+        }
+
+        return trimmed;
     }
 
     /// <summary>
-    /// The New user form's rules for the username, names and password, so callers other than the form are
-    /// held to them too. Clearance and project key have checks of their own, shared with role changes.
+    /// The New user form's rules for the username and names, so callers other than the form are held to
+    /// them too. Email, clearance and project key have checks of their own, shared with other changes.
     /// </summary>
-    private static void CheckNewAccount(CreateUserRequest request, string username, string first, string last, string displayName)
+    private static void CheckNewAccount(string username, string first, string last, string displayName)
     {
         if (!UsernameRules.Allows(username))
         {
@@ -177,16 +289,6 @@ public sealed class UserAdminService : IUserAdminService
         {
             throw new AccountInputException(nameof(CreateUserRequest.LastName),
                 $"First and last name together can be at most {MaximumDisplayNameLength} characters, counting the space between them.");
-        }
-
-        if (request.Password.Length < MinimumPasswordLength)
-        {
-            throw new AccountInputException(nameof(CreateUserRequest.Password), $"Passwords must be at least {MinimumPasswordLength} characters long.");
-        }
-
-        if (request.Password.Length > MaximumPasswordLength)
-        {
-            throw new AccountInputException(nameof(CreateUserRequest.Password), $"Passwords can be at most {MaximumPasswordLength} characters long.");
         }
     }
 
@@ -223,51 +325,6 @@ public sealed class UserAdminService : IUserAdminService
         }
 
         return project.ToUpperInvariant();
-    }
-
-    /// <summary>
-    /// Builds a unique <c>first.last.N@domain</c> email. N is the next free sequence
-    /// for that name, so "Saba Sabashvili" yields saba.sabashvili.1@…, then …2@… .
-    /// </summary>
-    private async Task<string> GenerateEmailAsync(string first, string last, CancellationToken ct)
-    {
-        var prefix = $"{Slug(first)}.{Slug(last)}";
-        var existing = await _users.FindEmailsWithPrefixAsync(prefix, _directory.EmailDomain, ct);
-        var next = existing.Select(e => ParseSequence(e, prefix)).DefaultIfEmpty(0).Max() + 1;
-        // The scan above sees only emails. An older account's username can also be this address,
-        // and the new account is not saved yet, so no account's own address is exempt.
-        var notYetSaved = Guid.Empty;
-        while (await _users.IsEmailTakenAsync(Address(next), notYetSaved, ct))
-        {
-            next++;
-        }
-
-        return Address(next);
-
-        string Address(int sequence) => $"{prefix}.{sequence}@{_directory.EmailDomain}";
-    }
-
-    private static int ParseSequence(string email, string prefix)
-    {
-        var at = email.IndexOf('@');
-        if (at < 0)
-        {
-            return 0;
-        }
-
-        var local = email[..at]; // expected: prefix.N
-        if (!local.StartsWith(prefix + ".", StringComparison.OrdinalIgnoreCase))
-        {
-            return 0;
-        }
-
-        return int.TryParse(local[(prefix.Length + 1)..], out var n) ? n : 0;
-    }
-
-    private static string Slug(string value)
-    {
-        var chars = value.ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray();
-        return chars.Length == 0 ? "user" : new string(chars);
     }
 
     public async Task<bool> SetRoleAsync(Guid userId, ClearanceLevel clearance, string projectKey, CancellationToken ct)
@@ -358,6 +415,11 @@ public sealed class UserAdminService : IUserAdminService
             return false;
         }
 
+        if (user.AwaitingActivation)
+        {
+            throw new AccountNotActivatedException("This account has not been activated yet.");
+        }
+
         await _recoveryCodes.StageRemovalOfAllAsync(user.Id, ct);
         user.TotpSecret = null;
         user.TotpEnabled = false;
@@ -443,9 +505,15 @@ public sealed class UserAdminService : IUserAdminService
         }, ct);
     }
 
-    private static bool IsEnabledAdministrator(User account) => account.Clearance == ClearanceLevel.TopSecret && !account.IsDisabled;
+    private static bool IsEnabledAdministrator(User account)
+        => account.Clearance == ClearanceLevel.TopSecret && !account.IsDisabled && !account.AwaitingActivation;
 
-    private UserSummaryDto Map(User u) =>
-        new(u.Id, u.Username, u.DisplayName, u.Email, u.Clearance, u.ProjectKey,
-            u.TotpEnabled, u.IsDisabled, u.IsLockedOut(_clock.GetUtcNow()), u.AvatarUpdatedAtUtc is not null, u.CreatedAtUtc);
+    private UserSummaryDto Map(User u, AccountInvitation? invitation)
+    {
+        var now = _clock.GetUtcNow();
+        var usable = u.AwaitingActivation && invitation is not null && invitation.IsUsable(now);
+        return new(u.Id, u.Username, u.DisplayName, u.Email, u.Clearance, u.ProjectKey,
+            u.TotpEnabled, u.IsDisabled, u.IsLockedOut(now), u.AvatarUpdatedAtUtc is not null, u.CreatedAtUtc,
+            u.AwaitingActivation, usable ? invitation!.ExpiresAtUtc : null);
+    }
 }

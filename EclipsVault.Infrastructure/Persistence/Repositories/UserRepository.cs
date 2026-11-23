@@ -60,16 +60,6 @@ public sealed class UserRepository : IUserRepository
             .SingleAsync(ct);
     }
 
-    public async Task<IReadOnlyList<string>> FindEmailsWithPrefixAsync(string localPrefix, string domain, CancellationToken ct)
-    {
-        var pattern = EmailIdentity.Normalize($"{localPrefix}.%@{domain}");
-        return await _context.Users
-            .AsNoTracking()
-            .Where(u => EF.Functions.Like(u.NormalizedEmail, pattern))
-            .Select(u => u.NormalizedEmail)
-            .ToListAsync(ct);
-    }
-
     public Task<User?> FindByIdAsync(Guid id, CancellationToken ct)
         => _context.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
 
@@ -84,7 +74,10 @@ public sealed class UserRepository : IUserRepository
         => await _context.Users.AsNoTracking().OrderBy(u => u.Username).ToListAsync(ct);
 
     public Task<bool> AnyOtherEnabledAdministratorAsync(Guid accountId, CancellationToken ct)
-        => _context.Users.AnyAsync(u => u.Id != accountId && u.Clearance == ClearanceLevel.TopSecret && !u.IsDisabled, ct);
+        => _context.Users.AnyAsync(u => u.Id != accountId
+            && u.Clearance == ClearanceLevel.TopSecret
+            && !u.IsDisabled
+            && !u.AwaitingActivation, ct);
 
     public async Task AddAsync(User user, CancellationToken ct)
     {
@@ -149,6 +142,7 @@ public sealed class UserRepository : IUserRepository
         var stamp = Guid.NewGuid();
         var accepted = await _context.Users
             .Where(u => u.Id == user.Id
+                        && !u.AwaitingActivation
                         && u.TotpEnabled
                         && u.TotpSecret == user.TotpSecret
                         && (u.LastTotpStep == null || u.LastTotpStep < step))
@@ -169,6 +163,7 @@ public sealed class UserRepository : IUserRepository
         var stamp = Guid.NewGuid();
         var enrolled = await _context.Users
             .Where(u => u.Id == user.Id
+                        && !u.AwaitingActivation
                         && !u.TotpEnabled
                         && u.TotpSecret == user.TotpSecret
                         && (u.LastTotpStep == null || u.LastTotpStep < step))

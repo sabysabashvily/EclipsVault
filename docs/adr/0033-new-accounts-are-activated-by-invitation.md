@@ -14,17 +14,21 @@ credentials after the owner enrolled the same seed.
   `first.last.N@domain` addresses and `Identity:EmailDomain` are retired.
 - **An invitation activates the account.** Creating an account sends a single-use link valid for 72
   hours to that address. The token is 256 random bits, stored only as a SHA-256 hash. Opening the link
-  changes nothing; the page shows the username and a fresh authenticator seed, and one POST sets the
+  spends nothing; the page shows the username and an authenticator seed, made on the first opening and
+  kept until the token is spent or replaced, and one POST sets the
   password (Profile's rules), enrolls the authenticator, spends the token, advances the credential
   generation and writes `AccountActivated`, in one transaction. The person then signs in normally.
 - **Until activation, the account cannot sign in by any route.** The password stage fails as for a
   wrong password; SSO refuses it (`NotActivated`); it has no passkey and cannot use break-glass. It does
-  not count as an enabled administrator, and its authenticator cannot be reset.
+  not count as an enabled administrator, and its authenticator cannot be reset. Disabling it pauses
+  its invitation: while it is disabled the link shows and activates nothing (`404 invitation_invalid`),
+  and re-enabling makes a link that has not expired usable again. Replacing the address or deleting
+  the account revokes the link.
 - **The link is built only from `Identity:PublicUrl`**, never from the request, and carries the token in
   its fragment, so it stays out of request logs, `Referer` and link scanners. It travels only through
   the unrecorded mail path (ADR-0024), never the notification outbox, logs or audit details.
-- **Resending replaces the token.** Creating an account and resending an invitation need fresh proof
-  (ADR-0028); resend refuses an activated account. `UserCreated` names the invitation address;
+- **Resending replaces the token.** Creating an account, resending an invitation and replacing its
+  address need fresh proof (ADR-0028); resend and replacement refuse an activated account. `UserCreated` names the invitation address;
   `InvitationSent` records each resend.
 - **No mail, no invitations.** Without real mail delivery or `Identity:PublicUrl`, New user and Resend
   are unavailable with an explanation. There is no fallback that shows the link to an administrator.

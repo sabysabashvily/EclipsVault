@@ -1,10 +1,7 @@
 namespace EclipsVault.Core.Application.Users;
 
 /// <summary>
-/// Directory settings for user provisioning. The email domain is combined with a
-/// generated <c>first.last.N</c> local part to produce each account's unique email.
+/// Directory settings for user provisioning. <see cref="PublicUrl"/> is the sole origin used to build
+/// activation links (ADR-0033).
 /// </summary>
-public sealed record UserDirectoryOptions(string EmailDomain)
-{
-    public static readonly UserDirectoryOptions Default = new("eclipsvault.local");
-}
+public sealed record UserDirectoryOptions(string? PublicUrl);

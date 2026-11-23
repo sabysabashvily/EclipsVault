@@ -18,8 +18,23 @@ const colleague: User = {
   status: 'active',
   avatarUrl: '/Profile/Avatar?id=ada',
   isYou: false,
+  awaitingActivation: false,
+  invitationExpiresAtUtc: null,
+};
+const invited: User = {
+  ...colleague,
+  mfaEnrolled: false,
+  awaitingActivation: true,
+  invitationExpiresAtUtc: '2099-11-26T14:30:00Z',
 };
 const path = `/api/ui/users/${colleague.userId}`;
+/** The text under the Status heading in the only row, as a person reads the table. */
+function status(page: HTMLElement): string | undefined {
+  const column = [...page.querySelectorAll('th')].findIndex(
+    (cell) => cell.textContent === 'Status',
+  );
+  return page.querySelector('tbody tr')?.children[column]?.textContent?.trim();
+}
 function button(scope: ParentNode, text: string): HTMLButtonElement {
   const found = [...scope.querySelectorAll('button')].find(
     (item) => item.textContent?.trim() === text,
@@ -56,7 +71,7 @@ describe('UsersPage', () => {
   }
   async function loaded(user: User = colleague) {
     const rendered = render();
-    backend.expectOne('/api/ui/users').flush({ users: [user] });
+    backend.expectOne('/api/ui/users').flush({ users: [user], invitationsAvailable: true });
     await rendered.fixture.whenStable();
     return rendered;
   }
@@ -64,7 +79,7 @@ describe('UsersPage', () => {
   it('shows loading until accounts arrive', () => {
     const { page } = render();
     expect(page.textContent).toContain('Loading users…');
-    backend.expectOne('/api/ui/users').flush({ users: [] });
+    backend.expectOne('/api/ui/users').flush({ users: [], invitationsAvailable: true });
   });
   it('retries a failed list request', async () => {
     const { fixture, page } = render();
@@ -73,13 +88,13 @@ describe('UsersPage', () => {
     expect(page.textContent).toContain('Could not load users. Try again.');
     button(page, 'Try again').click();
     fixture.detectChanges();
-    backend.expectOne('/api/ui/users').flush({ users: [colleague] });
+    backend.expectOne('/api/ui/users').flush({ users: [colleague], invitationsAvailable: true });
     await fixture.whenStable();
     expect(page.textContent).toContain('Ada Staff');
   });
   it('renders the columns even with no accounts', async () => {
     const { fixture, page } = render();
-    backend.expectOne('/api/ui/users').flush({ users: [] });
+    backend.expectOne('/api/ui/users').flush({ users: [], invitationsAvailable: true });
     await fixture.whenStable();
     expect([...page.querySelectorAll('th')].map((cell) => cell.textContent)).toEqual([
       'Person',
@@ -99,16 +114,17 @@ describe('UsersPage', () => {
         { ...colleague, userId: 'b', mfaEnrolled: false },
         { ...colleague, userId: 'c', status: 'locked' },
       ],
+      invitationsAvailable: true,
     });
     await fixture.whenStable();
     expect(page.querySelector('.page-sub')?.textContent?.trim()).toBe(
-      '3 people · 1 without two-step · 1 locked. New users set up their authenticator at first sign-in.',
+      '3 people · 1 without two-step · 1 locked. New users set their own password and authenticator from an emailed invitation.',
     );
   });
   it('sums up one person with nothing to flag', async () => {
     const { page } = await loaded();
     expect(page.querySelector('.page-sub')?.textContent?.trim()).toBe(
-      '1 person. New users set up their authenticator at first sign-in.',
+      '1 person. New users set their own password and authenticator from an emailed invitation.',
     );
   });
   it('filters accounts by their displayed fields', async () => {
@@ -209,7 +225,7 @@ describe('UsersPage', () => {
       button(dialog, confirm).click();
       backend.expectOne(url).flush(null);
       fixture.detectChanges();
-      backend.expectOne('/api/ui/users').flush({ users: [colleague] });
+      backend.expectOne('/api/ui/users').flush({ users: [colleague], invitationsAvailable: true });
       await fixture.whenStable();
       expect(page.querySelector('.flash-success')?.textContent).toBe(outcome);
     },
@@ -224,12 +240,148 @@ describe('UsersPage', () => {
       button(page, label).click();
       backend.expectOne(`${path}/${action}`).flush(null);
       fixture.detectChanges();
-      backend.expectOne('/api/ui/users').flush({ users: [colleague] });
+      backend.expectOne('/api/ui/users').flush({ users: [colleague], invitationsAvailable: true });
       await fixture.whenStable();
       expect(page.querySelector('.flash-success')?.textContent).toBe(outcome);
       expect(page.querySelector('dialog[open]')).toBeNull();
     },
   );
+  it('counts the accounts awaiting activation in the summary', async () => {
+    const { page } = await loaded(invited);
+    expect(page.querySelector('.page-sub')?.textContent?.trim()).toBe(
+      '1 person · 1 awaiting activation · 1 without two-step. New users set their own password and authenticator from an emailed invitation.',
+    );
+  });
+  it('shows an invited row as a pill with its word and offers Resend and address replacement, not Reset MFA', async () => {
+    const { page } = await loaded(invited);
+    expect(status(page)).toBe('Invited · expires 26 Nov 2099, 14:30 UTC');
+    expect(
+      [...page.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent?.trim()),
+    ).toEqual([
+      'Edit',
+      'Resend invitation',
+      'Replace invitation address',
+      'Disable',
+      'Force logout',
+      'Delete user',
+    ]);
+    const replace = [...page.querySelectorAll('a[role="menuitem"]')].find(
+      (link) => link.textContent?.trim() === 'Replace invitation address',
+    );
+    expect(replace?.getAttribute('href')).toBe(`/Admin/EditUser/${colleague.userId}#invitation`);
+    expect(page.querySelector('.cell-verb > button')).toBeNull();
+  });
+  it('puts Resend beside the menu of a row whose invitation expired', async () => {
+    const { page } = await loaded({ ...invited, invitationExpiresAtUtc: null });
+    expect(status(page)).toBe('Invitation expired');
+    expect(page.querySelector('.cell-verb > button')?.textContent?.trim()).toBe(
+      'Resend invitation',
+    );
+    expect(
+      [...page.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent?.trim()),
+    ).not.toContain('Resend invitation');
+  });
+  it('shows a disabled invited account as Disabled, with no invitation actions', async () => {
+    const { page } = await loaded({ ...invited, status: 'disabled' });
+    expect(status(page)).toBe('Disabled');
+    expect(page.textContent).not.toContain('Resend invitation');
+    expect(page.textContent).not.toContain('Replace invitation address');
+  });
+  it.each([
+    ['an unexpired invitation', invited, 'Invited · expires 26 Nov 2099, 14:30 UTC'],
+    ['an expired invitation', { ...invited, invitationExpiresAtUtc: null }, 'Invitation expired'],
+  ])(
+    'without mail delivery explains why and offers no Resend for %s, keeping address replacement',
+    async (_, user, shown) => {
+      const { fixture, page } = render();
+      backend.expectOne('/api/ui/users').flush({ users: [user], invitationsAvailable: false });
+      await fixture.whenStable();
+      expect(
+        page.querySelector('.notice[role="status"]')?.textContent?.replace(/\s+/g, ' ').trim(),
+      ).toBe(
+        "Invitations need email delivery and the vault's public address (Identity:PublicUrl). Configure both to add accounts.",
+      );
+      expect(status(page)).toBe(shown);
+      expect(page.textContent).not.toContain('Resend invitation');
+      expect(
+        [...page.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent?.trim()),
+      ).toEqual(['Edit', 'Replace invitation address', 'Disable', 'Force logout', 'Delete user']);
+      expect(page.querySelector('dialog[open]')).toBeNull();
+      backend.expectNone(`${path}/invitation`);
+    },
+  );
+  it('shows no invitation notice when invitations are available', async () => {
+    const { page } = await loaded(invited);
+    expect(page.querySelector('.notice')).toBeNull();
+  });
+  it.each([
+    ['sent', 'flash-success', 'Invitation sent to ada@example.test. It expires in 72 hours.'],
+    [
+      'not_delivered',
+      'flash-error',
+      'A new link was made, but it could not be delivered. Resend it to try again.',
+    ],
+  ] as const)(
+    'Resend confirms, writes, says the %s outcome and reloads',
+    async (invitation, flash, outcome) => {
+      const { fixture, page } = await loaded(invited);
+      button(page, 'Resend invitation').click();
+      await fixture.whenStable();
+      const dialog = page.querySelector('dialog[open]');
+      if (!dialog) throw new Error('No confirmation');
+      expect(dialog.querySelector('h2')?.textContent).toBe('Resend invitation to ada?');
+      expect(dialog.textContent).toContain(
+        'Send a new invitation to ada@example.test? The previous link stops working.',
+      );
+      expect(dialog.querySelector('.dialog-note')?.textContent).toBe('Saved to the audit log');
+      button(dialog, 'Resend invitation').click();
+      backend
+        .expectOne({ method: 'POST', url: `${path}/invitation` })
+        .flush({ invitation, expiresAtUtc: '2099-11-27T14:30:00Z' });
+      fixture.detectChanges();
+      backend.expectOne('/api/ui/users').flush({ users: [invited], invitationsAvailable: true });
+      await fixture.whenStable();
+      expect(page.querySelector(`.${flash}`)?.textContent).toBe(outcome);
+    },
+  );
+  it('cancelling Resend sends nothing', async () => {
+    const { fixture, page } = await loaded(invited);
+    button(page, 'Resend invitation').click();
+    await fixture.whenStable();
+    const dialog = page.querySelector('dialog[open]');
+    if (!dialog) throw new Error('No confirmation');
+    button(dialog, 'Cancel').click();
+    await fixture.whenStable();
+    backend.expectNone(`${path}/invitation`);
+  });
+  it('Resend asks for fresh proof, then retries once', async () => {
+    const { fixture, page } = await loaded(invited);
+    button(page, 'Resend invitation').click();
+    await fixture.whenStable();
+    button(page.querySelector('dialog[open]')!, 'Resend invitation').click();
+    backend
+      .expectOne(`${path}/invitation`)
+      .flush({ code: 'step_up_required', proof: 'code' }, { status: 403, statusText: 'Forbidden' });
+    fixture.detectChanges();
+    backend.expectOne('/api/ui/users').flush({ users: [invited], invitationsAvailable: true });
+    await fixture.whenStable();
+    const dialog = page.querySelector('dialog[open]');
+    const code = dialog?.querySelector('input');
+    if (!dialog || !code) throw new Error('No code dialog');
+    code.value = '123456';
+    code.dispatchEvent(new Event('input'));
+    dialog.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true }));
+    backend.expectOne('/api/ui/step-up').flush(null);
+    backend
+      .expectOne(`${path}/invitation`)
+      .flush({ invitation: 'sent', expiresAtUtc: '2099-11-27T14:30:00Z' });
+    fixture.detectChanges();
+    backend.expectOne('/api/ui/users').flush({ users: [invited], invitationsAvailable: true });
+    await fixture.whenStable();
+    expect(page.querySelector('.flash-success')?.textContent).toBe(
+      'Invitation sent to ada@example.test. It expires in 72 hours.',
+    );
+  });
   it('cancelling deletion keeps the account', async () => {
     const { fixture, page } = await loaded();
     button(page, 'Delete user').click();
@@ -250,7 +402,9 @@ describe('UsersPage', () => {
       .expectOne(`${path}/enable`)
       .flush({ code: 'step_up_required', proof }, { status: 403, statusText: 'Forbidden' });
     rendered.fixture.detectChanges();
-    backend.expectOne('/api/ui/users').flush({ users: [{ ...colleague, status: 'disabled' }] });
+    backend
+      .expectOne('/api/ui/users')
+      .flush({ users: [{ ...colleague, status: 'disabled' }], invitationsAvailable: true });
     await rendered.fixture.whenStable();
     const dialog = rendered.page.querySelector('dialog[open]');
     if (!dialog) throw new Error('No step-up dialog');
@@ -307,7 +461,9 @@ describe('UsersPage', () => {
       .expectOne(`${path}/enable`)
       .flush({ code: 'step_up_required', proof: 'code' }, { status: 403, statusText: 'Forbidden' });
     fixture.detectChanges();
-    backend.expectOne('/api/ui/users').flush({ users: [{ ...colleague, status: 'disabled' }] });
+    backend
+      .expectOne('/api/ui/users')
+      .flush({ users: [{ ...colleague, status: 'disabled' }], invitationsAvailable: true });
     await fixture.whenStable();
     const dialog = page.querySelector('dialog[open]');
     const code = dialog?.querySelector('input');
@@ -331,7 +487,7 @@ describe('UsersPage', () => {
         { status: 403, statusText: 'Forbidden' },
       );
     fixture.detectChanges();
-    backend.expectOne('/api/ui/users').flush({ users: [colleague] });
+    backend.expectOne('/api/ui/users').flush({ users: [colleague], invitationsAvailable: true });
     await fixture.whenStable();
     expect(page.querySelector('dialog[open]')).toBeNull();
     expect(page.querySelector('.flash-error')?.textContent).toBe('Confirm again.');
@@ -353,7 +509,7 @@ describe('UsersPage', () => {
       .expectOne(`${path}/sign-out`)
       .flush({ code, title: 'The server outcome.' }, { status: 503, statusText: 'Unavailable' });
     fixture.detectChanges();
-    backend.expectOne('/api/ui/users').flush({ users: [colleague] });
+    backend.expectOne('/api/ui/users').flush({ users: [colleague], invitationsAvailable: true });
     await fixture.whenStable();
     expect(page.querySelector('.flash-error')?.textContent).toBe('The server outcome.');
   });

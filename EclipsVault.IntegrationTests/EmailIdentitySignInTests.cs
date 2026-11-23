@@ -6,6 +6,7 @@ using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Users;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Infrastructure.Persistence;
 using EclipsVault.Web.Authorization;
 using Microsoft.AspNetCore.Authentication;
@@ -142,17 +143,15 @@ public sealed class EmailIdentitySignInTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task Provisioning_skips_generated_addresses_reserved_by_legacy_usernames()
+    public async Task Provisioning_refuses_an_email_address_reserved_by_a_legacy_username()
     {
         await ProvisionAsync("identity.aliasreserve.1@eclipsvault.local", "it-email-reserved-named@example.test");
         using var scope = vault.Services.CreateScope();
         var users = scope.ServiceProvider.GetRequiredService<IUserAdminService>();
 
-        var created = await users.CreateAsync(new CreateUserRequest(
-            "it-email-provision-safe", "Identity", "Aliasreserve", "It-email-provision-unique-password-1",
-            ClearanceLevel.Standard, "GLOBAL"), default);
-
-        Assert.Equal("identity.aliasreserve.2@eclipsvault.local", created.Email);
+        await Assert.ThrowsAsync<EmailAddressTakenException>(() => users.CreateAsync(new CreateUserRequest(
+            "it-email-provision-safe", "Identity", "Aliasreserve", "identity.aliasreserve.1@eclipsvault.local",
+            ClearanceLevel.Standard, "GLOBAL"), default));
     }
 
     /// <summary>A passkey on file for the account. Asking for sign-in options never verifies its key.</summary>

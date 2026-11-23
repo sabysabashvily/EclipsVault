@@ -20,6 +20,72 @@
     </div>
   </div>
 
+  @if (account.value().awaitingActivation && !account.value().isDisabled) {
+    @let invited = account.value();
+    @let status = accountStatus(invited);
+    <section
+      class="panel narrow-left invitation-panel"
+      id="invitation"
+      aria-labelledby="invitation-title"
+    >
+      <div class="panel-header">
+        <h2 id="invitation-title">Invitation</h2>
+        <span [class]="'badge ' + status.tone">{{ status.label }}</span>
+      </div>
+      <p class="hint muted">
+        The account cannot sign in until its owner opens the emailed link, chooses a password and
+        sets up an authenticator. Sent to <span class="mono">{{ invited.email }}</span
+        >.
+      </p>
+      <fieldset [disabled]="writes.busy() || writes.awaitingProof() || writes.blocked()">
+        @if (invited.invitationsAvailable) {
+          <button #resendButton type="button" class="button" (click)="askResend(resendButton)">
+            Resend invitation
+          </button>
+        } @else {
+          <div class="notice notice-warn" role="status">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path
+                d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"
+              />
+            </svg>
+            <span>
+              Invitations need email delivery and the vault's public address (<code
+                class="code-chip"
+                >Identity:PublicUrl</code
+              >). Configure both to add accounts.
+            </span>
+          </div>
+        }
+        <form class="invitation-address" (submit)="askReplace($event, replaceButton)">
+          <div class="field">
+            <label for="invitation-email">Invitation address</label>
+            <input
+              id="invitation-email"
+              #addressInput
+              type="email"
+              maxlength="254"
+              required
+              autocomplete="off"
+              [value]="address()"
+              (input)="address.set(addressInput.value)"
+            />
+            <span class="field-error">{{ error('email') }}</span>
+          </div>
+          <button #replaceButton type="submit" class="button">Replace address</button>
+        </form>
+      </fieldset>
+    </section>
+  }
+
   <section class="panel narrow-left">
     <div class="panel-header"><h2>Role &amp; access</h2></div>
     <form (submit)="submit($event)">
@@ -64,4 +130,5 @@
     </form>
   </section>
 }
+<app-confirmation-dialog (decision)="confirmed($event)" />
 <app-step-up-dialog (decision)="verified($event)" />

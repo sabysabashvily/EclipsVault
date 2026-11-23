@@ -8,7 +8,7 @@ using Xunit;
 
 namespace EclipsVault.IntegrationTests;
 
-[Collection(VaultCollection.Name)]
+[Collection(AccountDeletionCollection.Name)]
 public sealed class AccountDeletionTests(VaultFixture vault)
 {
     /// <summary>
@@ -80,4 +80,15 @@ public sealed class AccountDeletionTests(VaultFixture vault)
     /// <summary>Presses Reveal on the secret's page, with the token the open page already holds.</summary>
     private static Task<HttpResponseMessage> RevealAsync(HttpClient client, string details, string token)
         => UiApiRequest.SendWithTokenAsync(client, token, HttpMethod.Post, $"{SecretDetailsApi.PathOf(details)}/reveal");
+}
+
+/// <summary>
+/// Isolated from <see cref="VaultCollection"/> because restarting the vault starts a second
+/// <see cref="WebApplicationFactory{TEntryPoint}"/> of <c>Program</c>, whose shutdown closes
+/// Serilog's process-wide static logger and would silence request logging for later tests sharing a host.
+/// </summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class AccountDeletionCollection : ICollectionFixture<VaultFixture>
+{
+    public const string Name = "account deletion vault";
 }

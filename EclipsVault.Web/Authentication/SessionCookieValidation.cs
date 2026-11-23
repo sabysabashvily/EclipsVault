@@ -83,7 +83,7 @@ public static class SessionCookieValidation
 
         // The account, and with it the credential generation, is durable where the session store is not.
         var account = await services.GetRequiredService<IUserRepository>().FindByIdAsync(userId, context.HttpContext.RequestAborted);
-        if (account is not { IsDisabled: false } || account.CredentialGeneration != stamp.CredentialGeneration)
+        if (account is not { IsDisabled: false, AwaitingActivation: false } || account.CredentialGeneration != stamp.CredentialGeneration)
         {
             return false;
         }

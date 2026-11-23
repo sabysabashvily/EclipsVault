@@ -23,16 +23,20 @@ namespace EclipsVault.IntegrationTests;
 public sealed class EndpointTableTests(VaultFixture vault)
 {
     /// <summary>
-    /// Reachable with no session: sign-in's pages and calls, single sign-on's two redirects, and the
-    /// Public API's not-found, which says nothing about any resource.
+    /// Reachable with no session: sign-in's pages and calls, account activation's page and calls for the
+    /// holder of an emailed invitation (ADR-0033), single sign-on's two redirects, and the Public API's
+    /// not-found, which says nothing about any resource.
     /// </summary>
     private static readonly string[] Anonymous =
     [
         "GET /Account/ExternalCallback",
+        "GET,HEAD /Account/Activate",
         "GET,HEAD /Account/Login",
         "GET,HEAD /Account/Recover",
         "POST /Account/ExternalLogin",
         "GET /api/ui/auth/options",
+        "POST /api/ui/auth/activation",
+        "POST /api/ui/auth/activation/complete",
         "POST /api/ui/auth/passkey/begin",
         "POST /api/ui/auth/passkey/complete",
         "POST /api/ui/auth/password",

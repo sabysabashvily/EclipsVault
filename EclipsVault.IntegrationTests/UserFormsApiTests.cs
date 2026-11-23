@@ -39,39 +39,44 @@ public sealed class UserFormsApiTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task New_user_metadata_has_only_the_configured_domain_and_defined_clearances()
+    public async Task New_user_metadata_has_only_the_clearances_and_invitation_availability()
     {
         var admin = await vault.AdminClientAsync();
         var response = await admin.GetAsync("/api/ui/users/new");
         Assert.True(response.Headers.CacheControl?.NoStore);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal(["clearances", "emailDomain"], ProfileApi.NamesOf(body.RootElement));
-        Assert.Equal("eclipsvault.local", body.RootElement.GetProperty("emailDomain").GetString());
+        Assert.Equal(["clearances", "invitationsAvailable"], ProfileApi.NamesOf(body.RootElement));
+        Assert.True(body.RootElement.GetProperty("invitationsAvailable").GetBoolean());
         Assert.Equal("[{\"value\":1,\"label\":\"Standard\"},{\"value\":2,\"label\":\"Elevated\"},{\"value\":3,\"label\":\"Secret\"},{\"value\":4,\"label\":\"Top Secret\"}]", body.RootElement.GetProperty("clearances").GetRawText());
     }
 
     [Fact]
-    public async Task Creating_an_account_returns_only_its_saved_identity_and_details()
+    public async Task Creating_an_account_returns_only_its_saved_identity_invitation_outcome_and_details()
     {
         var admin = await vault.AdminClientAsync();
         var before = await AuditTrail.HeadAsync(vault);
-        var response = await UserAccounts.CreateAsync(admin, " it-form-created ", " Ada ", " Saved ", password: "Initial-nonreused-credential-110", project: " ops ");
+        var response = await UserAccounts.CreateAsync(admin, " it-form-created ", " Ada ", " Saved ", email: " Ada.Saved@Example.Test ", project: " ops ");
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         Assert.True(response.Headers.CacheControl?.NoStore);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal(["email", "userId", "username"], ProfileApi.NamesOf(body.RootElement));
+        Assert.Equal(["email", "expiresAtUtc", "invitation", "userId", "username"], ProfileApi.NamesOf(body.RootElement));
+        Assert.Equal("sent", body.RootElement.GetProperty("invitation").GetString());
         var saved = await ProfileHttp.AccountAsync(vault, "it-form-created");
         Assert.Equal(saved.Id, body.RootElement.GetProperty("userId").GetGuid());
         Assert.Equal("it-form-created", body.RootElement.GetProperty("username").GetString());
-        Assert.Equal("ada.saved.1@eclipsvault.local", body.RootElement.GetProperty("email").GetString());
+        Assert.Equal("Ada.Saved@Example.Test", body.RootElement.GetProperty("email").GetString());
         var details = await admin.GetAsync($"/API/UI/USERS/{saved.Id.ToString().ToUpperInvariant()}");
         Assert.True(details.Headers.CacheControl?.NoStore);
         using var detailBody = JsonDocument.Parse(await details.Content.ReadAsStringAsync());
-        Assert.Equal(["clearance", "clearances", "displayName", "isYou", "project", "userId", "username"], ProfileApi.NamesOf(detailBody.RootElement));
+        Assert.Equal(["awaitingActivation", "clearance", "clearances", "displayName", "email", "invitationExpiresAtUtc", "invitationsAvailable", "isDisabled", "isYou", "project", "userId", "username"], ProfileApi.NamesOf(detailBody.RootElement));
         Assert.Equal("Ada Saved", detailBody.RootElement.GetProperty("displayName").GetString());
+        Assert.Equal("Ada.Saved@Example.Test", detailBody.RootElement.GetProperty("email").GetString());
+        Assert.True(detailBody.RootElement.GetProperty("awaitingActivation").GetBoolean());
+        Assert.False(detailBody.RootElement.GetProperty("isDisabled").GetBoolean());
         Assert.Equal("OPS", detailBody.RootElement.GetProperty("project").GetString());
         Assert.False(detailBody.RootElement.GetProperty("isYou").GetBoolean());
-        await ProofDisclosure.AssertNotDisclosedAsync(vault, before, saved.Id, "/api/ui/users", "Initial-nonreused-credential-110");
+        var (_, _, _, token) = await vault.Mailbox!.LatestInvitationForAsync("Ada.Saved@Example.Test");
+        await ProofDisclosure.AssertNotDisclosedAsync(vault, before, saved.Id, "/api/ui/users", token);
         Assert.Equal(1, detailBody.RootElement.GetProperty("clearance").GetInt32());
     }
 
@@ -90,12 +95,12 @@ public sealed class UserFormsApiTests(VaultFixture vault)
     [Theory]
     [InlineData("firstName", "", "First name is required.")]
     [InlineData("lastName", "", "Last name is required.")]
-    [InlineData("password", "000000000000", "That password has appeared in a known data breach. Choose a different one.")]
+    [InlineData("email", "not-an-address", "Enter a valid email address.")]
     [InlineData("project", " ", "Project keys are 1 to 64 characters, not counting spaces at either end.")]
     public async Task Invalid_account_fields_have_safe_field_messages_and_change_nothing(string field, string value, string message)
     {
         var admin = await vault.AdminClientAsync();
-        var request = new Dictionary<string, object> { ["username"] = "it-form-invalid-" + field, ["firstName"] = "Valid", ["lastName"] = "Person", ["password"] = "Initial-only-unc0mmon-2026", ["clearance"] = 1, ["project"] = "GLOBAL" };
+        var request = new Dictionary<string, object> { ["username"] = "it-form-invalid-" + field, ["firstName"] = "Valid", ["lastName"] = "Person", ["email"] = "it-form-invalid@example.test", ["clearance"] = 1, ["project"] = "GLOBAL" };
         request[field] = value;
         var before = await AuditTrail.HeadAsync(vault);
         var response = await UiApiRequest.SendWithTokenAsync(admin, await UiApiRequest.AntiforgeryTokenAsync(admin), HttpMethod.Post, "/api/ui/users", JsonContent.Create(request));
@@ -104,7 +109,6 @@ public sealed class UserFormsApiTests(VaultFixture vault)
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal("validation_failed", body.RootElement.GetProperty("code").GetString());
         Assert.Equal(message, body.RootElement.GetProperty("errors").GetProperty(field)[0].GetString());
-        Assert.DoesNotContain("Initial-only-unc0mmon-2026", await response.Content.ReadAsStringAsync());
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
@@ -137,7 +141,7 @@ public sealed class UserFormsApiTests(VaultFixture vault)
         var response = await UserAccounts.EditRoleAsync(admin.Client, account.Id, ClearanceLevel.TopSecret, "STRAßE");
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         Assert.Equal(cookie, admin.SessionCookie!.Value);
-        Assert.Equal(0L, (await ProfileHttp.AccountAsync(vault, "it-form-own-unicode")).CredentialGeneration);
+        Assert.Equal(account.CredentialGeneration, (await ProfileHttp.AccountAsync(vault, "it-form-own-unicode")).CredentialGeneration);
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         Assert.Equal(HttpStatusCode.OK, (await admin.Client.GetAsync("/Admin/Users")).StatusCode);
         Assert.Equal(new UserNoticeResponse("Role updated for 'it-form-own-unicode'. Their sessions were revoked so the change takes effect at next sign-in.", false),
@@ -155,7 +159,7 @@ public sealed class UserFormsApiTests(VaultFixture vault)
         Assert.Null(admin.SessionCookie);
         Assert.Equal(HttpStatusCode.Unauthorized, (await oldBrowser.Client.GetAsync("/api/ui/me")).StatusCode);
         var stored = await ProfileHttp.AccountAsync(vault, "it-form-own-demote");
-        Assert.Equal((ClearanceLevel.Secret, 1L), (stored.Clearance, stored.CredentialGeneration));
+        Assert.Equal((ClearanceLevel.Secret, account.CredentialGeneration + 1), (stored.Clearance, stored.CredentialGeneration));
     }
 
     [Theory]
@@ -211,7 +215,7 @@ public sealed class UserFormsApiTests(VaultFixture vault)
     {
         var admin = await vault.AdminClientAsync();
         var response = await UiApiRequest.SendWithTokenAsync(admin, await UiApiRequest.AntiforgeryTokenAsync(admin), HttpMethod.Post,
-            "/api/ui/users", JsonContent.Create(new { username = "it-form-no-clearance", firstName = "Missing", lastName = "Clearance", password = "Initial-nonreused-credential-110", project = "GLOBAL" }));
+            "/api/ui/users", JsonContent.Create(new { username = "it-form-no-clearance", firstName = "Missing", lastName = "Clearance", email = "it-form-no-clearance@example.test", project = "GLOBAL" }));
         await AssertFieldProblemAsync(response, "clearance", "Choose one of the vault's clearance levels.");
     }
 

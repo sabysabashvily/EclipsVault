@@ -63,10 +63,18 @@ public sealed partial class VaultFixture : IAsyncLifetime
     private string? _adminAuthenticatorSecret;
     private DateTimeOffset _adminAuthenticatedAt;
     private readonly SemaphoreSlim _administratorProof = new(1, 1);
+    private int _activationSources;
 
     public bool TrustIdpMfa { get; init; }
 
-    public SmtpCapture? Mailbox { get; init; }
+    /// <summary>
+    /// The SMTP capture the vault delivers to. Every vault has one unless a test sets it to null, because new
+    /// accounts are activated through the invitation it receives (ADR-0033).
+    /// </summary>
+    public SmtpCapture? Mailbox { get; init; } = new SmtpCapture();
+
+    /// <summary>The address invitation links are built from; null leaves invitations unavailable.</summary>
+    public string? PublicUrl { get; init; } = "https://vault.example.test";
 
     public string? RedisConfiguration { get; init; }
 
@@ -105,6 +113,11 @@ public sealed partial class VaultFixture : IAsyncLifetime
         {
             DynamicTargetConnectionString = await _database.StartDynamicTargetAsync();
             SetEnvironment("DynamicSecrets__TargetConnectionString", DynamicTargetConnectionString);
+        }
+
+        if (PublicUrl is not null)
+        {
+            SetEnvironment("Identity__PublicUrl", PublicUrl);
         }
 
         using var signingKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
@@ -263,24 +276,86 @@ public sealed partial class VaultFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// A new Standard-clearance vault account, created by the administrator and signed in through the
-    /// real first sign-in. For tests that end their session: revoking one never touches the administrator's.
-    /// Every client shares one address unless the test gives it a <paramref name="source"/> of its own,
-    /// and the vault allows each address only a few sign-in steps per window.
+    /// A new Standard-clearance vault account, invited by the administrator, activated through the emailed
+    /// link with <paramref name="password"/> and a new authenticator, then signed in with both. For tests that
+    /// end their session: revoking one never touches the administrator's. Every client shares one address
+    /// unless the test gives it a <paramref name="source"/> of its own, and the vault allows each address only
+    /// a few sign-in steps per window; activation uses an address of its own, so it spends none of them.
     /// </summary>
     public async Task<VaultSession> SignInNewAccountAsync(
         string username, IPAddress? source = null, ClearanceLevel clearance = ClearanceLevel.Standard, string project = "GLOBAL",
         string? password = null)
     {
         password ??= "It-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
-        var created = await UserAccounts.CreateAsync(await AdminClientAsync(), username,
-            password: password, clearance: clearance, project: project);
+        var created = await UserAccounts.CreateAsync(await AdminClientAsync(), username, clearance: clearance, project: project);
         created.EnsureSuccessStatusCode();
 
+        // Activation spends the step before the vault's current one and the sign-in the current one, as an
+        // enrollment at first sign-in did, so a test's next code is the next step's. Both are chosen by the
+        // vault's clock and its record of the spent step.
+        var vaultClock = Services.GetRequiredService<TimeProvider>();
+        var step = await VaultStepWithTimeLeftAsync(vaultClock);
+        var activationSource = NextActivationSource();
+        var secret = await ActivateFromAsync(UserAccounts.EmailOf(username), password, step - 1, activationSource);
+        var activated = await ProfileHttp.AccountAsync(this, username);
         var session = CreateSession(source: source);
-        await SignInFirstTimeAsync(session.Client, username, password);
+        await SignInWithAuthenticatorAsync(session.Client, username, password,
+            Totp.Code(secret, Totp.StepStillAccepted(vaultClock.GetUtcNow(), activated.LastTotpStep)));
         session.ProfileOwner = new ProfileAccount(session, await ProfileHttp.AccountAsync(this, username), password);
+        session.ActivationSource = activationSource;
         return session;
+    }
+
+    /// <summary>
+    /// The vault's current step. Three codes fit one step (the one before, this one and the next), and the vault
+    /// accepts the one before only until this step ends, so a step about to end is waited out on the vault's clock.
+    /// </summary>
+    private static async Task<long> VaultStepWithTimeLeftAsync(TimeProvider vaultClock)
+    {
+        var now = vaultClock.GetUtcNow();
+        var left = TimeSpan.FromSeconds(30) - TimeSpan.FromMilliseconds(now.ToUnixTimeMilliseconds() % 30_000);
+        if (left < TimeSpan.FromSeconds(5))
+        {
+            await Task.Delay(left + TimeSpan.FromMilliseconds(100), vaultClock);
+            now = vaultClock.GetUtcNow();
+        }
+
+        return Totp.StepAt(now);
+    }
+
+    /// <summary>
+    /// Activates the invited account at <paramref name="email"/> through the latest invitation the mailbox
+    /// received: inspects the link's token, then chooses <paramref name="password"/> and confirms the shown
+    /// authenticator with its code for <paramref name="step"/>. Returns the authenticator secret. Each call
+    /// comes from an address of its own, so it spends no test's sign-in budget.
+    /// </summary>
+    public Task<string> ActivateAsync(string email, string password, long step)
+        => ActivateFromAsync(email, password, step, NextActivationSource());
+
+    private async Task<string> ActivateFromAsync(string email, string password, long step, IPAddress source)
+    {
+        var mailbox = Mailbox ?? throw new InvalidOperationException("Activating an account needs the vault's mailbox.");
+        var (_, _, _, token) = await mailbox.LatestInvitationForAsync(email);
+        var client = CreateSession(source: source).Client;
+
+        var inspected = await UiApiRequest.SendWithTokenAsync(client, await SignInDocument.TokenAsync(client), HttpMethod.Post,
+            "/api/ui/auth/activation", JsonContent.Create(new { token }));
+        var secret = inspected.IsSuccessStatusCode
+            ? (await inspected.Content.ReadFromJsonAsync<EclipsVault.Web.Models.Ui.ActivationResponse>())?.SecretBase32
+            : null;
+        if (secret is null)
+        {
+            throw new InvalidOperationException($"The invitation for {email} showed no authenticator secret ({(int)inspected.StatusCode}).");
+        }
+
+        var completed = await UiApiRequest.SendWithTokenAsync(client, await SignInDocument.TokenAsync(client), HttpMethod.Post,
+            "/api/ui/auth/activation/complete", JsonContent.Create(new { token, password, code = Totp.Code(secret, step) }));
+        if (completed.StatusCode != HttpStatusCode.NoContent)
+        {
+            throw new InvalidOperationException($"Activating {email} did not complete ({(int)completed.StatusCode}).");
+        }
+
+        return secret;
     }
 
     /// <summary>
@@ -393,6 +468,34 @@ public sealed partial class VaultFixture : IAsyncLifetime
         return secret;
     }
 
+    /// <summary>A sign-in of an activated account through the Angular sign-in pages' calls: the password, then its authenticator code.</summary>
+    private static async Task SignInWithAuthenticatorAsync(HttpClient client, string username, string password, string code)
+    {
+        var afterPassword = await UiApiRequest.SendWithTokenAsync(client, await SignInDocument.TokenAsync(client), HttpMethod.Post,
+            "/api/ui/auth/password", JsonContent.Create(new { username, password }));
+        var next = afterPassword.IsSuccessStatusCode
+            ? (await afterPassword.Content.ReadFromJsonAsync<EclipsVault.Web.Models.Ui.PasswordStageResponse>())?.Next
+            : null;
+        if (next != "totp")
+        {
+            throw new InvalidOperationException(
+                $"The password step went to '{next}' ({(int)afterPassword.StatusCode}), not to the authenticator code.");
+        }
+
+        var response = await UiApiRequest.SendWithTokenAsync(client, SignInDocument.TokenOf(afterPassword), HttpMethod.Post,
+            "/api/ui/auth/totp", JsonContent.Create(new { code }));
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            throw new InvalidOperationException($"The authenticator code did not create a session ({(int)response.StatusCode}).");
+        }
+    }
+
+    private IPAddress NextActivationSource()
+    {
+        var n = Interlocked.Increment(ref _activationSources);
+        return new IPAddress([100, 120, (byte)(n / 250), (byte)(n % 250 + 1)]);
+    }
+
     private void SetEnvironment(string name, string value)
     {
         _environment.Add(name);
@@ -407,6 +510,7 @@ public sealed partial class VaultFixture : IAsyncLifetime
 public sealed record VaultSession(HttpClient Client, CookieContainer Cookies)
 {
     internal ProfileAccount? ProfileOwner { get; set; }
+    internal IPAddress? ActivationSource { get; set; }
     internal long LastProfileProofStep { get; set; }
 
     public Cookie? SessionCookie => Cookies.GetCookies(Client.BaseAddress!)[VaultFixture.SessionCookie];

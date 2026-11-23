@@ -32,7 +32,6 @@ public class ProfileServiceTests
 
         public Task<User?> FindByUsernameAsync(string username, CancellationToken ct) => throw new NotSupportedException();
         public Task<User?> FindByUsernameOrEmailAsync(string identifier, CancellationToken ct) => throw new NotSupportedException();
-        public Task<IReadOnlyList<string>> FindEmailsWithPrefixAsync(string localPrefix, string domain, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<User>> ListAsync(CancellationToken ct) => throw new NotSupportedException();
         public Task<bool> AnyOtherEnabledAdministratorAsync(Guid accountId, CancellationToken ct) => throw new NotSupportedException();
         public Task AddAsync(User user, CancellationToken ct) => throw new NotSupportedException();
@@ -51,6 +50,9 @@ public class ProfileServiceTests
     {
         public Task<bool> CommitAsync(User account, AuditEntry entry, CancellationToken ct)
             => CommitAsync(account, entry.Action, entry.Details!, ct);
+
+        public Task<bool> CommitAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct)
+            => throw new NotSupportedException();
 
         public List<(AuditAction Action, long CredentialGeneration)> Committed { get; } = [];
 

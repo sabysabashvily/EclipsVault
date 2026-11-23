@@ -34,7 +34,7 @@ public sealed class AccountChangeCommitter : IAccountChangeCommitter
             await recheck(token);
         }, ct);
 
-    private async Task<bool> CommitAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct)
+    public async Task<bool> CommitAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct)
     {
         if (!_context.ChangeTracker.HasChanges())
         {

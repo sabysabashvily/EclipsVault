@@ -246,6 +246,100 @@ public sealed class AdministratorAuditFailureTests(AuditFailureFixture failure)
         }
     }
 
+    [Fact]
+    public async Task A_resend_that_cannot_be_recorded_leaves_the_token_unchanged_and_sends_no_mail()
+    {
+        var vault = failure.Vault;
+        var admin = await vault.AdminClientAsync();
+        var account = await CreateInvitedAccountAsync(admin, "it-unrecorded-resend", "unrecorded.resend@example.test");
+        var originalHash = EclipsVault.Core.Application.Users.InvitationToken.Hash("original-unrecorded-token");
+        var originalExpiry = DateTimeOffset.UtcNow.AddHours(24);
+        using (var setup = vault.Services.CreateScope())
+        {
+            var db = setup.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+            var invitation = await db.AccountInvitations.SingleAsync(row => row.UserId == account.Id);
+            invitation.TokenHash = originalHash;
+            invitation.CreatedAtUtc = DateTimeOffset.UtcNow.AddHours(-48);
+            invitation.ExpiresAtUtc = originalExpiry;
+            invitation.PendingTotpSecret = "ORIGINALPENDINGSEED";
+            await db.SaveChangesAsync();
+        }
+
+        var before = await AuditTrail.HeadAsync(vault);
+        var mailBefore = await vault.Mailbox!.CountMessagesForAsync("unrecorded.resend@example.test");
+
+        await failure.RejectAuditWritesAsync();
+        try
+        {
+            var response = await UiApiRequest.SendWithTokenAsync(admin, await UiApiRequest.AntiforgeryTokenAsync(admin),
+                HttpMethod.Post, $"/api/ui/users/{account.Id}/invitation");
+
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
+            using var verify = vault.Services.CreateScope();
+            var stored = await verify.ServiceProvider.GetRequiredService<EclipsVaultDbContext>()
+                .AccountInvitations.AsNoTracking().SingleAsync(row => row.UserId == account.Id);
+            Assert.Equal(originalHash, stored.TokenHash);
+            Assert.Null(stored.SpentAtUtc);
+            Assert.Equal("ORIGINALPENDINGSEED", stored.PendingTotpSecret);
+            Assert.Equal(mailBefore, await vault.Mailbox.CountMessagesForAsync("unrecorded.resend@example.test"));
+            Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
+        }
+        finally
+        {
+            await failure.RestoreAuditWritesAsync();
+        }
+    }
+
+    [Fact]
+    public async Task An_invitation_address_replacement_that_cannot_be_recorded_leaves_the_address_and_token_unchanged()
+    {
+        var vault = failure.Vault;
+        var admin = await vault.AdminClientAsync();
+        var account = await CreateInvitedAccountAsync(admin, "it-unrecorded-replace", "before.replace@example.test");
+        var originalHash = EclipsVault.Core.Application.Users.InvitationToken.Hash("live-before-replace");
+        using (var setup = vault.Services.CreateScope())
+        {
+            var db = setup.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+            var invitation = await db.AccountInvitations.SingleAsync(row => row.UserId == account.Id);
+            invitation.TokenHash = originalHash;
+            invitation.CreatedAtUtc = DateTimeOffset.UtcNow.AddHours(-1);
+            invitation.ExpiresAtUtc = DateTimeOffset.UtcNow.AddHours(71);
+            invitation.PendingTotpSecret = "LIVEPENDINGSEED";
+            await db.SaveChangesAsync();
+        }
+
+        var before = await AuditTrail.HeadAsync(vault);
+
+        await failure.RejectAuditWritesAsync();
+        try
+        {
+            var response = await UiApiRequest.SendWithTokenAsync(admin, await UiApiRequest.AntiforgeryTokenAsync(admin),
+                HttpMethod.Post, $"/api/ui/users/{account.Id}/invitation-address",
+                JsonContent.Create(new { email = "after.replace@example.test" }));
+
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
+            using var verify = vault.Services.CreateScope();
+            var db = verify.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+            var storedUser = await db.Users.AsNoTracking().SingleAsync(row => row.Id == account.Id);
+            var storedInvitation = await db.AccountInvitations.AsNoTracking().SingleAsync(row => row.UserId == account.Id);
+            Assert.Equal("before.replace@example.test", storedUser.Email);
+            Assert.Equal(originalHash, storedInvitation.TokenHash);
+            Assert.Null(storedInvitation.SpentAtUtc);
+            Assert.Equal("LIVEPENDINGSEED", storedInvitation.PendingTotpSecret);
+            Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
+        }
+        finally
+        {
+            await failure.RestoreAuditWritesAsync();
+        }
+    }
+
+    private async Task<User> CreateInvitedAccountAsync(HttpClient admin, string username, string email)
+    {
+        Assert.Equal(HttpStatusCode.Created, (await UserAccounts.CreateAsync(admin, username, email: email)).StatusCode);
+        return (await FindAccountAsync(username))!;
+    }
+
     private async Task<User> CreateAccountAsync(HttpClient admin, string username)
     {
         Assert.Equal(HttpStatusCode.Created, (await UserAccounts.CreateAsync(admin, username)).StatusCode);

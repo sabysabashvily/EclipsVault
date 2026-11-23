@@ -28,7 +28,7 @@ public sealed class ConcurrentAccountCreationTests(VaultFixture vault)
             Id = Guid.NewGuid(),
             Username = username,
             DisplayName = "Race Placeholder",
-            Email = "race.placeholder@eclipsvault.local",
+            Email = "race.placeholder@example.test",
             PasswordHash = new byte[32],
             PasswordSalt = new byte[16],
             ProjectKey = "GLOBAL",
@@ -57,22 +57,23 @@ public sealed class ConcurrentAccountCreationTests(VaultFixture vault)
     }
 
     [Fact]
-    public async Task One_name_created_twice_at_once_makes_both_accounts_with_the_next_free_addresses()
+    public async Task One_mailbox_entered_twice_at_once_makes_one_account_and_answers_the_other_request_the_conflict()
     {
+        const string mailbox = "http.twin@example.test";
         var admin = await vault.AdminClientAsync();
-        var firstForm = UserAccounts.CreateContent("it-race-http-address-one", "Http", "Twin");
-        var secondForm = UserAccounts.CreateContent("it-race-http-address-two", "Http", "Twin");
+        var firstForm = UserAccounts.CreateContent("it-race-http-address-one", "Http", "Twin", mailbox);
+        var secondForm = UserAccounts.CreateContent("it-race-http-address-two", "Http", "Twin", mailbox);
         using var scope = vault.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
         await using var transaction = await db.Database.BeginTransactionAsync();
-        // An uncommitted account holds the first address both creates generate, so both have generated
-        // it before either saves; rolling it back lets them race for that address.
+        // An uncommitted account holds the address, so both creates pass the address check and then wait to
+        // save behind it; rolling it back lets them race for that address.
         db.Users.Add(new User
         {
             Id = Guid.NewGuid(),
             Username = "it-race-http-address-holder",
             DisplayName = "Race Placeholder",
-            Email = "http.twin.1@eclipsvault.local",
+            Email = mailbox,
             PasswordHash = new byte[32],
             PasswordSalt = new byte[16],
             ProjectKey = "GLOBAL",
@@ -92,13 +93,10 @@ public sealed class ConcurrentAccountCreationTests(VaultFixture vault)
         }
         var responses = await Task.WhenAll(first, second);
 
-        Assert.All(responses, response => Assert.Equal(HttpStatusCode.Created, response.StatusCode));
+        Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Created);
+        await UiApiFailureContractTests.AssertProblemAsync(
+            Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Conflict), 409, "email_taken");
         db.ChangeTracker.Clear();
-        var addresses = await db.Users
-            .Where(user => user.Username == "it-race-http-address-one" || user.Username == "it-race-http-address-two")
-            .Select(user => user.Email)
-            .OrderBy(email => email)
-            .ToListAsync();
-        Assert.Equal(["http.twin.1@eclipsvault.local", "http.twin.2@eclipsvault.local"], addresses);
+        Assert.Equal(1, await db.Users.CountAsync(user => user.Email == mailbox));
     }
 }

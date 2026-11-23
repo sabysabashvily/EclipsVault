@@ -32,9 +32,35 @@ function expire(
     throw new Error(`The prepared operation was not expired; the database answered: ${result}`);
 }
 
-/** Only the runner's own SMTP container is stopped, then started in the test's finally block. */
-export function setSmtpAvailable(available: boolean): void {
+/**
+ * Only the runner's own SMTP container is stopped, then started in the test's finally block.
+ * Starting the container attaches a fresh veth link on Linux; waiting for Mailpit to answer and
+ * for IPv6 DAD plus Chromium's network-change debounce to settle prevents net::ERR_NETWORK_CHANGED
+ * on the first request of the following test.
+ */
+export async function setSmtpAvailable(available: boolean): Promise<void> {
   composeAction('smtp', available ? 'start' : 'stop');
+  if (!available) return;
+  const project = process.env['E2E_COMPOSE_PROJECT'];
+  if (!project) throw new Error('The browser runner must name its own disposable stack');
+  const deadline = Date.now() + 15_000;
+  for (;;) {
+    try {
+      const address = execFileSync(
+        'docker',
+        ['compose', '--project-name', project, '--file', 'e2e/compose.yml', 'port', 'smtp', '8025'],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+      ).trim();
+      const port = address.split(':').at(-1);
+      if (port && (await fetch(`http://127.0.0.1:${port}/api/v1/messages`)).ok) break;
+    } catch {
+      // Container is still binding its port.
+    }
+    if (Date.now() >= deadline)
+      throw new Error('The restarted SMTP container did not become ready');
+    await setTimeout(200);
+  }
+  await setTimeout(2_500);
 }
 
 let sessionStorePaused = false;
@@ -146,6 +172,17 @@ function millisecondsUntilMailboxSendAllowed(): number {
     throw new Error(`The mailbox send clock was not readable; the database answered: ${answer}`);
   }
   return remaining;
+}
+
+/**
+ * Deletes earlier projects' mailbox send records so the shared proxy address starts Profile's
+ * mailbox scenarios with a full budget, leaving the profile account's own rows intact.
+ */
+export function clearOtherAccountsMailboxSends(): void {
+  database(
+    'SET NOCOUNT ON; DELETE FROM EmailVerificationSends ' +
+      `WHERE AccountId <> (SELECT Id FROM Users WHERE Username = '${profileUsername}');`,
+  );
 }
 
 /**

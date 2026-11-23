@@ -17,15 +17,22 @@ export async function mailboxCode(address: string): Promise<string> {
   return code;
 }
 
-/** Finds the provisioning email this run's capture server received for `username`. */
-export async function provisioningEmail(
-  username: string,
-): Promise<{ address: string; subject: string }> {
-  for (const message of await captured('Your EclipsVault account is ready')) {
-    if ((await bodyOf(message)).includes(`username '${username}'`))
-      return { address: message.To[0]!.Address, subject: message.Subject };
-  }
-  throw new Error(`No provisioning email for ${username} reached the capture server`);
+/** Reads the token in the latest invitation link this run's capture server received for `address`. */
+export async function invitationToken(address: string): Promise<string> {
+  const message = (await captured("You're invited to EclipsVault")).find((mail) =>
+    mail.To.some((recipient) => recipient.Address === address),
+  );
+  if (!message) throw new Error(`No invitation for ${address} reached the capture server`);
+  const token = /\/Account\/Activate#([A-Za-z0-9_-]+)/.exec(await bodyOf(message))?.[1];
+  if (!token) throw new Error('The delivered invitation has no activation link');
+  return token;
+}
+
+/** Counts invitation messages this run's capture server received for `address`. */
+export async function invitationCount(address: string): Promise<number> {
+  return (await captured("You're invited to EclipsVault")).filter((mail) =>
+    mail.To.some((recipient) => recipient.Address === address),
+  ).length;
 }
 
 async function captured(subject: string): Promise<CapturedMessage[]> {

@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { freshTotp, currentTotpStep } from './totp';
+import { serverTotp } from './totp';
 
 /** Long suites reuse a real session; refresh its proof explicitly before granting access. */
 export async function refreshAdministratorProof(page: Page): Promise<void> {
@@ -13,7 +13,7 @@ export async function refreshAdministratorProof(page: Page): Promise<void> {
   if (!token) throw new Error('The signed-in browser has no antiforgery token');
   const response = await page.request.post('/api/ui/step-up', {
     headers: { RequestVerificationToken: decodeURIComponent(token.value) },
-    data: { code: await freshTotp(secret, currentTotpStep()) },
+    data: { code: (await serverTotp(page.request, secret)).code },
   });
   if (response.status() !== 204)
     throw new Error(`Administrator proof answered ${response.status()}`);

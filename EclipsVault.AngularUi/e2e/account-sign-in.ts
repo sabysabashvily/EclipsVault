@@ -23,6 +23,12 @@ export class AccountSignIn {
     return this.page.getByRole('button', { name: 'Switch color theme', exact: true });
   }
 
+  get activatedNotice() {
+    return this.page.getByRole('status').filter({
+      hasText: 'Your account is ready. Sign in with your new password.',
+    });
+  }
+
   get restartedNotice() {
     return this.page.getByRole('alert').filter({
       hasText: 'Your account changed while you were signing in. Sign in again.',

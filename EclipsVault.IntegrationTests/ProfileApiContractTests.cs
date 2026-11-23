@@ -133,7 +133,7 @@ public sealed class ProfileApiContractTests(VaultFixture vault)
         Assert.EndsWith("Z", passkey.GetProperty("createdAtUtc").GetString());
         Assert.Equal("""{"available":true,"unavailableReason":null}""", passkey.GetProperty("removal").GetRawText());
         Assert.Equal(
-            """{"changePassword":{"available":true,"unavailableReason":null},"resetAuthenticator":{"available":true,"unavailableReason":null},"replaceRecoveryCodes":{"available":true,"unavailableReason":null},"addPasskey":{"available":true,"unavailableReason":null},"changeEmail":{"available":false,"unavailableReason":"mail_unavailable","explanation":"Email changes require configured, enabled SMTP delivery."}}""",
+            """{"changePassword":{"available":true,"unavailableReason":null},"resetAuthenticator":{"available":true,"unavailableReason":null},"replaceRecoveryCodes":{"available":true,"unavailableReason":null},"addPasskey":{"available":true,"unavailableReason":null},"changeEmail":{"available":true,"unavailableReason":null,"explanation":null}}""",
             profile.GetProperty("changes").GetRawText());
     }
 

@@ -3,6 +3,7 @@ import type { BrowserContext } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
+import { signInNewAccount } from './account-activation';
 import { AccountCreation } from './account-creation';
 import { AccountSignIn } from './account-sign-in';
 import { AppShell } from './app-shell';
@@ -12,6 +13,7 @@ import { AuthenticatorEnrollment } from './authenticator-enrollment';
 import { openPalette } from './palette';
 import { avatarImage, ChangePasswordPage, freshProfileTotp, ProfilePage } from './profile';
 import {
+  clearOtherAccountsMailboxSends,
   expireProfileOperation,
   expireMailboxCode,
   expireAccountGrant,
@@ -35,7 +37,7 @@ let recoveryProof = '';
 let signInRecoveryCode = '';
 
 // This account belongs only to this flow; sensitive changes never retire another suite's session.
-test('Profile opens through production routes after real enrollment', async ({
+test('Profile opens through production routes after real activation', async ({
   page,
   browserHealth,
 }) => {
@@ -49,21 +51,14 @@ test('Profile opens through production routes after real enrollment', async ({
   await page.context().addCookies(administrator.cookies);
   const creation = new AccountCreation(page);
   const profile = new ProfilePage(page);
-  // The proof and the first sign-in both spend the proxy's one shared credential budget.
+  // The proof spends the proxy's one shared credential budget.
   profile.releaseSignInBudget();
   await refreshAdministratorProof(page);
   await creation.open();
-  await creation.createMailboxOwner('e2e-profile-owner', password);
-  await expect(page).toHaveURL(/\/Admin\/Users$/);
+  await creation.createMailboxOwner('e2e-profile-owner');
+  await expect(creation.status).toContainText('Invitation sent to');
   const owner = await (await browserHealth.newContext()).newPage();
-  const signIn = new AccountSignIn(owner);
-  await signIn.open();
-  await signIn.submitPassword('e2e-profile-owner', password);
-  await expect(owner).toHaveURL(/\/Account\/EnrollTotp$/);
-  const enrollment = new AuthenticatorEnrollment(owner);
-  secret = await enrollment.secret.innerText();
-  await enrollment.confirm(await freshProfileTotp(secret));
-  lastStep = currentTotpStep();
+  ({ secret, step: lastStep } = await signInNewAccount(owner, 'e2e-profile-owner', password));
   await expect(owner).toHaveURL(/\/Secrets$/);
   await new ProfilePage(owner).open('/pRoFiLe/InDeX');
   await expect(owner).toHaveTitle('Profile — EclipsVault');
@@ -429,6 +424,9 @@ test('a real SMTP mailbox code activates the address only after Profile confirma
   await copied.addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
+  // The preceding mailbox project shares the proxy address; clear only its send rows so Profile
+  // exercises its own rolling-minute budget cleanly.
+  clearOtherAccountsMailboxSends();
   const original = await profile.email.inputValue();
   await profile.newEmail.fill('e2e-profile-confirmed@example.test');
   await page.getByRole('button', { name: 'Change email', exact: true }).click();
@@ -588,7 +586,7 @@ test('a real SMTP outage leaves email inactive and reports delivery failure', as
     text: /status of 409/,
     url: /\/api\/ui\/profile\/email\/request$/,
   });
-  setSmtpAvailable(false);
+  await setSmtpAvailable(false);
   try {
     lastStep = await profile.verifyOwner(password, secret, lastStep);
     const unavailable =
@@ -596,7 +594,7 @@ test('a real SMTP outage leaves email inactive and reports delivery failure', as
     await expect(profile.alertSaying(unavailable)).toHaveText(unavailable, { timeout: 90_000 });
     await expect(profile.email).toHaveValue(active);
   } finally {
-    setSmtpAvailable(true);
+    await setSmtpAvailable(true);
   }
   await page.getByRole('button', { name: 'Cancel email change', exact: true }).click();
   await expect(profile.newEmail).toBeVisible();

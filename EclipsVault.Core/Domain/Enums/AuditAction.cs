@@ -69,6 +69,15 @@ public enum AuditAction
     /// <summary>Self-service revocation of one of your own active sessions ("signed-in devices").</summary>
     SessionRevokedByUser = 64,
 
+    /// <summary>An administrator sent or resent an activation invitation for an account.</summary>
+    InvitationSent = 65,
+
+    /// <summary>An administrator replaced the email address of an awaiting-activation account and spent any live invitation token.</summary>
+    InvitationAddressReplaced = 66,
+
+    /// <summary>An invited person set their password and enrolled an authenticator, activating the account.</summary>
+    AccountActivated = 67,
+
     // Service accounts & API keys.
     ServiceAccountCreated = 70,
     ServiceAccountDeleted = 71,

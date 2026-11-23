@@ -22,37 +22,228 @@ public class UserAdminServiceTests
     private static readonly Guid TargetId = Guid.Parse("7a000000-0000-0000-0000-000000000001");
 
     [Fact]
-    public async Task Creating_an_account_commits_it_with_one_UserCreated_event_then_emails_the_new_person()
+    public async Task Creating_an_account_commits_it_invited_with_its_invitation_and_one_UserCreated_event_then_mails_the_entered_address()
     {
         var vault = new Vault();
 
         var created = await vault.Service.CreateAsync(NewPerson("it-new-person"), default);
 
-        Assert.Equal(["stage new it-new-person", "commit UserCreated (generation 0)", "email new.person.1@example.test"], vault.Steps);
-        Assert.Equal("new.person.1@example.test", created.Email);
+        Assert.Equal(["stage new it-new-person", $"stage invitation {created.Id}", "commit UserCreated (generation 0)",
+            "invitation-mail new.person@example.test"], vault.Steps);
+        Assert.Equal("new.person@example.test", created.Email);
+        Assert.True(created.Invitation.Delivered);
+        var invitation = Assert.Single(vault.Invitations.Rows);
+        Assert.True(InvitationToken.Matches(Assert.Single(vault.InvitationDelivery.Sent).Token, invitation.TokenHash));
+        Assert.Equal(invitation.CreatedAtUtc + InvitationToken.Lifetime, created.Invitation.ExpiresAtUtc);
     }
 
     [Fact]
-    public async Task A_create_whose_commit_fails_emails_no_one_and_reports_the_audit_trail_unavailable()
+    public async Task A_create_is_refused_before_anything_is_staged_when_invitations_are_unavailable_or_the_address_is_taken()
+    {
+        var unavailable = new Vault();
+        unavailable.InvitationDelivery.Available = false;
+        await Assert.ThrowsAsync<InvitationsUnavailableException>(() => unavailable.Service.CreateAsync(NewPerson("it-new-person"), default));
+        Assert.Empty(unavailable.Steps);
+
+        var holder = Target(ClearanceLevel.Standard);
+        holder.Email = "New.Person@example.test";
+        var taken = new Vault(holder);
+        await Assert.ThrowsAsync<EmailAddressTakenException>(() => taken.Service.CreateAsync(NewPerson("it-new-person"), default));
+        Assert.Empty(taken.Steps);
+    }
+
+    [Fact]
+    public async Task Resending_an_invitation_commits_a_new_token_hash_and_InvitationSent_before_delivering_to_the_stored_address()
+    {
+        var invited = Target(ClearanceLevel.Standard);
+        invited.AwaitingActivation = true;
+        invited.Email = "person@example.test";
+        var vault = new Vault(invited, Administrator());
+        var previousHash = InvitationToken.Hash("old-token");
+        vault.Invitations.Rows.Add(new AccountInvitation
+        {
+            Id = Guid.NewGuid(),
+            UserId = invited.Id,
+            TokenHash = previousHash,
+            CreatedAtUtc = DateTimeOffset.UtcNow.AddDays(-2),
+            ExpiresAtUtc = DateTimeOffset.UtcNow.AddDays(1),
+            PendingTotpSecret = "OLDSEED"
+        });
+
+        var sent = await vault.Service.ResendInvitationAsync(invited.Id, default);
+
+        Assert.NotNull(sent);
+        Assert.True(sent.Delivered);
+        Assert.Equal(["commit InvitationSent (generation 0)", "invitation-mail person@example.test"], vault.Steps);
+        var stored = Assert.Single(vault.Invitations.Rows);
+        Assert.Null(stored.SpentAtUtc);
+        Assert.Null(stored.PendingTotpSecret);
+        Assert.False(previousHash.SequenceEqual(stored.TokenHash));
+        var mail = Assert.Single(vault.InvitationDelivery.Sent);
+        Assert.Equal("person@example.test", mail.Address);
+        Assert.True(InvitationToken.Matches(mail.Token, stored.TokenHash));
+        Assert.DoesNotContain(mail.Token, vault.Changes.Events.Single().Details!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Resending_refuses_an_active_account_or_unavailable_delivery_without_saving_or_mailing()
+    {
+        var active = Target(ClearanceLevel.Standard);
+        var activeVault = new Vault(active, Administrator());
+
+        await Assert.ThrowsAsync<AccountAlreadyActiveException>(() => activeVault.Service.ResendInvitationAsync(active.Id, default));
+        Assert.Empty(activeVault.Steps);
+        Assert.Empty(activeVault.InvitationDelivery.Sent);
+
+        var invited = Target(ClearanceLevel.Standard);
+        invited.AwaitingActivation = true;
+        var unavailableVault = new Vault(invited, Administrator());
+        unavailableVault.InvitationDelivery.Available = false;
+
+        await Assert.ThrowsAsync<InvitationsUnavailableException>(() => unavailableVault.Service.ResendInvitationAsync(invited.Id, default));
+        Assert.Empty(unavailableVault.Steps);
+        Assert.Empty(unavailableVault.InvitationDelivery.Sent);
+    }
+
+    [Fact]
+    public async Task Replacing_an_invitation_address_spends_the_live_token_audits_the_new_address_and_sends_no_mail()
+    {
+        var invited = Target(ClearanceLevel.Standard);
+        invited.AwaitingActivation = true;
+        invited.Email = "wrong@example.test";
+        var vault = new Vault(invited, Administrator());
+        var live = new AccountInvitation
+        {
+            Id = Guid.NewGuid(),
+            UserId = invited.Id,
+            TokenHash = InvitationToken.Hash("live-token"),
+            CreatedAtUtc = DateTimeOffset.UtcNow.AddHours(-1),
+            ExpiresAtUtc = DateTimeOffset.UtcNow.AddHours(71),
+            PendingTotpSecret = "PENDINGSEED"
+        };
+        vault.Invitations.Rows.Add(live);
+
+        var replaced = await vault.Service.ReplaceInvitationAddressAsync(invited.Id, "  right@example.test  ", default);
+
+        Assert.Equal("right@example.test", replaced);
+        Assert.Equal("right@example.test", invited.Email);
+        Assert.NotNull(live.SpentAtUtc);
+        Assert.Null(live.PendingTotpSecret);
+        Assert.Equal(["commit InvitationAddressReplaced (generation 0)"], vault.Steps);
+        Assert.Contains("right@example.test", vault.Changes.Events.Single().Details!, StringComparison.Ordinal);
+        Assert.Empty(vault.InvitationDelivery.Sent);
+    }
+
+    [Fact]
+    public async Task Listing_shows_an_invitations_expiry_only_while_it_can_still_activate_the_account()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var usable = Invited("it-list-usable");
+        var expired = Invited("it-list-expired");
+        var spent = Invited("it-list-spent");
+        var vault = new Vault(usable, expired, spent, Administrator());
+        vault.Invitations.Rows.AddRange(
+        [
+            Invitation(usable, now.AddDays(2), spentAtUtc: null),
+            Invitation(expired, now.AddDays(-1), spentAtUtc: null),
+            Invitation(spent, now.AddDays(2), spentAtUtc: now),
+        ]);
+
+        var listed = (await vault.Service.ListAsync(default)).ToDictionary(account => account.Username);
+
+        Assert.Equal(vault.Invitations.Rows[0].ExpiresAtUtc, listed["it-list-usable"].InvitationExpiresAtUtc);
+        Assert.Null(listed["it-list-expired"].InvitationExpiresAtUtc);
+        Assert.Null(listed["it-list-spent"].InvitationExpiresAtUtc);
+        Assert.All([listed["it-list-usable"], listed["it-list-expired"], listed["it-list-spent"]],
+            account => Assert.True(account.AwaitingActivation));
+        Assert.False(listed["vault-admin"].AwaitingActivation);
+        Assert.Equal(vault.Invitations.Rows[0].ExpiresAtUtc, (await vault.Service.GetAsync(usable.Id, default))!.InvitationExpiresAtUtc);
+        Assert.Null((await vault.Service.GetAsync(spent.Id, default))!.InvitationExpiresAtUtc);
+
+        static User Invited(string username) => new()
+        {
+            Id = Guid.NewGuid(),
+            Username = username,
+            DisplayName = "Invited Person",
+            Email = username + "@example.test",
+            ProjectKey = "GLOBAL",
+            AwaitingActivation = true,
+        };
+
+        static AccountInvitation Invitation(User account, DateTimeOffset expiresAtUtc, DateTimeOffset? spentAtUtc) => new()
+        {
+            Id = Guid.NewGuid(),
+            UserId = account.Id,
+            TokenHash = InvitationToken.Hash(account.Username),
+            ExpiresAtUtc = expiresAtUtc,
+            SpentAtUtc = spentAtUtc,
+        };
+    }
+
+    [Fact]
+    public async Task Resetting_an_invited_accounts_authenticator_is_refused_as_not_activated()
+    {
+        var invited = Target(ClearanceLevel.Standard);
+        invited.AwaitingActivation = true;
+        var vault = new Vault(invited, Administrator());
+
+        await Assert.ThrowsAsync<AccountNotActivatedException>(() => vault.Service.ResetTotpAsync(invited.Id, default));
+        Assert.Empty(vault.Steps);
+    }
+
+    [Fact]
+    public async Task An_invited_top_secret_account_does_not_count_as_an_enabled_administrator()
+    {
+        static (User ActiveAdmin, User InvitedAdmin, Vault Vault) Setup()
+        {
+            var activeAdmin = Target(ClearanceLevel.TopSecret);
+            var invitedAdmin = new User
+            {
+                Id = Guid.NewGuid(),
+                Username = "invited-admin",
+                Email = "invited.admin@example.test",
+                Clearance = ClearanceLevel.TopSecret,
+                ProjectKey = "GLOBAL",
+                AwaitingActivation = true
+            };
+            return (activeAdmin, invitedAdmin, new Vault(activeAdmin, invitedAdmin));
+        }
+
+        var demote = Setup();
+        await Assert.ThrowsAsync<LastAdministratorException>(() => demote.Vault.Service.SetRoleAsync(demote.ActiveAdmin.Id, ClearanceLevel.Secret, "GLOBAL", default));
+
+        var disable = Setup();
+        await Assert.ThrowsAsync<LastAdministratorException>(() => disable.Vault.Service.SetEnabledAsync(disable.ActiveAdmin.Id, false, default));
+
+        var delete = Setup();
+        await Assert.ThrowsAsync<LastAdministratorException>(() => delete.Vault.Service.DeleteAsync(delete.ActiveAdmin.Id, default));
+
+        var demoteInvited = Setup();
+        Assert.True(await demoteInvited.Vault.Service.SetRoleAsync(demoteInvited.InvitedAdmin.Id, ClearanceLevel.Standard, "GLOBAL", default));
+    }
+
+    [Fact]
+    public async Task A_create_whose_commit_fails_mails_no_one_and_reports_the_audit_trail_unavailable()
     {
         var vault = new Vault();
         vault.Changes.Failures.Enqueue(new AuditWriteFailedException("rejected"));
 
         await Assert.ThrowsAsync<AuditWriteFailedException>(() => vault.Service.CreateAsync(NewPerson("it-unrecorded"), default));
 
-        Assert.Equal(["stage new it-unrecorded"], vault.Steps);
+        Assert.Empty(vault.Changes.Events);
+        Assert.Empty(vault.InvitationDelivery.Sent);
     }
 
     [Fact]
-    public async Task A_create_whose_provisioning_email_can_be_neither_sent_nor_recorded_still_creates_the_account()
+    public async Task A_create_whose_invitation_is_not_delivered_still_creates_the_account_and_says_so()
     {
-        var mail = new BrokenMail();
-        var vault = new Vault(new NotificationService(mail, mail, new FakeUsers([], []), NotificationOptions.Default, TimeProvider.System));
+        var vault = new Vault();
+        vault.InvitationDelivery.Delivered = false;
 
         var created = await vault.Service.CreateAsync(NewPerson("it-unmailed"), default);
 
-        Assert.Equal(["stage new it-unmailed", "commit UserCreated (generation 0)"], vault.Steps);
-        Assert.Equal("new.person.1@example.test", created.Email);
+        Assert.False(created.Invitation.Delivered);
+        Assert.Equal(AuditAction.UserCreated, Assert.Single(vault.Changes.Events).Action);
     }
 
     [Fact]
@@ -64,14 +255,14 @@ public class UserAdminServiceTests
         var conflict = await Assert.ThrowsAsync<UsernameTakenException>(() => vault.Service.CreateAsync(NewPerson("it-raced"), default));
 
         Assert.Equal("The username 'it-raced' is already taken.", conflict.Message);
-        Assert.Equal(["stage new it-raced"], vault.Steps);
+        Assert.Empty(vault.InvitationDelivery.Sent);
     }
 
     [Fact]
     public async Task A_create_that_loses_its_address_to_the_same_username_answers_the_username_conflict()
     {
         var vault = new Vault();
-        vault.Changes.SavedFirstByAnother = new User { Id = Guid.NewGuid(), Username = "it-raced", Email = "new.person.1@example.test" };
+        vault.Changes.SavedFirstByAnother = new User { Id = Guid.NewGuid(), Username = "it-raced", Email = "new.person@example.test" };
         vault.Changes.Failures.Enqueue(new EmailAddressTakenException());
 
         var conflict = await Assert.ThrowsAsync<UsernameTakenException>(() => vault.Service.CreateAsync(NewPerson("it-raced"), default));
@@ -80,30 +271,15 @@ public class UserAdminServiceTests
     }
 
     [Fact]
-    public async Task A_create_that_loses_only_its_address_takes_the_next_free_address()
+    public async Task A_create_that_loses_its_address_to_another_account_answers_the_generic_address_conflict()
     {
         var vault = new Vault();
-        vault.Changes.SavedFirstByAnother = new User { Id = Guid.NewGuid(), Username = "it-other-person", Email = "new.person.1@example.test" };
+        vault.Changes.SavedFirstByAnother = new User { Id = Guid.NewGuid(), Username = "it-other-person", Email = "new.person@example.test" };
         vault.Changes.Failures.Enqueue(new EmailAddressTakenException());
 
-        var created = await vault.Service.CreateAsync(NewPerson("it-raced"), default);
+        await Assert.ThrowsAsync<EmailAddressTakenException>(() => vault.Service.CreateAsync(NewPerson("it-raced"), default));
 
-        Assert.Equal(["stage new it-raced", "stage new it-raced", "commit UserCreated (generation 0)", "email new.person.2@example.test"], vault.Steps);
-        Assert.Equal("new.person.2@example.test", created.Email);
-    }
-
-    [Fact]
-    public async Task A_create_that_loses_its_address_twice_asks_the_administrator_to_try_again()
-    {
-        var vault = new Vault();
-        vault.Changes.SavedFirstByAnother = new User { Id = Guid.NewGuid(), Username = "it-other-person", Email = "new.person.1@example.test" };
-        vault.Changes.Failures.Enqueue(new EmailAddressTakenException());
-        vault.Changes.Failures.Enqueue(new EmailAddressTakenException());
-
-        var refusal = await Assert.ThrowsAsync<AccountChangedException>(() => vault.Service.CreateAsync(NewPerson("it-raced"), default));
-
-        Assert.Equal("Another account for the same name was created at the same moment. Try again.", refusal.Message);
-        Assert.Equal(["stage new it-raced", "stage new it-raced"], vault.Steps);
+        Assert.Empty(vault.InvitationDelivery.Sent);
     }
 
     [Fact]
@@ -342,8 +518,8 @@ public class UserAdminServiceTests
         { NewPerson("it-new-person") with { LastName = "" }, "LastName", "Last name is required." },
         { NewPerson("it-new-person") with { LastName = new string('l', 65) }, "LastName", "Last name can be at most 64 characters." },
         { NewPerson("it-new-person") with { FirstName = new string('f', 32), LastName = new string('l', 32) }, "LastName", "First and last name together can be at most 64 characters, counting the space between them." },
-        { NewPerson("it-new-person") with { Password = "eleven-char" }, "Password", "Passwords must be at least 12 characters long." },
-        { NewPerson("it-new-person") with { Password = new string('p', 257) }, "Password", "Passwords can be at most 256 characters long." },
+        { NewPerson("it-new-person") with { Email = "not-an-address" }, "Email", "Enter a valid email address." },
+        { NewPerson("it-new-person") with { Email = "  " }, "Email", "Enter a valid email address." },
         { NewPerson("it-new-person") with { Clearance = (ClearanceLevel)7 }, "Clearance", ClearanceRule },
         { NewPerson("it-new-person") with { Clearance = 0 }, "Clearance", ClearanceRule },
         { NewPerson("it-new-person") with { ProjectKey = "   " }, "ProjectKey", ProjectRule },
@@ -367,7 +543,7 @@ public class UserAdminServiceTests
         // request, the display name it gets
         { NewPerson("it-new-person") with { FirstName = new string('f', 31), LastName = new string('l', 32) }, "fffffffffffffffffffffffffffffff llllllllllllllllllllllllllllllll" },
         { NewPerson("it-new-person") with { FirstName = "  Ann ", LastName = " Lee  " }, "Ann Lee" },
-        { NewPerson("it-new-person") with { Password = new string('p', 256), ProjectKey = new string('p', 64) }, "New Person" },
+        { NewPerson("it-new-person") with { ProjectKey = new string('p', 64) }, "New Person" },
         { NewPerson("it-new-person") with { ProjectKey = " x " }, "New Person" },
     };
 
@@ -423,7 +599,7 @@ public class UserAdminServiceTests
     };
 
     private static CreateUserRequest NewPerson(string username)
-        => new(username, "New", "Person", "a-long-enough-initial-password", ClearanceLevel.Standard, "global");
+        => new(username, "New", "Person", "new.person@example.test", ClearanceLevel.Standard, "global");
 
     private static User Target(ClearanceLevel clearance) => new()
     {
@@ -449,33 +625,23 @@ public class UserAdminServiceTests
     private sealed class Vault
     {
         public Vault(params User[] accounts)
-            : this(null, AdministratorId, accounts)
+            : this(AdministratorId, accounts)
         {
         }
 
         public Vault(Guid signedInAs, params User[] accounts)
-            : this(null, signedInAs, accounts)
-        {
-        }
-
-        public Vault(INotificationService? notifications, params User[] accounts)
-            : this(notifications, AdministratorId, accounts)
-        {
-        }
-
-        private Vault(INotificationService? notifications, Guid signedInAs, User[] accounts)
         {
             Users = new FakeUsers(Steps, [.. accounts]);
+            Invitations = new FakeInvitations(Steps);
+            InvitationDelivery = new RecordingInvitationDelivery(Steps);
             Changes = new RecordingChanges(Steps, Users);
             Audit = new RecordingAudit(Steps);
             Service = new UserAdminService(
                 Users,
-                new StubHasher(),
+                Invitations,
+                InvitationDelivery,
                 new RecordingRevocation(Steps),
                 new UnusedRecoveryCodes(),
-                new CleanBreachScreen(),
-                new UserDirectoryOptions("example.test"),
-                notifications ?? new RecordingNotifications(Steps),
                 Audit,
                 Changes,
                 new SignedInAdministrator(signedInAs),
@@ -486,11 +652,56 @@ public class UserAdminServiceTests
 
         public FakeUsers Users { get; }
 
+        public FakeInvitations Invitations { get; }
+
+        public RecordingInvitationDelivery InvitationDelivery { get; }
+
         public RecordingChanges Changes { get; }
 
         public RecordingAudit Audit { get; }
 
         public UserAdminService Service { get; }
+    }
+
+    private sealed class FakeInvitations(List<string> steps) : IAccountInvitationRepository
+    {
+        public List<AccountInvitation> Rows { get; } = [];
+
+        public Task<AccountInvitation?> FindByUserIdAsync(Guid userId, CancellationToken ct)
+            => Task.FromResult(Rows.FirstOrDefault(i => i.UserId == userId));
+
+        public Task<AccountInvitation?> FindByTokenHashAsync(byte[] tokenHash, CancellationToken ct)
+            => Task.FromResult(Rows.FirstOrDefault(i => i.TokenHash.SequenceEqual(tokenHash)));
+
+        public Task<IReadOnlyList<AccountInvitation>> ListAsync(CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<AccountInvitation>>(Rows);
+
+        public Task<string?> StorePendingSecretOnceAsync(Guid invitationId, byte[] tokenHash, string seed, DateTimeOffset nowUtc, CancellationToken ct)
+            => throw new NotSupportedException();
+
+        public void StageAddition(AccountInvitation invitation)
+        {
+            Rows.Add(invitation);
+            steps.Add($"stage invitation {invitation.UserId}");
+        }
+
+        public void StageReset(AccountInvitation invitation)
+        {
+        }
+    }
+
+    private sealed class RecordingInvitationDelivery(List<string> steps) : IAccountInvitationDelivery
+    {
+        public bool Available { get; set; } = true;
+        public bool Delivered { get; set; } = true;
+        public List<(string Address, string DisplayName, string Username, string Token)> Sent { get; } = [];
+
+        public Task<bool> TrySendAsync(string address, string displayName, string username, string token, CancellationToken ct)
+        {
+            Sent.Add((address, displayName, username, token));
+            steps.Add($"invitation-mail {address}");
+            return Task.FromResult(Delivered);
+        }
     }
 
     private sealed class FakeUsers(List<string> steps, List<User> accounts) : IUserRepository
@@ -500,12 +711,15 @@ public class UserAdminServiceTests
         public Task<User?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult(Accounts.FirstOrDefault(account => account.Id == id));
         public Task<User?> FindByUsernameAsync(string username, CancellationToken ct) => Task.FromResult(Accounts.FirstOrDefault(account => account.Username == username));
         public Task<IReadOnlyList<User>> ListAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<User>>(Accounts);
-        public Task<IReadOnlyList<string>> FindEmailsWithPrefixAsync(string localPrefix, string domain, CancellationToken ct)
-            => Task.FromResult<IReadOnlyList<string>>([.. Accounts.Select(account => account.Email).Where(email => email.StartsWith($"{localPrefix}.", StringComparison.Ordinal))]);
 
         public Task<bool> AnyOtherEnabledAdministratorAsync(Guid accountId, CancellationToken ct)
-            => Task.FromResult(Accounts.Any(account => account.Id != accountId && account.Clearance == ClearanceLevel.TopSecret && !account.IsDisabled));
-        public Task<bool> IsEmailTakenAsync(string email, Guid accountId, CancellationToken ct) => Task.FromResult(false);
+            => Task.FromResult(Accounts.Any(account => account.Id != accountId
+                && account.Clearance == ClearanceLevel.TopSecret
+                && !account.IsDisabled
+                && !account.AwaitingActivation));
+        public Task<bool> IsEmailTakenAsync(string email, Guid accountId, CancellationToken ct)
+            => Task.FromResult(Accounts.Any(account => account.Id != accountId
+                && account.NormalizedEmail == EclipsVault.Core.Domain.EmailIdentity.Normalize(email)));
 
         public void StageAddition(User user) => steps.Add($"stage new {user.Username}");
 
@@ -563,6 +777,12 @@ public class UserAdminServiceTests
             return Task.FromResult(true);
         }
 
+        public async Task<bool> CommitAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct)
+        {
+            await recheck(ct);
+            return await CommitAsync(account, entry, ct);
+        }
+
         public async Task<bool> CommitAdministratorChangeAsync(User account, AuditEntry entry, Func<CancellationToken, Task> recheck, CancellationToken ct)
         {
             steps.Add("lock administrators");
@@ -609,44 +829,6 @@ public class UserAdminServiceTests
 
         public Task<string> CaptureAsync(Guid userId, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<string?> FindAsync(Guid userId, CancellationToken ct = default) => throw new NotSupportedException();
-    }
-
-    /// <summary>A mail transport that is down and an outbox that cannot be written.</summary>
-    private sealed class BrokenMail : IEmailSender, IEmailLogRepository
-    {
-        public string Transport => "Smtp";
-
-        public Task SendAsync(EmailMessage message, CancellationToken ct) => throw new InvalidOperationException("The mail server is down.");
-        public Task AddAsync(EmailLog entry, CancellationToken ct) => throw new InvalidOperationException("The outbox is unavailable.");
-        public Task<IReadOnlyList<EmailLog>> ListRecentAsync(int max, CancellationToken ct) => throw new NotSupportedException();
-    }
-
-    private sealed class RecordingNotifications(List<string> steps) : INotificationService
-    {
-        public Task NotifyUserProvisionedAsync(string email, string displayName, string username, CancellationToken ct)
-        {
-            steps.Add($"email {email}");
-            return Task.CompletedTask;
-        }
-
-        public Task NotifyAccessRequestDecidedAsync(Guid requesterUserId, string secretName, bool approved, string reviewer, string? note, CancellationToken ct) => throw new NotSupportedException();
-        public Task NotifySensitiveChangeAsync(string trustedAddress, ProfileOperationKind kind, CancellationToken ct) => throw new NotSupportedException();
-        public Task NotifyPasswordChangedAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
-        public Task NotifyCredentialChangedAsync(Guid userId, ProfileOperationKind kind, CancellationToken ct) => throw new NotSupportedException();
-        public Task<bool> NotifyExpiringSecretAsync(Guid ownerUserId, string secretName, DateTimeOffset expiresAtUtc, CancellationToken ct) => throw new NotSupportedException();
-        public Task<IReadOnlyList<EmailLogDto>> ListRecentAsync(int max, CancellationToken ct) => throw new NotSupportedException();
-    }
-
-    private sealed class StubHasher : IPasswordHasher
-    {
-        public PasswordHashResult Hash(string password) => new([1, 2, 3], [4, 5, 6]);
-        public bool Verify(string password, byte[] hash, byte[] salt) => throw new NotSupportedException();
-    }
-
-    private sealed class CleanBreachScreen : IBreachedPasswordScreen
-    {
-        public bool IsCompromised(string password) => false;
-        public int CorpusSize => 0;
     }
 
     private sealed class UnusedRecoveryCodes : IMfaRecoveryCodeRepository

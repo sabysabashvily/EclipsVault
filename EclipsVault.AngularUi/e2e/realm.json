@@ -51,7 +51,7 @@
       "username": "sso-mfa",
       "enabled": true,
       "emailVerified": true,
-      "email": "sso.multifactor.1@eclipsvault.local",
+      "email": "e2e-sso-mfa@example.test",
       "firstName": "Sso",
       "lastName": "Multifactor",
       "credentials": [
@@ -68,7 +68,7 @@
       "username": "sso-password",
       "enabled": true,
       "emailVerified": true,
-      "email": "sso.passwordonly.1@eclipsvault.local",
+      "email": "e2e-sso-password@example.test",
       "firstName": "Sso",
       "lastName": "Passwordonly",
       "credentials": [{ "type": "password", "value": "__USER_PASSWORD__", "temporary": false }]

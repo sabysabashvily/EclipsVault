@@ -55,7 +55,7 @@ The one way a vault administrator signs back in from a blocked network: all fact
 _Avoid_: Emergency login, unblock
 
 **Invitation**:
-A single-use, expiring link sent to a new vault account's email, through which its person sets the account's first credentials.
+A single-use, expiring link sent to a new vault account's email, through which its person sets the account's first credentials. Disabling the account pauses it; replacing the address or deleting the account revokes it.
 _Avoid_: Activation email, signup link
 
 **Account activation**:

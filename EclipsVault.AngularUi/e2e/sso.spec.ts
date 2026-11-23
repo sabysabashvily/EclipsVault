@@ -1,20 +1,18 @@
 import { randomBytes } from 'node:crypto';
-import { AccountCreation } from './account-creation';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { signInNewAccount } from './account-activation';
+import { AccountCreation, emailOf } from './account-creation';
 import { AccountSignIn } from './account-sign-in';
 import { savedAdministratorCookies } from './administrator-cookies';
 import { refreshAdministratorProof } from './administrator-proof';
-import { AuthenticatorEnrollment } from './authenticator-enrollment';
-import { test, expect } from './fixtures';
+import { test as base, expect, type BrowserHealth } from './fixtures';
 import { clearSignInBudget } from './profile-state';
 import { SecretsList } from './secrets-list';
 import { KeycloakSignIn } from './sso';
-import { currentTotpStep, freshTotp } from './totp';
-import { Users } from './users';
+import { freshTotp, serverTotp } from './totp';
 
 const mfaUsername = 'e2e-sso-mfa';
 const passwordUsername = 'e2e-sso-password';
-const mfaEmail = 'sso.multifactor.1@eclipsvault.local';
-const passwordEmail = 'sso.passwordonly.1@eclipsvault.local';
 const refused = 'Single sign-on did not grant access to this vault. Contact an administrator.';
 
 function idpPassword(): string {
@@ -31,66 +29,82 @@ function idpAuthenticatorSecret(): string {
   return secret;
 }
 
-test.describe.configure({ mode: 'serial' });
-const vaultPassword = `E2e-${randomBytes(24).toString('hex')}`;
-let vaultAuthenticatorSecret = '';
-let vaultAuthenticatorStep = -1;
+interface SsoAccounts {
+  /** The password-only user's vault password, which the MFA user's account never needs. */
+  password: string;
+  secret: string;
+  /** The step the password-only user's vault sign-in spent, which the vault never accepts again. */
+  step: number;
+}
 
-test('an administrator creates the vault accounts both identity provider users sign in as', async ({
-  page,
-}) => {
-  test.setTimeout(180_000);
-  await page.context().addCookies(await savedAdministratorCookies());
-  clearSignInBudget();
-  await refreshAdministratorProof(page);
+// Single sign-on refuses an account awaiting activation, and both identity provider users map to
+// one vault account each by address. Provisioned once per run, by whichever case needs it first.
+// Playwright replaces the worker after a failure, so the accounts are kept on disk for its successor.
+const savedAccountsFile = `${process.env['E2E_TEST_RESULTS'] || 'test-results'}/sso-accounts.json`;
 
-  const creation = new AccountCreation(page);
-  const users = new Users(page);
-  await creation.open();
-  await creation.create({
-    firstName: 'Sso',
-    lastName: 'Multifactor',
-    username: mfaUsername,
-    password: `E2e-${randomBytes(24).toString('hex')}`,
-    clearance: 'Standard',
-    project: 'GLOBAL',
-  });
-  await expect(users.heading).toBeVisible();
-  await expect(users.status).toContainText(`User '${mfaUsername}' created with email ${mfaEmail}.`);
+const test = base.extend<{ ssoAccounts: SsoAccounts }>({
+  ssoAccounts: async ({ browserHealth }, use) => {
+    await use(savedSsoAccounts() ?? (await provisionSsoAccounts(browserHealth)));
+  },
+});
 
-  await creation.open();
-  await creation.create({
-    firstName: 'Sso',
-    lastName: 'Passwordonly',
-    username: passwordUsername,
-    password: vaultPassword,
-    clearance: 'Standard',
-    project: 'GLOBAL',
-  });
-  await expect(users.status).toContainText(
-    `User '${passwordUsername}' created with email ${passwordEmail}.`,
+/** The accounts this run's stack already provisioned, or undefined before the first provisioning. */
+function savedSsoAccounts(): SsoAccounts | undefined {
+  let saved: { stack: string; accounts: SsoAccounts };
+  try {
+    saved = JSON.parse(readFileSync(savedAccountsFile, 'utf8')) as typeof saved;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
+  }
+  return saved.stack === process.env['E2E_COMPOSE_PROJECT'] ? saved.accounts : undefined;
+}
+
+async function provisionSsoAccounts(browserHealth: BrowserHealth): Promise<SsoAccounts> {
+  const administrator = await (await browserHealth.newContext()).newPage();
+  await administrator.context().addCookies(await savedAdministratorCookies());
+  await refreshAdministratorProof(administrator);
+  const creation = new AccountCreation(administrator);
+  for (const [lastName, username] of [
+    ['Multifactor', mfaUsername],
+    ['Passwordonly', passwordUsername],
+  ] as const) {
+    await creation.open();
+    await creation.create({
+      firstName: 'Sso',
+      lastName,
+      username,
+      clearance: 'Standard',
+      project: 'GLOBAL',
+    });
+    await expect(creation.status).toContainText(`Invitation sent to ${emailOf(username)}.`);
+  }
+
+  await signInNewAccount(
+    await (await browserHealth.newContext()).newPage(),
+    mfaUsername,
+    `E2e-${randomBytes(24).toString('hex')}`,
   );
-});
+  const password = `E2e-${randomBytes(24).toString('hex')}`;
+  const enrolled = await signInNewAccount(
+    await (await browserHealth.newContext()).newPage(),
+    passwordUsername,
+    password,
+  );
+  const accounts = { password, ...enrolled };
+  // A later run reuses this results folder with a new stack, which never has these accounts.
+  writeFileSync(
+    savedAccountsFile,
+    JSON.stringify({ stack: process.env['E2E_COMPOSE_PROJECT'], accounts }),
+  );
+  return accounts;
+}
 
-test('the password-only identity provider user enrolls a vault authenticator', async ({
+test('a user whose identity provider completed MFA lands on Secrets', async ({
   browserHealth,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Asking for it activates sso-mfa's vault account.
+  ssoAccounts,
 }) => {
-  test.setTimeout(180_000);
-  const enrolling = await (await browserHealth.newContext()).newPage();
-  clearSignInBudget();
-  const signIn = new AccountSignIn(enrolling);
-  await signIn.open();
-  await signIn.submitPassword(passwordUsername, vaultPassword);
-  await expect(enrolling).toHaveURL(/\/Account\/EnrollTotp$/);
-  const enrollment = new AuthenticatorEnrollment(enrolling);
-  vaultAuthenticatorSecret = await enrollment.secret.innerText();
-  await enrollment.confirm(await freshTotp(vaultAuthenticatorSecret));
-  vaultAuthenticatorStep = currentTotpStep();
-  await expect(enrolling).toHaveURL(/\/Secrets$/);
-  await expect(new SecretsList(enrolling).heading).toBeVisible();
-});
-
-test('a user whose identity provider completed MFA lands on Secrets', async ({ browserHealth }) => {
   test.setTimeout(120_000);
   const page = await (await browserHealth.newContext()).newPage();
   clearSignInBudget();
@@ -114,6 +128,7 @@ test('a user whose identity provider completed MFA lands on Secrets', async ({ b
 
 test('a user whose identity provider did not complete MFA finishes with an authenticator code', async ({
   browserHealth,
+  ssoAccounts,
 }) => {
   test.setTimeout(120_000);
   const page = await (await browserHealth.newContext()).newPage();
@@ -123,22 +138,22 @@ test('a user whose identity provider did not complete MFA finishes with an authe
   await vault.continueWithSingleSignOn('Keycloak');
   await new KeycloakSignIn(page).submitPassword('sso-password', idpPassword());
   await expect(page).toHaveURL(/\/Account\/Totp$/);
-  await vault.submitAuthenticatorCode(
-    await freshTotp(vaultAuthenticatorSecret, vaultAuthenticatorStep),
-  );
+  const code = await serverTotp(page.request, ssoAccounts.secret, ssoAccounts.step);
+  await vault.submitAuthenticatorCode(code.code);
   await expect(page).toHaveURL(/\/Secrets$/);
   await expect(new SecretsList(page).heading).toBeVisible();
 });
 
 test('a restarted second factor loads Login with its notice and permits single sign-on', async ({
   browserHealth,
+  ssoAccounts,
 }) => {
   test.setTimeout(120_000);
   const page = await (await browserHealth.newContext()).newPage();
   const signIn = new AccountSignIn(page);
   clearSignInBudget();
   await signIn.open();
-  await signIn.submitPassword(passwordUsername, vaultPassword);
+  await signIn.submitPassword(passwordUsername, ssoAccounts.password);
   await expect(page).toHaveURL(/\/Account\/Totp$/);
   // A directly loaded second-factor document permits only same-origin form targets.
   const secondFactor = await page.reload();

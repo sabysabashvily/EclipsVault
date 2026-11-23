@@ -87,6 +87,44 @@ namespace EclipsVault.Infrastructure.Migrations
                     b.ToTable("AccessRequests", (string)null);
                 });
 
+            modelBuilder.Entity("EclipsVault.Core.Domain.Entities.AccountInvitation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("ExpiresAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("PendingTotpSecret")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTimeOffset?>("SpentAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varbinary(32)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("AccountInvitations", (string)null);
+                });
+
             modelBuilder.Entity("EclipsVault.Core.Domain.Entities.ApiKey", b =>
                 {
                     b.Property<Guid>("Id")
@@ -862,6 +900,9 @@ namespace EclipsVault.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("AvatarUpdatedAtUtc")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<bool>("AwaitingActivation")
+                        .HasColumnType("bit");
+
                     b.Property<int>("Clearance")
                         .HasColumnType("int");
 
@@ -971,6 +1012,17 @@ namespace EclipsVault.Infrastructure.Migrations
                         .HasForeignKey("SecretId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("EclipsVault.Core.Domain.Entities.AccountInvitation", b =>
+                {
+                    b.HasOne("EclipsVault.Core.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("EclipsVault.Core.Domain.Entities.ApiKey", b =>

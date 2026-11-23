@@ -67,6 +67,12 @@ public sealed class SsoSignInService : ISsoSignInService
                 $"'{identity.Email}' has no account in this vault", ct);
         }
 
+        if (user.AwaitingActivation)
+        {
+            return await RefuseAsync(SsoOutcome.NotActivated, identity,
+                $"the account for '{identity.Email}' is awaiting activation", ct, user.Id, user.Username);
+        }
+
         if (user.IsDisabled)
         {
             return await RefuseAsync(SsoOutcome.Disabled, identity,

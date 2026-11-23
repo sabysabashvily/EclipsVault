@@ -68,8 +68,15 @@ public sealed class AccountTransaction(EclipsVaultDbContext context, IAuditChain
                 throw new UsernameTakenException();
             }
 
+            // Checked after the names: SQL Server's message also quotes the duplicate value, which a username could spell.
+            if (failure is DbUpdateException invited && UniqueIndex.IsViolatedBy(invited, AccountInvitationRepository.OnePerAccountIndex))
+            {
+                throw new AccountChangedException();
+            }
+
             if (failure is OperationCanceledException or AccountChangedException or EmailAddressTakenException or UsernameTakenException
-                or StaleProofException or ProfileOperationRefusedException or LastAdministratorException)
+                or StaleProofException or ProfileOperationRefusedException or LastAdministratorException
+                or AccountAlreadyActiveException or AccountNotActivatedException or InvitationsUnavailableException)
             {
                 throw;
             }

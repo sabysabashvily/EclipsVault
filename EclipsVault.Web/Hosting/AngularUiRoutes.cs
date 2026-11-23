@@ -106,10 +106,12 @@ public static class AngularUiRoutes
         }
 
         // Sign-in (ADR-0032). Login is anonymous, and a signed-in visit goes on to its target. Recover
-        // is served to anyone, as the Legacy page was. The second-factor pages are served only to a
+        // is served to anyone, as the Legacy page was, and so is Activate. The second-factor pages are served only to a
         // pending sign-in; anyone else is sent to Login.
         endpoints.MapMethods("/Account/Login", [HttpMethods.Get, HttpMethods.Head], ServeLogin).AllowAnonymous();
         endpoints.MapMethods("/Account/Recover", [HttpMethods.Get, HttpMethods.Head], ServeSignInStep).AllowAnonymous();
+        // Activation by invitation (ADR-0033): the token is in the link's fragment, which never reaches the server.
+        endpoints.MapMethods("/Account/Activate", [HttpMethods.Get, HttpMethods.Head], ServeSignInStep).AllowAnonymous();
         var pending = new AuthorizeAttribute { AuthenticationSchemes = AuthSchemes.MfaPending };
         foreach (var path in SecondFactorPaths)
         {

@@ -14,6 +14,9 @@ public sealed class CredentialGenerationTests(VaultFixture vault)
     private const string Password = "It-generation-password-2026!";
     private const string ReplacementPassword = "It-replacement-password-2026!";
 
+    /// <summary>A new account's generation once activation has advanced it.</summary>
+    private const long Activated = 1;
+
     /// <summary>
     /// Passkey sign-in names no account until the assertion arrives. A password change that lands
     /// once that account is known refuses the sign-in and leaves the counter unspent.
@@ -66,7 +69,7 @@ public sealed class CredentialGenerationTests(VaultFixture vault)
         await ProfileHttp.ChangePasswordAsync(owner, Password, ReplacementPassword);
 
         var replacement = SessionApi.PrincipalOf(vault, owner);
-        Assert.Equal(1, replacement.GetSessionStampOrNull()!.CredentialGeneration);
+        Assert.Equal(original.GetSessionStampOrNull()!.CredentialGeneration + 1, replacement.GetSessionStampOrNull()!.CredentialGeneration);
         Assert.Equal(original.GetSessionStampOrNull()!.RevocationVersion, replacement.GetSessionStampOrNull()!.RevocationVersion);
         Assert.NotEqual(original.GetSessionId(), replacement.GetSessionId());
         Assert.Equal(HttpStatusCode.OK, (await owner.Client.GetAsync("/api/ui/me")).StatusCode);
@@ -86,7 +89,7 @@ public sealed class CredentialGenerationTests(VaultFixture vault)
         var renewed = SessionApi.PrincipalOf(vault, owner);
         Assert.Equal(original.GetSessionStampOrNull(), renewed.GetSessionStampOrNull());
         Assert.Equal(original.GetSessionId(), renewed.GetSessionId());
-        Assert.Equal(0, (await ProfileHttp.AccountAsync(vault, account.Username)).CredentialGeneration);
+        Assert.Equal(account.CredentialGeneration, (await ProfileHttp.AccountAsync(vault, account.Username)).CredentialGeneration);
     }
 
     [Fact]
@@ -100,7 +103,7 @@ public sealed class CredentialGenerationTests(VaultFixture vault)
         var renewed = SessionApi.PrincipalOf(vault, owner);
         Assert.Equal(original.GetSessionStampOrNull(), renewed.GetSessionStampOrNull());
         Assert.Equal(original.GetSessionId(), renewed.GetSessionId());
-        Assert.Equal(0, (await ProfileHttp.AccountAsync(vault, "it-generation-avatar")).CredentialGeneration);
+        Assert.Equal(original.GetSessionStampOrNull()!.CredentialGeneration, (await ProfileHttp.AccountAsync(vault, "it-generation-avatar")).CredentialGeneration);
     }
 
     [Fact]
@@ -112,7 +115,7 @@ public sealed class CredentialGenerationTests(VaultFixture vault)
 
         await ProfileHttp.GenerateRecoveryCodesAsync(owner);
 
-        Assert.Equal(1, SessionApi.PrincipalOf(vault, owner).GetSessionStampOrNull()!.CredentialGeneration);
+        Assert.Equal(Activated + 1, SessionApi.PrincipalOf(vault, owner).GetSessionStampOrNull()!.CredentialGeneration);
         Assert.NotEqual(original.GetSessionId(), SessionApi.PrincipalOf(vault, owner).GetSessionId());
         Assert.Equal(HttpStatusCode.Unauthorized, (await copied.Client.GetAsync("/api/ui/me")).StatusCode);
         Assert.Equal(SessionApi.PrincipalOf(vault, owner).GetSessionId(), (await SessionApi.CurrentAsync(owner)).SessionId);
@@ -127,7 +130,7 @@ public sealed class CredentialGenerationTests(VaultFixture vault)
         await ProfileHttp.ResetAuthenticatorAsync(owner);
 
         Assert.Null(owner.SessionCookie);
-        Assert.Equal(1, (await ProfileHttp.AccountAsync(vault, "it-generation-reset")).CredentialGeneration);
+        Assert.Equal(Activated + 1, (await ProfileHttp.AccountAsync(vault, "it-generation-reset")).CredentialGeneration);
         Assert.Equal(HttpStatusCode.Unauthorized, (await copied.Client.GetAsync("/api/ui/me")).StatusCode);
     }
 
@@ -141,7 +144,7 @@ public sealed class CredentialGenerationTests(VaultFixture vault)
         await ProfileHttp.RegisterPasskeyAsync(owner, authenticator, "Generation key");
 
         var registered = SessionApi.PrincipalOf(vault, owner);
-        Assert.Equal(1, registered.GetSessionStampOrNull()!.CredentialGeneration);
+        Assert.Equal(Activated + 1, registered.GetSessionStampOrNull()!.CredentialGeneration);
         Assert.NotEqual(original.GetSessionId(), registered.GetSessionId());
         Assert.Equal(HttpStatusCode.OK, (await owner.Client.GetAsync("/api/ui/me")).StatusCode);
     }
@@ -159,7 +162,7 @@ public sealed class CredentialGenerationTests(VaultFixture vault)
         await ProfileHttp.RemovePasskeyAsync(owner, key.Id);
 
         var removed = SessionApi.PrincipalOf(vault, owner);
-        Assert.Equal(2, removed.GetSessionStampOrNull()!.CredentialGeneration);
+        Assert.Equal(Activated + 2, removed.GetSessionStampOrNull()!.CredentialGeneration);
         Assert.NotEqual(registered.GetSessionId(), removed.GetSessionId());
         Assert.Equal(HttpStatusCode.OK, (await owner.Client.GetAsync("/api/ui/me")).StatusCode);
     }
@@ -216,7 +219,7 @@ public sealed class CredentialGenerationTests(VaultFixture vault)
             new { credential = authenticator.Assert(options.GetProperty("publicKey")) });
 
         Assert.Equal(HttpStatusCode.OK, result.StatusCode);
-        Assert.Equal(2, SessionApi.PrincipalOf(vault, pending).GetSessionStampOrNull()!.CredentialGeneration);
+        Assert.Equal(Activated + 2, SessionApi.PrincipalOf(vault, pending).GetSessionStampOrNull()!.CredentialGeneration);
         Assert.Equal(HttpStatusCode.OK, (await pending.Client.GetAsync("/api/ui/me")).StatusCode);
     }
 

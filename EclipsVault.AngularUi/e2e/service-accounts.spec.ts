@@ -5,13 +5,11 @@ import { test, expect } from './fixtures';
 import { ServiceAccounts } from './service-accounts';
 import { ServiceAccountCreation } from './service-account-creation';
 import { ServiceAccount } from './service-account';
+import { signInNewAccount } from './account-activation';
 import { AccountCreation } from './account-creation';
-import { AccountSignIn } from './account-sign-in';
-import { AuthenticatorEnrollment } from './authenticator-enrollment';
 import { freshTotp, currentTotpStep } from './totp';
 import { AccountAdministrationActivity } from './account-administration-activity';
 import { savedAdministratorCookies } from './administrator-cookies';
-import { clearSignInBudget } from './profile-state';
 
 test.describe.configure({ mode: 'serial' });
 let administratorCookies: Awaited<ReturnType<BrowserContext['cookies']>> = [];
@@ -251,16 +249,10 @@ test('a non-administrator reaches Denied from every service-account bookmark', a
   const password = `E2e-${randomBytes(24).toString('hex')}`;
   const creation = new AccountCreation(page);
   await creation.open();
-  await creation.createMailboxOwner('e2e-sa-reader', password);
-  await expect(page).toHaveURL(/\/Admin\/Users$/);
-  // A first sign-in spends three requests of the proxy's one shared credential budget.
-  clearSignInBudget();
+  await creation.createMailboxOwner('e2e-sa-reader');
+  await expect(creation.status).toContainText('Invitation sent to');
   const reader = await (await browserHealth.newContext()).newPage();
-  const signIn = new AccountSignIn(reader);
-  await signIn.open();
-  await signIn.submitPassword('e2e-sa-reader', password);
-  const enrollment = new AuthenticatorEnrollment(reader);
-  await enrollment.confirm(await freshTotp(await enrollment.secret.innerText()));
+  await signInNewAccount(reader, 'e2e-sa-reader', password);
   await expect(reader).toHaveURL(/\/Secrets$/);
   await reader.goto('/ServiceAccounts');
   await expect(reader).toHaveURL(/\/Account\/Denied/);

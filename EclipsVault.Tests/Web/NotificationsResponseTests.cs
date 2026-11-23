@@ -61,7 +61,6 @@ public sealed class NotificationsResponseTests
         public Task NotifySensitiveChangeAsync(string trustedAddress, ProfileOperationKind kind, CancellationToken ct) => throw new NotSupportedException();
         public Task NotifyPasswordChangedAsync(Guid userId, CancellationToken ct) => throw new NotSupportedException();
         public Task NotifyCredentialChangedAsync(Guid userId, ProfileOperationKind kind, CancellationToken ct) => throw new NotSupportedException();
-        public Task NotifyUserProvisionedAsync(string email, string displayName, string username, CancellationToken ct) => throw new NotSupportedException();
         public Task<bool> NotifyExpiringSecretAsync(Guid ownerUserId, string secretName, DateTimeOffset expiresAtUtc, CancellationToken ct) => throw new NotSupportedException();
     }
 }

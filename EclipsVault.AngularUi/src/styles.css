@@ -3615,6 +3615,29 @@ fieldset {
 #users-table .cell-actions > app-row-menu {
   margin-left: 0.4rem;
 }
+/* An invitation's pill carries its expiry, too long to stay on one line in a phone's row card. */
+#users-table .badge,
+.invitation-panel .badge {
+  white-space: normal;
+}
+.invitation-panel fieldset {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.invitation-address {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  width: 100%;
+}
+.invitation-address .field {
+  flex: 1 1 15rem;
+  min-width: 0;
+  margin-bottom: 0;
+}
 
 /* ---- Sign-in pages -------------------------------------------------------- */
 /* Centered single-card layout on the solid canvas, both themes as equals. */
@@ -3985,6 +4008,11 @@ fieldset {
   border-radius: var(--radius);
   margin: 0 auto 1rem;
   image-rendering: pixelated;
+}
+/* Activation names the account it activates; the username is shown, not chosen. */
+.activation-card input[readonly] {
+  background: var(--bg-inset);
+  color: var(--text-secondary);
 }
 .totp-manual-label {
   margin: 0 0 0.45rem;

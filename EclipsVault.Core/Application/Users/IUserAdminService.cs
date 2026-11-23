@@ -14,18 +14,23 @@ public sealed record UserSummaryDto(
     bool IsDisabled,
     bool IsLockedOut,
     bool HasCustomAvatar,
-    DateTimeOffset CreatedAtUtc);
+    DateTimeOffset CreatedAtUtc,
+    bool AwaitingActivation,
+    DateTimeOffset? InvitationExpiresAtUtc);
 
 public sealed record CreateUserRequest(
     string Username,
     string FirstName,
     string LastName,
-    string Password,
+    string Email,
     ClearanceLevel Clearance,
     string ProjectKey);
 
-/// <summary>Result of provisioning, including the email address generated for the account.</summary>
-public sealed record CreatedUserDto(Guid Id, string Username, string Email, string DisplayName);
+/// <summary>Result of provisioning: the invited account and whether its invitation went out.</summary>
+public sealed record CreatedUserDto(Guid Id, string Username, string Email, string DisplayName, SentInvitationDto Invitation);
+
+/// <summary>Outcome of issuing or resending an account invitation after it has committed.</summary>
+public sealed record SentInvitationDto(bool Delivered, DateTimeOffset ExpiresAtUtc);
 
 /// <summary>
 /// Administrative user lifecycle: provisioning, role and access control, MFA reset,
@@ -36,12 +41,34 @@ public sealed record CreatedUserDto(Guid Id, string Username, string Email, stri
 /// </summary>
 public interface IUserAdminService
 {
+    /// <summary>True when real SMTP delivery and a valid <c>Identity:PublicUrl</c> are both configured.</summary>
+    bool InvitationsAvailable { get; }
+
+    /// <summary>
+    /// Every account. <see cref="UserSummaryDto.InvitationExpiresAtUtc"/> is set only while the account's
+    /// invitation can still activate it.
+    /// </summary>
     Task<IReadOnlyList<UserSummaryDto>> ListAsync(CancellationToken ct);
 
     Task<UserSummaryDto?> GetAsync(Guid userId, CancellationToken ct);
 
-    /// <summary>Provisions a user, auto-generating a unique <c>first.last.N@domain</c> email.</summary>
+    /// <summary>
+    /// Provisions an account awaiting activation at the person's own email, commits it with its invitation
+    /// and <see cref="AuditAction.UserCreated"/>, then delivers the link through the unrecorded mail path.
+    /// </summary>
     Task<CreatedUserDto> CreateAsync(CreateUserRequest request, CancellationToken ct);
+
+    /// <summary>
+    /// Replaces the invitation token for an account awaiting activation, commits <see cref="AuditAction.InvitationSent"/>,
+    /// then delivers the link to the stored address through the unrecorded mail path.
+    /// </summary>
+    Task<SentInvitationDto?> ResendInvitationAsync(Guid userId, CancellationToken ct);
+
+    /// <summary>
+    /// Replaces the stored email address of an account awaiting activation, spends any live invitation
+    /// token, and commits <see cref="AuditAction.InvitationAddressReplaced"/> in one transaction. Sends no mail.
+    /// </summary>
+    Task<string?> ReplaceInvitationAddressAsync(Guid userId, string email, CancellationToken ct);
 
     /// <summary>Changes a user's clearance and project assignment, ending the user's sessions.</summary>
     Task<bool> SetRoleAsync(Guid userId, ClearanceLevel clearance, string projectKey, CancellationToken ct);

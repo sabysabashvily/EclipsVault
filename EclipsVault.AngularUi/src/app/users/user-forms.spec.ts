@@ -12,15 +12,25 @@ const clearances = [
   { value: 1, label: 'Standard' },
   { value: 4, label: 'Top Secret' },
 ];
-const metadata = { emailDomain: 'configured.example.test', clearances };
+const metadata = { clearances, invitationsAvailable: true };
 const details = {
   userId: id,
   username: 'ada',
   displayName: 'Ada Saved',
+  email: 'ada@example.test',
   clearance: 1,
   project: 'OPS',
   isYou: false,
+  isDisabled: false,
   clearances,
+  awaitingActivation: false,
+  invitationExpiresAtUtc: null as string | null,
+  invitationsAvailable: true,
+};
+const invited = {
+  ...details,
+  awaitingActivation: true,
+  invitationExpiresAtUtc: '2099-11-26T14:30:00Z',
 };
 
 function button(page: ParentNode, name: string): HTMLButtonElement {
@@ -72,7 +82,13 @@ const newForm: FormCase = {
   failure: 'Could not load new user. Try again.',
   firstLabel: 'First name',
   signInUrl: '/Account/Login?ReturnUrl=%2FAdmin%2FCreateUser',
-  successBody: { userId: id, username: 'ada', email: 'ada.saved.1@configured.example.test' },
+  successBody: {
+    userId: id,
+    username: 'ada',
+    email: 'ada@example.test',
+    invitation: 'sent',
+    expiresAtUtc: '2026-11-25T12:00:00+00:00',
+  },
 };
 const editForm: FormCase = {
   name: 'Edit user',
@@ -241,67 +257,252 @@ describe.each([newForm, editForm])('$name', (form) => {
     expect(page.querySelector('.flash-error')?.textContent).toBe('Confirm again.');
     expect(code.value).toBe('');
   });
-
-  it('a successful write returns to Users', async () => {
-    const { fixture, page, navigate } = await loaded(form);
-    submit(page);
-    backend.expectOne(write).flush(form.successBody);
-    await fixture.whenStable();
-    expect(navigate).toHaveBeenCalledExactlyOnceWith('/Admin/Users');
-  });
 });
 
 describe('New user fields', () => {
-  it('uses the configured domain and preserves field order, labels and initial values', async () => {
+  it('asks for the email in place of a password and preserves field order, labels and initial values', async () => {
     const { page } = await loaded(newForm);
-    expect(page.textContent).toContain('firstname.lastname.N@configured.example.test');
     expect(
       [...page.querySelectorAll('section form label')].map((label) => label.textContent),
-    ).toEqual([
-      'First name',
-      'Last name',
-      'Username',
-      'Initial password',
-      'Clearance level',
-      'Project key',
-    ]);
+    ).toEqual(['First name', 'Last name', 'Username', 'Email', 'Clearance level', 'Project key']);
+    expect(page.textContent).toContain(
+      'The invitation goes here. They choose their own password and set up their authenticator.',
+    );
+    expect(page.querySelector('input[type="password"]')).toBeNull();
     expect(page.querySelector('select')?.value).toBe('1');
     expect(input(page, 'firstName').placeholder).toBe('Saba');
     expect(input(page, 'lastName').placeholder).toBe('Sabashvili');
   });
-  it('debounces breach feedback, shows strength and discards an obsolete verdict', async () => {
-    const { fixture, page } = await loaded(newForm);
-    vi.useFakeTimers();
-    fill(page, 'password', 'Different-Password-456!');
-    fixture.detectChanges();
-    vi.advanceTimersByTime(399);
-    backend.expectNone('/api/ui/passwords/check-breached');
-    vi.advanceTimersByTime(1);
-    const preview = backend.expectOne('/api/ui/passwords/check-breached');
-    expect(preview.request.body).toEqual({ password: 'Different-Password-456!' });
-    preview.flush({ compromised: true });
-    fixture.detectChanges();
-    expect(page.textContent).toContain('This password has appeared in known data breaches');
-    expect(page.textContent).toContain('Very strong');
-    submit(page);
-    backend.expectNone(newForm.write);
-    fill(page, 'password', 'short');
-    fixture.detectChanges();
-    expect(page.textContent).toContain('Too short — 7 more characters needed');
-    expect(page.textContent).not.toContain('This password has appeared in known data breaches');
-    vi.useRealTimers();
-  });
-  it('clears the plaintext password when the session ends', async () => {
-    const { fixture, page } = await loaded(newForm);
-    fill(page, 'password', 'Different-Password-456!');
-    document.dispatchEvent(new Event('vault-session-ended'));
+
+  it.each([
+    ['sent', '[role="status"]', 'Invitation sent to ada@example.test. It expires in 72 hours.'],
+    [
+      'not_delivered',
+      '[role="alert"]',
+      "The account was created, but the invitation could not be delivered. Resend it from the user's page.",
+    ],
+  ])(
+    'posts the email and shows the %s outcome in place of the form',
+    async (invitation, region, message) => {
+      const { fixture, page, navigate } = await loaded(newForm);
+      fill(page, 'firstName', 'Ada');
+      fill(page, 'lastName', 'Lovelace');
+      fill(page, 'username', 'ada');
+      fill(page, 'email', 'ada@example.test');
+      fill(page, 'project', 'OPS');
+      submit(page);
+      const create = backend.expectOne(newForm.write);
+      expect(create.request.body).toEqual({
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        username: 'ada',
+        email: 'ada@example.test',
+        clearance: 1,
+        project: 'OPS',
+      });
+      create.flush({ ...newForm.successBody, invitation });
+      await fixture.whenStable();
+      expect(page.querySelector('section form')).toBeNull();
+      expect(page.querySelector(region)?.textContent?.trim()).toBe(message);
+      expect(navigate).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe('New user without invitations', () => {
+  it('explains what invitations need and keeps the form from submitting', async () => {
+    const { fixture, page } = render(newForm);
+    backend.expectOne(newForm.read).flush({ ...metadata, invitationsAvailable: false });
     await fixture.whenStable();
-    expect(input(page, 'password').value).toBe('');
+    expect(
+      page.querySelector('.notice[role="status"]')?.textContent?.replace(/\s+/g, ' ').trim(),
+    ).toBe(
+      "Invitations need email delivery and the vault's public address (Identity:PublicUrl). Configure both to add accounts.",
+    );
     expect(page.querySelector('fieldset')?.disabled).toBe(true);
+  });
+  it('shows no notice when invitations are available', async () => {
+    const { page } = await loaded(newForm);
+    expect(page.querySelector('.notice')).toBeNull();
+    expect(page.querySelector('fieldset')?.disabled).toBe(false);
+  });
+});
+
+describe('Edit user invitation', () => {
+  async function invitedPage() {
+    const rendered = render(editForm);
+    backend.expectOne(editForm.read).flush(invited);
+    await rendered.fixture.whenStable();
+    const panel = rendered.page.querySelector<HTMLElement>('#invitation');
+    if (!panel) throw new Error('No invitation panel');
+    return { ...rendered, panel };
+  }
+  function openDialog(page: ParentNode): Element {
+    const dialog = page.querySelector('dialog[open]');
+    if (!dialog) throw new Error('No open dialog');
+    return dialog;
+  }
+  function replaceWith(panel: HTMLElement, email: string): void {
+    fill(panel, 'invitation-email', email);
+    panel.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true }));
+  }
+
+  it('is absent for an active account', async () => {
+    const { page } = await loaded(editForm);
+    expect(page.querySelector('#invitation')).toBeNull();
+  });
+  it('is absent for a disabled invited account', async () => {
+    const { fixture, page } = render(editForm);
+    backend.expectOne(editForm.read).flush({ ...invited, isDisabled: true });
+    await fixture.whenStable();
+    expect(page.querySelector('#invitation')).toBeNull();
+  });
+  it('shows the status pill, the stored address and both actions', async () => {
+    const { panel } = await invitedPage();
+    expect(panel.querySelector('h2')?.textContent).toBe('Invitation');
+    expect(panel.textContent).toContain('Invited · expires 26 Nov 2099, 14:30 UTC');
+    expect(panel.textContent).toContain('Sent to ada@example.test.');
+    expect(input(panel, 'invitation-email').value).toBe('ada@example.test');
+    expect(button(panel, 'Resend invitation').type).toBe('button');
+    expect(button(panel, 'Replace address').type).toBe('submit');
+  });
+  it('says an expired invitation in words', async () => {
+    const { fixture, page } = render(editForm);
+    backend.expectOne(editForm.read).flush({ ...invited, invitationExpiresAtUtc: null });
+    await fixture.whenStable();
+    expect(page.querySelector('#invitation')?.textContent).toContain('Invitation expired');
+  });
+  it('without mail delivery explains why in place of Resend and keeps Replace address', async () => {
+    const { fixture, page } = render(editForm);
+    backend.expectOne(editForm.read).flush({ ...invited, invitationsAvailable: false });
+    await fixture.whenStable();
+    const panel = page.querySelector('#invitation');
+    if (!panel) throw new Error('No invitation panel');
+    expect(
+      panel.querySelector('.notice[role="status"]')?.textContent?.replace(/\s+/g, ' ').trim(),
+    ).toBe(
+      "Invitations need email delivery and the vault's public address (Identity:PublicUrl). Configure both to add accounts.",
+    );
+    expect(panel.textContent).not.toContain('Resend invitation');
+    expect(button(panel, 'Replace address').disabled).toBe(false);
+    expect(page.querySelector('dialog[open]')).toBeNull();
+    backend.expectNone(`/api/ui/users/${id}/invitation`);
+  });
+  it('Resend confirms, writes, announces and reloads', async () => {
+    const { fixture, page, panel } = await invitedPage();
+    button(panel, 'Resend invitation').click();
+    await fixture.whenStable();
+    const dialog = openDialog(page);
+    expect(dialog.textContent).toContain(
+      'Send a new invitation to ada@example.test? The previous link stops working.',
+    );
+    button(dialog, 'Resend invitation').click();
+    backend
+      .expectOne({ method: 'POST', url: `/api/ui/users/${id}/invitation` })
+      .flush({ invitation: 'sent', expiresAtUtc: '2099-11-27T14:30:00Z' });
+    fixture.detectChanges();
+    backend.expectOne(editForm.read).flush(invited);
+    await fixture.whenStable();
+    expect(page.querySelector('.flash-success')?.textContent).toBe(
+      'Invitation sent to ada@example.test. It expires in 72 hours.',
+    );
+  });
+  it('Replace asks with the decided sentence, sends no link and tells the administrator to resend', async () => {
+    const { fixture, page, panel } = await invitedPage();
+    replaceWith(panel, '  grace@example.test ');
+    await fixture.whenStable();
+    const dialog = openDialog(page);
+    expect(dialog.textContent).toContain(
+      'Use grace@example.test for ada? The link already sent stops working. Resend to send a new one there.',
+    );
+    expect(dialog.querySelector('.dialog-note')?.textContent).toBe('Saved to the audit log');
+    button(dialog, 'Replace address').click();
+    const request = backend.expectOne({
+      method: 'POST',
+      url: `/api/ui/users/${id}/invitation-address`,
+    });
+    expect(request.request.body).toEqual({ email: 'grace@example.test' });
+    request.flush({ email: 'grace@example.test' });
+    fixture.detectChanges();
+    backend.expectOne(editForm.read).flush({ ...invited, email: 'grace@example.test' });
+    await fixture.whenStable();
+    backend.expectNone(`/api/ui/users/${id}/invitation`);
+    expect(page.querySelector('.flash-success')?.textContent).toBe(
+      'The invitation address is now grace@example.test. Resend the invitation to send a link there.',
+    );
+    expect(input(panel, 'invitation-email').value).toBe('grace@example.test');
+  });
+  it('cancelling Replace sends nothing', async () => {
+    const { fixture, page, panel } = await invitedPage();
+    replaceWith(panel, 'grace@example.test');
+    await fixture.whenStable();
+    button(openDialog(page), 'Cancel').click();
+    await fixture.whenStable();
+    backend.expectNone(`/api/ui/users/${id}/invitation-address`);
+  });
+  it('Replace asks for fresh proof, then retries once', async () => {
+    const { fixture, page, panel } = await invitedPage();
+    replaceWith(panel, 'grace@example.test');
+    await fixture.whenStable();
+    button(openDialog(page), 'Replace address').click();
+    backend
+      .expectOne(`/api/ui/users/${id}/invitation-address`)
+      .flush({ code: 'step_up_required', proof: 'code' }, { status: 403, statusText: 'Forbidden' });
+    await fixture.whenStable();
+    const proof = openDialog(page);
+    const code = proof.querySelector('input');
+    if (!code) throw new Error('No code field');
+    code.value = '123456';
+    code.dispatchEvent(new Event('input'));
+    submit(proof);
+    backend.expectOne('/api/ui/step-up').flush(null);
+    backend
+      .expectOne(`/api/ui/users/${id}/invitation-address`)
+      .flush({ email: 'grace@example.test' });
+    fixture.detectChanges();
+    backend.expectOne(editForm.read).flush(invited);
+    await fixture.whenStable();
+    expect(page.querySelector('.flash-success')?.textContent).toContain('grace@example.test');
+  });
+  it('cancelling Replace step-up returns focus to Replace address', async () => {
+    const { fixture, page, panel } = await invitedPage();
+    replaceWith(panel, 'grace@example.test');
+    await fixture.whenStable();
+    button(openDialog(page), 'Replace address').click();
+    backend
+      .expectOne(`/api/ui/users/${id}/invitation-address`)
+      .flush({ code: 'step_up_required', proof: 'code' }, { status: 403, statusText: 'Forbidden' });
+    await fixture.whenStable();
+    button(openDialog(page), 'Cancel').click();
+    await fixture.whenStable();
+    expect(document.activeElement).toBe(button(panel, 'Replace address'));
+  });
+  it('announces a refused address', async () => {
+    const { fixture, page, panel } = await invitedPage();
+    replaceWith(panel, 'taken@example.test');
+    await fixture.whenStable();
+    button(openDialog(page), 'Replace address').click();
+    backend
+      .expectOne(`/api/ui/users/${id}/invitation-address`)
+      .flush(
+        { code: 'email_taken', title: 'That email address cannot be used.' },
+        { status: 409, statusText: 'Conflict' },
+      );
+    await fixture.whenStable();
+    expect(page.querySelector('.flash-error')?.textContent).toBe(
+      'That email address cannot be used.',
+    );
   });
 });
 
 describe('Edit user fields', () => {
+  it('a successful write returns to Users', async () => {
+    const { fixture, page, navigate } = await loaded(editForm);
+    submit(page);
+    backend.expectOne(editForm.write).flush(editForm.successBody);
+    await fixture.whenStable();
+    expect(navigate).toHaveBeenCalledExactlyOnceWith('/Admin/Users');
+  });
   it('an unknown account shows User not found with Back to users', async () => {
     const { fixture, page } = render(editForm);
     backend

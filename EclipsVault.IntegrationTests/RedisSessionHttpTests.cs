@@ -61,7 +61,7 @@ public sealed class RedisSessionHttpTests(RedisVaultFixture fixture)
         Assert.Equal(HttpStatusCode.OK, (await owner.Client.GetAsync("/api/ui/me")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await copied.Client.GetAsync("/api/ui/me")).StatusCode);
         var account = await ProfileHttp.AccountAsync(fixture.Vault, "it-redis-uncommitted");
-        Assert.Equal(0, account.CredentialGeneration);
+        Assert.Equal(owner.ProfileOwner!.Stored.CredentialGeneration, account.CredentialGeneration);
         Assert.True(fixture.Vault.Services.GetRequiredService<IPasswordHasher>().Verify(password, account.PasswordHash, account.PasswordSalt));
     }
 
@@ -97,7 +97,8 @@ public sealed class RedisSessionHttpTests(RedisVaultFixture fixture)
             Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
             Assert.Equal("changed_sign_in_required", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
             Assert.Null(owner.SessionCookie);
-            Assert.Equal(1, (await ProfileHttp.AccountAsync(fixture.Vault, "it-redis-committed")).CredentialGeneration);
+            Assert.Equal(owner.ProfileOwner!.Stored.CredentialGeneration + 1,
+                (await ProfileHttp.AccountAsync(fixture.Vault, "it-redis-committed")).CredentialGeneration);
         }
         finally
         {

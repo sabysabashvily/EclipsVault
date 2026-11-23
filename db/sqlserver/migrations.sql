@@ -1355,3 +1355,112 @@ GO
 COMMIT;
 GO
 
+BEGIN TRANSACTION;
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261121194258_AddAccountInvitations'
+)
+BEGIN
+    ALTER TABLE [Users] ADD [AwaitingActivation] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261121194258_AddAccountInvitations'
+)
+BEGIN
+    CREATE TABLE [AccountInvitations] (
+        [Id] uniqueidentifier NOT NULL,
+        [UserId] uniqueidentifier NOT NULL,
+        [TokenHash] varbinary(32) NOT NULL,
+        [CreatedAtUtc] datetimeoffset NOT NULL,
+        [ExpiresAtUtc] datetimeoffset NOT NULL,
+        [SpentAtUtc] datetimeoffset NULL,
+        [PendingTotpSecret] nvarchar(128) NULL,
+        CONSTRAINT [PK_AccountInvitations] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_AccountInvitations_Users_UserId] FOREIGN KEY ([UserId]) REFERENCES [Users] ([Id]) ON DELETE CASCADE
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261121194258_AddAccountInvitations'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_AccountInvitations_TokenHash] ON [AccountInvitations] ([TokenHash]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261121194258_AddAccountInvitations'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_AccountInvitations_UserId] ON [AccountInvitations] ([UserId]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261121194258_AddAccountInvitations'
+)
+BEGIN
+    WITH [Candidates] AS (
+        SELECT u.[Id], u.[Username], u.[Clearance], u.[IsDisabled], u.[CreatedAtUtc]
+        FROM [Users] AS u
+        WHERE u.[TotpEnabled] = CAST(0 AS bit)
+          AND NOT EXISTS (
+              SELECT 1 FROM [PasskeyCredentials] AS p
+              WHERE p.[UserId] = u.[Id]
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM [AuditLogs] AS a
+              WHERE a.[Action] IN (11, 58)
+                AND (a.[UserId] = u.[Id] OR a.[ResourceId] = u.[Id])
+          )
+    ),
+    [Preserved] AS (
+        SELECT TOP (1) c.[Id]
+        FROM [Candidates] AS c
+        WHERE c.[Clearance] = 4
+          AND c.[IsDisabled] = CAST(0 AS bit)
+          AND NOT EXISTS (
+              SELECT 1
+              FROM [Users] AS ea
+              WHERE ea.[Clearance] = 4
+                AND ea.[IsDisabled] = CAST(0 AS bit)
+                AND NOT EXISTS (
+                    SELECT 1 FROM [Candidates] AS ec WHERE ec.[Id] = ea.[Id]
+                )
+          )
+        ORDER BY
+            CASE WHEN c.[Username] = N'vault-admin' THEN 0 ELSE 1 END,
+            c.[CreatedAtUtc] ASC,
+            c.[Id] ASC
+    )
+    UPDATE u
+    SET u.[AwaitingActivation] = CAST(1 AS bit),
+        u.[CredentialGeneration] = u.[CredentialGeneration] + 1,
+        u.[TotpSecret] = NULL,
+        u.[ConcurrencyStamp] = NEWID()
+    FROM [Users] AS u
+    WHERE EXISTS (SELECT 1 FROM [Candidates] AS c WHERE c.[Id] = u.[Id])
+      AND NOT EXISTS (SELECT 1 FROM [Preserved] AS p WHERE p.[Id] = u.[Id]);
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261121194258_AddAccountInvitations'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20261121194258_AddAccountInvitations', N'10.0.9');
+END;
+GO
+
+COMMIT;
+GO
+

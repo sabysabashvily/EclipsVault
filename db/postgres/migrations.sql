@@ -867,3 +867,99 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261121194306_AddAccountInvitations') THEN
+    ALTER TABLE "Users" ADD "AwaitingActivation" boolean NOT NULL DEFAULT FALSE;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261121194306_AddAccountInvitations') THEN
+    CREATE TABLE "AccountInvitations" (
+        "Id" uuid NOT NULL,
+        "UserId" uuid NOT NULL,
+        "TokenHash" bytea NOT NULL,
+        "CreatedAtUtc" timestamp with time zone NOT NULL,
+        "ExpiresAtUtc" timestamp with time zone NOT NULL,
+        "SpentAtUtc" timestamp with time zone,
+        "PendingTotpSecret" character varying(128),
+        CONSTRAINT "PK_AccountInvitations" PRIMARY KEY ("Id"),
+        CONSTRAINT "FK_AccountInvitations_Users_UserId" FOREIGN KEY ("UserId") REFERENCES "Users" ("Id") ON DELETE CASCADE
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261121194306_AddAccountInvitations') THEN
+    CREATE UNIQUE INDEX "IX_AccountInvitations_TokenHash" ON "AccountInvitations" ("TokenHash");
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261121194306_AddAccountInvitations') THEN
+    CREATE UNIQUE INDEX "IX_AccountInvitations_UserId" ON "AccountInvitations" ("UserId");
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261121194306_AddAccountInvitations') THEN
+    WITH candidates AS (
+        SELECT u."Id", u."Username", u."Clearance", u."IsDisabled", u."CreatedAtUtc"
+        FROM "Users" AS u
+        WHERE NOT u."TotpEnabled"
+          AND NOT EXISTS (
+              SELECT 1 FROM "PasskeyCredentials" AS p
+              WHERE p."UserId" = u."Id"
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM "AuditLogs" AS a
+              WHERE a."Action" IN (11, 58)
+                AND (a."UserId" = u."Id" OR a."ResourceId" = u."Id")
+          )
+    ),
+    preserved AS (
+        SELECT c."Id"
+        FROM candidates AS c
+        WHERE c."Clearance" = 4
+          AND NOT c."IsDisabled"
+          AND NOT EXISTS (
+              SELECT 1
+              FROM "Users" AS ea
+              WHERE ea."Clearance" = 4
+                AND NOT ea."IsDisabled"
+                AND NOT EXISTS (
+                    SELECT 1 FROM candidates AS ec WHERE ec."Id" = ea."Id"
+                )
+          )
+        ORDER BY
+            CASE WHEN c."Username" = 'vault-admin' THEN 0 ELSE 1 END,
+            c."CreatedAtUtc" ASC,
+            c."Id" ASC
+        LIMIT 1
+    )
+    UPDATE "Users" AS u
+    SET "AwaitingActivation" = TRUE,
+        "CredentialGeneration" = u."CredentialGeneration" + 1,
+        "TotpSecret" = NULL,
+        "ConcurrencyStamp" = gen_random_uuid()
+    WHERE EXISTS (SELECT 1 FROM candidates AS c WHERE c."Id" = u."Id")
+      AND NOT EXISTS (SELECT 1 FROM preserved AS p WHERE p."Id" = u."Id");
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261121194306_AddAccountInvitations') THEN
+    INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+    VALUES ('20261121194306_AddAccountInvitations', '10.0.9');
+    END IF;
+END $EF$;
+COMMIT;
+

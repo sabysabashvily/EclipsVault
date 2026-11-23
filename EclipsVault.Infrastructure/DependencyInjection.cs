@@ -59,8 +59,7 @@ public static class DependencyInjection
         services.AddScoped<IStepUpService, StepUpService>();
         services.AddScoped<SecondFactorVerifier>();
 
-        services.AddSingleton(new UserDirectoryOptions(
-            configuration.GetValue<string?>("Identity:EmailDomain") ?? UserDirectoryOptions.Default.EmailDomain));
+        services.AddSingleton(new UserDirectoryOptions(configuration.GetValue<string?>("Identity:PublicUrl")));
 
         // Persistence — the audit interceptor rides inside every SaveChanges, stamping each
         // audit row into the tamper-evidence hash chain (one shared, serialized chain head).
@@ -116,6 +115,7 @@ public static class DependencyInjection
         services.AddScoped<IServiceAccountRepository, ServiceAccountRepository>();
         services.AddScoped<IServiceAccountChanges, ServiceAccountChanges>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IAccountInvitationRepository, AccountInvitationRepository>();
         services.AddScoped<IPasskeyCredentialRepository, PasskeyCredentialRepository>();
         services.AddScoped<IMfaRecoveryCodeRepository, MfaRecoveryCodeRepository>();
         services.AddScoped<IAccessRequestRepository, AccessRequestRepository>();
@@ -217,6 +217,7 @@ public static class DependencyInjection
         services.AddSingleton<ISsoAvailability, SsoAvailability>();
         services.AddSingleton<IEmailTransportStatus, EmailTransportStatus>();
         services.AddScoped<IUserAdminService, UserAdminService>();
+        services.AddScoped<IAccountActivationService, AccountActivationService>();
         services.AddScoped<IProfileService, ProfileService>();
         services.AddScoped<IMfaRecoveryService, MfaRecoveryService>();
         services.AddSingleton<CandidatePasswordHashing>();
@@ -227,6 +228,7 @@ public static class DependencyInjection
         services.AddScoped<IEmailVerificationSendLimits, EmailVerificationSendLimits>();
         services.AddSingleton<SmtpEmailSender>();
         services.AddSingleton<IEmailVerificationDelivery, EmailVerificationDelivery>();
+        services.AddSingleton<IAccountInvitationDelivery, AccountInvitationDelivery>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IActivityService, ActivityService>();
         services.AddScoped<ISignInHistoryService, SignInHistoryService>();
