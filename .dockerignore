@@ -15,6 +15,9 @@ EclipsVault.AngularUi/playwright-report/
 # Local dev secrets — must never enter an image
 **/appsettings.Development.json
 **/appsettings.*.Development.json
+# A filled deploy/production/.env holds the master key.
+**/.env
+**/.env.*
 
 # VCS / docs / tooling
 .git/

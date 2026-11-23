@@ -58,6 +58,9 @@ COPY --from=ui --chown=$APP_UID:$APP_UID /src/EclipsVault.Web/AngularUi ./Angula
 # The licence notices of every NuGet package published above. notices.py check keeps the file in
 # step with the SBOM; .github/notices/test-image.sh confirms it and the other notices are in the image.
 COPY --chown=$APP_UID:$APP_UID THIRD-PARTY-NOTICES.txt ./
+# The Data Protection key ring's mount point. A named volume mounted here takes this owner, so the
+# non-root vault can write keys to it (deploy/production/compose.yaml).
+RUN mkdir /keyring && chown "$APP_UID:$APP_UID" /keyring
 USER $APP_UID
 
 ENV ASPNETCORE_HTTP_PORTS=8080
