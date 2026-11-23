@@ -1,0 +1,9 @@
+{
+	admin off
+}
+
+# Caddy obtains and renews the certificate for this name, redirects HTTP to HTTPS, and replaces any
+# X-Forwarded-For a client sends with the address it actually sees.
+{$EV_DOMAIN} {
+	reverse_proxy vault:8080
+}

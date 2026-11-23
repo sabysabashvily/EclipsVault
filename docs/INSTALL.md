@@ -4,6 +4,81 @@ EclipsVault is self-hosted: you run it in your own environment, hold your own ke
 own database and backups. This is the whole security model — the vendor never has access to your
 secrets or your servers. This guide is the production runbook; for feature detail see the README.
 
+## Quickest path: the reference deployment
+
+[`deploy/production/`](../deploy/production/) runs the whole vault on one Linux host with Docker
+Compose: Caddy in front with automatic HTTPS, the vault, and PostgreSQL 17. It is the quickest
+supported way to install, and the numbered sections below explain each setting it makes for you.
+It is a single node: for more replicas, build your own deployment from those sections.
+
+What it sets up:
+
+- Caddy obtains and renews a certificate for your host name and is the only proxy the vault trusts
+  for the client's address (`ForwardedHeaders__KnownProxies`), so sign-in throttling, network rules
+  and the audit trail see the real client.
+- PostgreSQL keeps its data in a named volume. The vault signs in as its own login,
+  `eclipsvault_app`, not as the superuser, and applies its own migrations at startup
+  (`Database__MigrateOnStartup`), so that login owns the database.
+- The Data Protection key ring lives in a named volume, sealed with the master key.
+
+### Install
+
+1. Point a DNS record for the vault's host name at the host, and let ports 80 and 443 reach it:
+   Caddy needs both to obtain the certificate.
+2. Verify the release image and note its digest ([`VERIFYING.md`](VERIFYING.md)).
+3. Copy `deploy/production/` to the host, and in that folder:
+
+       cp .env.example .env
+       chmod 600 .env
+
+4. Replace every `<placeholder>` in `.env`. Each line says how to generate its value. `.env` holds
+   the master key and the audit signing key: keep a copy of both in your secret manager, never
+   beside a backup (see [`BACKUP_AND_RECOVERY.md`](BACKUP_AND_RECOVERY.md)).
+5. Start it:
+
+       docker compose up -d
+
+   `docker compose logs vault` shows startup; the vault waits for PostgreSQL, applies its
+   migrations and creates `vault-admin`.
+
+### First sign-in
+
+Open `https://<your host name>/` and sign in as `vault-admin` with the password you put in
+`Seed__AdminPassword`, then enroll an authenticator. Then empty the `Seed__AdminPassword=` line in
+`.env` and recreate the vault without it:
+
+    docker compose up -d
+
+Adding accounts sends invitations, which need email delivery. Add your SMTP settings (`Email__*`) to
+the vault's `environment` in `compose.yaml`; `Identity__PublicUrl` is already set to your host name.
+
+### Back up
+
+Back up the database and the key ring together, into your encrypted backup; never put `.env` there.
+From the `deploy/production/` folder:
+
+    docker compose exec -T db pg_dump --username=postgres --format=custom eclipsvault > eclipsvault.dump
+    docker compose exec -T vault tar -C /keyring -cf - . > keyring.tar
+
+To restore onto a new host, install as above with the same `.env`, but before the first
+`docker compose up -d`:
+
+    docker compose up -d --wait db
+    docker compose exec -T db pg_restore --username=postgres --dbname=eclipsvault --clean --if-exists --exit-on-error < eclipsvault.dump
+    docker compose run --rm -T --no-deps --entrypoint tar vault -C /keyring -xf - < keyring.tar
+    docker compose up -d
+
+### Upgrade
+
+Back up first. Then verify the new release image, set `EV_IMAGE` in `.env` to its digest, read that
+release's upgrade notes (sections 8 and 9), and run:
+
+    docker compose up -d
+
+The vault applies the new release's migrations as it starts. To move Caddy or PostgreSQL to a newer
+image, change the digest in `compose.yaml` the same way. A new major PostgreSQL version needs a dump
+and restore, not just a new image.
+
 ## 1. Prerequisites
 
 - A database, which you provide: EclipsVault ships no database. We recommend PostgreSQL 17 or

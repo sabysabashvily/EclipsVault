@@ -19,6 +19,7 @@ appsettings.Local.json
 appsettings.*.Local.json
 .env
 .env.*
+!/deploy/production/.env.example
 *.pfx
 *.key
 secrets.json
