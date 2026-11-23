@@ -149,6 +149,17 @@ function millisecondsUntilMailboxSendAllowed(): number {
 }
 
 /**
+ * Deletes earlier projects' mailbox send records so the shared proxy address starts Profile's
+ * mailbox scenarios with a full budget, leaving the profile account's own rows intact.
+ */
+export function clearOtherAccountsMailboxSends(): void {
+  database(
+    'SET NOCOUNT ON; DELETE FROM EmailVerificationSends ' +
+      `WHERE AccountId <> (SELECT Id FROM Users WHERE Username = '${profileUsername}');`,
+  );
+}
+
+/**
  * Deletes this run's sign-in counters so the shared proxy address starts the scenario with a full
  * budget. The key is the instance name glued to "auth-throttle", which is how the vault builds it.
  */

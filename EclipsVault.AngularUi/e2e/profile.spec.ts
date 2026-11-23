@@ -13,6 +13,7 @@ import { AuthenticatorEnrollment } from './authenticator-enrollment';
 import { openPalette } from './palette';
 import { avatarImage, ChangePasswordPage, freshProfileTotp, ProfilePage } from './profile';
 import {
+  clearOtherAccountsMailboxSends,
   expireProfileOperation,
   expireMailboxCode,
   expireAccountGrant,
@@ -423,6 +424,9 @@ test('a real SMTP mailbox code activates the address only after Profile confirma
   await copied.addCookies(ownerCookies);
   const profile = new ProfilePage(page);
   await profile.open();
+  // The preceding mailbox project shares the proxy address; clear only its send rows so Profile
+  // exercises its own rolling-minute budget cleanly.
+  clearOtherAccountsMailboxSends();
   const original = await profile.email.inputValue();
   await profile.newEmail.fill('e2e-profile-confirmed@example.test');
   await page.getByRole('button', { name: 'Change email', exact: true }).click();
