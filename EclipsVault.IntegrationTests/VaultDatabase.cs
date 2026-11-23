@@ -56,7 +56,8 @@ internal abstract class VaultDatabase : IAsyncDisposable
     /// </summary>
     public async Task<string> StartPostgresDynamicTargetAsync()
     {
-        _postgresTarget = NewPostgresContainer("postgres-target");
+        _postgresTarget = NewPostgresContainer("postgres-target",
+            Environment.GetEnvironmentVariable(PostgresTargetImageVariable) ?? PostgresShareIssuerBackfill.PostgresImage);
         await _postgresTarget.StartAsync();
         var password = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
         await using (var server = new NpgsqlConnection(_postgresTarget.GetConnectionString()))
@@ -125,7 +126,13 @@ internal abstract class VaultDatabase : IAsyncDisposable
         return new SqlConnectionStringBuilder(serverConnectionString) { InitialCatalog = DynamicTargetDatabase }.ConnectionString;
     }
 
-    protected static PostgreSqlContainer NewPostgresContainer(string engine) => new PostgreSqlBuilder(PostgresShareIssuerBackfill.PostgresImage)
+    /// <summary>
+    /// Runs the PostgreSQL dynamic-secret target on another image than the pinned PostgreSQL 17, to prove the
+    /// revocation on another version (PostgreSQL 18 lists a connection before it records its role).
+    /// </summary>
+    public const string PostgresTargetImageVariable = "ECLIPSVAULT_TEST_POSTGRES_TARGET_IMAGE";
+
+    protected static PostgreSqlContainer NewPostgresContainer(string engine, string image = PostgresShareIssuerBackfill.PostgresImage) => new PostgreSqlBuilder(image)
         .WithName(ContainerName(engine))
         .WithPassword(Convert.ToHexString(RandomNumberGenerator.GetBytes(16)))
         .Build();

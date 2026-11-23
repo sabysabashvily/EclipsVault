@@ -75,7 +75,7 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
     }
 
     [Fact]
-    public async Task Handing_back_a_role_that_created_a_table_drops_the_role_and_gives_the_table_to_the_targets_login()
+    public async Task Handing_back_a_role_that_owns_a_table_fails_with_a_critical_row_and_keeps_the_table_as_it_was()
     {
         var roleId = await PostgresDynamicTarget.AddRoleAsync(vault, "it_pg_owner", creation: """
             CREATE ROLE "{{name}}" LOGIN PASSWORD '{{password}}' IN ROLE pg_read_all_data;
@@ -83,19 +83,29 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
             """);
         var admin = await vault.AdminClientAsync();
         var (username, password) = await DynamicSecretsApi.IssuedCredentialAsync(await DynamicSecretsApi.IssueAsync(admin, roleId));
-        await using (var session = await PostgresDynamicTarget.SignInAsync(vault, username, password))
+        await using var session = await PostgresDynamicTarget.SignInAsync(vault, username, password);
+        await using (var create = new Npgsql.NpgsqlCommand("CREATE TABLE it_pg_owned (id int)", session))
         {
-            await using var create = new Npgsql.NpgsqlCommand("CREATE TABLE it_pg_owned (id int)", session);
             await create.ExecuteNonQueryAsync();
         }
-        Assert.Equal(username, await PostgresDynamicTarget.TableOwnerAsync(vault, "it_pg_owned"));
         var lease = Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
+        var before = await AuditTrail.HeadAsync(vault);
+        try
+        {
+            using var revoked = await DynamicSecretsApi.RevokeAsync(admin, lease.Id);
 
-        using var revoked = await DynamicSecretsApi.RevokeAsync(admin, lease.Id);
-
-        Assert.Equal("Revoked", (await DynamicSecretsApi.JsonAsync(revoked)).GetProperty("status").GetString());
-        Assert.Empty(await PostgresDynamicTarget.RolesOfRoleAsync(vault, "it_pg_owner"));
-        Assert.Equal("eclipsvault_credmgr", await PostgresDynamicTarget.TableOwnerAsync(vault, "it_pg_owned"));
+            Assert.Equal("RevocationFailed", (await DynamicSecretsApi.JsonAsync(revoked)).GetProperty("status").GetString());
+            var failure = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before), row => row.ResourceId == lease.Id);
+            Assert.Equal((AuditAction.DynamicCredentialRevocationFailed, true), (failure.Action, failure.IsCritical));
+            Assert.Equal(username, await PostgresDynamicTarget.TableOwnerAsync(vault, "it_pg_owned"));
+            Assert.False(await PostgresDynamicTarget.StillWorksAsync(session));
+            Assert.False(await PostgresDynamicTarget.CanSignInAsync(vault, username));
+        }
+        finally
+        {
+            // What an operator does once they have decided the table can go.
+            await PostgresDynamicTarget.DropRoleAndWhatItOwnsAsync(vault, username);
+        }
     }
 
     [Fact]
@@ -162,7 +172,7 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
         var lease = Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
         // Held for up to three seconds, within the seven revocation waits here: authentication_timeout's two plus five of margin.
         var signingIn = PostgresDynamicTarget.StartSigningInAsync(vault, username, password, TimeSpan.FromSeconds(3));
-        await PostgresDynamicTarget.WaitForUnlistedStartupAsync(vault);
+        await PostgresDynamicTarget.WaitForStartupWithoutRoleAsync(vault);
 
         using var revoked = await DynamicSecretsApi.RevokeAsync(admin, lease.Id);
 
@@ -178,7 +188,7 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
         var admin = await vault.AdminClientAsync();
         var (username, password) = await DynamicSecretsApi.IssuedCredentialAsync(await DynamicSecretsApi.IssueAsync(admin, roleId));
         var signingIn = PostgresDynamicTarget.StartSigningInAsync(vault, username, password, TimeSpan.FromSeconds(10));
-        await PostgresDynamicTarget.WaitForUnlistedStartupAsync(vault);
+        await PostgresDynamicTarget.WaitForStartupWithoutRoleAsync(vault);
         // The vault's own backend, on a clock that has always run out, so the startup above is still unconfirmed.
         // The service closes a lease whose revocation throws as RevocationFailed with a critical row (see the refused revoke).
         var backend = new PostgresBackend(

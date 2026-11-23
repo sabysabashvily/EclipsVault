@@ -100,14 +100,18 @@ internal static class PostgresDynamicTarget
         return connection;
     }
 
-    /// <summary>Waits until the target holds a startup transaction whose process it does not list yet.</summary>
-    public static async Task WaitForUnlistedStartupAsync(VaultFixture vault)
+    /// <summary>
+    /// Waits until the target holds a startup transaction whose process shows no role yet: PostgreSQL 17 does
+    /// not list it, and PostgreSQL 18 lists it with a null <c>usesysid</c>.
+    /// </summary>
+    public static async Task WaitForStartupWithoutRoleAsync(VaultFixture vault)
     {
         await using var target = new NpgsqlConnection(ConnectionString(vault));
         await target.OpenAsync();
         await using var query = new NpgsqlCommand("""
             SELECT count(*) FROM pg_locks
-            WHERE locktype = 'virtualxid' AND granted AND pid NOT IN (SELECT pid FROM pg_stat_activity)
+            WHERE locktype = 'virtualxid' AND granted AND pid IS NOT NULL
+              AND NOT EXISTS (SELECT FROM pg_stat_activity a WHERE a.pid = pg_locks.pid AND a.usesysid IS NOT NULL)
             """, target);
         for (var attempt = 0; attempt < 100; attempt++)
         {
@@ -166,6 +170,16 @@ internal static class PostgresDynamicTarget
         await using var query = new NpgsqlCommand("SELECT tableowner FROM pg_tables WHERE tablename = @table", target);
         query.Parameters.AddWithValue("table", table);
         return await query.ExecuteScalarAsync() as string;
+    }
+
+    /// <summary>Drops a role a test left owning objects on purpose, with those objects and its grants.</summary>
+    public static async Task DropRoleAndWhatItOwnsAsync(VaultFixture vault, string role)
+    {
+        await using var target = new NpgsqlConnection(ConnectionString(vault));
+        await target.OpenAsync();
+        // The name is the vault's minted identity: letters, digits and underscores only.
+        await using var drop = new NpgsqlCommand($"""DROP OWNED BY "{role}"; DROP ROLE "{role}";""", target);
+        await drop.ExecuteNonQueryAsync();
     }
 
     /// <summary>Drops a role a test left on the target on purpose, so the next run starts clean.</summary>

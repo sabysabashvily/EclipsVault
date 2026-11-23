@@ -168,8 +168,9 @@ These hold by construction and are worth stating because they limit how bad a fa
     Server, `CREATEROLE` on PostgreSQL) — rights that can re-password principals on that instance.
     Those statements therefore run against a **separately configured target database** over its own
     connection (`DynamicSecrets:TargetConnectionString`, or `DynamicSecrets:PostgresTargetConnectionString`
-    for PostgreSQL roles), never over the vault's. A PostgreSQL target must also be a different server
-    from the vault's database, because a PostgreSQL role spans every database on its server. The privileged credential is
+    for PostgreSQL roles), never over the vault's. A PostgreSQL target must also be a distinct
+    PostgreSQL cluster from the vault's database, because roles and their catalogs span every database
+    in a cluster. The privileged credential is
     the target's, not the vault's, and the target can be — and normally should be — a different
     server entirely. If no target is configured, minting and rotation **refuse**; there is no
     fallback to the vault's connection, because a fallback would silently require the vault's own

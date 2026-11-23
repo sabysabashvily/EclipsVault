@@ -186,12 +186,12 @@ Those rights are why each target is a **separate connection string**:
   vault's database is almost never what you want, and it is not the default.
 - **Use a dedicated login on that server**, granted only `ALTER ANY LOGIN` (plus whatever your role
   statements need). Do not reuse `ConnectionStrings__DefaultConnection`.
-- **On PostgreSQL, the target must be a different server from the vault's database**, not just a
-  different database. A PostgreSQL role belongs to the whole server, every role may connect to every
-  database by default, and `pg_read_all_data` and `pg_write_all_data` reach every database: a lease on
-  the vault's own server could read or change the vault's data. If they must share a server, run
-  `REVOKE CONNECT ON DATABASE <vault database> FROM PUBLIC;` and grant `CONNECT` to the vault's login
-  only.
+- **On PostgreSQL, the target must be a distinct PostgreSQL cluster from the vault's database**, not
+  another database in the same cluster. Roles and the catalogs that hold them are shared by every
+  database in a cluster, and `pg_read_all_data` and `pg_write_all_data` reach every database: a lease
+  on the vault's own cluster could read or change the vault's data. Revoking `CONNECT` on the vault's
+  database does not separate them. The vault does not yet refuse a target on its own cluster, so this
+  is yours to keep.
 - **The PostgreSQL target must run PostgreSQL 16 or later.** Its login is set up like this, which the
   integration tests use:
 
@@ -201,22 +201,26 @@ Those rights are why each target is a **separate connection string**:
 
   `ADMIN` lets it grant the roles your recipes name (the sample recipes name those two), plus whatever
   else your role statements need. `createrole_self_grant` gives it the privileges of the roles it
-  creates, which revocation needs to end their sessions and run `REASSIGN OWNED`; without it every
-  lease lands in `RevocationFailed`. Through the roles it mints, this login can effectively read and
-  write every database on the target server, which is one more reason that server holds only what you
-  want managed.
-- **Revoke `CONNECT` from `PUBLIC` on the target server's other databases** (for example
-  `REVOKE CONNECT ON DATABASE postgres FROM PUBLIC;`). A minted role that creates something in another
-  database blocks its own `DROP ROLE`; the vault has already stopped it signing in, but the lease ends
-  in `RevocationFailed`.
+  creates, which revocation needs to end their sessions; without it every lease lands in
+  `RevocationFailed`. Through the roles it mints, this login can effectively read and write every
+  database on the target cluster, which is one more reason that cluster holds only what you want
+  managed.
+- **Minted roles are for existing objects.** The sample recipes read and write what is already there.
+  Revocation never moves, drops or re-grants anything a minted role owns or was granted directly, so
+  ownership never crosses to the target's login. If something still depends on the role (a table it
+  created, a privilege granted to it), its `DROP ROLE` fails and the lease lands in `RevocationFailed`
+  with a critical audit row; the role keeps its objects, cannot sign in, and has no sessions. Decide
+  what happens to those objects, then drop the role (below). Revoking `CONNECT` from `PUBLIC` on the
+  target cluster's other databases (for example `REVOKE CONNECT ON DATABASE postgres FROM PUBLIC;`)
+  keeps minted roles from creating objects there.
 - **Revoking a PostgreSQL credential ends its sessions before the role is dropped.** The vault turns the
   role's sign-in off, waits for any connection that was already starting up (one that passed the
   sign-in check just before is not yet listed in `pg_stat_activity`, but its startup holds a lock that
   `pg_locks` shows), ends the role's sessions, confirms none is left, and only then runs the role's
   statements and confirms the role is gone. It waits at most the target's `authentication_timeout` plus
   five seconds. If anything stays unconfirmed, the role stays in place, unable to sign in, and the lease
-  lands in `RevocationFailed` with a critical audit row: end any session of that role as a superuser
-  (`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = '<login>';`), then drop it.
+  lands in `RevocationFailed` with a critical audit row. Recover it as `docs/INCIDENT_RESPONSE.md`
+  describes: confirm the role has no sessions, settle what depends on it, then drop it.
 - **A PostgreSQL role's statements must double-quote `"{{name}}"`**: the minted name has capitals,
   which PostgreSQL folds to lower case when unquoted.
 - **A failing statement reaches the target's own log, password included**, because PostgreSQL logs a

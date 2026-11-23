@@ -213,20 +213,13 @@ public static class DbSeeder
         CREATE ROLE "{{name}}" LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}+00' IN ROLE pg_read_all_data, pg_write_all_data;
         """;
 
-    // Idempotent. The backend has already stopped the role signing in, so ending its sessions here
-    // ends them for good; anything the role created goes to the target's login, and its grants go,
-    // as DROP ROLE requires.
+    // Idempotent: ends the role's sessions, then drops it. It never moves or drops anything the role owns,
+    // and never revokes what it was granted: if anything still depends on the role, DROP ROLE fails, the
+    // lease ends in RevocationFailed, and an operator reconciles that before dropping it. The sample roles
+    // read and write existing objects, so nothing depends on them.
     public const string PostgresRevocation = """
-        DO $$
-        BEGIN
-            IF EXISTS (SELECT FROM pg_roles WHERE rolname = '{{name}}') THEN
-                PERFORM pg_terminate_backend(pid, 5000) FROM pg_stat_activity WHERE usename = '{{name}}';
-                REASSIGN OWNED BY "{{name}}" TO CURRENT_USER;
-                DROP OWNED BY "{{name}}";
-                DROP ROLE "{{name}}";
-            END IF;
-        END
-        $$;
+        SELECT pg_terminate_backend(pid, 5000) FROM pg_stat_activity WHERE usename = '{{name}}';
+        DROP ROLE IF EXISTS "{{name}}";
         """;
 
     /// <summary>

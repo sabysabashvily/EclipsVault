@@ -118,24 +118,25 @@ public sealed class PostgresBackend : IDynamicSecretBackend
     }
 
     /// <summary>
-    /// Waits until no connection that began starting up before sign-in was turned off is still invisible.
+    /// Waits until every connection that began starting up before sign-in was turned off shows its role.
     ///
-    /// PostgreSQL 17 checks a connection's right to sign in inside its startup transaction, and lists the
-    /// connection in <c>pg_stat_activity</c> only near that transaction's end. A client may also hold it
-    /// between the two with <c>post_auth_delay</c>. So a connection that passed the check before
-    /// <c>NOLOGIN</c> committed may not be listed yet. Every startup transaction holds its virtual
-    /// transaction lock, though, which <c>pg_locks</c> shows with its process id. This samples those locks
-    /// once, then the activity, and follows each lock whose process was not listed until the lock is released
-    /// (its startup ended, so it is listed by now or gone) or the process is listed. Locks taken later belong
-    /// to connections that check sign-in after <c>NOLOGIN</c> committed, so they are not followed, and listed
-    /// sessions are never waited on.
+    /// PostgreSQL checks a connection's right to sign in inside its startup transaction, and records the
+    /// connection's role in <c>pg_stat_activity</c> only near that transaction's end: PostgreSQL 17 lists
+    /// the connection only then, and PostgreSQL 18 lists it earlier with no role (<c>usesysid</c> null). A
+    /// client may also hold it between the check and that record with <c>post_auth_delay</c>. So a connection
+    /// that passed the check before <c>NOLOGIN</c> committed may not show its role yet. Every startup
+    /// transaction holds its virtual transaction lock, though, which <c>pg_locks</c> shows with its process
+    /// id. This samples those locks once, then the activity, and follows each lock whose process showed no
+    /// role until the lock is released (its startup ended, so its role is recorded by now, or it is gone) or
+    /// the process shows a role. Locks taken later belong to connections that check sign-in after
+    /// <c>NOLOGIN</c> committed, so they are not followed, and sessions showing a role are never waited on.
     /// </summary>
     private async Task AwaitStartupsAsync(NpgsqlConnection connection, string identity, CancellationToken ct)
     {
         var limit = await AuthenticationTimeoutAsync(connection, ct) + StartupMargin;
         var started = _clock.GetTimestamp();
         var startups = await VirtualTransactionsAsync(connection, ct);
-        startups.ExceptWith(await ListedProcessesAsync(connection, startups, ct));
+        startups.ExceptWith(await RolePublishedAsync(connection, startups, ct));
         while (startups.Count > 0)
         {
             if (_clock.GetElapsedTime(started) > limit)
@@ -149,7 +150,7 @@ public sealed class PostgresBackend : IDynamicSecretBackend
             await Task.Delay(StartupPollInterval, _clock, ct);
             var held = await VirtualTransactionsAsync(connection, ct);
             startups.IntersectWith(held);
-            startups.ExceptWith(await ListedProcessesAsync(connection, startups, ct));
+            startups.ExceptWith(await RolePublishedAsync(connection, startups, ct));
         }
     }
 
@@ -167,11 +168,11 @@ public sealed class PostgresBackend : IDynamicSecretBackend
         return locks;
     }
 
-    /// <summary>Those of <paramref name="locks"/> whose process <c>pg_stat_activity</c> lists now.</summary>
-    private static async Task<IEnumerable<(int Pid, string VirtualXid)>> ListedProcessesAsync(
+    /// <summary>Those of <paramref name="locks"/> whose process <c>pg_stat_activity</c> lists with a role now.</summary>
+    private static async Task<IEnumerable<(int Pid, string VirtualXid)>> RolePublishedAsync(
         NpgsqlConnection connection, HashSet<(int Pid, string VirtualXid)> locks, CancellationToken ct)
     {
-        await using var query = new NpgsqlCommand("SELECT pid FROM pg_stat_activity WHERE pid = ANY(@pids)", connection);
+        await using var query = new NpgsqlCommand("SELECT pid FROM pg_stat_activity WHERE pid = ANY(@pids) AND usesysid IS NOT NULL", connection);
         query.Parameters.AddWithValue("pids", locks.Select(held => held.Pid).ToArray());
         var listed = new HashSet<int>();
         await using var rows = await query.ExecuteReaderAsync(ct);

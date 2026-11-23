@@ -86,12 +86,18 @@ For a PostgreSQL role, the target is `DynamicSecrets:PostgresTargetConnectionStr
 is a login role:
 
 1. Connect to that database with the login that holds `CREATEROLE` there.
-2. Confirm the role exists: `SELECT rolname, rolvaliduntil FROM pg_roles WHERE rolname = '<login>';`
-   Its password stops working at `rolvaliduntil` if the role's recipe set one, but open sessions continue.
-3. Run the role's revocation statements with `{{name}}` replaced by the login, or, for the seeded recipes:
+2. Confirm the role exists and cannot sign in:
+   `SELECT rolname, rolcanlogin, rolvaliduntil FROM pg_roles WHERE rolname = '<login>';`
+   If `rolcanlogin` is still true, run `ALTER ROLE "<login>" NOLOGIN;` first.
+3. End its sessions and confirm none is left before dropping anything. A dropped role's open sessions
+   keep running, and once it is dropped they can no longer be found by its name:
    `SELECT pg_terminate_backend(pid, 5000) FROM pg_stat_activity WHERE usename = '<login>';`
-   then `REASSIGN OWNED BY "<login>" TO CURRENT_USER; DROP OWNED BY "<login>"; DROP ROLE "<login>";`
-4. As above, find out why the revocation failed (the vault logged the error type and SQLSTATE).
+   then `SELECT count(*) FROM pg_stat_activity WHERE usename = '<login>';` must return 0.
+4. Settle what still depends on the role. `DROP ROLE` names what blocks it (objects it owns, privileges
+   granted to it). Decide for each object whether to keep it under an owner you choose
+   (`ALTER TABLE … OWNER TO …`) or drop it. Never reassign everything it owns to the vault's login.
+5. `DROP ROLE "<login>";`
+6. As above, find out why the revocation failed (the vault logged the error type and SQLSTATE).
 
 ## Your own trust roots (do not skip in a rush)
 
