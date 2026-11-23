@@ -238,27 +238,20 @@ export class App {
   constructor() {
     this.compact.set(this.viewport?.matches ?? false);
     const resized = (event: MediaQueryListEvent) => {
-      const active = this.document.activeElement;
-      const drawerHadFocus =
-        this.navigationOpen() ||
-        (active instanceof Node && !!this.navigationDialog()?.nativeElement.contains(active));
-      const desktopSidebarHadFocus =
-        !this.compact() &&
-        active instanceof Node &&
-        !!this.sidebar()?.nativeElement.contains(active);
+      const hadFocus = this.document.activeElement !== this.document.body;
       this.closeNavigation();
       this.compact.set(event.matches);
-      if (drawerHadFocus && !event.matches) {
-        afterNextRender(
-          () =>
-            this.sidebar()?.nativeElement.querySelector<HTMLElement>('.sidebar-toggle')?.focus(),
-          { injector: this.injector },
-        );
-      } else if (desktopSidebarHadFocus && event.matches) {
-        afterNextRender(() => this.navigationToggle()?.nativeElement.focus(), {
-          injector: this.injector,
-        });
-      }
+      // Crossing 1200px swaps the navigation markup; focus on a removed control goes to its successor.
+      afterNextRender(
+        () => {
+          if (!hadFocus || this.document.activeElement !== this.document.body) return;
+          const toggle = event.matches
+            ? this.navigationToggle()?.nativeElement
+            : this.sidebar()?.nativeElement.querySelector<HTMLElement>('.sidebar-toggle');
+          toggle?.focus();
+        },
+        { injector: this.injector },
+      );
     };
     this.viewport?.addEventListener('change', resized);
     inject(DestroyRef).onDestroy(() => this.viewport?.removeEventListener('change', resized));

@@ -180,20 +180,44 @@ describe('App shell', () => {
     expect(sidebar.classList).toContain('is-collapsed');
   });
 
-  it('moves focus to the replacement navigation toggle when resizing across 1200px', async () => {
+  /** jsdom has no matchMedia, so the shell reads this stand-in for the 1199px query. */
+  function stubViewport(compact: boolean) {
     const listeners = new Set<(event: MediaQueryListEvent) => void>();
     const mediaQuery = {
-      matches: false,
+      matches: compact,
       media: '(max-width: 1199px)',
       addEventListener: (_: string, listener: (event: MediaQueryListEvent) => void) =>
         listeners.add(listener),
       removeEventListener: (_: string, listener: (event: MediaQueryListEvent) => void) =>
         listeners.delete(listener),
     } as unknown as MediaQueryList;
-    // jsdom has no matchMedia, so the shell reads this stand-in for the viewport.
     const view = document.defaultView!;
     Object.defineProperty(view, 'matchMedia', { configurable: true, value: () => mediaQuery });
+    // Each resize renders a fresh drawer, and jsdom's dialog has neither showModal nor close.
+    const dialog = HTMLDialogElement.prototype as Partial<HTMLDialogElement>;
+    dialog.showModal = function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    dialog.close = function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+    return {
+      async resize(matches: boolean) {
+        for (const listener of listeners) {
+          listener({ matches } as MediaQueryListEvent);
+        }
+        await TestBed.inject(ApplicationRef).whenStable();
+      },
+      restore() {
+        delete (view as Partial<Window>).matchMedia;
+        delete dialog.showModal;
+        delete dialog.close;
+      },
+    };
+  }
 
+  it('moves focus to the replacement navigation toggle when resizing across 1200px', async () => {
+    const viewport = stubViewport(false);
     const shell = await render((request) => request.flush(me));
     document.body.append(shell);
     try {
@@ -201,29 +225,57 @@ describe('App shell', () => {
       desktopToggle.focus();
       expect(document.activeElement).toBe(desktopToggle);
 
-      for (const listener of listeners) {
-        listener({ matches: true } as MediaQueryListEvent);
-      }
-      await TestBed.inject(ApplicationRef).whenStable();
+      await viewport.resize(true);
 
       const mobileToggle = shell.querySelector<HTMLButtonElement>('.navigation-toggle')!;
       expect(document.activeElement).toBe(mobileToggle);
 
-      const dialog = shell.querySelector<HTMLDialogElement>('dialog.mobile-navigation')!;
-      dialog.showModal = () => dialog.setAttribute('open', '');
-      dialog.close = () => dialog.removeAttribute('open');
       mobileToggle.click();
       await TestBed.inject(ApplicationRef).whenStable();
 
-      for (const listener of listeners) {
-        listener({ matches: false } as MediaQueryListEvent);
-      }
-      await TestBed.inject(ApplicationRef).whenStable();
+      await viewport.resize(false);
 
       expect(document.activeElement).toBe(shell.querySelector('.sidebar-toggle'));
     } finally {
       shell.remove();
-      delete (view as Partial<Window>).matchMedia;
+      viewport.restore();
+    }
+  });
+
+  it('hands focus from a closed drawer opener or the top-bar logo to the desktop toggle at 1200px', async () => {
+    const viewport = stubViewport(true);
+    const shell = await render((request) => request.flush(me));
+    document.body.append(shell);
+    try {
+      for (const selector of ['.navigation-toggle', '.topbar-brand']) {
+        shell.querySelector<HTMLElement>(selector)!.focus();
+        expect(document.activeElement).toBe(shell.querySelector(selector));
+
+        await viewport.resize(false);
+
+        expect(document.activeElement).toBe(shell.querySelector('.sidebar-toggle'));
+        await viewport.resize(true);
+      }
+    } finally {
+      shell.remove();
+      viewport.restore();
+    }
+  });
+
+  it('leaves focus alone when the focused control survives the resize', async () => {
+    const viewport = stubViewport(true);
+    const shell = await render((request) => request.flush(me));
+    document.body.append(shell);
+    try {
+      const search = shell.querySelector<HTMLButtonElement>('.search-pill')!;
+      search.focus();
+
+      await viewport.resize(false);
+
+      expect(document.activeElement).toBe(search);
+    } finally {
+      shell.remove();
+      viewport.restore();
     }
   });
 });
