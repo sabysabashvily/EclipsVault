@@ -6,9 +6,9 @@
 #
 #   docker compose up -d
 #
-# Images are pinned by digest, except the vault's, which is the signed release you verified
-# (docs/VERIFYING.md), set in .env. A floating tag means the image that starts tomorrow is not the
-# one you tested.
+# Every image is pinned by digest, so the image that starts tomorrow is the one you tested, and a
+# compromised tag arrives with a change you can see. The vault's digest is the signed release you
+# verified (docs/VERIFYING.md), set in .env; the others are fixed here.
 #
 # Persistent state lives in named volumes: the database, the Data Protection key ring, and Caddy's
 # certificates. `docker compose down` keeps them; `down -v` deletes them, and with them every secret.
@@ -31,7 +31,7 @@ services:
       - caddy-data:/data
       - caddy-config:/config
     networks:
-      vault:
+      front:
         # Fixed, because the vault trusts forwarded client addresses from this one address only.
         ipv4_address: 172.31.255.2
     depends_on:
@@ -53,6 +53,8 @@ services:
       Database__MigrateOnStartup: 'true'
       ConnectionStrings__DefaultConnection: Host=db;Port=5432;Database=eclipsvault;Username=eclipsvault_app;Password=${EV_DB_APP_PASSWORD:?Set EV_DB_APP_PASSWORD in .env}
       ECLIPSVAULT_KEK: ${ECLIPSVAULT_KEK:?Set ECLIPSVAULT_KEK in .env}
+      # Earlier master keys, still needed for data and key-ring entries sealed under them.
+      ECLIPSVAULT_KEK_RETIRED: ${ECLIPSVAULT_KEK_RETIRED:-}
       ECLIPSVAULT_AUDIT_SIGNING_KEY: ${ECLIPSVAULT_AUDIT_SIGNING_KEY:?Set ECLIPSVAULT_AUDIT_SIGNING_KEY in .env}
       # Read only on an empty vault, to create vault-admin. Clear it in .env after the first start.
       Seed__AdminPassword: ${Seed__AdminPassword:-}
@@ -62,7 +64,8 @@ services:
     volumes:
       - keyring:/keyring
     networks:
-      - vault
+      - front
+      - back
     depends_on:
       db:
         condition: service_healthy
@@ -81,7 +84,7 @@ services:
       # Runs once, when the data volume is empty.
       - ./postgres-init.sh:/docker-entrypoint-initdb.d/postgres-init.sh:ro
     networks:
-      - vault
+      - back
     healthcheck:
       # Over TCP rather than the socket: on first start the image creates the database with a
       # temporary server that listens on the socket only, which would pass the check too early.
@@ -91,14 +94,19 @@ services:
       retries: 12
 
 networks:
-  vault:
+  # The vault trusts forwarded headers by source address, so this network holds only Caddy and the
+  # vault. Attach nothing else to it.
+  front:
     ipam:
       config:
         # Change these and both 172.31.255.2 addresses above together if they collide with a network
         # on your host; `docker compose up` refuses to start on an overlap.
         - subnet: 172.31.255.0/24
-          # Other containers get addresses from the upper half, so none can take the proxy's.
+          # The vault gets an address from the upper half, so it can never take the proxy's.
           ip_range: 172.31.255.128/25
+  # The database's network. Internal: nothing on it reaches or is reachable from outside the host.
+  back:
+    internal: true
 
 volumes:
   caddy-data:

@@ -8,28 +8,39 @@ secrets or your servers. This guide is the production runbook; for feature detai
 
 [`deploy/production/`](../deploy/production/) runs the whole vault on one Linux host with Docker
 Compose: Caddy in front with automatic HTTPS, the vault, and PostgreSQL 17. It is the quickest
-supported way to install, and the numbered sections below explain each setting it makes for you.
-It is a single node: for more replicas, build your own deployment from those sections.
+supported way to install. It is a single node: for more replicas, build your own deployment from
+the numbered sections below, which also explain each setting the reference deployment makes.
 
 What it sets up:
 
 - Caddy obtains and renews a certificate for your host name and is the only proxy the vault trusts
   for the client's address (`ForwardedHeaders__KnownProxies`), so sign-in throttling, network rules
-  and the audit trail see the real client.
-- PostgreSQL keeps its data in a named volume. The vault signs in as its own login,
-  `eclipsvault_app`, not as the superuser, and applies its own migrations at startup
-  (`Database__MigrateOnStartup`), so that login owns the database.
+  and the audit trail see the real client. Only Caddy and the vault share that network.
+- PostgreSQL keeps its data in a named volume, on an internal network only the vault shares. The
+  vault signs in as its own login, `eclipsvault_app`, not as the superuser.
 - The Data Protection key ring lives in a named volume, sealed with the master key.
+
+What it trades for simplicity, compared with the numbered sections:
+
+- The vault applies its own migrations at startup (`Database__MigrateOnStartup`), so its login owns
+  the database. While the vault runs, that login can change any table, the audit trail included;
+  there is no separate deploy login as in section 3.
+- The vault reaches PostgreSQL without TLS. The traffic never leaves the host, on a network only the
+  two containers share.
+- Anyone who can run Docker commands on the host, or read `.env`, can read the master key. Treat
+  that access as access to every secret.
 
 ### Install
 
 1. Point a DNS record for the vault's host name at the host, and let ports 80 and 443 reach it:
    Caddy needs both to obtain the certificate.
-2. Verify the release image and note its digest ([`VERIFYING.md`](VERIFYING.md)).
-3. Copy `deploy/production/` to the host, and in that folder:
+2. Take `deploy/production/` from the release you install, and verify that release's image and note
+   its digest ([`VERIFYING.md`](VERIFYING.md)). Releases from before `deploy/production/` existed
+   cannot run it: their image has no `/keyring` the vault's account can write.
+3. Copy `deploy/production/` to the host, and in that folder create `.env`, readable only by you,
+   before any secret goes in:
 
-       cp .env.example .env
-       chmod 600 .env
+       install -m 600 .env.example .env
 
 4. Replace every `<placeholder>` in `.env`. Each line says how to generate its value. `.env` holds
    the master key and the audit signing key: keep a copy of both in your secret manager, never
@@ -54,19 +65,27 @@ the vault's `environment` in `compose.yaml`; `Identity__PublicUrl` is already se
 
 ### Back up
 
-Back up the database and the key ring together, into your encrypted backup; never put `.env` there.
-From the `deploy/production/` folder:
+Back up the database and the key ring together, onto separate, encrypted backup storage. Never write
+them into the folder that holds `.env`, and never put `.env` in the backup: the master key and the
+data it unlocks must not be found together. From the `deploy/production/` folder, with `BACKUP` set
+to a directory on that storage:
 
-    docker compose exec -T db pg_dump --username=postgres --format=custom eclipsvault > eclipsvault.dump
-    docker compose exec -T vault tar -C /keyring -cf - . > keyring.tar
+    umask 077
+    BACKUP=/mnt/encrypted-backup/eclipsvault
+    docker compose exec -T db pg_dump --username=postgres --format=custom eclipsvault > "$BACKUP/eclipsvault.dump"
+    docker compose exec -T vault tar -C /keyring -cf - . > "$BACKUP/keyring.tar"
 
-To restore onto a new host, install as above with the same `.env`, but before the first
-`docker compose up -d`:
+To restore onto a new host, install as above, but take `.env` from your secret manager instead of
+filling it in. If you have rotated the master key, its `ECLIPSVAULT_KEK_RETIRED` must hold every
+earlier key the restored data or key ring still needs. Then, before the first `docker compose up -d`,
+with `BACKUP` set to the directory holding the backup:
 
     docker compose up -d --wait db
-    docker compose exec -T db pg_restore --username=postgres --dbname=eclipsvault --clean --if-exists --exit-on-error < eclipsvault.dump
-    docker compose run --rm -T --no-deps --entrypoint tar vault -C /keyring -xf - < keyring.tar
+    docker compose exec -T db pg_restore --username=postgres --dbname=eclipsvault --clean --if-exists --exit-on-error < "$BACKUP/eclipsvault.dump"
+    docker compose run --rm -T --no-deps --entrypoint tar vault -C /keyring -xf - < "$BACKUP/keyring.tar"
     docker compose up -d
+
+Then sign in, reveal a secret, and run **Verify integrity** on the **Audit log** page.
 
 ### Upgrade
 
@@ -81,8 +100,8 @@ and restore, not just a new image.
 
 ## 1. Prerequisites
 
-- A database, which you provide: EclipsVault ships no database. We recommend PostgreSQL 17 or
-  later. SQL Server 2017 or later is the fully supported alternative; its migrations use `TRIM`,
+- A database, which you provide: outside the reference deployment, EclipsVault ships no database.
+  We recommend PostgreSQL 17 or later. SQL Server 2017 or later is the fully supported alternative; its migrations use `TRIM`,
   `TRANSLATE` and `STRING_AGG`, which need SQL Server 2017. If you choose SQL Server, you license it
   from Microsoft yourself.
 - A TLS-terminating reverse proxy or ingress in front of the app (the container serves plain HTTP on
