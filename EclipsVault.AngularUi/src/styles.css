@@ -187,6 +187,8 @@
   --ink-button-text: #ffffff;
   --ink-button-hover: #3a3a38;
   --nav-active-bg: #ffffff;
+  /* The rail's selected ring: 3.39:1 on the rail, 4.01:1 on the white pill (WCAG 1.4.11). */
+  --nav-active-border: #807f7a;
   --nav-active-text: #232322;
   --tree-line: #aeada8;
 
@@ -507,16 +509,19 @@ body:has(.mobile-navigation[open]) {
   font-weight: 500;
   box-shadow: var(--shadow-sm);
 }
-/* In dark mode, a >= 3:1 border ring and accent icon tint clearly mark active nav and tabs. */
+/* In dark mode, a >= 3:1 border ring and accent icon tint clearly mark active nav and tabs. The
+   collapsed rail has no labels, so it gets the same cue in both themes. */
 :root:not([data-theme='light']) .nav-item.active,
-:root:not([data-theme='light']) .sidebar.is-collapsed .nav-group-summary.has-active,
-:root:not([data-theme='light']) .tab-link.active {
+:root:not([data-theme='light']) .tab-link.active,
+.sidebar.is-collapsed .nav-item.active,
+.sidebar.is-collapsed .nav-group-summary.has-active {
   box-shadow:
     inset 0 0 0 1px var(--nav-active-border),
     var(--shadow-sm);
 }
 :root:not([data-theme='light']) .nav-item.active svg,
-:root:not([data-theme='light']) .sidebar.is-collapsed .nav-group-summary.has-active svg {
+.sidebar.is-collapsed .nav-item.active svg,
+.sidebar.is-collapsed .nav-group-summary.has-active svg {
   color: var(--accent);
   opacity: 1;
 }
@@ -665,7 +670,6 @@ body:has(.mobile-navigation[open]) {
 .sidebar.is-collapsed .nav-group-summary.has-active {
   background: var(--nav-active-bg);
   color: var(--nav-active-text);
-  box-shadow: var(--shadow-sm);
 }
 .sidebar.is-collapsed .sidebar-footer {
   display: flex;

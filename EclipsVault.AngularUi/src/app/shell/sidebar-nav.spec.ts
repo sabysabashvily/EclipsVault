@@ -88,6 +88,10 @@ describe('SidebarNav', () => {
     const { fixture, group } = await renderAt('/Admin/Users', true);
 
     expect(group.open).toBe(false);
+    // The rail hides the current link, so the group's own name carries the current section.
+    expect(group.querySelector('summary')!.getAttribute('aria-label')).toBe(
+      'Administration, current section',
+    );
 
     fixture.componentRef.setInput('collapsed', false);
     await fixture.whenStable();

@@ -63,6 +63,12 @@ export class SidebarNav {
     return this.preferredOpen()[group.label] ?? this.groupActive(group);
   }
 
+  /** The rail hides the current link, so the group's own name says it holds the current page. */
+  protected railLabel(group: SidebarGroup): string | null {
+    if (!this.collapsed()) return null;
+    return this.groupActive(group) ? `${group.label}, current section` : group.label;
+  }
+
   protected groupSummaryClicked(event: MouseEvent, group: SidebarGroup): void {
     event.preventDefault();
     if (this.collapsed()) {

@@ -11,7 +11,7 @@
           <summary
             class="nav-item nav-group-summary"
             [class.has-active]="groupActive(item)"
-            [attr.aria-label]="collapsed() ? item.label : null"
+            [attr.aria-label]="railLabel(item)"
             [attr.title]="collapsed() ? item.label : null"
             (click)="groupSummaryClicked($event, item)"
           >
