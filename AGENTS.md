@@ -190,7 +190,7 @@ failure with short retention.
 ## Working rules
 
 - For delegated agents, use only Claude Opus 5.5 (`claude-opus-5-5`) with high reasoning
-  (`effort: high`), the default, or GPT Sol 6.1 (`gpt-6.1-sol`) with extra-high reasoning
+  (`effort: high`), the default, or GPT Sol 6.2 (`gpt-6.2-sol`) with extra-high reasoning
   (`reasoningEffort: xhigh`), the fallback and the reviewer of Opus's work. Pass these settings as
   tool options. If one is unavailable, use the other; if both are unavailable, report the blocker
   before choosing another model.
@@ -200,7 +200,7 @@ failure with short retention.
   scripts, packaging, and browser-suite runs. Any change to encryption, authorization, the audit
   chain, MFA, licensing, or dynamic secrets is not a Cursor ticket; it runs in a local Claude Opus
   5.5 session. A cloud agent handed one stops before writing code and says so, as does one whose
-  brief names a model it is not. GPT Sol 6.1 reviews every pull request before the owner merges
+  brief names a model it is not. GPT Sol 6.2 reviews every pull request before the owner merges
   it; when GPT Sol is unavailable, or wrote the change, a fresh Claude Opus 5.5 session reviews it
   instead and says so. A cloud agent's pull request may also get a Thermos review in Cursor when
   one is available; it is not required.
