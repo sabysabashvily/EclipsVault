@@ -1,5 +1,6 @@
 using System.Text;
 using EclipsVault.Core.Application.Abstractions;
+using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
 using EclipsVault.Infrastructure.Security;
@@ -231,4 +232,64 @@ public class DbSeederTests : IDisposable
             },
             roles);
     }
+
+    [Fact]
+    public async Task Development_leaves_a_deleted_sql_server_sample_deleted()
+    {
+        await SeedAsync(Environments.Development);
+        await using (var seeded = Read())
+        {
+            await seeded.DynamicSecretRoles.Where(role => role.Name == "phoenix_db_reader").ExecuteDeleteAsync();
+        }
+
+        await SeedAsync(Environments.Development);
+
+        await using var db = Read();
+        Assert.Equal(["global_db_writer", "global_pg_writer", "phoenix_pg_reader"],
+            await db.DynamicSecretRoles.OrderBy(role => role.Name).Select(role => role.Name).ToListAsync());
+    }
+
+    [Fact]
+    public async Task Development_adds_no_postgres_sample_whose_name_a_case_insensitive_database_already_holds()
+    {
+        await CompareRoleNamesWithoutCaseAsync();
+        await using (var operatorEdit = Read())
+        {
+            operatorEdit.DynamicSecretRoles.Add(new DynamicSecretRole
+            {
+                Id = Guid.NewGuid(),
+                Name = "PHOENIX_PG_READER",
+                Description = "Renamed by a developer.",
+                ProjectKey = "PHOENIX",
+                Backend = DynamicSecretBackend.Postgres,
+                CreationStatements = "-",
+                RevocationStatements = "-",
+                CreatedAtUtc = DateTimeOffset.UnixEpoch,
+            });
+            await operatorEdit.SaveChangesAsync();
+        }
+
+        await SeedAsync(Environments.Development);
+
+        await using var db = Read();
+        Assert.Equal(["global_pg_writer", "PHOENIX_PG_READER"],
+            await db.DynamicSecretRoles.OrderBy(role => role.Name).Select(role => role.Name).ToListAsync());
+    }
+
+    /// <summary>
+    /// Rebuilds the empty roles table so its names compare without case, as SQL Server's default collation
+    /// does; SQLite's own default compares them exactly.
+    /// </summary>
+    private async Task CompareRoleNamesWithoutCaseAsync()
+    {
+        await using var db = Read();
+        var connection = db.Database.GetDbConnection();
+        await using var read = connection.CreateCommand();
+        read.CommandText = "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'DynamicSecretRoles'";
+        var create = (string)(await read.ExecuteScalarAsync())!;
+        await db.Database.ExecuteSqlRawAsync("DROP TABLE \"DynamicSecretRoles\"");
+        await db.Database.ExecuteSqlRawAsync(create.Replace("\"Name\" TEXT NOT NULL", "\"Name\" TEXT NOT NULL COLLATE NOCASE", StringComparison.Ordinal));
+        await db.Database.ExecuteSqlRawAsync("CREATE UNIQUE INDEX \"IX_DynamicSecretRoles_Name\" ON \"DynamicSecretRoles\" (\"Name\")");
+    }
 }
+

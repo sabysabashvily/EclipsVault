@@ -201,10 +201,38 @@ public static class DbSeeder
         await SeedDynamicSecretRolesAsync(db, logger, now);
     }
 
+    // The PostgreSQL samples' statements, public so the integration tests run these rather than copies.
+    // PostgreSQL folds an unquoted name to lower case, and the minted name has capitals, so it is
+    // always quoted. VALID UNTIL stops the password working at the lease's end even if revocation fails;
+    // {{expiration}} is UTC, which the '+00' says.
+    public const string PostgresReaderRecipe = """
+        CREATE ROLE "{{name}}" LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}+00' IN ROLE pg_read_all_data;
+        """;
+
+    public const string PostgresWriterRecipe = """
+        CREATE ROLE "{{name}}" LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}+00' IN ROLE pg_read_all_data, pg_write_all_data;
+        """;
+
+    // Idempotent. The backend has already stopped the role signing in, so ending its sessions here
+    // ends them for good; anything the role created goes to the target's login, and its grants go,
+    // as DROP ROLE requires.
+    public const string PostgresRevocation = """
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT FROM pg_roles WHERE rolname = '{{name}}') THEN
+                PERFORM pg_terminate_backend(pid, 5000) FROM pg_stat_activity WHERE usename = '{{name}}';
+                REASSIGN OWNED BY "{{name}}" TO CURRENT_USER;
+                DROP OWNED BY "{{name}}";
+                DROP ROLE "{{name}}";
+            END IF;
+        END
+        $$;
+        """;
+
     /// <summary>
     /// Dynamic-secret recipes, two on SQL Server and two on PostgreSQL. They mint real principals on the
     /// configured targets, so the sample roles are genuinely usable: issue one and you can connect with it.
-    /// Each is added by name when missing, so a database seeded before a role existed gains it.
+    /// The SQL Server pair seeds an empty table; each PostgreSQL role is added by name when missing.
     ///
     /// Roles are seeded rather than authored in the UI on purpose — the statements run with the
     /// vault's backend rights, so defining one is a privileged, out-of-band act.
@@ -237,34 +265,7 @@ public static class DbSeeder
             IF EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'{{name}}') DROP LOGIN [{{name}}];
             """;
 
-        // PostgreSQL folds an unquoted name to lower case, and the minted name has capitals, so it is
-        // always quoted. VALID UNTIL stops the password working at the lease's end even if revocation fails;
-        // {{expiration}} is UTC, which the '+00' says.
-        const string createPostgresReader = """
-            CREATE ROLE "{{name}}" LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}+00' IN ROLE pg_read_all_data;
-            """;
-
-        const string createPostgresWriter = """
-            CREATE ROLE "{{name}}" LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}+00' IN ROLE pg_read_all_data, pg_write_all_data;
-            """;
-
-        // Idempotent. The backend has already stopped the role signing in, so ending its sessions here
-        // ends them for good; anything the role created goes to the target's login, and its grants go,
-        // as DROP ROLE requires.
-        const string revokePostgres = """
-            DO $$
-            BEGIN
-                IF EXISTS (SELECT FROM pg_roles WHERE rolname = '{{name}}') THEN
-                    PERFORM pg_terminate_backend(pid, 5000) FROM pg_stat_activity WHERE usename = '{{name}}';
-                    REASSIGN OWNED BY "{{name}}" TO CURRENT_USER;
-                    DROP OWNED BY "{{name}}";
-                    DROP ROLE "{{name}}";
-                END IF;
-            END
-            $$;
-            """;
-
-        DynamicSecretRole[] samples =
+        DynamicSecretRole[] sqlServerSamples =
         [
             new DynamicSecretRole
             {
@@ -297,7 +298,11 @@ public static class DbSeeder
                 MaxTtlMinutes = 30,
                 IsEnabled = true,
                 CreatedAtUtc = now
-            },
+            }
+        ];
+
+        DynamicSecretRole[] postgresSamples =
+        [
             new DynamicSecretRole
             {
                 Id = Guid.NewGuid(),
@@ -307,8 +312,8 @@ public static class DbSeeder
                 Environment = SecretEnvironment.Development,
                 Sensitivity = SensitivityLevel.Internal,
                 Backend = DynamicSecretBackend.Postgres,
-                CreationStatements = createPostgresReader,
-                RevocationStatements = revokePostgres,
+                CreationStatements = PostgresReaderRecipe,
+                RevocationStatements = PostgresRevocation,
                 DefaultTtlMinutes = 15,
                 MaxTtlMinutes = 60,
                 IsEnabled = true,
@@ -323,8 +328,8 @@ public static class DbSeeder
                 Environment = SecretEnvironment.Production,
                 Sensitivity = SensitivityLevel.Secret,
                 Backend = DynamicSecretBackend.Postgres,
-                CreationStatements = createPostgresWriter,
-                RevocationStatements = revokePostgres,
+                CreationStatements = PostgresWriterRecipe,
+                RevocationStatements = PostgresRevocation,
                 DefaultTtlMinutes = 10,
                 MaxTtlMinutes = 30,
                 IsEnabled = true,
@@ -332,8 +337,23 @@ public static class DbSeeder
             }
         ];
 
-        var existing = await db.DynamicSecretRoles.Select(role => role.Name).ToListAsync();
-        var missing = samples.Where(role => !existing.Contains(role.Name)).ToList();
+        // The SQL Server pair seeds an empty table only, so a sample a developer deleted stays deleted. The
+        // PostgreSQL pair came later, so it is added by name to a table seeded before it existed.
+        var missing = new List<DynamicSecretRole>();
+        if (!await db.DynamicSecretRoles.AnyAsync())
+        {
+            missing.AddRange(sqlServerSamples);
+        }
+
+        foreach (var sample in postgresSamples)
+        {
+            // Compared by the database, so its own collation decides whether the name is taken.
+            if (!await db.DynamicSecretRoles.AnyAsync(role => role.Name == sample.Name))
+            {
+                missing.Add(sample);
+            }
+        }
+
         if (missing.Count == 0)
         {
             return;
