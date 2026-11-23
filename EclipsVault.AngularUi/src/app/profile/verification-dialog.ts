@@ -12,7 +12,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { Subscription, firstValueFrom } from 'rxjs';
+import { Subscription, firstValueFrom, fromEvent, takeUntil } from 'rxjs';
 import { StatusLine } from '../shared/status-line';
 import { UiApiError } from '../ui-api/ui-api-errors';
 import { PasskeyProof } from './passkey-proof';
@@ -163,11 +163,14 @@ export class VerificationDialog {
     const attempt = ++this.attempt;
     this.prompt = new AbortController();
     try {
+      // Abandoned on cancel, so the operation is never deleted while this request is still in flight.
       const options = await firstValueFrom(
-        this.http.post<{ publicKey: unknown }>(
-          `/api/ui/profile/operations/${operation.operationId}/passkey/begin`,
-          null,
-        ),
+        this.http
+          .post<{ publicKey: unknown }>(
+            `/api/ui/profile/operations/${operation.operationId}/passkey/begin`,
+            null,
+          )
+          .pipe(takeUntil(fromEvent(this.prompt.signal, 'abort'))),
       );
       if (attempt !== this.attempt) return;
       const credential = await this.passkey.get(options.publicKey, this.prompt.signal);

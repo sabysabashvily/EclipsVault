@@ -106,6 +106,26 @@ describe('VerificationDialog', () => {
     expect(page.textContent).toContain('No other verification method was attempted.');
     backend.expectNone(`/api/ui/profile/operations/${operation.operationId}/verify`);
   });
+  it('cancelling while the passkey prompt is requested abandons that request before deleting the change', async () => {
+    const { fixture, page } = await render();
+    const method = page.querySelector('select')!;
+    method.value = 'Passkey';
+    method.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+    button(page, 'Verify account').click();
+    const begin = backend.expectOne(
+      `/api/ui/profile/operations/${operation.operationId}/passkey/begin`,
+    );
+    button(page, 'Cancel').click();
+    const cancel = backend.expectOne({
+      method: 'DELETE',
+      url: `/api/ui/profile/operations/${operation.operationId}`,
+    });
+    expect(begin.cancelled).toBe(true);
+    cancel.flush(null);
+    await fixture.whenStable();
+    expect(passkey.get).not.toHaveBeenCalled();
+  });
   it('completes the passkey proof with the current password for a password change', async () => {
     const { fixture, page } = await render();
     fixture.componentInstance.open(operation, 'Change password.', { needsPassword: true });
