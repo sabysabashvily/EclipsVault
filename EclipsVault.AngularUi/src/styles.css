@@ -3853,6 +3853,8 @@ fieldset {
 }
 .user-cell-sub {
   font-size: 0.76rem;
+  /* An email can be 254 characters with no break opportunity; wrap it inside the cell. */
+  overflow-wrap: anywhere;
 }
 .data-table tr.row-muted td {
   opacity: 0.55;
