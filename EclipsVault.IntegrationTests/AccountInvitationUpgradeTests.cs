@@ -20,6 +20,7 @@ using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Extensions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -65,6 +66,18 @@ public abstract class AccountInvitationUpgradeDatabases : IAsyncLifetime
 
         await StopServerAsync();
     }
+
+    /// <summary>A database at the current schema, for proofs the vault issues before its invitation schema is rolled back.</summary>
+    public async Task<EclipsVaultDbContext> CreateCurrentAsync(string database)
+    {
+        var context = Context(database);
+        await context.GetService<IMigrator>().MigrateAsync();
+        return context;
+    }
+
+    /// <summary>Takes <paramref name="database"/> back to the previous release's schema, so the upgrade runs on it again.</summary>
+    public Task RollBackInvitationsAsync(string database)
+        => Context(database).GetService<IMigrator>().MigrateAsync(MigrationBeforeInvitations);
 
     public async Task<EclipsVaultDbContext> CreateBeforeInvitationsAsync(string database)
     {
@@ -253,36 +266,34 @@ public abstract class AccountInvitationUpgradeTests(AccountInvitationUpgradeData
     }
 
     [Fact]
-    public async Task A_sign_in_or_single_sign_on_begun_before_the_upgrade_gets_no_session_after_it()
+    public async Task A_pending_cookie_and_a_single_sign_on_decision_issued_before_the_upgrade_get_no_session_after_it()
     {
         const string dbName = "pre-upgrade-proofs";
-        var pre = await databases.CreateBeforeInvitationsAsync(dbName);
+        const string password = "Pre-upgrade-password-182!";
+        var hasher = new Argon2idPasswordHasher(Options.Create(new Argon2Options { Iterations = 1, MemoryKb = 1024, Parallelism = 1 }));
+        var hashed = hasher.Hash(password);
+        var before = await databases.CreateCurrentAsync(dbName);
         var neverUsedId = Guid.NewGuid();
-        await AccountInvitationUpgradeDatabases.InsertPreMigrationUserAsync(pre, neverUsedId, "never-used", "never.used.1@eclipsvault.local",
-            ClearanceLevel.Standard, false, totpEnabled: false, totpSecret: "COPIEDPENDINGSEED", credentialGeneration: 2, BaseTime);
-        // What a node handed out before the upgrade, under the account's generation then: a pending sign-in
-        // cookie, and a single sign-on decision about to become a session.
-        var signedInBefore = UserDto.From(new User
-        {
-            Id = neverUsedId,
-            Username = "never-used",
-            DisplayName = "never-used",
-            Email = "never.used.1@eclipsvault.local",
-            ProjectKey = "GLOBAL",
-            Clearance = ClearanceLevel.Standard,
-            CredentialGeneration = 2,
-        });
-        var stampBefore = new SessionStamp(2, "rev-before");
-        var pendingCookie = VaultClaimsFactory.CreatePendingMfaPrincipal(signedInBefore, stampBefore);
+        await AccountInvitationUpgradeDatabases.InsertPreMigrationUserAsync(before, neverUsedId, "never-used", NeverUsedEmail,
+            ClearanceLevel.Standard, false, totpEnabled: false, totpSecret: null, credentialGeneration: 2, BaseTime, hashed.Hash, hashed.Salt);
 
-        await AccountInvitationUpgradeDatabases.UpgradeAsync(pre);
+        // A browser past the password stage holds the pending cookie the vault protected for it.
+        var passwordStage = await BuildAuthService(before, "rev-before", hasher).ValidateCredentialsAsync("never-used", password, default);
+        Assert.Equal(CredentialStatus.RequiresTotpEnrollment, passwordStage.Status);
+        var pendingCookie = PendingCookieOf(VaultClaimsFactory.CreatePendingMfaPrincipal(passwordStage.User!, passwordStage.Stamp!));
+        Assert.True(await PendingCookieIsAcceptedAsync(before, pendingCookie));
+        // An identity provider's answer the vault accepted, not yet turned into a session.
+        var decision = await SingleSignOn(before).SignInAsync(NeverUsedIdentity, default);
+        Assert.Equal(SsoOutcome.Linked, decision.Outcome);
+
+        // The previous release's schema, then the upgrade an operator runs.
+        await databases.RollBackInvitationsAsync(dbName);
+        await AccountInvitationUpgradeDatabases.UpgradeAsync(databases.FreshContext(dbName));
 
         var post = databases.FreshContext(dbName);
         Assert.False(await PendingCookieIsAcceptedAsync(post, pendingCookie));
-        Assert.False(await IssueSessionAsync(post, signedInBefore, stampBefore, new SignInAudit(AuditAction.LoginSucceeded, "Single sign-on")));
-        var auth = BuildAuthService(post, "rev-before");
-        await Assert.ThrowsAsync<StaleProofException>(() => auth.BeginTotpEnrollmentAsync(neverUsedId, stampBefore, default));
-        await Assert.ThrowsAsync<StaleProofException>(() => auth.CompleteTotpEnrollmentAsync(neverUsedId, stampBefore, "123456", default));
+        Assert.False(await IssueSessionAsync(post, decision.User!, decision.Stamp!, new SignInAudit(AuditAction.LoginSucceeded, "Single sign-on")));
+        Assert.Equal(SsoOutcome.NotActivated, (await SingleSignOn(post).SignInAsync(NeverUsedIdentity, default)).Outcome);
     }
 
     [Fact]
@@ -291,21 +302,19 @@ public abstract class AccountInvitationUpgradeTests(AccountInvitationUpgradeData
         const string dbName = "post-upgrade-stamp";
         var pre = await databases.CreateBeforeInvitationsAsync(dbName);
         var neverUsedId = Guid.NewGuid();
-        await AccountInvitationUpgradeDatabases.InsertPreMigrationUserAsync(pre, neverUsedId, "never-used", "never.used.1@eclipsvault.local",
+        await AccountInvitationUpgradeDatabases.InsertPreMigrationUserAsync(pre, neverUsedId, "never-used", NeverUsedEmail,
             ClearanceLevel.Standard, false, totpEnabled: false, totpSecret: "COPIEDPENDINGSEED", credentialGeneration: 2, BaseTime);
         await AccountInvitationUpgradeDatabases.UpgradeAsync(pre);
         var post = databases.FreshContext(dbName);
         var migrated = await post.Users.AsNoTracking().SingleAsync(u => u.Id == neverUsedId);
         var stamp = new SessionStamp(migrated.CredentialGeneration, "rev-before");
 
-        Assert.False(await PendingCookieIsAcceptedAsync(post, VaultClaimsFactory.CreatePendingMfaPrincipal(UserDto.From(migrated), stamp)));
+        Assert.False(await PendingCookieIsAcceptedAsync(post, PendingCookieOf(VaultClaimsFactory.CreatePendingMfaPrincipal(UserDto.From(migrated), stamp))));
         Assert.False(await IssueSessionAsync(post, UserDto.From(migrated), stamp, new SignInAudit(AuditAction.LoginSucceeded, "Single sign-on")));
         var auth = BuildAuthService(post, "rev-before");
         await Assert.ThrowsAsync<StaleProofException>(() => auth.BeginTotpEnrollmentAsync(neverUsedId, stamp, default));
         await Assert.ThrowsAsync<StaleProofException>(() => auth.VerifyTotpAsync(neverUsedId, stamp, "123456", default));
-        var sso = new SsoSignInService(new UserRepository(post, TimeProvider.System), new RecordingAuditSink(), new FixedRevocation("rev-before"), new SsoPolicy(true));
-        var decision = await sso.SignInAsync(new ExternalIdentity("https://idp.test", "sub-1", "never.used.1@eclipsvault.local", true, ["mfa"]), default);
-        Assert.Equal(SsoOutcome.NotActivated, decision.Outcome);
+        Assert.Equal(SsoOutcome.NotActivated, (await SingleSignOn(post).SignInAsync(NeverUsedIdentity, default)).Outcome);
     }
 
     [Fact]
@@ -454,12 +463,27 @@ public abstract class AccountInvitationUpgradeTests(AccountInvitationUpgradeData
             TimeProvider.System);
     }
 
-    /// <summary>Runs <paramref name="cookie"/> through the pending sign-in cookie's check on the upgraded database.</summary>
-    private static async Task<bool> PendingCookieIsAcceptedAsync(EclipsVaultDbContext post, ClaimsPrincipal cookie)
+    private const string NeverUsedEmail = "never.used.1@eclipsvault.local";
+
+    private static readonly ExternalIdentity NeverUsedIdentity = new("https://idp.test", "sub-1", NeverUsedEmail, true, ["mfa"]);
+
+    /// <summary>Protects pending sign-in cookies under the cookie handler's own purposes, as a vault node does.</summary>
+    private static readonly TicketDataFormat PendingCookies = new(new EphemeralDataProtectionProvider()
+        .CreateProtector("Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationMiddleware", AuthSchemes.MfaPending, "v2"));
+
+    private static string PendingCookieOf(ClaimsPrincipal principal)
+        => PendingCookies.Protect(new AuthenticationTicket(principal, AuthSchemes.MfaPending));
+
+    private static SsoSignInService SingleSignOn(EclipsVaultDbContext db) => new(
+        new UserRepository(db, TimeProvider.System), new RecordingAuditSink(), new FixedRevocation("rev-before"), new SsoPolicy(true));
+
+    /// <summary>Reads the protected pending cookie <paramref name="cookie"/> and runs it through the pending sign-in check.</summary>
+    private static async Task<bool> PendingCookieIsAcceptedAsync(EclipsVaultDbContext db, string cookie)
     {
-        var context = new CookieValidatePrincipalContext(Request(post, "rev-before", new CookieJar()),
+        var ticket = PendingCookies.Unprotect(cookie) ?? throw new InvalidOperationException("The pending cookie could not be read.");
+        var context = new CookieValidatePrincipalContext(Request(db, "rev-before", new CookieJar()),
             new AuthenticationScheme(AuthSchemes.MfaPending, null, typeof(CookieAuthenticationHandler)),
-            new CookieAuthenticationOptions(), new AuthenticationTicket(cookie, AuthSchemes.MfaPending));
+            new CookieAuthenticationOptions(), ticket);
         await SessionCookieValidation.ValidatePendingPrincipalAsync(context);
         return context.Principal is not null;
     }
