@@ -106,6 +106,8 @@ test('the Internal role issues by keyboard through its consequence dialog withou
   await dynamicSecrets.minutes(dynamicRoles.internal).focus();
   await page.keyboard.type('30');
   await page.keyboard.press('Tab');
+  await expect(dynamicSecrets.increaseMinutes(dynamicRoles.internal)).toBeFocused();
+  await page.keyboard.press('Tab');
   await expect(dynamicSecrets.generate(dynamicRoles.internal)).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(dynamicSecrets.confirmation).toContainText('Issue dynamic credential?');

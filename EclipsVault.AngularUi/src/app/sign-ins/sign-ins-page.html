@@ -92,7 +92,7 @@
           <tbody>
             @for (event of model.events; track $index) {
               <tr>
-                <td class="cell-meta muted">
+                <td class="cell-meta cell-nowrap muted">
                   <time [title]="event.utc">{{ event.ago }}</time>
                 </td>
                 <td class="cell-main">
@@ -102,7 +102,7 @@
                 <td class="cell-pill">
                   <span class="badge tone-{{ event.outcomeTone }}">{{ event.outcomeLabel }}</span>
                 </td>
-                <td class="cell-meta mono" data-label="from">{{ event.sourceIp }}</td>
+                <td class="cell-meta cell-nowrap mono" data-label="from">{{ event.sourceIp }}</td>
                 <td class="cell-pill">
                   @if (event.location; as location) {
                     <span class="badge tone-{{ location.tone }}">{{ location.text }}</span>

@@ -31,7 +31,11 @@ describe('App shell', () => {
     return fixture.nativeElement as HTMLElement;
   }
 
-  afterEach(() => backend.verify());
+  afterEach(() => {
+    localStorage.removeItem('eclipsvault.sidebar.collapsed');
+    vi.restoreAllMocks();
+    backend.verify();
+  });
 
   it('shows the problem code instead of a blank sidebar when /api/ui/me fails', async () => {
     const shell = await render((request) =>
@@ -103,5 +107,175 @@ describe('App shell', () => {
     expect(notice?.querySelector('strong')?.textContent).toBe('Running unlicensed.');
     expect(notice?.textContent).toContain('No license key is installed. This changes nothing.');
     expect(notice?.querySelector('a')?.getAttribute('href')).toBe('/License');
+  });
+
+  it('collapses and expands the desktop sidebar, persisting the preference across loads', async () => {
+    const shell = await render((request) => request.flush(me));
+    const sidebar = shell.querySelector<HTMLElement>('aside.sidebar')!;
+    const toggle = shell.querySelector<HTMLButtonElement>('.sidebar-toggle')!;
+
+    expect(sidebar.classList).not.toContain('is-collapsed');
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(toggle.getAttribute('aria-label')).toBe('Collapse sidebar');
+
+    toggle.click();
+    await TestBed.inject(ApplicationRef).whenStable();
+
+    expect(sidebar.classList).toContain('is-collapsed');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.getAttribute('aria-label')).toBe('Expand sidebar');
+    expect(localStorage.getItem('eclipsvault.sidebar.collapsed')).toBe('1');
+
+    TestBed.resetTestingModule();
+    const reloaded = await render((request) => request.flush(me));
+    const reloadedSidebar = reloaded.querySelector<HTMLElement>('aside.sidebar')!;
+    const reloadedToggle = reloaded.querySelector<HTMLButtonElement>('.sidebar-toggle')!;
+
+    expect(reloadedSidebar.classList).toContain('is-collapsed');
+    expect(reloadedToggle.getAttribute('aria-expanded')).toBe('false');
+
+    reloadedToggle.click();
+    await TestBed.inject(ApplicationRef).whenStable();
+
+    expect(reloadedSidebar.classList).not.toContain('is-collapsed');
+    expect(reloadedToggle.getAttribute('aria-expanded')).toBe('true');
+    expect(localStorage.getItem('eclipsvault.sidebar.collapsed')).toBe('0');
+  });
+
+  it('expands a collapsed sidebar and opens the clicked group when a rail group icon is clicked', async () => {
+    localStorage.setItem('eclipsvault.sidebar.collapsed', '1');
+    const shell = await render((request) => request.flush(me));
+    const sidebar = shell.querySelector<HTMLElement>('aside.sidebar')!;
+    const administration = shell.querySelector<HTMLDetailsElement>(
+      'details.nav-group[aria-label="Administration"]',
+    )!;
+    const summary = administration.querySelector<HTMLElement>('summary')!;
+
+    expect(sidebar.classList).toContain('is-collapsed');
+    expect(administration.open).toBe(false);
+
+    summary.click();
+    await TestBed.inject(ApplicationRef).whenStable();
+
+    expect(sidebar.classList).not.toContain('is-collapsed');
+    expect(administration.open).toBe(true);
+    expect(localStorage.getItem('eclipsvault.sidebar.collapsed')).toBe('0');
+  });
+
+  it('stays usable when localStorage throws while reading or saving sidebar state', async () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('Storage disabled', 'SecurityError');
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Storage disabled', 'SecurityError');
+    });
+
+    const shell = await render((request) => request.flush(me));
+    const sidebar = shell.querySelector<HTMLElement>('aside.sidebar')!;
+    const toggle = shell.querySelector<HTMLButtonElement>('.sidebar-toggle')!;
+
+    expect(sidebar.classList).not.toContain('is-collapsed');
+    toggle.click();
+    await TestBed.inject(ApplicationRef).whenStable();
+    expect(sidebar.classList).toContain('is-collapsed');
+  });
+
+  /** jsdom has no matchMedia, so the shell reads this stand-in for the 1199px query. */
+  function stubViewport(compact: boolean) {
+    const listeners = new Set<(event: MediaQueryListEvent) => void>();
+    const mediaQuery = {
+      matches: compact,
+      media: '(max-width: 1199px)',
+      addEventListener: (_: string, listener: (event: MediaQueryListEvent) => void) =>
+        listeners.add(listener),
+      removeEventListener: (_: string, listener: (event: MediaQueryListEvent) => void) =>
+        listeners.delete(listener),
+    } as unknown as MediaQueryList;
+    const view = document.defaultView!;
+    Object.defineProperty(view, 'matchMedia', { configurable: true, value: () => mediaQuery });
+    // Each resize renders a fresh drawer, and jsdom's dialog has neither showModal nor close.
+    const dialog = HTMLDialogElement.prototype as Partial<HTMLDialogElement>;
+    dialog.showModal = function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    dialog.close = function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+    return {
+      async resize(matches: boolean) {
+        for (const listener of listeners) {
+          listener({ matches } as MediaQueryListEvent);
+        }
+        await TestBed.inject(ApplicationRef).whenStable();
+      },
+      restore() {
+        delete (view as Partial<Window>).matchMedia;
+        delete dialog.showModal;
+        delete dialog.close;
+      },
+    };
+  }
+
+  it('moves focus to the replacement navigation toggle when resizing across 1200px', async () => {
+    const viewport = stubViewport(false);
+    const shell = await render((request) => request.flush(me));
+    document.body.append(shell);
+    try {
+      const desktopToggle = shell.querySelector<HTMLButtonElement>('.sidebar-toggle')!;
+      desktopToggle.focus();
+      expect(document.activeElement).toBe(desktopToggle);
+
+      await viewport.resize(true);
+
+      const mobileToggle = shell.querySelector<HTMLButtonElement>('.navigation-toggle')!;
+      expect(document.activeElement).toBe(mobileToggle);
+
+      mobileToggle.click();
+      await TestBed.inject(ApplicationRef).whenStable();
+
+      await viewport.resize(false);
+
+      expect(document.activeElement).toBe(shell.querySelector('.sidebar-toggle'));
+    } finally {
+      shell.remove();
+      viewport.restore();
+    }
+  });
+
+  it('hands focus from a closed drawer opener or the top-bar logo to the desktop toggle at 1200px', async () => {
+    const viewport = stubViewport(true);
+    const shell = await render((request) => request.flush(me));
+    document.body.append(shell);
+    try {
+      for (const selector of ['.navigation-toggle', '.topbar-brand']) {
+        shell.querySelector<HTMLElement>(selector)!.focus();
+        expect(document.activeElement).toBe(shell.querySelector(selector));
+
+        await viewport.resize(false);
+
+        expect(document.activeElement).toBe(shell.querySelector('.sidebar-toggle'));
+        await viewport.resize(true);
+      }
+    } finally {
+      shell.remove();
+      viewport.restore();
+    }
+  });
+
+  it('leaves focus alone when the focused control survives the resize', async () => {
+    const viewport = stubViewport(true);
+    const shell = await render((request) => request.flush(me));
+    document.body.append(shell);
+    try {
+      const search = shell.querySelector<HTMLButtonElement>('.search-pill')!;
+      search.focus();
+
+      await viewport.resize(false);
+
+      expect(document.activeElement).toBe(search);
+    } finally {
+      shell.remove();
+      viewport.restore();
+    }
   });
 });

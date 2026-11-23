@@ -61,7 +61,14 @@ export class DynamicSecretsPage {
   }
 
   minutes(role: string) {
-    return this.page.getByLabel(`Lease minutes for ${role}`);
+    return this.page.getByRole('spinbutton', { name: `Lease minutes for ${role}`, exact: true });
+  }
+
+  increaseMinutes(role: string) {
+    return this.page.getByRole('button', {
+      name: `Increase lease minutes for ${role}`,
+      exact: true,
+    });
   }
 
   revoke(username: string) {

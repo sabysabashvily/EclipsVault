@@ -401,6 +401,42 @@ describe('Dynamic secrets', () => {
     await reload(fixture);
   });
 
+  it('steps the lease length with accessible decrease and increase buttons, clamped to role bounds', async () => {
+    const { page, fixture } = await loaded();
+    const row = rowOf(page, 'reporting_reader');
+    const input = row.querySelector<HTMLInputElement>('input')!;
+    const decrease = row.querySelector<HTMLButtonElement>(
+      'button[aria-label="Decrease lease minutes for reporting_reader"]',
+    )!;
+    const increase = row.querySelector<HTMLButtonElement>(
+      'button[aria-label="Increase lease minutes for reporting_reader"]',
+    )!;
+
+    increase.click();
+    expect(input.value).toBe('16');
+
+    decrease.click();
+    decrease.click();
+    expect(input.value).toBe('14');
+
+    input.value = '1';
+    decrease.click();
+    expect(input.value).toBe('1');
+
+    input.value = '60';
+    increase.click();
+    expect(input.value).toBe('60');
+
+    row.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+    await fixture.whenStable();
+    button(page, 'Issue credential').click();
+    fixture.detectChanges();
+    const request = backend.expectOne(issuePath);
+    expect(request.request.body).toEqual({ roleId: internalId, ttlMinutes: 60 });
+    request.flush(issued);
+    await reload(fixture);
+  });
+
   it('asks for a code once for a Secret role, then retries the issue exactly once', async () => {
     const { page, fixture } = await loaded();
     await confirmIssue(page, fixture, 'billing_admin');

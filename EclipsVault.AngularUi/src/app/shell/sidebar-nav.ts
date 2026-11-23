@@ -1,5 +1,5 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, computed, inject, input } from '@angular/core';
+import { Component, computed, inject, input, linkedSignal, output } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { filter, map } from 'rxjs';
@@ -20,6 +20,8 @@ const subpages: Readonly<Record<string, RegExp>> = {
 })
 export class SidebarNav {
   readonly areas = input.required<readonly string[]>();
+  readonly collapsed = input(false);
+  readonly expandRequested = output<void>();
   protected readonly sections = computed(() => sidebarFor(this.areas()));
   private readonly router = inject(Router);
   private readonly url = toSignal(
@@ -29,6 +31,11 @@ export class SidebarNav {
     ),
     { initialValue: this.router.url },
   );
+  // Preserves manual open/close choices while collapsing and expanding the rail on the same route.
+  private readonly preferredOpen = linkedSignal({
+    source: this.url,
+    computation: (): Readonly<Record<string, boolean>> => ({}),
+  });
 
   private path(): string {
     return this.url().split(/[?#]/)[0].replace(/\/$/, '').toLowerCase();
@@ -48,5 +55,28 @@ export class SidebarNav {
 
   protected groupActive(group: SidebarGroup): boolean {
     return group.children.some((link) => this.holds(link));
+  }
+
+  /** Collapsed rail hides child links, so disclosure state must report closed until expanded. */
+  protected groupExpanded(group: SidebarGroup): boolean {
+    if (this.collapsed()) return false;
+    return this.preferredOpen()[group.label] ?? this.groupActive(group);
+  }
+
+  /** The rail hides the current link, so the group's own name says it holds the current page. */
+  protected railLabel(group: SidebarGroup): string | null {
+    if (!this.collapsed()) return null;
+    return this.groupActive(group) ? `${group.label}, current section` : group.label;
+  }
+
+  protected groupSummaryClicked(event: MouseEvent, group: SidebarGroup): void {
+    event.preventDefault();
+    if (this.collapsed()) {
+      this.preferredOpen.update((state) => ({ ...state, [group.label]: true }));
+      this.expandRequested.emit();
+      return;
+    }
+    const next = !this.groupExpanded(group);
+    this.preferredOpen.update((state) => ({ ...state, [group.label]: next }));
   }
 }

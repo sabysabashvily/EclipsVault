@@ -1,11 +1,13 @@
 import { NgTemplateOutlet } from '@angular/common';
 import {
+  afterNextRender,
   Component,
   computed,
   DestroyRef,
   DOCUMENT,
   ElementRef,
   inject,
+  Injector,
   signal,
   viewChild,
 } from '@angular/core';
@@ -17,6 +19,8 @@ import { PageActions } from './shell/page-actions';
 import { shortcutsFor } from './shell/sidebar';
 import { SidebarNav } from './shell/sidebar-nav';
 import { UiApiError } from './ui-api/ui-api-errors';
+
+const sidebarCollapsedKey = 'eclipsvault.sidebar.collapsed';
 
 @Component({
   imports: [RouterOutlet, SidebarNav, AccountMenu, CommandPalette, NgTemplateOutlet],
@@ -35,29 +39,11 @@ import { UiApiError } from './ui-api/ui-api-errors';
           (close)="navigationOpen.set(false)"
         >
           <div #sidebar class="sidebar">
-            <button
-              type="button"
-              class="button navigation-close"
-              aria-label="Close navigation"
-              autofocus
-              (click)="closeNavigation()"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-                aria-hidden="true"
-              >
-                <path d="m6 6 12 12M18 6 6 18" />
-              </svg>
-            </button>
             <ng-container [ngTemplateOutlet]="sidebarContent" />
           </div>
         </dialog>
       } @else {
-        <aside #sidebar class="sidebar">
+        <aside #sidebar class="sidebar" [class.is-collapsed]="desktopSidebarCollapsed()">
           <ng-container [ngTemplateOutlet]="sidebarContent" />
         </aside>
       }
@@ -67,6 +53,7 @@ import { UiApiError } from './ui-api/ui-api-errors';
         <header class="topbar">
           @if (compact()) {
             <button
+              #navigationToggle
               type="button"
               class="button navigation-toggle"
               aria-label="Open navigation"
@@ -148,12 +135,64 @@ import { UiApiError } from './ui-api/ui-api-errors';
       </main>
     </div>
     <ng-template #sidebarContent>
-      <a class="brand workspace-card" href="/">
-        <span class="brand-mark" aria-hidden="true"></span>
-        <span class="brand-name">EclipsVault</span>
-      </a>
+      <div class="sidebar-header">
+        <a
+          class="brand sidebar-brand"
+          href="/"
+          [attr.aria-label]="desktopSidebarCollapsed() ? 'EclipsVault' : null"
+          [attr.title]="desktopSidebarCollapsed() ? 'EclipsVault' : null"
+        >
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span class="brand-name">EclipsVault</span>
+        </a>
+        @if (compact()) {
+          <button
+            type="button"
+            class="button navigation-close"
+            aria-label="Close navigation"
+            (click)="closeNavigation()"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <path d="m6 6 12 12M18 6 6 18" />
+            </svg>
+          </button>
+        } @else {
+          <button
+            type="button"
+            class="sidebar-toggle"
+            [attr.aria-label]="sidebarCollapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
+            [attr.title]="sidebarCollapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
+            [attr.aria-expanded]="!sidebarCollapsed()"
+            (click)="toggleSidebar()"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <rect width="18" height="18" x="3" y="3" rx="2" />
+              <path d="M9 3v18" />
+            </svg>
+          </button>
+        }
+      </div>
       @if (me.hasValue()) {
-        <app-sidebar-nav [areas]="me.value().areas" />
+        <app-sidebar-nav
+          [areas]="me.value().areas"
+          [collapsed]="desktopSidebarCollapsed()"
+          (expandRequested)="expandSidebar()"
+        />
         <div class="sidebar-footer">
           <app-account-menu [me]="me.value()" />
         </div>
@@ -174,17 +213,24 @@ export class App {
   protected readonly me = inject(CurrentAccount).me;
   protected readonly palette = viewChild(CommandPalette);
   private readonly document = inject(DOCUMENT);
+  private readonly injector = inject(Injector);
   private readonly navigator = this.document.defaultView?.navigator;
   private readonly viewport = this.document.defaultView?.matchMedia?.('(max-width: 1199px)');
   protected readonly pageActions = inject(PageActions);
   protected readonly compact = this.pageActions.compact;
   protected readonly navigationOpen = signal(false);
+  protected readonly sidebarCollapsed = signal(this.readSidebarCollapsed());
+  protected readonly desktopSidebarCollapsed = computed(
+    () => !this.compact() && this.sidebarCollapsed(),
+  );
   protected readonly shortcuts = computed(() =>
     this.me.hasValue() ? shortcutsFor(this.me.value().areas) : [],
   );
   protected readonly sidebar = viewChild<ElementRef<HTMLElement>>('sidebar');
   protected readonly navigationDialog =
     viewChild<ElementRef<HTMLDialogElement>>('navigationDialog');
+  protected readonly navigationToggle =
+    viewChild<ElementRef<HTMLButtonElement>>('navigationToggle');
   protected readonly chord = commandChord(
     this.navigator?.platform || this.navigator?.userAgent || '',
   );
@@ -192,17 +238,58 @@ export class App {
   constructor() {
     this.compact.set(this.viewport?.matches ?? false);
     const resized = (event: MediaQueryListEvent) => {
+      const hadFocus = this.document.activeElement !== this.document.body;
       this.closeNavigation();
       this.compact.set(event.matches);
+      // Crossing 1200px swaps the navigation markup; focus on a removed control goes to its successor.
+      afterNextRender(
+        () => {
+          if (!hadFocus || this.document.activeElement !== this.document.body) return;
+          const toggle = event.matches
+            ? this.navigationToggle()?.nativeElement
+            : this.sidebar()?.nativeElement.querySelector<HTMLElement>('.sidebar-toggle');
+          toggle?.focus();
+        },
+        { injector: this.injector },
+      );
     };
     this.viewport?.addEventListener('change', resized);
     inject(DestroyRef).onDestroy(() => this.viewport?.removeEventListener('change', resized));
+  }
+
+  protected toggleSidebar(): void {
+    const next = !this.sidebarCollapsed();
+    this.sidebarCollapsed.set(next);
+    this.writeSidebarCollapsed(next);
+  }
+
+  protected expandSidebar(): void {
+    if (!this.sidebarCollapsed()) return;
+    this.sidebarCollapsed.set(false);
+    this.writeSidebarCollapsed(false);
+  }
+
+  private readSidebarCollapsed(): boolean {
+    try {
+      return this.document.defaultView?.localStorage?.getItem(sidebarCollapsedKey) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  private writeSidebarCollapsed(collapsed: boolean): void {
+    try {
+      this.document.defaultView?.localStorage?.setItem(sidebarCollapsedKey, collapsed ? '1' : '0');
+    } catch {
+      // Storage may be unavailable in private browsing or restricted iframes.
+    }
   }
 
   protected openNavigation(): void {
     const dialog = this.navigationDialog()?.nativeElement;
     if (!dialog) return;
     dialog.showModal();
+    dialog.querySelector<HTMLButtonElement>('.navigation-close')?.focus();
     this.navigationOpen.set(true);
   }
 

@@ -7,18 +7,19 @@ import { SidebarNav } from './sidebar-nav';
 class Blank {}
 
 describe('SidebarNav', () => {
-  async function renderAt(url: string) {
+  async function renderAt(url: string, collapsed = false) {
     TestBed.configureTestingModule({
       providers: [provideRouter([{ path: '**', component: Blank }])],
     });
     await TestBed.inject(Router).navigateByUrl(url);
     const fixture = TestBed.createComponent(SidebarNav);
     fixture.componentRef.setInput('areas', ['secrets', 'users', 'service-accounts', 'networks']);
+    fixture.componentRef.setInput('collapsed', collapsed);
     await fixture.whenStable();
     const page = fixture.nativeElement as HTMLElement;
     const link = (label: string) =>
       [...page.querySelectorAll('a')].find((anchor) => anchor.textContent?.trim() === label)!;
-    return { group: page.querySelector('details')!, link };
+    return { fixture, page, group: page.querySelector('details')!, link };
   }
 
   it('keeps Secrets active on its Sharing tabs, New secret and detail pages', async () => {
@@ -57,5 +58,44 @@ describe('SidebarNav', () => {
     const { link } = await renderAt('/Admin/Users');
 
     expect(link('Users').getAttribute('aria-current')).toBe('page');
+  });
+
+  it('adds accessible labels and tooltips to rail items when collapsed, and asks to expand when a group is clicked', async () => {
+    const { fixture, group, link } = await renderAt('/Secrets', true);
+    const expanded = vi.fn();
+    fixture.componentInstance.expandRequested.subscribe(expanded);
+
+    const secrets = link('Secrets');
+    const summary = group.querySelector<HTMLElement>('summary')!;
+    expect(secrets.getAttribute('aria-label')).toBe('Secrets');
+    expect(secrets.getAttribute('title')).toBe('Secrets');
+    expect(summary.getAttribute('aria-label')).toBe('Administration');
+    expect(summary.getAttribute('title')).toBe('Administration');
+    expect(group.open).toBe(false);
+
+    summary.click();
+    await fixture.whenStable();
+
+    expect(group.open).toBe(false);
+    expect(expanded).toHaveBeenCalledTimes(1);
+
+    fixture.componentRef.setInput('collapsed', false);
+    await fixture.whenStable();
+    expect(group.open).toBe(true);
+  });
+
+  it('closes the active group disclosure while collapsed and restores it when expanded', async () => {
+    const { fixture, group } = await renderAt('/Admin/Users', true);
+
+    expect(group.open).toBe(false);
+    // The rail hides the current link, so the group's own name carries the current section.
+    expect(group.querySelector('summary')!.getAttribute('aria-label')).toBe(
+      'Administration, current section',
+    );
+
+    fixture.componentRef.setInput('collapsed', false);
+    await fixture.whenStable();
+
+    expect(group.open).toBe(true);
   });
 });

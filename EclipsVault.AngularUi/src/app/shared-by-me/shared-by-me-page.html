@@ -41,8 +41,8 @@
               @let sharedOn = share.createdAtUtc | date: 'yyyy-MM-dd HH:mm' : 'UTC';
               <tr>
                 <td class="cell-main mono cell-strong">{{ share.secretName }}</td>
-                <td class="cell-meta" data-label="with">{{ share.recipient }}</td>
-                <td class="cell-meta muted" data-label="· shared">{{ sharedOn }}</td>
+                <td class="cell-meta cell-nowrap" data-label="with">{{ share.recipient }}</td>
+                <td class="cell-meta cell-nowrap muted" data-label="· shared">{{ sharedOn }}</td>
                 <td
                   class="cell-pills"
                   [attr.data-label]="share.expiresAtUtc && !ends.tone ? 'Access until' : null"

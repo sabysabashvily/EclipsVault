@@ -14,6 +14,7 @@ import { Observable, finalize } from 'rxjs';
 import { AdministratorWrites } from '../shared/administrator-writes';
 import { ConfirmationDialog } from '../shared/confirmation-dialog';
 import { EmptyState } from '../shared/empty-state';
+import { ScrollRegion } from '../shared/scroll-region';
 import { StatusLine } from '../shared/status-line';
 import { StepUpDialog } from '../shared/step-up-dialog';
 import type { components } from '../ui-api/schema.generated';
@@ -28,7 +29,7 @@ const backendRefused = 'The backend refused to destroy the credential; it may st
 
 @Component({
   selector: 'app-dynamic-secrets-page',
-  imports: [DatePipe, EmptyState, StatusLine, StepUpDialog, ConfirmationDialog],
+  imports: [DatePipe, EmptyState, ScrollRegion, StatusLine, StepUpDialog, ConfirmationDialog],
   providers: [AdministratorWrites],
   templateUrl: './dynamic-secrets-page.html',
 })
@@ -70,6 +71,16 @@ export class DynamicSecretsPage {
       this.issued.set(null);
       this.pendingAction = null;
     });
+  }
+
+  protected stepTtl(input: HTMLInputElement, role: Role, delta: -1 | 1): void {
+    const raw = input.value.trim();
+    const fallback = Number(role.defaultTtlMinutes);
+    const parsed = raw === '' ? fallback : Number(raw);
+    const base = Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
+    const max = Math.max(1, Number(role.maxTtlMinutes));
+    const next = Math.min(max, Math.max(1, base + delta));
+    input.value = String(next);
   }
 
   protected askIssue(event: Event, role: Role, minutes: string, opener: HTMLButtonElement): void {
