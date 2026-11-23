@@ -15,14 +15,19 @@ each re-wrapped secret was recorded as an edit.
   in the batch's transaction, names the old and new master key ids and counts secrets and versions.
   A change that only re-wraps a data key writes no per-secret `SecretUpdated` row. If the row cannot
   be written, that batch rolls back and the pass stops with `503 audit_unavailable`; earlier batches
-  stay committed.
+  stay committed. A pass that stops for any other reason after a batch committed, such as a database
+  or key service failure, answers `500 rotation_interrupted` with the same counts.
 - **A changed row is never overwritten.** A row is re-wrapped only if its wrapped data key and master
   key id are still what the pass read. A row changed, deleted or shredded in the meantime is skipped;
   a changed value is already sealed under the current master key.
 - **One pass at a time across replicas**, under a vault-wide database lock. Another request answers
   `409 rotation_running`.
-- **A missing master key does not block the rest.** Rows under a master key that is not loaded are
-  skipped and reported as remaining; every other row moves.
+- **The active engine names the master keys.** It reports its current key and every key it can
+  unwrap: the environment keys under the local engine, and under the KMS engine the Transit key's
+  versions from its minimum decryption version to its latest. Status and passes compare rows with
+  those ids, so a pass never reads a row already under the current key.
+- **A missing master key does not block the rest.** Rows under a master key the engine cannot unwrap
+  are skipped and reported as remaining; every other row moves.
 - **Each batch clears its secrets from the secret cache** after it commits. If the caller leaves, the
   pass stops between batches, never inside one.
 
@@ -47,8 +52,9 @@ each re-wrapped secret was recorded as an edit.
 - If a batch's commit acknowledgement is lost, the counts a stopped pass reports can be lower than
   what moved. The status the page reloads afterwards is authoritative.
 - A row whose data key no longer opens under its own master key is skipped and stays pending, so one
-  damaged row cannot stop every pass. Under the KMS engine, a row already on the latest key version
-  is neither written nor recorded.
+  damaged row cannot stop every pass. Under the KMS engine, Vault refusing one ciphertext (a 400)
+  counts as such a row, while an unreachable Vault or a 5xx stops the pass and never reports it
+  finished. The engine reads the Transit key, so its token needs `read` on the key's path.
 
 ## Considered Options
 

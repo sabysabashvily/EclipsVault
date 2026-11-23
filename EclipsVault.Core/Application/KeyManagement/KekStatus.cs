@@ -9,14 +9,16 @@ public sealed record KekUsage(string KekId, bool IsCurrent, bool IsKnown, int Se
 /// <summary>
 /// Snapshot of the key-encryption-key estate for the admin Encryption page.
 /// <paramref name="AwaitingRotation"/> counts the secrets and versions a pass can move;
-/// <paramref name="OnMissingKeys"/> counts those left under master keys that are not loaded.
+/// <paramref name="OnMissingKeys"/> counts those left under master keys the engine cannot unwrap.
+/// <paramref name="KeyService"/> is true when an external key service holds the master keys.
 /// </summary>
 public sealed record KekStatus(
     string CurrentKekId,
     IReadOnlyList<string> KnownKekIds,
     IReadOnlyList<KekUsage> Usage,
     int AwaitingRotation,
-    int OnMissingKeys);
+    int OnMissingKeys,
+    bool KeyService);
 
 /// <summary>
 /// Outcome of a rotation pass. <paramref name="OnMissingKeys"/> counts the secrets and versions left

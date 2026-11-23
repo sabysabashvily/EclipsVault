@@ -101,6 +101,8 @@ public class StaleCachedEnvelopeTests
 
         public Task<SealedSecret> RewrapAsync(SealedSecret sealedSecret, CancellationToken ct)
             => inner.RewrapAsync(sealedSecret, ct);
+
+        public Task<MasterKeys> GetMasterKeysAsync(CancellationToken ct) => inner.GetMasterKeysAsync(ct);
     }
 
     /// <summary>

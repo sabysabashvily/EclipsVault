@@ -1270,6 +1270,15 @@ export interface paths {
                         "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
                     };
                 };
+                /** @description Internal Server Error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["RotationStoppedProblemResponse"];
+                    };
+                };
                 /** @description Service Unavailable */
                 503: {
                     headers: {
@@ -5977,6 +5986,7 @@ export interface components {
             awaitingRotation: number | string;
             /** Format: int32 */
             onMissingKeys: number | string;
+            keyService: boolean;
         };
         ExpiringSecretResponse: {
             /** Format: uuid */

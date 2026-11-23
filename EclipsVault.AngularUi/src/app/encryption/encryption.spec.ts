@@ -14,6 +14,7 @@ const settled: Encryption = {
   keys: [{ kekId: 'kek-1a2b3c4d', status: 'current', secrets: 12, versions: 3 }],
   awaitingRotation: 0,
   onMissingKeys: 0,
+  keyService: false,
 };
 const pending: Encryption = {
   currentKekId: 'kek-1a2b3c4d',
@@ -24,6 +25,7 @@ const pending: Encryption = {
   ],
   awaitingRotation: 5,
   onMissingKeys: 0,
+  keyService: false,
 };
 const stranded: Encryption = {
   currentKekId: 'kek-1a2b3c4d',
@@ -35,19 +37,40 @@ const stranded: Encryption = {
   ],
   awaitingRotation: 5,
   onMissingKeys: 2,
+  keyService: false,
 };
-// As the server reports Vault Transit: the environment master key is current, and every transit key
-// version is not loaded here, yet the server counts their items as waiting, not missing.
-const transit: Encryption = {
-  currentKekId: 'kek-1a2b3c4d',
-  loadedKekIds: ['kek-1a2b3c4d'],
-  keys: [
-    { kekId: 'kek-1a2b3c4d', status: 'current', secrets: 0, versions: 0 },
-    { kekId: 'vault:eclipsvault:v1', status: 'not_loaded', secrets: 10, versions: 2 },
-    { kekId: 'vault:eclipsvault:v2', status: 'not_loaded', secrets: 3, versions: 0 },
-  ],
-  awaitingRotation: 15,
+// As the server reports Vault Transit: each key is a version of the service's key, the latest current.
+const transitSettled: Encryption = {
+  currentKekId: 'vault:eclipsvault:v1',
+  loadedKekIds: ['vault:eclipsvault:v1'],
+  keys: [{ kekId: 'vault:eclipsvault:v1', status: 'current', secrets: 12, versions: 3 }],
+  awaitingRotation: 0,
   onMissingKeys: 0,
+  keyService: true,
+};
+const transitPending: Encryption = {
+  currentKekId: 'vault:eclipsvault:v3',
+  loadedKekIds: ['vault:eclipsvault:v3', 'vault:eclipsvault:v2', 'vault:eclipsvault:v1'],
+  keys: [
+    { kekId: 'vault:eclipsvault:v3', status: 'current', secrets: 3, versions: 0 },
+    { kekId: 'vault:eclipsvault:v1', status: 'retired', secrets: 10, versions: 2 },
+    { kekId: 'vault:eclipsvault:v2', status: 'retired', secrets: 0, versions: 0 },
+  ],
+  awaitingRotation: 12,
+  onMissingKeys: 0,
+  keyService: true,
+};
+const transitStranded: Encryption = {
+  currentKekId: 'vault:eclipsvault:v3',
+  loadedKekIds: ['vault:eclipsvault:v3', 'vault:eclipsvault:v2'],
+  keys: [
+    { kekId: 'vault:eclipsvault:v3', status: 'current', secrets: 3, versions: 0 },
+    { kekId: 'vault:eclipsvault:v2', status: 'retired', secrets: 5, versions: 0 },
+    { kekId: 'vault:eclipsvault:v1', status: 'not_loaded', secrets: 2, versions: 0 },
+  ],
+  awaitingRotation: 5,
+  onMissingKeys: 2,
+  keyService: true,
 };
 const emptied: Encryption = {
   ...settled,
@@ -195,9 +218,30 @@ describe('Encryption keys', () => {
     expect(rewrapButtons(page)).toEqual(['Re-wrap 5 items']);
   });
 
-  it('KMS key versions: counts their items as waiting, not as unreadable', async () => {
-    const { page } = await loaded(transit);
+  it('key service, all current: says so, and moving to a new key starts in the key service', async () => {
+    const { page } = await loaded(transitSettled);
+    expect(verdict(page)).toBe('All current');
+    expect(page.querySelector('.action-strip')).toBeNull();
+    expect(text(page.querySelector('.step-card p'))).toBe(
+      'The master key lives in the key service, so the first step happens there.',
+    );
+    expect([...page.querySelectorAll('.step-card li')].map((step) => text(step))).toEqual([
+      'Rotate the key in the key service. New secrets use its latest version at once.',
+      'Re-wrap here, which moves older items to the latest version.',
+    ]);
+    expect(
+      [...page.querySelectorAll('tbody tr')].map((row) =>
+        [...row.querySelectorAll('.key-role, .badge')].map((cell) => text(cell)),
+      ),
+    ).toEqual([['Wraps every new secret', 'Current']]);
+  });
+
+  it('key service versions: counts items on earlier versions as waiting for the latest', async () => {
+    const { page } = await loaded(transitPending);
     expect(verdict(page)).toBe('Re-wrap pending');
+    expect(text(page.querySelector('.page-sub'))).toBe(
+      '12 items still use an earlier key version. Re-wrap them under the latest version.',
+    );
     expect(notices(page)).toEqual([]);
     expect(
       [...page.querySelectorAll('.stat-card')].map((figure) => [
@@ -206,19 +250,39 @@ describe('Encryption keys', () => {
         text(figure.querySelector('.stat-detail')),
       ]),
     ).toEqual([
-      ['Waiting to re-wrap', '15', '13 secrets and 2 versions'],
-      ['On the current key', '0', 'of 15 items in the vault'],
+      ['Waiting to re-wrap', '12', '10 secrets and 2 versions'],
+      ['On the current key', '3', 'of 15 items in the vault'],
     ]);
-    expect(rewrapButtons(page)).toEqual(['Re-wrap 15 items']);
+    expect(rewrapButtons(page)).toEqual(['Re-wrap 12 items']);
     expect(
       [...page.querySelectorAll('tbody tr')].map((row) =>
         [...row.querySelectorAll('.key-role, .badge')].map((cell) => text(cell)),
       ),
     ).toEqual([
       ['Wraps every new secret', 'Current'],
-      ['Held by the key service · a re-wrap moves items to its latest version', 'KMS version'],
-      ['Held by the key service · a re-wrap moves items to its latest version', 'KMS version'],
+      [
+        'Held by the key service · re-wrap moves its items to the latest version',
+        'Earlier version',
+      ],
+      ['Held by the key service · wraps no secrets', 'Earlier version'],
     ]);
+  });
+
+  it('key service version it will not unwrap: says how to allow it, and skips its items', async () => {
+    const { page } = await loaded(transitStranded);
+    expect(verdict(page)).toBe('Action needed');
+    expect(text(page.querySelector('.page-sub'))).toBe(
+      "2 items use a key version the key service won't unwrap, so they can't be read. 5 more are waiting to be re-wrapped.",
+    );
+    expect(notices(page)).toEqual(['Let the key service unwrap vault:eclipsvault:v1']);
+    expect([...page.querySelectorAll('.notice li')].map((step) => text(step))).toEqual([
+      "Allow decryption with this version again; in Vault Transit, lower the key's min_decryption_version.",
+      'Re-wrap here, which moves its items to the latest version.',
+    ]);
+    expect(text(page.querySelector('tbody tr:last-child .key-role'))).toBe(
+      "The key service won't unwrap it · its items can't be read",
+    );
+    expect(rewrapButtons(page)).toEqual(['Re-wrap 5 items']);
   });
 
   it('re-wrapping: the button says so and is disabled while the request is in flight', async () => {
@@ -268,6 +332,25 @@ describe('Encryption keys', () => {
     expect(text(page.querySelector('.notice[role="alert"] p'))).toBe(stopped);
     expect(status(page, 'alert')).toBe('');
     expect(rewrapButtons(page)).toEqual(['Re-wrap 1 item']);
+  });
+
+  it('stopped by an error: shows the counts, and the re-wrap button works without a reload', async () => {
+    const { page, fixture } = await loaded(pending);
+    const stopped =
+      'Rotation stopped because of an error. 4 item(s) were re-wrapped before it stopped; run it again to continue.';
+    (await confirmRotation(page, fixture)).flush(
+      { code: 'rotation_interrupted', title: stopped, secretsRewrapped: 4, versionsRewrapped: 0 },
+      { status: 500, statusText: 'Internal Server Error' },
+    );
+    await reload(fixture, { ...pending, awaitingRotation: 1 });
+    expect(verdict(page)).toBe('Stopped partway');
+    expect(text(page.querySelector('.page-sub'))).toBe(
+      'The last re-wrap stopped partway. 1 item still use the retired master key.',
+    );
+    expect(notices(page)).toEqual(['Re-wrap stopped partway because of an error']);
+    expect(text(page.querySelector('.notice[role="alert"] p'))).toBe(stopped);
+    expect(status(page, 'alert')).toBe('');
+    expect(button(page, 'Re-wrap 1 item').disabled).toBe(false);
   });
 
   it('already running: says nothing changed, and keeps the verdict from the keys', async () => {

@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
@@ -112,13 +113,29 @@ public sealed class VaultTransitCryptoEngine : ICryptoEngine
     {
         var wrappedDek = Encoding.UTF8.GetString(sealedSecret.WrappedDek);
         // Vault re-wraps the DEK under its latest key version without exposing the DEK.
-        var rewrapped = await TransitCallAsync("rewrap", new { ciphertext = wrappedDek }, "ciphertext", ct);
+        var rewrapped = await TransitCallAsync("rewrap", new { ciphertext = wrappedDek }, "ciphertext", ct, refusalIsThisCiphertext: true);
         if (string.Equals(rewrapped, wrappedDek, StringComparison.Ordinal))
         {
             return sealedSecret; // already under the latest key version
         }
 
         return sealedSecret with { WrappedDek = Encoding.UTF8.GetBytes(rewrapped), KekId = KekId(rewrapped) };
+    }
+
+    /// <summary>
+    /// Reads the Transit key: its latest version wraps new data keys, and Vault still unwraps every
+    /// version from its minimum decryption version up. The token needs <c>read</c> on the key's path.
+    /// </summary>
+    public async Task<MasterKeys> GetMasterKeysAsync(CancellationToken ct)
+    {
+        using var key = await TransitSendAsync(HttpMethod.Get, $"v1/{_options.Mount}/keys/{_options.KeyName}", body: null, "keys", refusalIsThisCiphertext: false, ct);
+        var data = key.RootElement.GetProperty("data");
+        var latest = data.GetProperty("latest_version").GetInt32();
+        var oldest = Math.Max(1, data.GetProperty("min_decryption_version").GetInt32());
+        var known = Enumerable.Range(oldest, latest - oldest + 1).Reverse()
+            .Select(version => VaultTransitFormat.KekId(_options.KeyName, version))
+            .ToList();
+        return new MasterKeys(known[0], known, KeyService: true);
     }
 
     /// <summary>A readable key id for display/grouping: <c>vault:&lt;key&gt;:&lt;version&gt;</c> (e.g. vault:eclipsvault:v1).</summary>
@@ -130,30 +147,50 @@ public sealed class VaultTransitCryptoEngine : ICryptoEngine
     /// thread-pool thread — which, on a vault where every reveal wraps or unwraps a DEK, is the whole
     /// reason <see cref="ICryptoEngine"/> is an asynchronous contract.
     /// </summary>
-    private async Task<string> TransitCallAsync(string operation, object body, string dataField, CancellationToken ct)
+    private async Task<string> TransitCallAsync(
+        string operation, object body, string dataField, CancellationToken ct, bool refusalIsThisCiphertext = false)
     {
-        var path = $"v1/{_options.Mount}/{operation}/{_options.KeyName}";
+        using var response = await TransitSendAsync(
+            HttpMethod.Post, $"v1/{_options.Mount}/{operation}/{_options.KeyName}", body, operation, refusalIsThisCiphertext, ct);
+        return response.RootElement.GetProperty("data").GetProperty(dataField).GetString()
+               ?? throw new CryptoConfigurationException($"Vault Transit '{operation}' response missing '{dataField}'.");
+    }
+
+    /// <param name="refusalIsThisCiphertext">
+    /// Vault answers 400 when it cannot open the one ciphertext it was sent, so for a call about a single
+    /// ciphertext a 400 is that ciphertext's fault and becomes a <see cref="CryptographicException"/>.
+    /// Every other failure, an unreachable server or a 5xx above all, means the engine cannot work.
+    /// </param>
+    private async Task<JsonDocument> TransitSendAsync(
+        HttpMethod method, string path, object? body, string operation, bool refusalIsThisCiphertext, CancellationToken ct)
+    {
         HttpResponseMessage response;
         try
         {
-            response = await _http.PostAsJsonAsync(path, body, ct);
+            using var request = new HttpRequestMessage(method, path) { Content = body is null ? null : JsonContent.Create(body) };
+            response = await _http.SendAsync(request, ct);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             throw new CryptoConfigurationException($"Vault Transit '{operation}' call failed: {ex.Message}");
         }
 
-        var json = await response.Content.ReadAsStringAsync(ct);
-        if (!response.IsSuccessStatusCode)
+        using (response)
         {
-            throw new CryptoConfigurationException($"Vault Transit '{operation}' returned {(int)response.StatusCode}: {json}");
+            var json = await response.Content.ReadAsStringAsync(ct);
+            if (refusalIsThisCiphertext && response.StatusCode == HttpStatusCode.BadRequest)
+            {
+                throw new CryptographicException($"Vault Transit refused to '{operation}' this ciphertext: {json}");
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new CryptoConfigurationException($"Vault Transit '{operation}' returned {(int)response.StatusCode}: {json}");
+            }
+
+            return JsonDocument.Parse(json);
         }
-
-        using var doc = JsonDocument.Parse(json);
-        return doc.RootElement.GetProperty("data").GetProperty(dataField).GetString()
-               ?? throw new CryptoConfigurationException($"Vault Transit '{operation}' response missing '{dataField}'.");
     }
-
 }
 
 /// <summary>Pure parsing of Vault Transit ciphertext, split out so it can be unit-tested without a server.</summary>
@@ -169,4 +206,6 @@ public static class VaultTransitFormat
         var version = parts.Length >= 2 && parts[1].Length > 0 ? parts[1] : "v?";
         return $"vault:{keyName}:{version}";
     }
+
+    public static string KekId(string keyName, int version) => $"vault:{keyName}:v{version}";
 }

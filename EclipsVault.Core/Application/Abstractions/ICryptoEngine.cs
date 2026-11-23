@@ -26,6 +26,13 @@ public sealed record SealedSecret(byte[] Ciphertext, byte[] WrappedDek, string K
 }
 
 /// <summary>
+/// The master keys as the active engine sees them: the one it wraps new data keys under, and every
+/// one it can still unwrap, current first. <paramref name="KeyService"/> is true when an external key
+/// service holds them rather than this server's environment.
+/// </summary>
+public sealed record MasterKeys(string CurrentKekId, IReadOnlyList<string> KnownKekIds, bool KeyService);
+
+/// <summary>
 /// Envelope-encryption engine. The default implementation is local AES-256-GCM;
 /// swapping to a cloud KMS is a configuration change (see ICryptoEngineFactory),
 /// the business layer never changes.
@@ -57,5 +64,13 @@ public interface ICryptoEngine
     /// and its <see cref="SealedSecret.KekId"/> change. The DEK is unwrapped with whichever KEK
     /// originally sealed it, so the engine must still hold that (now retired) key.
     /// </summary>
+    /// <remarks>
+    /// Throws <see cref="System.Security.Cryptography.CryptographicException"/> when this one data key
+    /// cannot be opened, and <see cref="Domain.Exceptions.CryptoConfigurationException"/> when the
+    /// engine cannot work at all, such as an unreachable key service.
+    /// </remarks>
     Task<SealedSecret> RewrapAsync(SealedSecret sealedSecret, CancellationToken ct);
+
+    /// <summary>The master key ids this engine stores beside each wrapped data key, so rows compare with them.</summary>
+    Task<MasterKeys> GetMasterKeysAsync(CancellationToken ct);
 }

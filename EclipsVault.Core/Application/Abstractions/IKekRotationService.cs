@@ -16,7 +16,8 @@ public interface IKekRotationService
     /// <summary>
     /// Runs one pass in batches (ADR-0029). Throws <see cref="KekRotationRunningException"/>, having changed
     /// nothing, while another pass runs, and <see cref="KekRotationStoppedException"/> when a batch cannot be
-    /// recorded; the batches committed before it stay, and the exception counts what they moved.
+    /// recorded; the batches committed before it stay, and the exception counts what they moved. Any other
+    /// failure after a batch committed becomes <see cref="KekRotationInterruptedException"/>, with the same counts.
     /// </summary>
     Task<KekRotationResult> RotateAsync(CancellationToken ct);
 }

@@ -4,10 +4,12 @@ using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.KeyManagement;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Infrastructure.Persistence;
 using EclipsVault.Infrastructure.Persistence.Interceptors;
 using EclipsVault.Infrastructure.Persistence.Locking;
 using EclipsVault.Infrastructure.Security;
+using EclipsVault.Tests.Fakes;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -18,8 +20,9 @@ namespace EclipsVault.Tests.Security;
 
 /// <summary>
 /// A rotation pass clears each secret it moves from the secret cache, batch by batch, stops only
-/// between batches, and leaves the KMS engine to re-wrap its own rows. Runs the real service against
-/// in-memory SQLite; only the database locks, the cache and the KMS engine are stand-ins.
+/// between batches, and under Vault Transit compares rows with the key service's own key versions.
+/// Runs the real service and engines against in-memory SQLite; only the database locks, the cache and
+/// the Vault server are stand-ins.
 /// </summary>
 public sealed class KekRotationBatchTests : IDisposable
 {
@@ -79,35 +82,6 @@ public sealed class KekRotationBatchTests : IDisposable
     }
 
     [Fact]
-    public async Task Under_the_KMS_engine_a_pass_sends_each_row_not_under_the_current_key_to_its_rewrap()
-    {
-        await using var db = NewContext();
-        await db.Database.EnsureCreatedAsync();
-        var secret = SecretUnder("vault:eclipsvault:v1", "kms-wrapped");
-        db.Secrets.Add(secret);
-        await db.SaveChangesAsync();
-
-        var result = await Rotation(db, new KmsRewrap()).RotateAsync(default);
-
-        Assert.Equal(new KekRotationResult(CurrentKekId, 1, 0, 0), result);
-        Assert.Equal("vault:eclipsvault:v2", await db.Secrets.Where(row => row.Id == secret.Id).Select(row => row.KekId).SingleAsync());
-    }
-
-    [Fact]
-    public async Task Under_the_KMS_engine_a_row_already_on_the_latest_key_version_is_neither_written_nor_recorded()
-    {
-        await using var db = NewContext();
-        await db.Database.EnsureCreatedAsync();
-        db.Secrets.Add(SecretUnder("vault:eclipsvault:v1", "kms-wrapped"));
-        await db.SaveChangesAsync();
-
-        var result = await Rotation(db, new KmsAlreadyLatest()).RotateAsync(default);
-
-        Assert.Equal(new KekRotationResult(CurrentKekId, 0, 0, 0), result);
-        Assert.Equal(0, await RotationsRecordedAsync());
-    }
-
-    [Fact]
     public async Task A_row_whose_data_key_does_not_open_stays_pending_while_the_rest_move()
     {
         await using var db = NewContext();
@@ -138,16 +112,153 @@ public sealed class KekRotationBatchTests : IDisposable
     }
 
     [Fact]
-    public async Task Under_the_KMS_engine_the_status_counts_every_row_not_under_the_current_key_as_awaiting_rotation()
+    public async Task A_cache_that_cannot_be_cleared_after_a_batch_commits_stops_the_pass_with_that_batch_counted()
     {
         await using var db = NewContext();
         await db.Database.EnsureCreatedAsync();
-        db.Secrets.Add(SecretUnder("vault:eclipsvault:v1", "kms-wrapped"));
+        await SecretsUnderRetiredKeyAsync(db, count: 2);
+        _cache.Unreachable = true;
+
+        var interrupted = await Assert.ThrowsAsync<KekRotationInterruptedException>(() => Rotation(db).RotateAsync(default));
+
+        Assert.Equal((2, 0), (interrupted.SecretsRewrapped, interrupted.VersionsRewrapped));
+        Assert.IsType<InvalidOperationException>(interrupted.InnerException);
+        Assert.Equal(1, await RotationsRecordedAsync());
+    }
+
+    [Fact]
+    public async Task Under_Vault_Transit_secrets_on_the_latest_key_version_leave_nothing_awaiting_rotation()
+    {
+        await using var db = NewContext();
+        await db.Database.EnsureCreatedAsync();
+        var transit = new FakeVaultTransit();
+        await SecretsSealedByAsync(db, transit.Engine(), count: 2);
+
+        var status = await Rotation(db, transit.Engine()).GetStatusAsync(default);
+
+        Assert.Equal("vault:eclipsvault:v1", status.CurrentKekId);
+        Assert.Equal([new KekUsage("vault:eclipsvault:v1", IsCurrent: true, IsKnown: true, SecretCount: 2, VersionCount: 0)], status.Usage);
+        Assert.Equal((0, 0), (status.AwaitingRotation, status.OnMissingKeys));
+    }
+
+    [Fact]
+    public async Task Under_Vault_Transit_a_pass_over_secrets_on_the_latest_key_version_calls_and_records_nothing()
+    {
+        await using var db = NewContext();
+        await db.Database.EnsureCreatedAsync();
+        var transit = new FakeVaultTransit();
+        await SecretsSealedByAsync(db, transit.Engine(), count: 2);
+
+        var result = await Rotation(db, transit.Engine()).RotateAsync(default);
+
+        Assert.Equal(new KekRotationResult("vault:eclipsvault:v1", 0, 0, 0), result);
+        Assert.Equal(0, transit.Rewraps);
+        Assert.Equal(0, await RotationsRecordedAsync());
+    }
+
+    [Fact]
+    public async Task After_a_Transit_key_rotation_the_status_counts_rows_on_older_versions_as_awaiting_rotation()
+    {
+        await using var db = NewContext();
+        await db.Database.EnsureCreatedAsync();
+        var transit = new FakeVaultTransit();
+        await SecretsSealedByAsync(db, transit.Engine(), count: 2);
+        transit.RotateKey();
+        await SecretsSealedByAsync(db, transit.Engine(), count: 1);
+
+        var status = await Rotation(db, transit.Engine()).GetStatusAsync(default);
+
+        Assert.Equal("vault:eclipsvault:v2", status.CurrentKekId);
+        Assert.Equal(
+            [
+                new KekUsage("vault:eclipsvault:v2", IsCurrent: true, IsKnown: true, SecretCount: 1, VersionCount: 0),
+                new KekUsage("vault:eclipsvault:v1", IsCurrent: false, IsKnown: true, SecretCount: 2, VersionCount: 0),
+            ],
+            status.Usage);
+        Assert.Equal((2, 0), (status.AwaitingRotation, status.OnMissingKeys));
+    }
+
+    [Fact]
+    public async Task After_a_Transit_key_rotation_a_pass_rewraps_only_rows_on_older_versions_and_they_still_open()
+    {
+        await using var db = NewContext();
+        await db.Database.EnsureCreatedAsync();
+        var transit = new FakeVaultTransit();
+        var older = await SecretsSealedByAsync(db, transit.Engine(), count: 2);
+        transit.RotateKey();
+        await SecretsSealedByAsync(db, transit.Engine(), count: 1);
+
+        var result = await Rotation(db, transit.Engine()).RotateAsync(default);
+
+        Assert.Equal(new KekRotationResult("vault:eclipsvault:v2", 2, 0, 0), result);
+        Assert.Equal(2, transit.Rewraps);
+        Assert.Equal(1, await RotationsRecordedAsync());
+        Assert.Equal(["vault:eclipsvault:v2", "vault:eclipsvault:v2", "vault:eclipsvault:v2"], await db.Secrets.Select(row => row.KekId).ToListAsync());
+        var moved = await db.Secrets.AsNoTracking().SingleAsync(row => row.Id == older[0].Id);
+        Assert.Equal(
+            "value"u8.ToArray(),
+            await transit.Engine().UnsealAsync(
+                new SealedSecret(moved.Ciphertext, moved.WrappedDek, moved.KekId, moved.Algorithm), SecretBinding.ForCurrentValue(moved.Id), default));
+    }
+
+    [Fact]
+    public async Task Under_Vault_Transit_rows_on_versions_below_the_minimum_decryption_version_are_counted_as_on_missing_keys_and_left()
+    {
+        await using var db = NewContext();
+        await db.Database.EnsureCreatedAsync();
+        var transit = new FakeVaultTransit();
+        await SecretsSealedByAsync(db, transit.Engine(), count: 1);
+        transit.RotateKey();
+        await SecretsSealedByAsync(db, transit.Engine(), count: 1);
+        transit.RotateKey();
+        transit.MinDecryptionVersion = 2;
+
+        var status = await Rotation(db, transit.Engine()).GetStatusAsync(default);
+        var result = await Rotation(db, transit.Engine()).RotateAsync(default);
+
+        Assert.Equal(["vault:eclipsvault:v3", "vault:eclipsvault:v2"], status.KnownKekIds);
+        Assert.Equal((1, 1), (status.AwaitingRotation, status.OnMissingKeys));
+        Assert.Equal(new KekRotationResult("vault:eclipsvault:v3", 1, 0, 1), result);
+        Assert.Equal(1, transit.Rewraps);
+    }
+
+    [Fact]
+    public async Task Under_Vault_Transit_a_row_the_key_service_rejects_stays_pending_while_the_rest_move()
+    {
+        await using var db = NewContext();
+        await db.Database.EnsureCreatedAsync();
+        var transit = new FakeVaultTransit();
+        var secrets = await SecretsSealedByAsync(db, transit.Engine(), count: 2);
+        var damaged = secrets[0];
+        damaged.WrappedDek = Encoding.UTF8.GetBytes("vault:v1:" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(60)));
         await db.SaveChangesAsync();
+        transit.RotateKey();
 
-        var status = await Rotation(db, new KmsRewrap()).GetStatusAsync(default);
+        var result = await Rotation(db, transit.Engine()).RotateAsync(default);
 
-        Assert.Equal((1, 0), (status.AwaitingRotation, status.OnMissingKeys));
+        Assert.Equal(new KekRotationResult("vault:eclipsvault:v2", 1, 0, 0), result);
+        Assert.Equal("vault:eclipsvault:v1", await db.Secrets.Where(row => row.Id == damaged.Id).Select(row => row.KekId).SingleAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Under_Vault_Transit_a_key_service_outage_stops_the_pass_with_what_the_committed_batches_moved(bool refusesConnections)
+    {
+        await using var db = NewContext();
+        await db.Database.EnsureCreatedAsync();
+        var transit = new FakeVaultTransit();
+        await SecretsSealedByAsync(db, transit.Engine(), count: 501);
+        transit.RotateKey();
+        transit.RewrapsBeforeOutage = 500;
+        transit.OutageRefusesConnections = refusesConnections;
+
+        var interrupted = await Assert.ThrowsAsync<KekRotationInterruptedException>(() => Rotation(db, transit.Engine()).RotateAsync(default));
+
+        Assert.Equal((500, 0), (interrupted.SecretsRewrapped, interrupted.VersionsRewrapped));
+        Assert.IsType<CryptoConfigurationException>(interrupted.InnerException);
+        Assert.Equal(1, await RotationsRecordedAsync());
+        Assert.Equal(1, await db.Secrets.CountAsync(row => row.KekId == "vault:eclipsvault:v1"));
     }
 
     /// <summary>A row whose envelope no test opens: only the id of the key it names matters.</summary>
@@ -166,15 +277,16 @@ public sealed class KekRotationBatchTests : IDisposable
     private KekRotationService Rotation(EclipsVaultDbContext db, ICryptoEngine? engine = null) => new(
         db,
         new EngineFactory(engine ?? new AesGcmCryptoEngine(new Keys(CurrentKekId, CurrentKek, (RetiredKekId, RetiredKek)), Options.Create(new CryptoOptions()))),
-        new Keys(CurrentKekId, CurrentKek, (RetiredKekId, RetiredKek)),
         _cache,
         _chain,
         _audit,
         new UncontendedLocks());
 
-    private static async Task<List<Secret>> SecretsUnderRetiredKeyAsync(EclipsVaultDbContext db, int count)
+    private static Task<List<Secret>> SecretsUnderRetiredKeyAsync(EclipsVaultDbContext db, int count)
+        => SecretsSealedByAsync(db, new AesGcmCryptoEngine(new Keys(RetiredKekId, RetiredKek), Options.Create(new CryptoOptions())), count);
+
+    private static async Task<List<Secret>> SecretsSealedByAsync(EclipsVaultDbContext db, ICryptoEngine sealing, int count)
     {
-        var sealing = new AesGcmCryptoEngine(new Keys(RetiredKekId, RetiredKek), Options.Create(new CryptoOptions()));
         var secrets = new List<Secret>();
         for (var index = 0; index < count; index++)
         {
@@ -183,7 +295,7 @@ public sealed class KekRotationBatchTests : IDisposable
             secrets.Add(new Secret
             {
                 Id = id,
-                Name = $"cached-{index:D3}",
+                Name = $"sealed-{id:N}",
                 ProjectKey = "ROTATION",
                 Ciphertext = sealedSecret.Ciphertext,
                 WrappedDek = sealedSecret.WrappedDek,
@@ -217,8 +329,11 @@ public sealed class KekRotationBatchTests : IDisposable
 
         public Task SetAsync(EncryptedSecretEnvelope envelope, CancellationToken ct = default) => Task.CompletedTask;
 
+        /// <summary>Clearing fails, as it does when Redis cannot be reached.</summary>
+        public bool Unreachable { get; set; }
+
         public async Task EvictAsync(Guid secretId, CancellationToken ct = default)
-            => Evictions.Add((secretId, await rotationsRecorded()));
+            => Evictions.Add(Unreachable ? throw new InvalidOperationException("The cache is unreachable.") : (secretId, await rotationsRecorded()));
     }
 
     /// <summary>SQLite has no lock manager, and these tests run one pass on one connection.</summary>
@@ -249,31 +364,6 @@ public sealed class KekRotationBatchTests : IDisposable
         public byte[] ResolveKek(string kekId) => _keys[kekId];
     }
 
-    /// <summary>Re-wraps as the KMS engine does: under its own latest key version, with an id of its own.</summary>
-    private sealed class KmsRewrap : ICryptoEngine
-    {
-        public string EngineId => VaultTransitCryptoEngine.EngineName;
-
-        public Task<SealedSecret> SealAsync(byte[] plaintext, byte[] associatedData, CancellationToken ct) => throw new NotSupportedException();
-
-        public Task<byte[]> UnsealAsync(SealedSecret sealedSecret, byte[] associatedData, CancellationToken ct) => throw new NotSupportedException();
-
-        public Task<SealedSecret> RewrapAsync(SealedSecret sealedSecret, CancellationToken ct)
-            => Task.FromResult(sealedSecret with { WrappedDek = Encoding.UTF8.GetBytes("vault:v2:wrapped"), KekId = "vault:eclipsvault:v2" });
-    }
-
-    /// <summary>The KMS engine for a row already on its latest key version: it hands the envelope back unchanged.</summary>
-    private sealed class KmsAlreadyLatest : ICryptoEngine
-    {
-        public string EngineId => VaultTransitCryptoEngine.EngineName;
-
-        public Task<SealedSecret> SealAsync(byte[] plaintext, byte[] associatedData, CancellationToken ct) => throw new NotSupportedException();
-
-        public Task<byte[]> UnsealAsync(SealedSecret sealedSecret, byte[] associatedData, CancellationToken ct) => throw new NotSupportedException();
-
-        public Task<SealedSecret> RewrapAsync(SealedSecret sealedSecret, CancellationToken ct) => Task.FromResult(sealedSecret);
-    }
-
     /// <summary>The real engine, whose first re-wrap is where the caller leaves.</summary>
     private sealed class CancelsOnRewrap(ICryptoEngine engine, CancellationTokenSource caller) : ICryptoEngine
     {
@@ -288,6 +378,8 @@ public sealed class KekRotationBatchTests : IDisposable
             caller.Cancel();
             return engine.RewrapAsync(sealedSecret, ct);
         }
+
+        public Task<MasterKeys> GetMasterKeysAsync(CancellationToken ct) => engine.GetMasterKeysAsync(ct);
     }
 
     private sealed class EngineFactory(ICryptoEngine engine) : ICryptoEngineFactory

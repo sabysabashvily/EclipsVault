@@ -24,12 +24,13 @@ public sealed class EncryptionController(IKekRotationService rotation, ILogger<E
         var status = await rotation.GetStatusAsync(ct);
         return new EncryptionResponse(status.CurrentKekId, status.KnownKekIds,
             status.Usage.Select(key => new KekResponse(key.KekId, StatusOf(key), key.SecretCount, key.VersionCount)).ToList(),
-            status.AwaitingRotation, status.OnMissingKeys);
+            status.AwaitingRotation, status.OnMissingKeys, status.KeyService);
     }
 
     [HttpPost("rotate")]
     [ProducesResponseType<RotationResponse>(StatusCodes.Status200OK, "application/json")]
     [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status409Conflict, "application/problem+json")]
+    [ProducesResponseType<RotationStoppedProblemResponse>(StatusCodes.Status500InternalServerError, "application/problem+json")]
     [ProducesResponseType<RotationStoppedProblemResponse>(StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
     public async Task<IActionResult> Rotate(CancellationToken ct)
     {
@@ -46,22 +47,28 @@ public sealed class EncryptionController(IKekRotationService rotation, ILogger<E
         catch (KekRotationStoppedException stopped)
         {
             logger.LogCritical(stopped, "Fail-closed: master key rotation stopped because the audit trail is unavailable");
-            return RotationStopped(stopped.SecretsRewrapped, stopped.VersionsRewrapped);
+            return RotationStopped(StatusCodes.Status503ServiceUnavailable, "audit_unavailable",
+                "Rotation stopped because the audit trail could not record it.", stopped.SecretsRewrapped, stopped.VersionsRewrapped);
+        }
+        catch (KekRotationInterruptedException interrupted)
+        {
+            logger.LogError(interrupted, "Master key rotation stopped partway after committing some batches");
+            return RotationStopped(StatusCodes.Status500InternalServerError, "rotation_interrupted",
+                "Rotation stopped because of an error.", interrupted.SecretsRewrapped, interrupted.VersionsRewrapped);
         }
     }
 
-    private static JsonResult RotationStopped(int secretsRewrapped, int versionsRewrapped)
+    private static JsonResult RotationStopped(int status, string code, string reason, int secretsRewrapped, int versionsRewrapped)
         => new(new RotationStoppedProblemResponse
         {
-            Status = StatusCodes.Status503ServiceUnavailable,
-            Code = "audit_unavailable",
-            Title = "Rotation stopped because the audit trail could not record it. "
-                + $"{secretsRewrapped + versionsRewrapped} item(s) were re-wrapped before it stopped; run it again to continue.",
+            Status = status,
+            Code = code,
+            Title = $"{reason} {secretsRewrapped + versionsRewrapped} item(s) were re-wrapped before it stopped; run it again to continue.",
             SecretsRewrapped = secretsRewrapped,
             VersionsRewrapped = versionsRewrapped,
         })
         {
-            StatusCode = StatusCodes.Status503ServiceUnavailable,
+            StatusCode = status,
             ContentType = "application/problem+json",
         };
 
