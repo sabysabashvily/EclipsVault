@@ -753,6 +753,7 @@ test('the palette is driven from the keyboard, traps focus, and hands it back on
   await page.context().addCookies(administratorCookies);
   await page.goto('/Access/Index');
   await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
+  const shell = new AppShell(page);
   const options = page.locator('.palette-item');
 
   await test.step('Escape returns focus to the element that had it', async () => {
@@ -801,7 +802,7 @@ test('the palette is driven from the keyboard, traps focus, and hands it back on
     // eslint-disable-next-line playwright/no-raw-locators -- The command-palette input is the keyboard focus-trap target.
     await expect(page.locator('.palette-input')).toBeFocused();
     // A press inside the panel keeps the field focused; one on the backdrop dismisses it.
-    await page.locator('.palette-hint').click();
+    await shell.paletteCloseHint.click();
     // eslint-disable-next-line playwright/no-raw-locators -- The command-palette input is the keyboard focus-trap target.
     await expect(page.locator('.palette-input')).toBeFocused();
     await page.locator('.palette-backdrop').click({ position: { x: 5, y: 5 } });
