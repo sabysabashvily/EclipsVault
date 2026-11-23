@@ -248,27 +248,17 @@ public static class DbSeeder
             CREATE ROLE "{{name}}" LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}+00' IN ROLE pg_read_all_data, pg_write_all_data;
             """;
 
-        // Idempotent, and one transaction. A dropped role's open sessions keep working, so it ends them
-        // first and refuses, rolling the drop back, if one will not end or the role signs in again before
-        // the drop commits. Anything the role created goes to the target's login; its grants go, as DROP
-        // ROLE requires.
+        // Idempotent. The backend has already stopped the role signing in, so ending its sessions here
+        // ends them for good; anything the role created goes to the target's login, and its grants go,
+        // as DROP ROLE requires.
         const string revokePostgres = """
             DO $$
-            DECLARE
-                minted oid := (SELECT oid FROM pg_roles WHERE rolname = '{{name}}');
             BEGIN
-                IF minted IS NULL THEN
-                    RETURN;
-                END IF;
-                IF (SELECT bool_and(pg_terminate_backend(pid, 5000)) FROM pg_stat_activity WHERE usesysid = minted) IS FALSE THEN
-                    RAISE EXCEPTION 'A session of the role did not end.';
-                END IF;
-                REASSIGN OWNED BY "{{name}}" TO CURRENT_USER;
-                DROP OWNED BY "{{name}}";
-                DROP ROLE "{{name}}";
-                PERFORM pg_stat_clear_snapshot();
-                IF EXISTS (SELECT FROM pg_stat_activity WHERE usesysid = minted) THEN
-                    RAISE EXCEPTION 'The role signed in again while it was being dropped.';
+                IF EXISTS (SELECT FROM pg_roles WHERE rolname = '{{name}}') THEN
+                    PERFORM pg_terminate_backend(pid, 5000) FROM pg_stat_activity WHERE usename = '{{name}}';
+                    REASSIGN OWNED BY "{{name}}" TO CURRENT_USER;
+                    DROP OWNED BY "{{name}}";
+                    DROP ROLE "{{name}}";
                 END IF;
             END
             $$;

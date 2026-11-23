@@ -17,21 +17,12 @@ internal static class PostgresDynamicTarget
     /// <summary>The Development seed's revocation: ends the role's sessions and drops it, safe to run again.</summary>
     public const string RepeatableRevocation = """
         DO $$
-        DECLARE
-            minted oid := (SELECT oid FROM pg_roles WHERE rolname = '{{name}}');
         BEGIN
-            IF minted IS NULL THEN
-                RETURN;
-            END IF;
-            IF (SELECT bool_and(pg_terminate_backend(pid, 5000)) FROM pg_stat_activity WHERE usesysid = minted) IS FALSE THEN
-                RAISE EXCEPTION 'A session of the role did not end.';
-            END IF;
-            REASSIGN OWNED BY "{{name}}" TO CURRENT_USER;
-            DROP OWNED BY "{{name}}";
-            DROP ROLE "{{name}}";
-            PERFORM pg_stat_clear_snapshot();
-            IF EXISTS (SELECT FROM pg_stat_activity WHERE usesysid = minted) THEN
-                RAISE EXCEPTION 'The role signed in again while it was being dropped.';
+            IF EXISTS (SELECT FROM pg_roles WHERE rolname = '{{name}}') THEN
+                PERFORM pg_terminate_backend(pid, 5000) FROM pg_stat_activity WHERE usename = '{{name}}';
+                REASSIGN OWNED BY "{{name}}" TO CURRENT_USER;
+                DROP OWNED BY "{{name}}";
+                DROP ROLE "{{name}}";
             END IF;
         END
         $$;

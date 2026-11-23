@@ -30,6 +30,21 @@ public sealed class PostgresBackend : IDynamicSecretBackend
         "the vault's own connection: granting that privilege to the vault's login would let a compromise of " +
         "this application reach the server that stores the audit trail.";
 
+    /// <summary>
+    /// Fixed, not operator-supplied, and committed before the role's own revocation runs: a role that cannot
+    /// sign in can't open a session between that revocation ending sessions and its drop committing, and
+    /// stays shut if the drop then fails.
+    /// </summary>
+    private const string DisableSignInStatement = """
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT FROM pg_roles WHERE rolname = '{{name}}') THEN
+                ALTER ROLE "{{name}}" NOLOGIN;
+            END IF;
+        END
+        $$;
+        """;
+
     private readonly string? _connectionString;
     private readonly ILogger<PostgresBackend> _logger;
 
@@ -55,8 +70,10 @@ public sealed class PostgresBackend : IDynamicSecretBackend
     public async Task RevokeAsync(DynamicSecretRole role, string identity, CancellationToken ct)
     {
         // Revocation needs no password, but the template insists on a renderable one.
-        var sql = CredentialStatementTemplate.Render(role.RevocationStatements, identity, "unused", DateTimeOffset.UnixEpoch);
-        await ExecuteOnTargetAsync(sql, ct);
+        var disableSignIn = CredentialStatementTemplate.Render(DisableSignInStatement, identity, "unused", DateTimeOffset.UnixEpoch);
+        var revocation = CredentialStatementTemplate.Render(role.RevocationStatements, identity, "unused", DateTimeOffset.UnixEpoch);
+        await ExecuteOnTargetAsync(disableSignIn, ct);
+        await ExecuteOnTargetAsync(revocation, ct);
 
         _logger.LogInformation("Dropped PostgreSQL role {Identity} for role {RoleName}", identity, role.Name);
     }

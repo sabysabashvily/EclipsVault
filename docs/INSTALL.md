@@ -197,13 +197,18 @@ Those rights are why each target is a **separate connection string**:
 
       CREATE ROLE eclipsvault_credmgr LOGIN PASSWORD '…' CREATEROLE;
       GRANT pg_read_all_data, pg_write_all_data TO eclipsvault_credmgr WITH ADMIN TRUE, INHERIT FALSE, SET FALSE;
-      GRANT pg_signal_backend TO eclipsvault_credmgr;
-      ALTER ROLE eclipsvault_credmgr SET createrole_self_grant = 'set, inherit';
+      ALTER ROLE eclipsvault_credmgr SET createrole_self_grant = 'inherit';
 
-  `ADMIN` lets it grant the roles your recipes name (the sample recipes name those two) without
-  holding them itself. `pg_signal_backend` lets revocation end the minted role's sessions.
-  `createrole_self_grant` gives it the privileges of the roles it creates, without which revocation's
-  `REASSIGN OWNED` is refused and every lease lands in `RevocationFailed`.
+  `ADMIN` lets it grant the roles your recipes name (the sample recipes name those two), plus whatever
+  else your role statements need. `createrole_self_grant` gives it the privileges of the roles it
+  creates, which revocation needs to end their sessions and run `REASSIGN OWNED`; without it every
+  lease lands in `RevocationFailed`. Through the roles it mints, this login can effectively read and
+  write every database on the target server, which is one more reason that server holds only what you
+  want managed.
+- **Revoke `CONNECT` from `PUBLIC` on the target server's other databases** (for example
+  `REVOKE CONNECT ON DATABASE postgres FROM PUBLIC;`). A minted role that creates something in another
+  database blocks its own `DROP ROLE`; the vault has already stopped it signing in, but the lease ends
+  in `RevocationFailed`.
 - **A PostgreSQL role's statements must double-quote `"{{name}}"`**: the minted name has capitals,
   which PostgreSQL folds to lower case when unquoted.
 - **A failing statement reaches the target's own log, password included**, because PostgreSQL logs a

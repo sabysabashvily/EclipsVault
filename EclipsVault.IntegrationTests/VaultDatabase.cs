@@ -67,14 +67,23 @@ internal abstract class VaultDatabase : IAsyncDisposable
             setUp.CommandText = $"""
                 CREATE ROLE {PostgresTargetLogin} LOGIN PASSWORD '{password}' CREATEROLE;
                 GRANT pg_read_all_data, pg_write_all_data TO {PostgresTargetLogin} WITH ADMIN TRUE, INHERIT FALSE, SET FALSE;
-                GRANT pg_signal_backend TO {PostgresTargetLogin};
-                ALTER ROLE {PostgresTargetLogin} SET createrole_self_grant = 'set, inherit';
+                ALTER ROLE {PostgresTargetLogin} SET createrole_self_grant = 'inherit';
                 """;
             await setUp.ExecuteNonQueryAsync();
             // CREATE DATABASE refuses to run inside the transaction a multi-statement command is.
             await using var create = server.CreateCommand();
-            create.CommandText = $"CREATE DATABASE {PostgresDynamicTargetDatabase} OWNER {PostgresTargetLogin}";
+            create.CommandText = $"CREATE DATABASE {PostgresDynamicTargetDatabase}";
             await create.ExecuteNonQueryAsync();
+        }
+
+        var targetAsSuperuser = new NpgsqlConnectionStringBuilder(_postgresTarget.GetConnectionString()) { Database = PostgresDynamicTargetDatabase };
+        await using (var target = new NpgsqlConnection(targetAsSuperuser.ConnectionString))
+        {
+            await target.OpenAsync();
+            await using var grant = target.CreateCommand();
+            // What a recipe that lets its role create tables needs, as "whatever your role statements need" in INSTALL.md.
+            grant.CommandText = $"GRANT CREATE ON SCHEMA public TO {PostgresTargetLogin} WITH GRANT OPTION";
+            await grant.ExecuteNonQueryAsync();
         }
 
         return new NpgsqlConnectionStringBuilder(_postgresTarget.GetConnectionString())

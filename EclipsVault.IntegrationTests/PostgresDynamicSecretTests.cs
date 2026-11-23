@@ -99,7 +99,7 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
     }
 
     [Fact]
-    public async Task A_revoke_the_target_refuses_closes_the_lease_as_revocation_failed_with_a_critical_row()
+    public async Task A_revoke_the_target_refuses_closes_the_lease_as_revocation_failed_with_a_critical_row_and_the_credential_no_longer_signs_in()
     {
         var roleId = await PostgresDynamicTarget.AddRoleAsync(vault, "it_pg_revoke_refused", revocation: PostgresDynamicTarget.RefusedRevocation);
         var admin = await vault.AdminClientAsync();
@@ -115,7 +115,8 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
             Assert.Equal(LeaseStatus.RevocationFailed, Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId)).Status);
             var failure = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before), row => row.ResourceId == lease.Id);
             Assert.Equal((AuditAction.DynamicCredentialRevocationFailed, true), (failure.Action, failure.IsCritical));
-            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, username, password));
+            Assert.Single(await PostgresDynamicTarget.RolesOfRoleAsync(vault, "it_pg_revoke_refused"));
+            Assert.False(await PostgresDynamicTarget.OpensWithAsync(vault, username, password));
             Assert.DoesNotContain(vault.Log.Lines, line => line.Text.Contains("Revocation refused.", StringComparison.Ordinal));
         }
         finally
