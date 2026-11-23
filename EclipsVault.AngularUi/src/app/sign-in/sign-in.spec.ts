@@ -128,6 +128,19 @@ describe('sign-in pages', () => {
     )!;
   }
 
+  function link(page: HTMLElement, text: string): HTMLAnchorElement {
+    return [...page.querySelectorAll('a')].find((a) => a.textContent?.trim() === text)!;
+  }
+
+  function visibleText(element: Element | null): string {
+    return element?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+  }
+
+  function describedText(page: HTMLElement, element: Element): string {
+    const id = element.getAttribute('aria-describedby');
+    return id ? visibleText(page.querySelector(`#${id}`)) : '';
+  }
+
   function refuse(url: string, status: number, code: string, title: string): void {
     backend.expectOne(url).flush({ status, code, title }, { status, statusText: 'Refused' });
   }
@@ -152,14 +165,15 @@ describe('sign-in pages', () => {
         .flush({ ssoEnabled, ssoDisplayName: 'Contoso SSO' });
     }
 
-    it('is the Legacy page: step one of two, the password form, the passkey button', async () => {
+    it('shows step one of two, the password form and the passkey option', async () => {
       const { page, fixture } = await render(LoginPage, '/Account/Login');
       options(false);
       await fixture.whenStable();
 
       expect(page.querySelector('h1')?.textContent).toBe('Sign in');
-      expect(page.querySelector('.auth-card > .muted')?.textContent).toBe(
-        'Step 1 of 2 — password. An authenticator code is always required next.',
+      expect(visibleText(page)).toContain('Step 1 of 2');
+      expect(visibleText(page)).toContain(
+        'Enter your password first. An authenticator code is always required next.',
       );
       expect(page.querySelector('label[for="Username"]')?.textContent).toBe('Username or email');
       expect(page.querySelector('#Username')?.getAttribute('autocomplete')).toBe('username');
@@ -171,7 +185,8 @@ describe('sign-in pages', () => {
         'Sign in with a passkey',
       );
       expect(page.querySelector('form[action="/Account/ExternalLogin"]')).toBeNull();
-      expect(page.querySelector('.flash')).toBeNull();
+      expect(page.querySelector('[role="alert"]')).toBeNull();
+      expect(visibleText(page.querySelector('[role="status"]'))).toBe('');
     });
 
     it('shows the restarted notice in a fresh Login document and keeps the return URL', async () => {
@@ -243,12 +258,12 @@ describe('sign-in pages', () => {
       refuse('/api/ui/auth/password', status, code, title);
       await fixture.whenStable();
 
-      expect(page.querySelector('.validation-summary')?.textContent?.trim()).toBe(title);
+      expect(visibleText(page.querySelector('[role="alert"]'))).toBe(title);
       expect(page.querySelector('fieldset')?.disabled).toBe(false);
       expect(navigate).not.toHaveBeenCalled();
     });
 
-    it('shows a sign-out-everywhere outcome from its own code in the status line', async () => {
+    it('shows a sign-out-everywhere outcome from its own code in an alert', async () => {
       const { page, fixture } = await render(
         LoginPage,
         '/Account/Login?signOut=revoked_unrecorded',
@@ -256,7 +271,7 @@ describe('sign-in pages', () => {
       options(false);
       await fixture.whenStable();
 
-      expect(page.querySelector('[role="alert"] .flash-error')?.textContent?.trim()).toBe(
+      expect(visibleText(page.querySelector('[role="alert"]'))).toBe(
         "You have been signed out of all sessions, but the vault couldn't record it in the audit trail. Tell your administrator.",
       );
     });
@@ -270,16 +285,16 @@ describe('sign-in pages', () => {
       options(false);
       await first.fixture.whenStable();
 
-      expect(first.page.querySelector('[role="status"] .flash-success')?.textContent?.trim()).toBe(
-        reset,
-      );
+      expect(visibleText(first.page.querySelector('[role="status"]'))).toBe(reset);
       expect(document.querySelector('meta[name="eclipsvault-sign-in-notice"]')).toBeNull();
 
       const again = TestBed.createComponent(LoginPage);
       TestBed.tick();
       backend.expectOne('/api/ui/auth/options').flush({ ssoEnabled: false, ssoDisplayName: '' });
       await again.whenStable();
-      expect((again.nativeElement as HTMLElement).querySelector('.flash')).toBeNull();
+      const second = again.nativeElement as HTMLElement;
+      expect(second.querySelector('[role="alert"]')).toBeNull();
+      expect(visibleText(second)).not.toContain(reset);
     });
 
     it('starts single sign-on with a real form post carrying the request token and return URL', async () => {
@@ -313,7 +328,7 @@ describe('sign-in pages', () => {
 
         const begin = backend.expectOne({ method: 'POST', url: '/api/ui/auth/passkey/begin' });
         expect(begin.request.body).toEqual({ returnUrl: '/Secrets' });
-        expect(page.querySelector('.passkey-status')?.textContent?.trim()).toBe(
+        expect(visibleText(page.querySelector('[role="status"]'))).toBe(
           'Follow the prompt on your device…',
         );
         begin.flush({ publicKey: { challenge: 'abc' } });
@@ -337,7 +352,7 @@ describe('sign-in pages', () => {
         button(page, 'Sign in with a passkey').click();
         backend.expectOne('/api/ui/auth/passkey/begin').flush({ publicKey: {} });
         await vi.waitFor(() =>
-          expect(page.querySelector('.passkey-status')?.textContent?.trim()).toBe(
+          expect(visibleText(page.querySelector('[role="status"]'))).toBe(
             'The passkey prompt was dismissed or timed out.',
           ),
         );
@@ -362,7 +377,7 @@ describe('sign-in pages', () => {
         );
 
         await vi.waitFor(() =>
-          expect(page.querySelector('.passkey-status')?.textContent?.trim()).toBe(
+          expect(visibleText(page.querySelector('[role="status"]'))).toBe(
             'Sign-in timed out. Try again.',
           ),
         );
@@ -370,7 +385,7 @@ describe('sign-in pages', () => {
       });
     });
 
-    it('leaves the passkey button off in a browser without passkeys', async () => {
+    it('leaves the passkey button off and states why in a browser without passkeys', async () => {
       const { page } = await render(LoginPage, '/Account/Login');
       options(false);
 
@@ -378,22 +393,22 @@ describe('sign-in pages', () => {
       expect(button(page, 'Sign in with a passkey').title).toBe(
         'This browser does not support passkeys.',
       );
+      expect(visibleText(page)).toContain('Not available. This browser does not support passkeys.');
     });
   });
 
   describe('Totp', () => {
-    it('is the Legacy page, linking to the recovery code with the return URL', async () => {
+    it('shows step two of two and links to recovery codes with the return URL', async () => {
       const { page } = await render(TotpPage, '/Account/Totp?ReturnUrl=%2FSecrets');
 
       expect(page.querySelector('h1')?.textContent).toBe('Two-factor verification');
-      expect(page.querySelector('.auth-card > .muted')?.textContent).toBe(
-        'Step 2 of 2 — enter the 6-digit code from your authenticator app.',
-      );
+      expect(visibleText(page)).toContain('Step 2 of 2');
+      expect(visibleText(page)).toContain('Enter the 6-digit code from your authenticator app.');
       expect(page.querySelector('label[for="Code"]')?.textContent).toBe('Authenticator code');
       const code = page.querySelector('#Code')!;
       expect(code.getAttribute('inputmode')).toBe('numeric');
       expect(code.getAttribute('maxlength')).toBe('6');
-      expect(page.querySelector('.footnote a')?.getAttribute('href')).toBe(
+      expect(link(page, 'Use a recovery code').getAttribute('href')).toBe(
         '/Account/RecoveryCode?ReturnUrl=%2FSecrets',
       );
       expect(button(page, 'Verify and sign in').type).toBe('submit');
@@ -416,9 +431,7 @@ describe('sign-in pages', () => {
       submit(page);
       refuse('/api/ui/auth/totp', 400, 'code_invalid', 'Invalid authenticator code.');
       await fixture.whenStable();
-      expect(page.querySelector('.validation-summary')?.textContent?.trim()).toBe(
-        'Invalid authenticator code.',
-      );
+      expect(visibleText(page.querySelector('[role="alert"]'))).toBe('Invalid authenticator code.');
 
       submit(page);
       backend.expectOne('/api/ui/auth/totp').flush(
@@ -431,7 +444,7 @@ describe('sign-in pages', () => {
         { status: 400, statusText: 'Bad Request' },
       );
       await fixture.whenStable();
-      expect(page.querySelector('.validation-summary')?.textContent?.trim()).toBe(
+      expect(visibleText(page.querySelector('[role="alert"]'))).toBe(
         'Enter the 6-digit code from your authenticator app.',
       );
       expect(assign).not.toHaveBeenCalled();
@@ -451,7 +464,7 @@ describe('sign-in pages', () => {
         '/Account/Login?ReturnUrl=%2FSecrets&signIn=restarted',
       );
       expect(navigate).not.toHaveBeenCalled();
-      expect(page.querySelector('.validation-summary')).toBeNull();
+      expect(page.querySelector('[role="alert"]')).toBeNull();
     });
 
     it('starts again at Login with a page load when the pending sign-in expired', async () => {
@@ -464,26 +477,28 @@ describe('sign-in pages', () => {
   });
 
   describe('RecoveryCode', () => {
-    it('is the Legacy page, linking back to the authenticator code', async () => {
+    it('shows step two of two and links back to the authenticator code', async () => {
       const { page } = await render(RecoveryCodePage, '/Account/RecoveryCode');
 
       expect(page.querySelector('h1')?.textContent).toBe('Use a recovery code');
-      expect(
-        page.querySelector('.auth-card > .muted')?.textContent?.replace(/\s+/g, ' ').trim(),
-      ).toBe(
-        'Step 2 of 2 — enter one of the single-use recovery codes you saved when you set up MFA. Each code works only once.',
+      expect(visibleText(page)).toContain('Step 2 of 2');
+      expect(visibleText(page)).toContain(
+        'Enter one of the single-use recovery codes you saved when you set up MFA. Each code works only once.',
       );
       const code = page.querySelector('#Code')!;
       expect(code.getAttribute('placeholder')).toBe('XXXXX-XXXXX');
       expect(code.getAttribute('maxlength')).toBe('16');
-      expect(page.querySelector('.footnote a')?.getAttribute('href')).toBe('/Account/Totp');
+      expect(link(page, 'Enter a 6-digit code instead').getAttribute('href')).toBe('/Account/Totp');
+      expect(page.querySelector('[role="status"]')).not.toBeNull();
     });
 
-    it('says how many codes are left, and continues only when asked', async () => {
+    it('announces how many codes are left, describes Continue, and leaves only when asked', async () => {
       const { page, fixture } = await render(
         RecoveryCodePage,
         '/Account/RecoveryCode?ReturnUrl=%2FSecrets',
       );
+      const liveRegion = page.querySelector('[role="status"]');
+      expect(liveRegion).not.toBeNull();
       type(page, 'Code', 'ABCDE-12345');
       submit(page);
 
@@ -492,9 +507,11 @@ describe('sign-in pages', () => {
       request.flush({ redirect: '/Secrets', codesRemaining: 1 });
       await fixture.whenStable();
 
-      expect(page.querySelector('.flash-info')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-        "You signed in with a recovery code — that code is now used up. You have 1 recovery code left. Generate a new set from your profile if you're running low.",
-      );
+      const expected =
+        "You signed in with a recovery code — that code is now used up. You have 1 recovery code left. Generate a new set from your profile if you're running low.";
+      expect(page.querySelector('[role="status"]')).toBe(liveRegion);
+      expect(visibleText(liveRegion)).toBe(expected);
+      expect(describedText(page, button(page, 'Continue'))).toBe(expected);
       expect(page.querySelector('form')).toBeNull();
       expect(assign).not.toHaveBeenCalled();
 
@@ -510,7 +527,7 @@ describe('sign-in pages', () => {
         .flush({ redirect: '/Secrets', codesRemaining: 0 });
       await fixture.whenStable();
 
-      expect(page.querySelector('.flash-info')?.textContent).toContain(
+      expect(visibleText(page.querySelector('[role="status"]'))).toContain(
         'You have 0 recovery codes left.',
       );
     });
@@ -526,7 +543,7 @@ describe('sign-in pages', () => {
       );
       await fixture.whenStable();
 
-      expect(page.querySelector('.validation-summary')?.textContent?.trim()).toBe(
+      expect(visibleText(page.querySelector('[role="alert"]'))).toBe(
         'That recovery code is not valid, or it has already been used.',
       );
     });
@@ -538,18 +555,50 @@ describe('sign-in pages', () => {
       qrCodeDataUri: 'data:image/png;base64,AAAA',
     };
 
-    it('shows the new authenticator’s QR code and key', async () => {
+    it('announces loading in a persistent status region, then that the QR code and key are ready', async () => {
       const { page, fixture } = await render(EnrollTotpPage, '/Account/EnrollTotp');
+      const liveRegion = page.querySelector('[role="status"]');
+      expect(visibleText(liveRegion)).toBe('Preparing your authenticator key…');
       backend.expectOne({ method: 'POST', url: '/api/ui/auth/enrollment' }).flush(enrollment);
       await fixture.whenStable();
 
       expect(page.querySelector('h1')?.textContent).toBe('Set up two-factor authentication');
-      expect(page.querySelector('img.totp-qr')?.getAttribute('src')).toBe(enrollment.qrCodeDataUri);
-      expect(page.querySelector('img.totp-qr')?.getAttribute('alt')).toBe(
-        'QR code containing the authenticator enrollment secret',
+      expect(visibleText(page)).toContain('Step 2 of 2');
+      expect(page.querySelector('[role="status"]')).toBe(liveRegion);
+      expect(visibleText(liveRegion)).toBe('Authenticator QR code and setup key are ready.');
+      const qr = page.querySelector(
+        'img[alt="QR code containing the authenticator enrollment secret"]',
       );
-      expect(page.querySelector('code.secret-code')?.textContent).toBe('JBSWY3DPEHPK3PXP');
+      expect(qr?.getAttribute('src')).toBe(enrollment.qrCodeDataUri);
+      expect(visibleText(page)).toContain('JBSWY3DPEHPK3PXP');
       expect(page.querySelector('label[for="Code"]')?.textContent).toBe('Confirmation code');
+    });
+
+    it('does not show the loading message again if confirmation runs after an enrollment load error', async () => {
+      const { page, fixture } = await render(EnrollTotpPage, '/Account/EnrollTotp');
+      refuse(
+        '/api/ui/auth/enrollment',
+        503,
+        'audit_unavailable',
+        'The audit trail is unavailable.',
+      );
+      await fixture.whenStable();
+
+      expect(visibleText(page.querySelector('[role="alert"]'))).toBe(
+        'The audit trail is unavailable.',
+      );
+      expect(visibleText(page)).not.toContain('Preparing your authenticator key…');
+
+      type(page, 'Code', '654321');
+      submit(page);
+      TestBed.tick();
+      expect(visibleText(page)).not.toContain('Preparing your authenticator key…');
+      refuse(
+        '/api/ui/auth/enrollment/confirm',
+        400,
+        'code_invalid',
+        'The confirmation code did not match. Try again.',
+      );
     });
 
     it('confirms with a code and leaves for the page the vault chose', async () => {
@@ -577,7 +626,7 @@ describe('sign-in pages', () => {
       );
       await fixture.whenStable();
 
-      expect(page.querySelector('.validation-summary')?.textContent?.trim()).toBe(
+      expect(visibleText(page.querySelector('[role="alert"]'))).toBe(
         'The confirmation code did not match. Try again.',
       );
     });
@@ -610,14 +659,17 @@ describe('sign-in pages', () => {
       return page.textContent?.replace(/\s+/g, ' ').trim() ?? '';
     }
 
-    it('is the Legacy page, and makes no call until the form is sent', async () => {
+    it('shows the break-glass recovery form and makes no call until sent', async () => {
       const { page } = await render(RecoverPage, '/Account/Recover');
 
       expect(page.querySelector('h1')?.textContent).toBe('Recover access');
-      expect(page.querySelector('p.muted')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-        'Administrator break-glass recovery. Enter all of your credentials in one step — if they ' +
+      expect(visibleText(page)).toContain(
+        'Administrator break-glass recovery. Enter all of your credentials in one step. If they ' +
           'verify and your account holds TopSecret clearance, the intrusion-defence block on your ' +
-          'network is lifted and your session restored. Every attempt is audited.',
+          'network is lifted and your session restored.',
+      );
+      expect(visibleText(page)).toContain(
+        'Recovery and any lifted block are saved to the audit log.',
       );
       expect([...page.querySelectorAll('label')].map((label) => label.textContent)).toEqual([
         'Username',
@@ -627,15 +679,18 @@ describe('sign-in pages', () => {
       expect(page.querySelector<HTMLInputElement>('#Password')?.type).toBe('password');
       expect(page.querySelector('#Code')?.getAttribute('autocomplete')).toBe('one-time-code');
       expect(button(page, 'Verify and restore access').type).toBe('submit');
-      expect(page.querySelector('p.footnote')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-        'Not an administrator? Ask one to lift the block from Admin → Networks, or restart the ' +
-          'application in development.',
+      expect(visibleText(page)).toContain(
+        'Not an administrator? Ask one to lift the block from Administration → Networks, or ' +
+          'restart the application in development.',
       );
+      expect(page.querySelector('[role="status"]')).not.toBeNull();
       backend.expectNone(() => true);
     });
 
-    it('sends every factor at once, says the block was lifted and continues to the vault', async () => {
+    it('sends every factor at once, announces the lifted block and continues to the vault', async () => {
       const { page, fixture } = await render(RecoverPage, '/Account/Recover');
+      const liveRegion = page.querySelector('[role="status"]');
+      expect(liveRegion).not.toBeNull();
       recoverWith(page);
 
       const request = backend.expectOne({ method: 'POST', url: '/api/ui/auth/recover' });
@@ -648,7 +703,9 @@ describe('sign-in pages', () => {
       request.flush({ blockLifted: true });
       await fixture.whenStable();
 
-      expect(page.querySelector('[role="status"].flash-success')?.textContent?.trim()).toBe(lifted);
+      expect(page.querySelector('[role="status"]')).toBe(liveRegion);
+      expect(visibleText(liveRegion)).toBe(lifted);
+      expect(describedText(page, button(page, 'Continue to the vault'))).toBe(lifted);
       expect(page.querySelector('form')).toBeNull();
       expect(assign).not.toHaveBeenCalled();
       button(page, 'Continue to the vault').click();
@@ -661,7 +718,7 @@ describe('sign-in pages', () => {
       backend.expectOne('/api/ui/auth/recover').flush({ blockLifted: false });
       await fixture.whenStable();
 
-      expect(page.querySelector('.flash-success')?.textContent?.trim()).toBe(restored);
+      expect(visibleText(page.querySelector('[role="status"]'))).toBe(restored);
       expect(text(page)).not.toContain('lifted');
     });
 
@@ -685,8 +742,8 @@ describe('sign-in pages', () => {
         refuse('/api/ui/auth/recover', status, code, title);
         await fixture.whenStable();
 
-        expect(page.querySelector('.validation-summary')?.textContent?.trim()).toBe(title);
-        expect(page.querySelector('.flash-success')).toBeNull();
+        expect(visibleText(page.querySelector('[role="alert"]'))).toBe(title);
+        expect(visibleText(page.querySelector('[role="status"]'))).toBe('');
         expect(text(page)).not.toContain(restored);
         expect(text(page)).not.toContain(lifted);
         expect(text(page)).not.toContain('Continue to the vault');
@@ -709,7 +766,7 @@ describe('sign-in pages', () => {
       );
       await fixture.whenStable();
 
-      expect(page.querySelector('.validation-summary')?.textContent?.trim()).toBe(
+      expect(visibleText(page.querySelector('[role="alert"]'))).toBe(
         'Enter the 6-digit code from your authenticator app.',
       );
       expect(page.querySelector('fieldset')?.disabled).toBe(false);
