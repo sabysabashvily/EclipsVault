@@ -32,6 +32,7 @@ const secretRole: components['schemas']['DynamicRoleResponse'] = {
   description: 'Billing database owner.',
   sensitivity: 3,
   sensitivityLabel: 'Secret',
+  backend: 'Postgres',
   defaultTtlMinutes: 5,
   maxTtlMinutes: 30,
 };
@@ -205,14 +206,14 @@ describe('Dynamic secrets', () => {
     ).toEqual([
       [
         'reporting_readerGLOBALRead-only access to the reporting database.',
-        'SqlServer',
+        'SQL Server',
         'Development',
         'Internal',
         '15 min (max 60)',
       ],
       [
         'billing_adminGLOBALBilling database owner.',
-        'SqlServer',
+        'PostgreSQL',
         'Development',
         'Secret',
         '5 min (max 30)',
@@ -332,7 +333,7 @@ describe('Dynamic secrets', () => {
       'Issue dynamic credential?',
     );
     expect(text(page.querySelector('[role="alertdialog"][open] p'))).toBe(
-      "Mint a live credential for 'reporting_reader' on SqlServer? The password is shown once and cannot be recovered.",
+      "Mint a live credential for 'reporting_reader' on SQL Server? The password is shown once and cannot be recovered.",
     );
     expect(
       [...page.querySelectorAll('[role="alertdialog"][open] .facts div')].map((row) => [
@@ -341,7 +342,7 @@ describe('Dynamic secrets', () => {
       ]),
     ).toEqual([
       ['Role', 'reporting_reader'],
-      ['Backend', 'SqlServer'],
+      ['Backend', 'SQL Server'],
       ['Lease', '15 min (default)'],
     ]);
     expect(text(page.querySelector('[role="alertdialog"][open] .dialog-note'))).toBe(
@@ -361,7 +362,7 @@ describe('Dynamic secrets', () => {
       ]),
     ).toEqual([
       ['Role', 'reporting_reader'],
-      ['Backend', 'SqlServer'],
+      ['Backend', 'SQL Server'],
       ['Lease', '45 min'],
     ]);
     button(page, 'Cancel').click();
@@ -451,7 +452,7 @@ describe('Dynamic secrets', () => {
     await reload(fixture);
     expect(page.querySelector('app-step-up-dialog dialog[open]')).not.toBeNull();
     expect(text(page.querySelector('app-step-up-dialog dialog p'))).toBe(
-      "Confirming mints a live credential for 'billing_admin' on SqlServer. The password is shown once. Issuing the credential is saved to the audit log.",
+      "Confirming mints a live credential for 'billing_admin' on PostgreSQL. The password is shown once. Issuing the credential is saved to the audit log.",
     );
     expect(button(rowOf(page, 'billing_admin'), 'Generate').disabled).toBe(true);
     expect(credential(page)).toEqual([]);
