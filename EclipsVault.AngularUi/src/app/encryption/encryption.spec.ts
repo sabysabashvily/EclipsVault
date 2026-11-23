@@ -72,6 +72,15 @@ const transitStranded: Encryption = {
   onMissingKeys: 2,
   keyService: true,
 };
+// The pending vault after a re-wrap moved its 4 secrets and stopped before its 1 version.
+const pendingAfterStop: Encryption = {
+  ...pending,
+  keys: [
+    { kekId: 'kek-1a2b3c4d', status: 'current', secrets: 16, versions: 3 },
+    { kekId: 'kek-5e6f7a8b', status: 'retired', secrets: 0, versions: 1 },
+  ],
+  awaitingRotation: 1,
+};
 const emptied: Encryption = {
   ...settled,
   loadedKekIds: ['kek-1a2b3c4d', 'kek-5e6f7a8b'],
@@ -95,8 +104,17 @@ function verdict(page: ParentNode): string {
 function notices(page: ParentNode): string[] {
   return [...page.querySelectorAll('.notice h2')].map((title) => text(title));
 }
+/** The page's Re-wrap buttons by name, leaving out the confirmation dialog's own. */
 function rewrapButtons(page: ParentNode): string[] {
-  return [...page.querySelectorAll('.action-tile button')].map((item) => text(item));
+  return [...page.querySelectorAll('button')]
+    .filter((item) => !item.closest('dialog'))
+    .map((item) => text(item))
+    .filter((name) => name.startsWith('Re-wrap'));
+}
+function alerts(page: ParentNode): string[] {
+  return [...page.querySelectorAll('[role="alert"]')]
+    .map((alert) => text(alert))
+    .filter((said) => said !== '');
 }
 function status(page: ParentNode, role: 'status' | 'alert'): string {
   return text(page.querySelector(`app-status-line [role="${role}"]`));
@@ -127,12 +145,16 @@ async function reload(fixture: ComponentFixture<unknown>, encryption: Encryption
   backend.expectOne(path).flush(encryption);
   await fixture.whenStable();
 }
-async function confirmRotation(page: HTMLElement, fixture: ComponentFixture<unknown>) {
-  button(page, 'Re-wrap 5 items').click();
+async function confirmRotation(
+  page: HTMLElement,
+  fixture: ComponentFixture<unknown>,
+  name = 'Re-wrap 5 items',
+) {
+  button(page, name).click();
   await fixture.whenStable();
   const dialog = page.querySelector('dialog[open]');
   if (!dialog) throw new Error('No confirmation');
-  button(dialog, 'Re-wrap 5 items').click();
+  button(dialog, name).click();
   fixture.detectChanges();
   return backend.expectOne(rotatePath);
 }
@@ -218,10 +240,23 @@ describe('Encryption keys', () => {
     expect(rewrapButtons(page)).toEqual(['Re-wrap 5 items']);
   });
 
-  it('key service, all current: says so, and moving to a new key starts in the key service', async () => {
+  it('key service, all current: says so and offers no re-wrap', async () => {
     const { page } = await loaded(transitSettled);
     expect(verdict(page)).toBe('All current');
-    expect(page.querySelector('.action-strip')).toBeNull();
+    expect(rewrapButtons(page)).toEqual([]);
+  });
+
+  it('key service, all current: the latest version wraps every new secret', async () => {
+    const { page } = await loaded(transitSettled);
+    expect(
+      [...page.querySelectorAll('tbody tr')].map((row) =>
+        [...row.querySelectorAll('.mono, .key-role, .badge')].map((cell) => text(cell)),
+      ),
+    ).toEqual([['vault:eclipsvault:v1', 'Wraps every new secret', 'Current']]);
+  });
+
+  it('key service, all current: moving to a new key starts in the key service', async () => {
+    const { page } = await loaded(transitSettled);
     expect(text(page.querySelector('.step-card p'))).toBe(
       'The master key lives in the key service, so the first step happens there.',
     );
@@ -229,11 +264,6 @@ describe('Encryption keys', () => {
       'Rotate the key in the key service. New secrets use its latest version at once.',
       'Re-wrap here, which moves older items to the latest version.',
     ]);
-    expect(
-      [...page.querySelectorAll('tbody tr')].map((row) =>
-        [...row.querySelectorAll('.key-role, .badge')].map((cell) => text(cell)),
-      ),
-    ).toEqual([['Wraps every new secret', 'Current']]);
   });
 
   it('key service versions: counts items on earlier versions as waiting for the latest', async () => {
@@ -276,13 +306,64 @@ describe('Encryption keys', () => {
     );
     expect(notices(page)).toEqual(['Let the key service unwrap vault:eclipsvault:v1']);
     expect([...page.querySelectorAll('.notice li')].map((step) => text(step))).toEqual([
-      "Allow decryption with this version again; in Vault Transit, lower the key's min_decryption_version.",
+      "If the key service still has this version, allow decryption with it again; in Vault Transit, lower the key's min_decryption_version.",
+      'If the version was trimmed, it is gone: only a backup of the key from before the trim can open these items.',
       'Re-wrap here, which moves its items to the latest version.',
     ]);
     expect(text(page.querySelector('tbody tr:last-child .key-role'))).toBe(
       "The key service won't unwrap it · its items can't be read",
     );
     expect(rewrapButtons(page)).toEqual(['Re-wrap 5 items']);
+  });
+
+  it('key service version it will not unwrap: the counts and the action name the version', async () => {
+    const { page } = await loaded(transitStranded);
+    expect(
+      [...page.querySelectorAll('.stat-card')].map((figure) => [
+        text(figure.querySelector('.stat-label')),
+        text(figure.querySelector('.stat-detail')),
+      ]),
+    ).toEqual([
+      ["Can't be read", 'until the key service unwraps its version again'],
+      ['Waiting to re-wrap', '5 secrets and 0 versions'],
+    ]);
+    expect(text(page.querySelector('.action-tile p'))).toBe(
+      'Nothing changes until you confirm. The 2 items on the unusable version are skipped.',
+    );
+  });
+
+  it('key service version it will not unwrap: the confirmation skips the unusable version', async () => {
+    const { page, fixture } = await loaded(transitStranded);
+    button(page, 'Re-wrap 5 items').click();
+    await fixture.whenStable();
+    const dialog = page.querySelector('dialog[open]');
+    if (!dialog) throw new Error('No confirmation');
+    expect(
+      [...dialog.querySelectorAll('.facts div')].map((fact) => [
+        text(fact.querySelector('dt')),
+        text(fact.querySelector('dd')),
+      ]),
+    ).toEqual([
+      ['Current key', 'vault:eclipsvault:v3'],
+      ['To re-wrap', '5 secrets and 0 versions'],
+      ['Skipped, version not usable', '2 items'],
+    ]);
+    button(dialog, 'Cancel').click();
+    backend.expectNone(rotatePath);
+  });
+
+  it('key service: a re-wrap that leaves items on an unusable version says so', async () => {
+    const { page, fixture } = await loaded(transitStranded);
+    (await confirmRotation(page, fixture)).flush({
+      currentKekId: 'vault:eclipsvault:v3',
+      secretsRewrapped: 5,
+      versionsRewrapped: 0,
+      onMissingKeys: 2,
+    });
+    await reload(fixture, { ...transitStranded, awaitingRotation: 0 });
+    expect(text(page.querySelector('.notice-ok'))).toContain(
+      "2 items remain on versions the key service won't unwrap.",
+    );
   });
 
   it('re-wrapping: the button says so and is disabled while the request is in flight', async () => {
@@ -318,39 +399,92 @@ describe('Encryption keys', () => {
     expect(status(page, 'status')).toBe('');
   });
 
-  it('stopped: shows the server’s words in an alert and the verdict "Stopped partway"', async () => {
+  it('stopped by auditing: says what each committed in an alert, with the verdict "Stopped partway"', async () => {
     const { page, fixture } = await loaded(pending);
-    const stopped =
-      'Rotation stopped because the audit trail could not record it. 4 item(s) were re-wrapped before it stopped; run it again to continue.';
     (await confirmRotation(page, fixture)).flush(
-      { code: 'audit_unavailable', title: stopped, secretsRewrapped: 4, versionsRewrapped: 0 },
+      {
+        code: 'audit_unavailable',
+        title:
+          'Rotation stopped because the audit trail could not record it. 4 item(s) were re-wrapped before it stopped; run it again to continue.',
+        secretsRewrapped: 4,
+        versionsRewrapped: 0,
+      },
       { status: 503, statusText: 'Service Unavailable' },
     );
-    await reload(fixture, { ...pending, awaitingRotation: 1 });
+    await reload(fixture, pendingAfterStop);
     expect(verdict(page)).toBe('Stopped partway');
-    expect(notices(page)).toEqual(['Re-wrap stopped: the audit log could not record it']);
-    expect(text(page.querySelector('.notice[role="alert"] p'))).toBe(stopped);
-    expect(status(page, 'alert')).toBe('');
+    expect(alerts(page)).toEqual([
+      'Re-wrap stopped: the audit log could not record it 4 secrets and 0 versions were re-wrapped before it stopped. Run it again to continue.',
+    ]);
     expect(rewrapButtons(page)).toEqual(['Re-wrap 1 item']);
   });
 
-  it('stopped by an error: shows the counts, and the re-wrap button works without a reload', async () => {
+  it('stopped by an error: says what each committed in an alert, with the verdict "Stopped partway"', async () => {
     const { page, fixture } = await loaded(pending);
-    const stopped =
-      'Rotation stopped because of an error. 4 item(s) were re-wrapped before it stopped; run it again to continue.';
     (await confirmRotation(page, fixture)).flush(
-      { code: 'rotation_interrupted', title: stopped, secretsRewrapped: 4, versionsRewrapped: 0 },
+      {
+        code: 'rotation_interrupted',
+        title:
+          'Rotation stopped because of an error. 4 item(s) were re-wrapped before it stopped; run it again to continue.',
+        secretsRewrapped: 4,
+        versionsRewrapped: 0,
+      },
       { status: 500, statusText: 'Internal Server Error' },
     );
-    await reload(fixture, { ...pending, awaitingRotation: 1 });
+    await reload(fixture, pendingAfterStop);
     expect(verdict(page)).toBe('Stopped partway');
     expect(text(page.querySelector('.page-sub'))).toBe(
-      'The last re-wrap stopped partway. 1 item still use the retired master key.',
+      'The last re-wrap stopped partway. 1 item still uses the retired master key.',
     );
-    expect(notices(page)).toEqual(['Re-wrap stopped partway because of an error']);
-    expect(text(page.querySelector('.notice[role="alert"] p'))).toBe(stopped);
-    expect(status(page, 'alert')).toBe('');
-    expect(button(page, 'Re-wrap 1 item').disabled).toBe(false);
+    expect(alerts(page)).toEqual([
+      'Re-wrap stopped partway because of an error 4 secrets and 0 versions were re-wrapped before it stopped. Run it again to continue.',
+    ]);
+  });
+
+  it('stopped by an error: the re-wrap button sends another re-wrap without a reload', async () => {
+    const { page, fixture } = await loaded(pending);
+    (await confirmRotation(page, fixture)).flush(
+      {
+        code: 'rotation_interrupted',
+        title:
+          'Rotation stopped because of an error. 4 item(s) were re-wrapped before it stopped; run it again to continue.',
+        secretsRewrapped: 4,
+        versionsRewrapped: 0,
+      },
+      { status: 500, statusText: 'Internal Server Error' },
+    );
+    await reload(fixture, pendingAfterStop);
+    const again = await confirmRotation(page, fixture, 'Re-wrap 1 item');
+    expect(again.request.method).toBe('POST');
+    again.flush({
+      currentKekId: 'kek-1a2b3c4d',
+      secretsRewrapped: 0,
+      versionsRewrapped: 1,
+      onMissingKeys: 0,
+    });
+    await reload(fixture, settled);
+    expect(notices(page)).toEqual(['Re-wrapped 0 secrets and 1 version under the current key']);
+  });
+
+  it('stopped by an error, then the keys fail to load: still says what the re-wrap committed', async () => {
+    const { page, fixture } = await loaded(pending);
+    (await confirmRotation(page, fixture)).flush(
+      {
+        code: 'rotation_interrupted',
+        title:
+          'Rotation stopped because of an error. 4 item(s) were re-wrapped before it stopped; run it again to continue.',
+        secretsRewrapped: 4,
+        versionsRewrapped: 1,
+      },
+      { status: 500, statusText: 'Internal Server Error' },
+    );
+    fixture.detectChanges();
+    backend.expectOne(path).flush({}, { status: 503, statusText: 'Unavailable' });
+    await fixture.whenStable();
+    expect(alerts(page)).toEqual([
+      'Re-wrap stopped partway because of an error 4 secrets and 1 version were re-wrapped before it stopped. Run it again to continue.',
+      'Could not load encryption keys. Try again.',
+    ]);
   });
 
   it('already running: says nothing changed, and keeps the verdict from the keys', async () => {

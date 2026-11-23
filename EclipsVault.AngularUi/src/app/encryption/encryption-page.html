@@ -24,6 +24,34 @@
   [message]="refusal() ? '' : writes.status().message"
   [error]="writes.status().error"
 />
+@if (stopped(); as stop) {
+  <section class="notice notice-critical" role="alert" aria-labelledby="rewrap-stopped">
+    <span class="notice-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24">
+        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+        <path d="M12 9v4M12 17h.01" />
+      </svg>
+    </span>
+    <div class="notice-body">
+      <h2 id="rewrap-stopped">
+        @if (stop.auditing) {
+          Re-wrap stopped: the audit log could not record it
+        } @else {
+          Re-wrap stopped partway because of an error
+        }
+      </h2>
+      @if (stop.rewrapped; as moved) {
+        <p>
+          {{ count(moved.secrets, 'secret', 'secrets') }} and
+          {{ count(moved.versions, 'version', 'versions') }} were re-wrapped before it stopped. Run
+          it again to continue.
+        </p>
+      } @else {
+        <p>{{ stop.title }}</p>
+      }
+    </div>
+  </section>
+}
 @if (encryption.isLoading() && !encryption.hasValue()) {
   <p role="status">Loading encryption keys…</p>
 } @else if (encryption.error() && !encryption.hasValue()) {
@@ -45,8 +73,12 @@
           <p>Until it can, the items it wraps can't be read or re-wrapped.</p>
           <ol class="steps">
             <li>
-              Allow decryption with this version again; in Vault Transit, lower the key's
-              <code class="code-chip">min_decryption_version</code>.
+              If the key service still has this version, allow decryption with it again; in Vault
+              Transit, lower the key's <code class="code-chip">min_decryption_version</code>.
+            </li>
+            <li>
+              If the version was trimmed, it is gone: only a backup of the key from before the trim
+              can open these items.
             </li>
             <li>Re-wrap here, which moves its items to the latest version.</li>
           </ol>
@@ -60,34 +92,6 @@
             <li>Keep it loaded while the Data Protection key ring needs it.</li>
           </ol>
         }
-      </div>
-    </section>
-  }
-  @if (refusal() === 'audit_unavailable') {
-    <section class="notice notice-critical" role="alert" aria-labelledby="rewrap-stopped">
-      <span class="notice-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24">
-          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
-          <path d="M12 9v4M12 17h.01" />
-        </svg>
-      </span>
-      <div class="notice-body">
-        <h2 id="rewrap-stopped">Re-wrap stopped: the audit log could not record it</h2>
-        <p>{{ writes.status().message }}</p>
-      </div>
-    </section>
-  }
-  @if (refusal() === 'rotation_interrupted') {
-    <section class="notice notice-critical" role="alert" aria-labelledby="rewrap-interrupted">
-      <span class="notice-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24">
-          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
-          <path d="M12 9v4M12 17h.01" />
-        </svg>
-      </span>
-      <div class="notice-body">
-        <h2 id="rewrap-interrupted">Re-wrap stopped partway because of an error</h2>
-        <p>{{ writes.status().message }}</p>
       </div>
     </section>
   }
@@ -119,7 +123,14 @@
           <p>Nothing needed re-wrapping.</p>
         }
         @if (+rotation.onMissingKeys > 0) {
-          <p>{{ count(+rotation.onMissingKeys) }} remain on keys that are not loaded.</p>
+          <p>
+            {{ count(+rotation.onMissingKeys) }} remain on
+            {{
+              model.keyService
+                ? "versions the key service won't unwrap"
+                : 'keys that are not loaded'
+            }}.
+          </p>
         }
       </div>
     </section>
@@ -132,7 +143,11 @@
           <div class="stat-card alert">
             <span class="stat-value">{{ model.missing }}</span>
             <span class="stat-label">Can't be read</span>
-            <span class="stat-detail">until its master key is loaded here</span>
+            <span class="stat-detail">{{
+              model.keyService
+                ? 'until the key service unwraps its version again'
+                : 'until its master key is loaded here'
+            }}</span>
           </div>
         }
         <div class="stat-card" [class.attention]="model.waiting > 0">
@@ -165,7 +180,8 @@
           <p class="muted">
             Nothing changes until you confirm.
             @if (model.missing > 0) {
-              The {{ count(model.missing) }} on the missing key are skipped.
+              The {{ count(model.missing) }} on the
+              {{ model.keyService ? 'unusable version' : 'missing key' }} are skipped.
             }
           </p>
           @if (model.waiting > 0) {

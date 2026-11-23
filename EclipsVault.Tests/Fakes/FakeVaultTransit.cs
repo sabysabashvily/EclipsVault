@@ -31,11 +31,17 @@ public sealed class FakeVaultTransit : HttpMessageHandler
 
     public int Rewraps { get; private set; }
 
-    /// <summary>Once this many rewraps have been answered, the server goes down.</summary>
+    /// <summary>Once this many rewraps have been answered, every rewrap fails with <see cref="OutageAnswer"/>.</summary>
     public int? RewrapsBeforeOutage { get; set; }
 
-    /// <summary>Down means refusing connections; otherwise it answers 503, as a sealed Vault does.</summary>
-    public bool OutageRefusesConnections { get; set; }
+    /// <summary>The status and error Vault answers during the outage; none means it refuses connections.</summary>
+    public (HttpStatusCode Status, string Error)? OutageAnswer { get; set; }
+
+    /// <summary>Once this many rewraps have been answered, the key is rotated once, as an operator might mid-pass.</summary>
+    public int? RewrapsBeforeKeyRotation { get; set; }
+
+    /// <summary>A raw body to answer the key read with, in place of the key's description.</summary>
+    public string? KeyDescription { get; set; }
 
     public void RotateKey() => _versions.Add(RandomNumberGenerator.GetBytes(32));
 
@@ -57,9 +63,14 @@ public sealed class FakeVaultTransit : HttpMessageHandler
         var isRewrap = path == PathOf("rewrap");
         if (isRewrap && Rewraps >= RewrapsBeforeOutage)
         {
-            return OutageRefusesConnections
-                ? throw new HttpRequestException("Connection refused (vault.test:8200)")
-                : Errors(HttpStatusCode.ServiceUnavailable, "Vault is sealed");
+            return OutageAnswer is { } answer
+                ? Errors(answer.Status, answer.Error)
+                : throw new HttpRequestException("Connection refused (vault.test:8200)");
+        }
+
+        if (isRewrap && Rewraps == RewrapsBeforeKeyRotation)
+        {
+            RotateKey();
         }
 
         if (!request.Headers.TryGetValues("X-Vault-Token", out var tokens) || tokens.Single() != Token)
@@ -70,6 +81,11 @@ public sealed class FakeVaultTransit : HttpMessageHandler
         var body = request.Content is null
             ? default
             : JsonDocument.Parse(await request.Content.ReadAsStringAsync(cancellationToken)).RootElement;
+
+        if (request.Method == HttpMethod.Get && path == PathOf("keys") && KeyDescription is not null)
+        {
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(KeyDescription) };
+        }
 
         if (request.Method == HttpMethod.Get && path == PathOf("keys"))
         {
@@ -125,9 +141,19 @@ public sealed class FakeVaultTransit : HttpMessageHandler
     {
         plaintext = [];
         var parts = ciphertext.Split(':');
-        if (parts.Length != 3 || parts[0] != "vault" || !int.TryParse(parts[1].TrimStart('v'), out var version) || version > LatestVersion)
+        if (parts.Length != 3 || parts[0] != "vault")
         {
             return Errors(HttpStatusCode.BadRequest, "invalid ciphertext: no prefix");
+        }
+
+        if (!int.TryParse(parts[1].TrimStart('v'), out var version))
+        {
+            return Errors(HttpStatusCode.BadRequest, "invalid ciphertext: version number could not be decoded");
+        }
+
+        if (version > LatestVersion)
+        {
+            return Errors(HttpStatusCode.BadRequest, "invalid ciphertext: version is too new");
         }
 
         if (version < MinDecryptionVersion)
@@ -135,16 +161,30 @@ public sealed class FakeVaultTransit : HttpMessageHandler
             return Errors(HttpStatusCode.BadRequest, "ciphertext or signature version is disallowed by policy (too old)");
         }
 
+        byte[] bytes;
         try
         {
-            var bytes = Convert.FromBase64String(parts[2]);
+            bytes = Convert.FromBase64String(parts[2]);
+        }
+        catch (FormatException)
+        {
+            return Errors(HttpStatusCode.BadRequest, "invalid ciphertext: could not decode base64");
+        }
+
+        if (bytes.Length < NonceSize + TagSize)
+        {
+            return Errors(HttpStatusCode.BadRequest, "invalid ciphertext length");
+        }
+
+        try
+        {
             var sealedLength = bytes.Length - NonceSize - TagSize;
             plaintext = new byte[sealedLength];
             using var gcm = new AesGcm(_versions[version - 1], TagSize);
             gcm.Decrypt(bytes.AsSpan(0, NonceSize), bytes.AsSpan(NonceSize, sealedLength), bytes.AsSpan(NonceSize + sealedLength), plaintext);
             return null;
         }
-        catch (Exception failure) when (failure is FormatException or CryptographicException or ArgumentException)
+        catch (CryptographicException)
         {
             return Errors(HttpStatusCode.BadRequest, "cipher: message authentication failed");
         }

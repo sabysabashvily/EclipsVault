@@ -93,9 +93,7 @@ public sealed class KekRotationService : IKekRotationService
 
         var engine = _cryptoFactory.Create();
         var keys = await engine.GetMasterKeysAsync(ct);
-        var current = keys.CurrentKekId;
-        var known = keys.KnownKekIds.ToList();
-        var retired = known.Where(id => id != current).ToList();
+        var retired = keys.KnownKekIds.Where(id => id != keys.CurrentKekId).ToList();
 
         var secrets = 0;
         var versions = 0;
@@ -105,13 +103,22 @@ public sealed class KekRotationService : IKekRotationService
                 _db.Secrets.AsNoTracking()
                     .Where(s => !s.IsShredded && retired.Contains(s.KekId))
                     .Select(s => new ReadEnvelope { Id = s.Id, Ciphertext = s.Ciphertext, WrappedDek = s.WrappedDek, KekId = s.KekId, Algorithm = s.Algorithm }),
-                areSecrets: true, engine, current, committed => secrets += committed, ct);
+                areSecrets: true, engine, committed => secrets += committed, ct);
 
             await RotateRowsAsync(
                 _db.SecretVersions.AsNoTracking()
                     .Where(v => retired.Contains(v.KekId))
                     .Select(v => new ReadEnvelope { Id = v.Id, Ciphertext = v.Ciphertext, WrappedDek = v.WrappedDek, KekId = v.KekId, Algorithm = v.Algorithm }),
-                areSecrets: false, engine, current, committed => versions += committed, ct);
+                areSecrets: false, engine, committed => versions += committed, ct);
+
+            // Read again: a key service may have moved to a newer key version during the pass, and
+            // rows re-wrapped onto it are not on a missing key.
+            var after = await engine.GetMasterKeysAsync(ct);
+            var known = after.KnownKekIds.ToList();
+            var onMissingKeys = await _db.Secrets.CountAsync(s => !s.IsShredded && !known.Contains(s.KekId), ct)
+                + await _db.SecretVersions.CountAsync(v => !known.Contains(v.KekId), ct);
+
+            return new KekRotationResult(after.CurrentKekId, secrets, versions, onMissingKeys);
         }
         catch (AuditWriteFailedException unrecorded)
         {
@@ -121,11 +128,6 @@ public sealed class KekRotationService : IKekRotationService
         {
             throw new KekRotationInterruptedException(secrets, versions, failure);
         }
-
-        var onMissingKeys = await _db.Secrets.CountAsync(s => !s.IsShredded && !known.Contains(s.KekId), ct)
-            + await _db.SecretVersions.CountAsync(v => !known.Contains(v.KekId), ct);
-
-        return new KekRotationResult(current, secrets, versions, onMissingKeys);
     }
 
     /// <summary>
@@ -133,7 +135,7 @@ public sealed class KekRotationService : IKekRotationService
     /// later batch, or by clearing the cache after this one, still knows what committed.
     /// </summary>
     private async Task RotateRowsAsync(
-        IQueryable<ReadEnvelope> pending, bool areSecrets, ICryptoEngine engine, string current, Action<int> onCommitted, CancellationToken ct)
+        IQueryable<ReadEnvelope> pending, bool areSecrets, ICryptoEngine engine, Action<int> onCommitted, CancellationToken ct)
     {
         Guid? after = null;
         while (true)
@@ -151,7 +153,7 @@ public sealed class KekRotationService : IKekRotationService
                 return;
             }
 
-            await CommitBatchAsync(batch, areSecrets, engine, current, onCommitted);
+            await CommitBatchAsync(batch, areSecrets, engine, onCommitted);
 
             // Past every row the batch read, moved or skipped, so a row that keeps changing cannot
             // hold the pass in place.
@@ -164,9 +166,11 @@ public sealed class KekRotationService : IKekRotationService
     /// are still what was read; a row changed, deleted or shredded since is left alone, and counts as
     /// not moved. A changed value is already sealed under the current master key with a new data key.
     /// A row whose re-wrap changes nothing, or whose data key does not open, is not written either.
+    /// The audit row names the master keys the rows actually moved to, which under a key service can
+    /// be a version newer than the one the pass started with.
     /// </summary>
     private async Task CommitBatchAsync(
-        IReadOnlyList<ReadEnvelope> batch, bool areSecrets, ICryptoEngine engine, string current, Action<int> onCommitted)
+        IReadOnlyList<ReadEnvelope> batch, bool areSecrets, ICryptoEngine engine, Action<int> onCommitted)
     {
         var rewraps = new List<(ReadEnvelope Read, SealedSecret Rewrapped)>(batch.Count);
         foreach (var row in batch)
@@ -199,12 +203,12 @@ public sealed class KekRotationService : IKekRotationService
         await using var transaction = await _db.Database.BeginTransactionAsync(CancellationToken.None);
         await TakeAuditChainAsync();
 
-        var moved = new List<ReadEnvelope>();
-        foreach (var (read, rewrapped) in rewraps)
+        var moved = new List<(ReadEnvelope Read, SealedSecret Rewrapped)>();
+        foreach (var rewrap in rewraps)
         {
-            if (await RewrapIfUnchangedAsync(read, rewrapped, areSecrets) == 1)
+            if (await RewrapIfUnchangedAsync(rewrap.Read, rewrap.Rewrapped, areSecrets) == 1)
             {
-                moved.Add(read);
+                moved.Add(rewrap);
             }
         }
 
@@ -215,13 +219,14 @@ public sealed class KekRotationService : IKekRotationService
 
         var secrets = areSecrets ? moved.Count : 0;
         var versions = areSecrets ? 0 : moved.Count;
-        var retiredIds = string.Join(", ", moved.Select(row => row.KekId).Distinct().Order(StringComparer.Ordinal));
+        var retiredIds = string.Join(", ", moved.Select(row => row.Read.KekId).Distinct().Order(StringComparer.Ordinal));
+        var currentIds = string.Join(", ", moved.Select(row => row.Rewrapped.KekId).Distinct().Order(StringComparer.Ordinal));
         await RecordAndCommitAsync(transaction, new AuditEntry
         {
             Action = AuditAction.KekRotated,
             ResourceType = "Kek",
-            ResourceName = current,
-            Details = $"Re-wrapped {secrets} secret(s) and {versions} archived version(s) from KEK {retiredIds} to KEK {current}",
+            ResourceName = currentIds,
+            Details = $"Re-wrapped {secrets} secret(s) and {versions} archived version(s) from KEK {retiredIds} to KEK {currentIds}",
             IsCritical = true
         });
         onCommitted(moved.Count);
@@ -231,7 +236,7 @@ public sealed class KekRotationService : IKekRotationService
         {
             foreach (var row in moved)
             {
-                await _cache.EvictAsync(row.Id, CancellationToken.None);
+                await _cache.EvictAsync(row.Read.Id, CancellationToken.None);
             }
         }
     }

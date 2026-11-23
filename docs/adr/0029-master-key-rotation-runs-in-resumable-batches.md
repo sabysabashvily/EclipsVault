@@ -52,9 +52,14 @@ each re-wrapped secret was recorded as an edit.
 - If a batch's commit acknowledgement is lost, the counts a stopped pass reports can be lower than
   what moved. The status the page reloads afterwards is authoritative.
 - A row whose data key no longer opens under its own master key is skipped and stays pending, so one
-  damaged row cannot stop every pass. Under the KMS engine, Vault refusing one ciphertext (a 400)
-  counts as such a row, while an unreachable Vault or a 5xx stops the pass and never reports it
-  finished. The engine reads the Transit key, so its token needs `read` on the key's path.
+  damaged row cannot stop every pass. Under the KMS engine, only a 400 whose errors all blame the
+  ciphertext (unparseable, too old or too new, or failing authentication) counts as such a row. Any
+  other answer, a 400 about the key such as "encryption key not found", a 403, a 429, a 5xx or an
+  unreachable Vault, stops the pass and never reports it finished. The engine reads the Transit key,
+  so its token needs `read` on the key's path.
+- A key service can move to a newer key version during a pass. Each `KekRotated` row names the key
+  versions its rows actually moved to, and the pass reads the key again before counting rows on
+  missing keys.
 
 ## Considered Options
 

@@ -1,11 +1,12 @@
 import { HttpClient, httpResource } from '@angular/common/http';
 import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { finalize } from 'rxjs';
+import { finalize, tap } from 'rxjs';
 import { AdministratorWrites } from '../shared/administrator-writes';
 import { ConfirmationDialog } from '../shared/confirmation-dialog';
 import { StatusLine } from '../shared/status-line';
 import type { components } from '../ui-api/schema.generated';
+import { UiApiError } from '../ui-api/ui-api-errors';
 
 type Encryption = components['schemas']['EncryptionResponse'];
 type Rotation = components['schemas']['RotationResponse'];
@@ -71,11 +72,26 @@ export function roleOf(
       };
 }
 
+/** A re-wrap that stopped partway after committing some batches, or null for any other failure. */
+function stopOf(error: unknown) {
+  if (
+    !(error instanceof UiApiError) ||
+    (error.code !== 'audit_unavailable' && error.code !== 'rotation_interrupted')
+  )
+    return null;
+  return {
+    auditing: error.code === 'audit_unavailable',
+    title: error.title,
+    rewrapped: error.rewrapped,
+  };
+}
+
 /** What the page says about the vault's keys: the title's verdict and the line under it. */
 export function stateOf(encryption: Encryption, busy: boolean, refusal: string | undefined) {
   const waiting = Number(encryption.awaitingRotation);
   const missing = Number(encryption.onMissingKeys);
   const older = encryption.keyService ? 'an earlier key version' : 'the retired master key';
+  const use = waiting === 1 ? 'uses' : 'use';
   if (busy)
     return {
       verdict: { tone: 'info', label: 'Re-wrapping' },
@@ -89,14 +105,14 @@ export function stateOf(encryption: Encryption, busy: boolean, refusal: string |
   if (refusal === 'audit_unavailable' || refusal === 'rotation_interrupted')
     return {
       verdict: { tone: 'danger', label: 'Stopped partway' },
-      context: `The last re-wrap stopped partway. ${count(waiting)} still use ${older}.`,
+      context: `The last re-wrap stopped partway. ${count(waiting)} still ${use} ${older}.`,
     };
   if (waiting > 0)
     return {
       verdict: { tone: 'warn', label: 'Re-wrap pending' },
       context: encryption.keyService
-        ? `${count(waiting)} still use ${older}. Re-wrap them under the latest version.`
-        : `${count(waiting)} still use ${older}. Re-wrap them under the current key; keep the retired key loaded while the Data Protection key ring needs it.`,
+        ? `${count(waiting)} still ${use} ${older}. Re-wrap them under the latest version.`
+        : `${count(waiting)} still ${use} ${older}. Re-wrap them under the current key; keep the retired key loaded while the Data Protection key ring needs it.`,
     };
   return {
     verdict: { tone: 'ok', label: 'All current' },
@@ -119,6 +135,15 @@ export class EncryptionPage {
   protected readonly roleOf = roleOf;
   /** The last re-wrap that succeeded, until the next one starts. */
   protected readonly lastRotation = signal<Rotation | null>(null);
+  /**
+   * The last re-wrap that stopped partway, with what it committed. Kept apart from the key status,
+   * so the counts stay on screen even when reading the status again fails.
+   */
+  protected readonly stopped = signal<{
+    auditing: boolean;
+    title: string;
+    rewrapped: { secrets: number; versions: number } | null;
+  } | null>(null);
 
   /** The refusals this page words itself; any other error stays on the status line. */
   protected readonly refusal = computed(() => {
@@ -166,7 +191,11 @@ export class EncryptionPage {
         `${count(model.toRewrap.secrets, 'secret', 'secrets')} and ${count(model.toRewrap.versions, 'version', 'versions')}`,
       ],
     ];
-    if (model.missing > 0) facts.push(['Skipped, key not loaded', count(model.missing)]);
+    if (model.missing > 0)
+      facts.push([
+        model.keyService ? 'Skipped, version not usable' : 'Skipped, key not loaded',
+        count(model.missing),
+      ]);
     this.confirmation().open(
       "Each item's data key is wrapped again by the current master key. Secret values are not decrypted or re-encrypted, and it is safe to run again.",
       {
@@ -182,12 +211,14 @@ export class EncryptionPage {
   protected confirmed(confirmed: boolean): void {
     if (!confirmed) return;
     this.lastRotation.set(null);
+    this.stopped.set(null);
     this.writes.send(
       // Reads the status again after any outcome: a refused rotation may still have moved rows.
       () =>
-        this.http
-          .post<Rotation>(`${path}/rotate`, null)
-          .pipe(finalize(() => this.encryption.reload())),
+        this.http.post<Rotation>(`${path}/rotate`, null).pipe(
+          tap({ error: (error: unknown) => this.stopped.set(stopOf(error)) }),
+          finalize(() => this.encryption.reload()),
+        ),
       (rotation) => this.lastRotation.set(rotation),
       () => undefined,
     );

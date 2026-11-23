@@ -129,9 +129,24 @@ public sealed class VaultTransitCryptoEngine : ICryptoEngine
     public async Task<MasterKeys> GetMasterKeysAsync(CancellationToken ct)
     {
         using var key = await TransitSendAsync(HttpMethod.Get, $"v1/{_options.Mount}/keys/{_options.KeyName}", body: null, "keys", refusalIsThisCiphertext: false, ct);
-        var data = key.RootElement.GetProperty("data");
-        var latest = data.GetProperty("latest_version").GetInt32();
-        var oldest = Math.Max(1, data.GetProperty("min_decryption_version").GetInt32());
+        int latest, oldest;
+        try
+        {
+            var data = key.RootElement.GetProperty("data");
+            latest = data.GetProperty("latest_version").GetInt32();
+            oldest = Math.Max(1, data.GetProperty("min_decryption_version").GetInt32());
+        }
+        catch (Exception unreadable) when (unreadable is KeyNotFoundException or InvalidOperationException or FormatException)
+        {
+            throw new CryptoConfigurationException($"Vault Transit key '{_options.KeyName}' answered an unreadable key description.");
+        }
+
+        if (latest < 1 || oldest > latest)
+        {
+            throw new CryptoConfigurationException(
+                $"Vault Transit key '{_options.KeyName}' answered latest version {latest} and minimum decryption version {oldest}.");
+        }
+
         var known = Enumerable.Range(oldest, latest - oldest + 1).Reverse()
             .Select(version => VaultTransitFormat.KekId(_options.KeyName, version))
             .ToList();
@@ -157,9 +172,9 @@ public sealed class VaultTransitCryptoEngine : ICryptoEngine
     }
 
     /// <param name="refusalIsThisCiphertext">
-    /// Vault answers 400 when it cannot open the one ciphertext it was sent, so for a call about a single
-    /// ciphertext a 400 is that ciphertext's fault and becomes a <see cref="CryptographicException"/>.
-    /// Every other failure, an unreachable server or a 5xx above all, means the engine cannot work.
+    /// For a call about a single ciphertext, a 400 whose errors all blame that ciphertext becomes a
+    /// <see cref="CryptographicException"/>. Every other failure, including a 400 about the key such as
+    /// "encryption key not found", an unreachable server or a 5xx, means the engine cannot work.
     /// </param>
     private async Task<JsonDocument> TransitSendAsync(
         HttpMethod method, string path, object? body, string operation, bool refusalIsThisCiphertext, CancellationToken ct)
@@ -178,7 +193,7 @@ public sealed class VaultTransitCryptoEngine : ICryptoEngine
         using (response)
         {
             var json = await response.Content.ReadAsStringAsync(ct);
-            if (refusalIsThisCiphertext && response.StatusCode == HttpStatusCode.BadRequest)
+            if (refusalIsThisCiphertext && response.StatusCode == HttpStatusCode.BadRequest && VaultTransitFormat.BlamesTheCiphertext(json))
             {
                 throw new CryptographicException($"Vault Transit refused to '{operation}' this ciphertext: {json}");
             }
@@ -188,7 +203,14 @@ public sealed class VaultTransitCryptoEngine : ICryptoEngine
                 throw new CryptoConfigurationException($"Vault Transit '{operation}' returned {(int)response.StatusCode}: {json}");
             }
 
-            return JsonDocument.Parse(json);
+            try
+            {
+                return JsonDocument.Parse(json);
+            }
+            catch (JsonException)
+            {
+                throw new CryptoConfigurationException($"Vault Transit '{operation}' answered a body that is not JSON.");
+            }
         }
     }
 }
@@ -208,4 +230,27 @@ public static class VaultTransitFormat
     }
 
     public static string KekId(string keyName, int version) => $"vault:{keyName}:v{version}";
+
+    /// <summary>
+    /// True when every error in a Vault error body is one Vault raises for the ciphertext it was sent:
+    /// unparseable, on a version too new or disallowed as too old, or failing authentication.
+    /// </summary>
+    public static bool BlamesTheCiphertext(string errorBody)
+    {
+        try
+        {
+            using var body = JsonDocument.Parse(errorBody);
+            var errors = body.RootElement.GetProperty("errors").EnumerateArray().Select(error => error.GetString() ?? string.Empty).ToList();
+            return errors.Count > 0 && errors.All(IsCiphertextError);
+        }
+        catch (Exception unreadable) when (unreadable is JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsCiphertextError(string error)
+        => error.StartsWith("invalid ciphertext", StringComparison.Ordinal)
+           || error == "ciphertext or signature version is disallowed by policy (too old)"
+           || error == "cipher: message authentication failed";
 }

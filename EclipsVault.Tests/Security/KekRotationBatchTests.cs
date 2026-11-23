@@ -1,3 +1,5 @@
+using System.Data.Common;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using EclipsVault.Core.Application.Abstractions;
@@ -12,6 +14,7 @@ using EclipsVault.Infrastructure.Security;
 using EclipsVault.Tests.Fakes;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -241,9 +244,12 @@ public sealed class KekRotationBatchTests : IDisposable
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Under_Vault_Transit_a_key_service_outage_stops_the_pass_with_what_the_committed_batches_moved(bool refusesConnections)
+    [InlineData(HttpStatusCode.BadRequest, "encryption key not found")]
+    [InlineData(HttpStatusCode.Forbidden, "permission denied")]
+    [InlineData(HttpStatusCode.TooManyRequests, "request path \"transit/rewrap/eclipsvault\": rate limit quota exceeded")]
+    [InlineData(HttpStatusCode.ServiceUnavailable, "Vault is sealed")]
+    public async Task Under_Vault_Transit_a_failure_that_does_not_blame_the_ciphertext_stops_the_pass_with_what_committed_batches_moved(
+        HttpStatusCode status, string error)
     {
         await using var db = NewContext();
         await db.Database.EnsureCreatedAsync();
@@ -251,7 +257,7 @@ public sealed class KekRotationBatchTests : IDisposable
         await SecretsSealedByAsync(db, transit.Engine(), count: 501);
         transit.RotateKey();
         transit.RewrapsBeforeOutage = 500;
-        transit.OutageRefusesConnections = refusesConnections;
+        transit.OutageAnswer = (status, error);
 
         var interrupted = await Assert.ThrowsAsync<KekRotationInterruptedException>(() => Rotation(db, transit.Engine()).RotateAsync(default));
 
@@ -259,6 +265,54 @@ public sealed class KekRotationBatchTests : IDisposable
         Assert.IsType<CryptoConfigurationException>(interrupted.InnerException);
         Assert.Equal(1, await RotationsRecordedAsync());
         Assert.Equal(1, await db.Secrets.CountAsync(row => row.KekId == "vault:eclipsvault:v1"));
+    }
+
+    [Fact]
+    public async Task Under_Vault_Transit_an_unreachable_key_service_stops_the_pass_with_what_committed_batches_moved()
+    {
+        await using var db = NewContext();
+        await db.Database.EnsureCreatedAsync();
+        var transit = new FakeVaultTransit();
+        await SecretsSealedByAsync(db, transit.Engine(), count: 501);
+        transit.RotateKey();
+        transit.RewrapsBeforeOutage = 500;
+
+        var interrupted = await Assert.ThrowsAsync<KekRotationInterruptedException>(() => Rotation(db, transit.Engine()).RotateAsync(default));
+
+        Assert.Equal((500, 0), (interrupted.SecretsRewrapped, interrupted.VersionsRewrapped));
+        Assert.IsType<CryptoConfigurationException>(interrupted.InnerException);
+        Assert.Equal(1, await db.Secrets.CountAsync(row => row.KekId == "vault:eclipsvault:v1"));
+    }
+
+    [Fact]
+    public async Task A_Transit_key_rotated_during_a_pass_is_recorded_as_where_rows_moved_and_none_count_as_missing()
+    {
+        await using var db = NewContext();
+        await db.Database.EnsureCreatedAsync();
+        var transit = new FakeVaultTransit();
+        await SecretsSealedByAsync(db, transit.Engine(), count: 2);
+        transit.RotateKey();
+        transit.RewrapsBeforeKeyRotation = 1;
+
+        var result = await Rotation(db, transit.Engine()).RotateAsync(default);
+
+        Assert.Equal(new KekRotationResult("vault:eclipsvault:v3", 2, 0, 0), result);
+        Assert.Equal(
+            ["Re-wrapped 2 secret(s) and 0 archived version(s) from KEK vault:eclipsvault:v1 to KEK vault:eclipsvault:v2, vault:eclipsvault:v3"],
+            await RotationDetailsAsync());
+    }
+
+    [Fact]
+    public async Task A_database_failure_while_counting_what_is_left_still_reports_the_committed_batches()
+    {
+        await using var db = NewContext(new LosesTheDatabaseWhenCounting());
+        await db.Database.EnsureCreatedAsync();
+        await SecretsUnderRetiredKeyAsync(db, count: 2);
+
+        var interrupted = await Assert.ThrowsAsync<KekRotationInterruptedException>(() => Rotation(db).RotateAsync(default));
+
+        Assert.Equal((2, 0), (interrupted.SecretsRewrapped, interrupted.VersionsRewrapped));
+        Assert.Equal(1, await RotationsRecordedAsync());
     }
 
     /// <summary>A row whose envelope no test opens: only the id of the key it names matters.</summary>
@@ -310,13 +364,29 @@ public sealed class KekRotationBatchTests : IDisposable
         return secrets;
     }
 
-    private EclipsVaultDbContext NewContext()
-        => new(new DbContextOptionsBuilder<EclipsVaultDbContext>().UseSqlite(_connection).AddInterceptors(_audit).Options);
+    private EclipsVaultDbContext NewContext(params IInterceptor[] more)
+        => new(new DbContextOptionsBuilder<EclipsVaultDbContext>().UseSqlite(_connection).AddInterceptors([_audit, .. more]).Options);
 
     private async Task<int> RotationsRecordedAsync()
     {
         await using var db = NewContext();
         return await db.AuditLogs.CountAsync(row => row.Action == AuditAction.KekRotated);
+    }
+
+    private async Task<List<string?>> RotationDetailsAsync()
+    {
+        await using var db = NewContext();
+        return await db.AuditLogs.Where(row => row.Action == AuditAction.KekRotated).Select(row => row.Details).ToListAsync();
+    }
+
+    /// <summary>Fails every count, as a lost connection does once the batches have committed.</summary>
+    private sealed class LosesTheDatabaseWhenCounting : DbCommandInterceptor
+    {
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+            => command.CommandText.Contains("COUNT(", StringComparison.Ordinal)
+                ? throw new InvalidOperationException("The database connection was lost.")
+                : ValueTask.FromResult(result);
     }
 
     /// <summary>Records each eviction with how many rotation batches had been recorded when it happened.</summary>
