@@ -38,6 +38,8 @@ public sealed class FakeCryptoEngine : ICryptoEngine, ICryptoEngineFactory
 
     public Task<SealedSecret> RewrapAsync(SealedSecret sealedSecret, CancellationToken ct) => Task.FromResult(sealedSecret);
 
+    public Task<MasterKeys> GetMasterKeysAsync(CancellationToken ct) => Task.FromResult(new MasterKeys("test-kek", ["test-kek"], KeyService: false));
+
     /// <summary>The plaintext inside a framed ciphertext, for tests that assert on stored bytes.</summary>
     public static byte[] ValueOf(byte[] ciphertext)
         => ciphertext[(sizeof(int) + BitConverter.ToInt32(ciphertext, 0))..];

@@ -11,18 +11,24 @@ each re-wrapped secret was recorded as an edit.
 
 ## Decisions
 
-- **Batches of 500 rows, each committed with its audit row.** One critical `KekRotated` row per batch,
-  in the batch's transaction, names the old and new master key ids and counts secrets and versions.
-  A change that only re-wraps a data key writes no per-secret `SecretUpdated` row. If the row cannot
-  be written, that batch rolls back and the pass stops with `503 audit_unavailable`; earlier batches
-  stay committed.
+- **Batches of 500 rows, each committed with its audit events.** Each distinct source and destination
+  master key pair gets one critical `KekRotated` row with its counts. Keeping one pair per audit row
+  preserves every key id and fits the audit columns even when the batch spans many keys. A change
+  that only re-wraps a data key writes no per-secret `SecretUpdated` row. If any audit row fails to
+  write, the whole batch rolls back and the pass stops with `503 audit_unavailable`. Earlier batches
+  stay committed. A pass that stops for any other reason after a batch committed, such as a database
+  or key service failure, answers `500 rotation_interrupted` with the same counts.
 - **A changed row is never overwritten.** A row is re-wrapped only if its wrapped data key and master
   key id are still what the pass read. A row changed, deleted or shredded in the meantime is skipped;
   a changed value is already sealed under the current master key.
 - **One pass at a time across replicas**, under a vault-wide database lock. Another request answers
   `409 rotation_running`.
-- **A missing master key does not block the rest.** Rows under a master key that is not loaded are
-  skipped and reported as remaining; every other row moves.
+- **The active engine names the master keys.** It reports its current key and every key it can
+  unwrap: the environment keys under the local engine, and under the KMS engine the Transit key's
+  versions from its minimum decryption version to its latest. Status and passes compare rows with
+  those ids, so a pass never reads a row already under the current key.
+- **A missing master key does not block the rest.** Rows under a master key the engine cannot unwrap
+  are skipped and reported as remaining; every other row moves.
 - **Each batch clears its secrets from the secret cache** after it commits. If the caller leaves, the
   pass stops between batches, never inside one.
 
@@ -47,8 +53,13 @@ each re-wrapped secret was recorded as an edit.
 - If a batch's commit acknowledgement is lost, the counts a stopped pass reports can be lower than
   what moved. The status the page reloads afterwards is authoritative.
 - A row whose data key no longer opens under its own master key is skipped and stays pending, so one
-  damaged row cannot stop every pass. Under the KMS engine, a row already on the latest key version
-  is neither written nor recorded.
+  damaged row cannot stop every pass. Under the KMS engine, only a 400 whose errors all blame the
+  ciphertext (unparseable, too old or too new, or failing authentication) counts as such a row. Any
+  other answer, a 400 about the key such as "encryption key not found", a 403, a 429, a 5xx or an
+  unreachable Vault, stops the pass and never reports it finished. The engine reads the Transit key,
+  so its token needs `read` on the key's path.
+- A key service can move to a newer key version during a pass. The audit records the actual
+  destination of each move, and the pass reads the key again before counting rows on missing keys.
 
 ## Considered Options
 
@@ -56,5 +67,5 @@ each re-wrapped secret was recorded as an edit.
   for as long as the pass runs, and fails closed on all of them.
 - **Refuse the whole pass while any master key is missing.** Rejected: if that key is truly lost, no
   other secret could ever leave the retired key.
-- **One audit row per re-wrapped secret.** Rejected: a re-wrap changes no secret, and thousands of
-  rows would bury the one event an auditor needs.
+- **One audit row per re-wrapped secret.** Rejected because a re-wrap changes no secret and the
+  counts per key pair are enough for the audit trail.

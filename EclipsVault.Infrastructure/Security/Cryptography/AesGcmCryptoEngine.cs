@@ -83,4 +83,7 @@ public sealed class AesGcmCryptoEngine : ICryptoEngine
             CryptographicOperations.ZeroMemory(dek);
         }
     }
+
+    public Task<MasterKeys> GetMasterKeysAsync(CancellationToken ct)
+        => Task.FromResult(new MasterKeys(_kekProvider.CurrentKekId, _kekProvider.KnownKekIds, KeyService: false));
 }

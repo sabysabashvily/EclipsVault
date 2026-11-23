@@ -76,7 +76,8 @@ public sealed class EncryptionApiTests(KekRotationFixture fixture)
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.True(response.Headers.CacheControl?.NoStore);
             var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-            Assert.Equal(["awaitingRotation", "currentKekId", "keys", "loadedKekIds", "onMissingKeys"], ProfileApi.NamesOf(body));
+            Assert.Equal(["awaitingRotation", "currentKekId", "keyService", "keys", "loadedKekIds", "onMissingKeys"], ProfileApi.NamesOf(body));
+            Assert.False(body.GetProperty("keyService").GetBoolean());
             Assert.Equal(CurrentKekId, body.GetProperty("currentKekId").GetString());
             Assert.Equal([CurrentKekId, RetiredKekId], body.GetProperty("loadedKekIds").EnumerateArray().Select(id => id.GetString()!).ToArray());
             Assert.Equal(3, body.GetProperty("awaitingRotation").GetInt32());
@@ -169,6 +170,42 @@ public sealed class EncryptionApiTests(KekRotationFixture fixture)
         Assert.Single(await AuditTrail.RowsAfterAsync(_vault, before), row => row.Action == AuditAction.KekRotated);
     }
 
+    [Fact]
+    public async Task A_pass_stopped_by_a_database_failure_after_a_committed_batch_answers_rotation_interrupted_with_its_counts()
+    {
+        await RotateAsync();
+        var secretId = await SecretsUnderMasterKey.CreateAsync(_vault, fixture.RetiredMasterKey, "interrupted-over-http", "first value");
+        await SecretsUnderMasterKey.ReplaceValueAsync(_vault, fixture.RetiredMasterKey, secretId, "second value");
+        var admin = await _vault.AdminClientAsync();
+        var token = await UiApiRequest.AntiforgeryTokenAsync(admin);
+
+        // The secrets batch commits; the versions batch then fails at its first write.
+        HttpResponseMessage response;
+        await RejectVersionsUnderTheCurrentKeyAsync();
+        try
+        {
+            response = await UiApiRequest.SendWithTokenAsync(admin, token, HttpMethod.Post, RotatePath);
+        }
+        finally
+        {
+            await AllowVersionsUnderTheCurrentKeyAsync();
+        }
+
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        Assert.True(response.Headers.CacheControl?.NoStore);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(["code", "secretsRewrapped", "status", "title", "versionsRewrapped"], ProfileApi.NamesOf(problem));
+        Assert.Equal("rotation_interrupted", problem.GetProperty("code").GetString());
+        Assert.Equal((1, 0), (problem.GetProperty("secretsRewrapped").GetInt32(), problem.GetProperty("versionsRewrapped").GetInt32()));
+        Assert.Equal(
+            "Rotation stopped because of an error. 1 item(s) were re-wrapped before it stopped; run it again to continue.",
+            problem.GetProperty("title").GetString());
+        Assert.Equal(CurrentKekId, await KekIdOfSecretAsync(secretId));
+        var status = await admin.GetFromJsonAsync<JsonElement>(StatusPath);
+        Assert.Equal(1, status.GetProperty("awaitingRotation").GetInt32());
+    }
+
     [Theory]
     [InlineData("/Encryption", "198.18.116.21")]
     [InlineData("/Encryption/Index", "198.18.116.22")]
@@ -217,6 +254,25 @@ public sealed class EncryptionApiTests(KekRotationFixture fixture)
     {
         var admin = await _vault.AdminClientAsync();
         return await UiApiRequest.SendWithTokenAsync(admin, await UiApiRequest.AntiforgeryTokenAsync(admin), new HttpMethod(method), path);
+    }
+
+    /// <summary>Both engines leave the rows already written unchecked and check every row written after.</summary>
+    private async Task RejectVersionsUnderTheCurrentKeyAsync()
+    {
+        using var scope = _vault.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
+        // A key id is "kek-" and eight hex digits, so it is safe to write into the statement.
+        await db.Database.ExecuteSqlRawAsync(db.Database.IsNpgsql()
+            ? "ALTER TABLE \"SecretVersions\" ADD CONSTRAINT \"RejectRewrappedVersions\" CHECK (\"KekId\" <> '" + CurrentKekId + "') NOT VALID"
+            : "ALTER TABLE [dbo].[SecretVersions] WITH NOCHECK ADD CONSTRAINT [RejectRewrappedVersions] CHECK ([KekId] <> N'" + CurrentKekId + "')");
+    }
+
+    private async Task AllowVersionsUnderTheCurrentKeyAsync()
+    {
+        using var scope = _vault.Services.CreateScope();
+        // Double-quoted names work on both engines.
+        await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().Database
+            .ExecuteSqlRawAsync("ALTER TABLE \"SecretVersions\" DROP CONSTRAINT \"RejectRewrappedVersions\"");
     }
 
     private async Task<KekRotationResult> RotateAsync()

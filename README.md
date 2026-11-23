@@ -194,7 +194,7 @@ Startup fails fast if the KEK is missing or malformed outside Development.
 
 **Rotating the KEK**: generate a new key and set it as `ECLIPSVAULT_KEK`, move the previous key into `ECLIPSVAULT_KEK_RETIRED` (a `;`-separated list of keys that can still unwrap existing data keys), restart, then run the rotation from the **Encryption keys** admin page. Rotation re-wraps secrets and their archived versions. It does not re-wrap the Data Protection key ring. Keep retired master keys loaded while the ring needs them; a zero pending count on the page does not mean a retired key can be removed. Retain those keys with the recovery material for backups that need them.
 
-**KMS-backed master key (no KEK in the process)**: set `Crypto:Engine=VaultTransit` and point `Vault:Address` / `VAULT_TOKEN` at a HashiCorp Vault with a Transit key. The master key then lives in Vault — the app only ever holds single-use DEKs, which Vault wraps and unwraps. Locally you can try it with a dev Vault:
+**KMS-backed master key (no KEK in the process)**: set `Crypto:Engine=VaultTransit` and point `Vault:Address` / `VAULT_TOKEN` at a HashiCorp Vault with a Transit key. The token needs `update` on the key's `encrypt`, `decrypt` and `rewrap` paths, and `read` on `transit/keys/<key>` so the Encryption keys page knows the key's latest version. The master key then lives in Vault — the app only ever holds single-use DEKs, which Vault wraps and unwraps. Locally you can try it with a dev Vault:
 
 ```bash
 docker run -d --name vault-dev -p 8200:8200 -e VAULT_DEV_ROOT_TOKEN_ID=dev-root hashicorp/vault

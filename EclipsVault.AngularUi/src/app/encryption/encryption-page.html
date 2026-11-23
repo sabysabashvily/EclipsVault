@@ -24,6 +24,34 @@
   [message]="refusal() ? '' : writes.status().message"
   [error]="writes.status().error"
 />
+@if (stopped(); as stop) {
+  <section class="notice notice-critical" role="alert" aria-labelledby="rewrap-stopped">
+    <span class="notice-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24">
+        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+        <path d="M12 9v4M12 17h.01" />
+      </svg>
+    </span>
+    <div class="notice-body">
+      <h2 id="rewrap-stopped">
+        @if (stop.auditing) {
+          Re-wrap stopped: the audit log could not record it
+        } @else {
+          Re-wrap stopped partway because of an error
+        }
+      </h2>
+      @if (stop.rewrapped; as moved) {
+        <p>
+          {{ count(moved.secrets, 'secret', 'secrets') }} and
+          {{ count(moved.versions, 'version', 'versions') }} were re-wrapped before it stopped. Run
+          it again to continue.
+        </p>
+      } @else {
+        <p>{{ stop.title }}</p>
+      }
+    </div>
+  </section>
+}
 @if (encryption.isLoading() && !encryption.hasValue()) {
   <p role="status">Loading encryption keys…</p>
 } @else if (encryption.error() && !encryption.hasValue()) {
@@ -39,28 +67,31 @@
         </svg>
       </span>
       <div class="notice-body">
-        <!-- prettier-ignore -->
-        <h2 [id]="'missing-' + key.kekId">Load <code class="code-chip">{{ key.kekId }}</code> on this server</h2>
-        <p>Until it is loaded, the items it wraps can't be read or re-wrapped.</p>
-        <ol class="steps">
-          <li>Add it to <code class="code-chip">ECLIPSVAULT_KEK_RETIRED</code> and restart.</li>
-          <li>Re-wrap here, which moves its items to the current key.</li>
-          <li>Keep it loaded while the Data Protection key ring needs it.</li>
-        </ol>
-      </div>
-    </section>
-  }
-  @if (refusal() === 'audit_unavailable') {
-    <section class="notice notice-critical" role="alert" aria-labelledby="rewrap-stopped">
-      <span class="notice-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24">
-          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
-          <path d="M12 9v4M12 17h.01" />
-        </svg>
-      </span>
-      <div class="notice-body">
-        <h2 id="rewrap-stopped">Re-wrap stopped: the audit log could not record it</h2>
-        <p>{{ writes.status().message }}</p>
+        @if (model.keyService) {
+          <!-- prettier-ignore -->
+          <h2 [id]="'missing-' + key.kekId">Let the key service unwrap <code class="code-chip">{{ key.kekId }}</code></h2>
+          <p>Until it can, the items it wraps can't be read or re-wrapped.</p>
+          <ol class="steps">
+            <li>
+              If the key service still has this version, allow decryption with it again; in Vault
+              Transit, lower the key's <code class="code-chip">min_decryption_version</code>.
+            </li>
+            <li>
+              If the version was trimmed, it is gone: only a backup of the key from before the trim
+              can open these items.
+            </li>
+            <li>Re-wrap here, which moves its items to the latest version.</li>
+          </ol>
+        } @else {
+          <!-- prettier-ignore -->
+          <h2 [id]="'missing-' + key.kekId">Load <code class="code-chip">{{ key.kekId }}</code> on this server</h2>
+          <p>Until it is loaded, the items it wraps can't be read or re-wrapped.</p>
+          <ol class="steps">
+            <li>Add it to <code class="code-chip">ECLIPSVAULT_KEK_RETIRED</code> and restart.</li>
+            <li>Re-wrap here, which moves its items to the current key.</li>
+            <li>Keep it loaded while the Data Protection key ring needs it.</li>
+          </ol>
+        }
       </div>
     </section>
   }
@@ -92,7 +123,14 @@
           <p>Nothing needed re-wrapping.</p>
         }
         @if (+rotation.onMissingKeys > 0) {
-          <p>{{ count(+rotation.onMissingKeys) }} remain on keys that are not loaded.</p>
+          <p>
+            {{ count(+rotation.onMissingKeys) }} remain on
+            {{
+              model.keyService
+                ? "versions the key service won't unwrap"
+                : 'keys that are not loaded'
+            }}.
+          </p>
         }
       </div>
     </section>
@@ -105,7 +143,11 @@
           <div class="stat-card alert">
             <span class="stat-value">{{ model.missing }}</span>
             <span class="stat-label">Can't be read</span>
-            <span class="stat-detail">until its master key is loaded here</span>
+            <span class="stat-detail">{{
+              model.keyService
+                ? 'until the key service unwraps its version again'
+                : 'until its master key is loaded here'
+            }}</span>
           </div>
         }
         <div class="stat-card" [class.attention]="model.waiting > 0">
@@ -138,7 +180,8 @@
           <p class="muted">
             Nothing changes until you confirm.
             @if (model.missing > 0) {
-              The {{ count(model.missing) }} on the missing key are skipped.
+              The {{ count(model.missing) }} on the
+              {{ model.keyService ? 'unusable version' : 'missing key' }} are skipped.
             }
           </p>
           @if (model.waiting > 0) {
@@ -158,19 +201,29 @@
   } @else if (!lastRotation()) {
     <section class="panel step-card" aria-labelledby="next-key">
       <h2 id="next-key">Moving to a new master key</h2>
-      <p class="muted">
-        Master keys live outside the vault, so the first two steps happen where you deploy it.
-      </p>
-      <ol class="steps">
-        <li>Set the new key as <code class="code-chip">ECLIPSVAULT_KEK</code>.</li>
-        <li>
-          Move the current one to <code class="code-chip">ECLIPSVAULT_KEK_RETIRED</code> and
-          restart.
-        </li>
-        <li>
-          Re-wrap here. Keep the retired key loaded while the Data Protection key ring needs it.
-        </li>
-      </ol>
+      @if (model.keyService) {
+        <p class="muted">
+          The master key lives in the key service, so the first step happens there.
+        </p>
+        <ol class="steps">
+          <li>Rotate the key in the key service. New secrets use its latest version at once.</li>
+          <li>Re-wrap here, which moves older items to the latest version.</li>
+        </ol>
+      } @else {
+        <p class="muted">
+          Master keys live outside the vault, so the first two steps happen where you deploy it.
+        </p>
+        <ol class="steps">
+          <li>Set the new key as <code class="code-chip">ECLIPSVAULT_KEK</code>.</li>
+          <li>
+            Move the current one to <code class="code-chip">ECLIPSVAULT_KEK_RETIRED</code> and
+            restart.
+          </li>
+          <li>
+            Re-wrap here. Keep the retired key loaded while the Data Protection key ring needs it.
+          </li>
+        </ol>
+      }
     </section>
   }
 
@@ -191,7 +244,7 @@
         </thead>
         <tbody>
           @for (key of model.keys; track key.kekId) {
-            @let role = roleOf(key, model.missingKeys.includes(key));
+            @let role = roleOf(key, model.keyService);
             <tr>
               <td class="cell-main">
                 <span class="mono cell-strong">{{ key.kekId }}</span>

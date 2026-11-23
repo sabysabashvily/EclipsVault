@@ -60,6 +60,7 @@ export class EncryptionKeys {
         ],
         awaitingRotation: 1,
         onMissingKeys: 0,
+        keyService: false,
       } satisfies Encryption;
       await route.fulfill({ response, json: pending });
     });

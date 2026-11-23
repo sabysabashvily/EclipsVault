@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
@@ -110,15 +111,53 @@ public sealed class VaultTransitCryptoEngine : ICryptoEngine
 
     public async Task<SealedSecret> RewrapAsync(SealedSecret sealedSecret, CancellationToken ct)
     {
+        if (sealedSecret.WrappedDek.Length == 0)
+        {
+            // Vault would answer "missing ciphertext to decrypt", which reads as a bad request rather
+            // than a damaged row, so this row's own fault is named here.
+            throw new CryptographicException("The stored wrapped data key is empty.");
+        }
+
         var wrappedDek = Encoding.UTF8.GetString(sealedSecret.WrappedDek);
         // Vault re-wraps the DEK under its latest key version without exposing the DEK.
-        var rewrapped = await TransitCallAsync("rewrap", new { ciphertext = wrappedDek }, "ciphertext", ct);
+        var rewrapped = await TransitCallAsync("rewrap", new { ciphertext = wrappedDek }, "ciphertext", ct, refusalIsThisCiphertext: true);
         if (string.Equals(rewrapped, wrappedDek, StringComparison.Ordinal))
         {
             return sealedSecret; // already under the latest key version
         }
 
         return sealedSecret with { WrappedDek = Encoding.UTF8.GetBytes(rewrapped), KekId = KekId(rewrapped) };
+    }
+
+    /// <summary>
+    /// Reads the Transit key: its latest version wraps new data keys, and Vault still unwraps every
+    /// version from its minimum decryption version up. The token needs <c>read</c> on the key's path.
+    /// </summary>
+    public async Task<MasterKeys> GetMasterKeysAsync(CancellationToken ct)
+    {
+        using var key = await TransitSendAsync(HttpMethod.Get, $"v1/{_options.Mount}/keys/{_options.KeyName}", body: null, "keys", refusalIsThisCiphertext: false, ct);
+        int latest, oldest;
+        try
+        {
+            var data = key.RootElement.GetProperty("data");
+            latest = data.GetProperty("latest_version").GetInt32();
+            oldest = Math.Max(1, data.GetProperty("min_decryption_version").GetInt32());
+        }
+        catch (Exception unreadable) when (unreadable is KeyNotFoundException or InvalidOperationException or FormatException)
+        {
+            throw new CryptoConfigurationException($"Vault Transit key '{_options.KeyName}' answered an unreadable key description.");
+        }
+
+        if (latest < 1 || oldest > latest)
+        {
+            throw new CryptoConfigurationException(
+                $"Vault Transit key '{_options.KeyName}' answered latest version {latest} and minimum decryption version {oldest}.");
+        }
+
+        var known = Enumerable.Range(oldest, latest - oldest + 1).Reverse()
+            .Select(version => VaultTransitFormat.KekId(_options.KeyName, version))
+            .ToList();
+        return new MasterKeys(known[0], known, KeyService: true);
     }
 
     /// <summary>A readable key id for display/grouping: <c>vault:&lt;key&gt;:&lt;version&gt;</c> (e.g. vault:eclipsvault:v1).</summary>
@@ -130,30 +169,57 @@ public sealed class VaultTransitCryptoEngine : ICryptoEngine
     /// thread-pool thread — which, on a vault where every reveal wraps or unwraps a DEK, is the whole
     /// reason <see cref="ICryptoEngine"/> is an asynchronous contract.
     /// </summary>
-    private async Task<string> TransitCallAsync(string operation, object body, string dataField, CancellationToken ct)
+    private async Task<string> TransitCallAsync(
+        string operation, object body, string dataField, CancellationToken ct, bool refusalIsThisCiphertext = false)
     {
-        var path = $"v1/{_options.Mount}/{operation}/{_options.KeyName}";
+        using var response = await TransitSendAsync(
+            HttpMethod.Post, $"v1/{_options.Mount}/{operation}/{_options.KeyName}", body, operation, refusalIsThisCiphertext, ct);
+        return response.RootElement.GetProperty("data").GetProperty(dataField).GetString()
+               ?? throw new CryptoConfigurationException($"Vault Transit '{operation}' response missing '{dataField}'.");
+    }
+
+    /// <param name="refusalIsThisCiphertext">
+    /// For a call about a single ciphertext, a 400 whose errors all blame that ciphertext becomes a
+    /// <see cref="CryptographicException"/>. Every other failure, including a 400 about the key such as
+    /// "encryption key not found", an unreachable server or a 5xx, means the engine cannot work.
+    /// </param>
+    private async Task<JsonDocument> TransitSendAsync(
+        HttpMethod method, string path, object? body, string operation, bool refusalIsThisCiphertext, CancellationToken ct)
+    {
         HttpResponseMessage response;
         try
         {
-            response = await _http.PostAsJsonAsync(path, body, ct);
+            using var request = new HttpRequestMessage(method, path) { Content = body is null ? null : JsonContent.Create(body) };
+            response = await _http.SendAsync(request, ct);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             throw new CryptoConfigurationException($"Vault Transit '{operation}' call failed: {ex.Message}");
         }
 
-        var json = await response.Content.ReadAsStringAsync(ct);
-        if (!response.IsSuccessStatusCode)
+        using (response)
         {
-            throw new CryptoConfigurationException($"Vault Transit '{operation}' returned {(int)response.StatusCode}: {json}");
+            var json = await response.Content.ReadAsStringAsync(ct);
+            if (refusalIsThisCiphertext && response.StatusCode == HttpStatusCode.BadRequest && VaultTransitFormat.BlamesTheCiphertext(json))
+            {
+                throw new CryptographicException($"Vault Transit refused to '{operation}' this ciphertext: {json}");
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new CryptoConfigurationException($"Vault Transit '{operation}' returned {(int)response.StatusCode}: {json}");
+            }
+
+            try
+            {
+                return JsonDocument.Parse(json);
+            }
+            catch (JsonException)
+            {
+                throw new CryptoConfigurationException($"Vault Transit '{operation}' answered a body that is not JSON.");
+            }
         }
-
-        using var doc = JsonDocument.Parse(json);
-        return doc.RootElement.GetProperty("data").GetProperty(dataField).GetString()
-               ?? throw new CryptoConfigurationException($"Vault Transit '{operation}' response missing '{dataField}'.");
     }
-
 }
 
 /// <summary>Pure parsing of Vault Transit ciphertext, split out so it can be unit-tested without a server.</summary>
@@ -169,4 +235,29 @@ public static class VaultTransitFormat
         var version = parts.Length >= 2 && parts[1].Length > 0 ? parts[1] : "v?";
         return $"vault:{keyName}:{version}";
     }
+
+    public static string KekId(string keyName, int version) => $"vault:{keyName}:v{version}";
+
+    /// <summary>
+    /// True when every error in a Vault error body is one Vault raises for the ciphertext it was sent:
+    /// unparseable, on a version too new or disallowed as too old, or failing authentication.
+    /// </summary>
+    public static bool BlamesTheCiphertext(string errorBody)
+    {
+        try
+        {
+            using var body = JsonDocument.Parse(errorBody);
+            var errors = body.RootElement.GetProperty("errors").EnumerateArray().Select(error => error.GetString() ?? string.Empty).ToList();
+            return errors.Count > 0 && errors.All(IsCiphertextError);
+        }
+        catch (Exception unreadable) when (unreadable is JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsCiphertextError(string error)
+        => error.StartsWith("invalid ciphertext", StringComparison.Ordinal)
+           || error == "ciphertext or signature version is disallowed by policy (too old)"
+           || error == "cipher: message authentication failed";
 }

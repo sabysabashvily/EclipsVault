@@ -28,6 +28,8 @@ export class UiApiError extends Error {
     readonly proof: StepUpProof | null = null,
     readonly errors: Readonly<Record<string, string[]>> = {},
     readonly reasons: readonly string[] = [],
+    /** What a stopped master key re-wrap committed before it stopped. */
+    readonly rewrapped: { secrets: number; versions: number } | null = null,
   ) {
     super(title);
     this.name = 'UiApiError';
@@ -68,7 +70,22 @@ function toUiApiError(response: HttpErrorResponse): UiApiError {
       problem.reasons.every((reason: unknown) => typeof reason === 'string')
       ? (problem.reasons as string[])
       : [],
+    rewrapped(problem),
   );
+}
+
+function rewrapped(problem: object): { secrets: number; versions: number } | null {
+  const counted = (value: unknown) =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+  return 'secretsRewrapped' in problem &&
+    'versionsRewrapped' in problem &&
+    counted(problem.secretsRewrapped) &&
+    counted(problem.versionsRewrapped)
+    ? {
+        secrets: problem.secretsRewrapped as number,
+        versions: problem.versionsRewrapped as number,
+      }
+    : null;
 }
 
 function fieldErrors(problem: object): Readonly<Record<string, string[]>> {
