@@ -93,6 +93,54 @@ public sealed class InMemoryIpBlacklist : IIpBlacklist
         }
     }
 
+    public Task<IReadOnlyList<string>> ListGuardsAsync(CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            return Task.FromResult<IReadOnlyList<string>>(
+                _guards.Keys.Select(guard => guard.Network).Distinct().Order(StringComparer.Ordinal).ToList());
+        }
+    }
+
+    public Task<ILiftedIpBlock?> ReleaseGuardAsync(string network, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            var released = _guards.Where(guard => guard.Key.Network == network.Trim()).ToList();
+            foreach (var guard in released)
+            {
+                _guards.TryRemove(guard);
+            }
+
+            if (released.Count == 0)
+            {
+                return Task.FromResult<ILiftedIpBlock?>(null);
+            }
+
+            _logger.LogWarning("Break-glass guard on {Network} was released by an administrator", network);
+            return Task.FromResult<ILiftedIpBlock?>(new ReleasedGuard(this, network.Trim(), released));
+        }
+    }
+
+    private sealed class ReleasedGuard(InMemoryIpBlacklist owner, string network, IReadOnlyList<KeyValuePair<(Guid Lift, string Network), IPNetwork>> released)
+        : ILiftedIpBlock
+    {
+        public string Network => network;
+
+        public Task RestoreAsync(CancellationToken ct = default)
+        {
+            lock (owner._gate)
+            {
+                foreach (var guard in released)
+                {
+                    owner._guards[guard.Key] = guard.Value;
+                }
+            }
+
+            return Task.CompletedTask;
+        }
+    }
+
     public Task<IRecoveryLift> LiftForRecoveryAsync(IPAddress address)
     {
         lock (_gate)
@@ -129,6 +177,8 @@ public sealed class InMemoryIpBlacklist : IIpBlacklist
     private sealed class RecoveryLift(InMemoryIpBlacklist owner, Guid lift, IReadOnlyList<Entry> removed) : IRecoveryLift
     {
         public bool Lifted => removed.Count > 0;
+
+        public IReadOnlyList<string> Removed => removed.Select(entry => entry.Dto.Network).ToList();
 
         public string Guard
         {

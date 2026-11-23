@@ -1643,6 +1643,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ui/networks/blocks/release-guard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["LiftBlockRequest"];
+                    "text/json": components["schemas"]["LiftBlockRequest"];
+                    "application/*+json": components["schemas"]["LiftBlockRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["AdministratorProblemResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ui/notifications": {
         parameters: {
             query?: never;
@@ -6110,6 +6176,7 @@ export interface components {
             configuredRanges: string[];
             trustedNetworks: components["schemas"]["TrustedNetworkResponse"][];
             blocks: components["schemas"]["NetworkBlockResponse"][];
+            recoveryGuards: string[];
         };
         NewServiceAccountResponse: {
             clearances: components["schemas"]["ClearanceOptionResponse"][];

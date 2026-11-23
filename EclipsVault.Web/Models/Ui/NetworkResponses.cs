@@ -1,7 +1,7 @@
 namespace EclipsVault.Web.Models.Ui;
 
 public sealed record NetworksResponse(string CurrentAddress, bool CurrentAddressTrusted, IReadOnlyList<string> ConfiguredRanges,
-    IReadOnlyList<TrustedNetworkResponse> TrustedNetworks, IReadOnlyList<NetworkBlockResponse> Blocks);
+    IReadOnlyList<TrustedNetworkResponse> TrustedNetworks, IReadOnlyList<NetworkBlockResponse> Blocks, IReadOnlyList<string> RecoveryGuards);
 
 public sealed record TrustedNetworkResponse(Guid NetworkId, string Range, string Label, string AddedBy, DateTimeOffset AddedAtUtc);
 

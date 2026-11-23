@@ -43,7 +43,7 @@ public sealed class BreakGlassSignIn(SessionIssuer issuer, IIpBlacklist blacklis
 
         try
         {
-            await audit.WriteAsync(Lift(user, source), CancellationToken.None);
+            await audit.WriteAsync(Lift(user, source, lift.Removed), CancellationToken.None);
         }
         catch (AuditWriteFailedException)
         {
@@ -107,13 +107,13 @@ public sealed class BreakGlassSignIn(SessionIssuer issuer, IIpBlacklist blacklis
         Details = $"Break-glass recovery from {source}; lifting any intrusion block on it"
     };
 
-    private static AuditEntry Lift(UserDto user, IPAddress source) => new()
+    private static AuditEntry Lift(UserDto user, IPAddress source, IReadOnlyList<string> removed) => new()
     {
         Action = AuditAction.IpRangeUnblocked,
         ResourceType = "TrustedNetwork",
         ResourceName = source.ToString(),
         ActorUserId = user.Id,
         ActorUsername = user.Username,
-        Details = "Intrusion-defence block lifted by break-glass recovery"
+        Details = $"Intrusion-defence block lifted by break-glass recovery: {string.Join(", ", removed.Order(StringComparer.Ordinal))}"
     };
 }

@@ -27,4 +27,13 @@ public interface IIpBlacklist
     /// exactly what it removed. Not cancellable: a removal must always be settled.
     /// </summary>
     Task<IRecoveryLift> LiftForRecoveryAsync(IPAddress address);
+
+    /// <summary>The ranges a break-glass guard holds refused, whether its lift is in flight or stuck.</summary>
+    Task<IReadOnlyList<string>> ListGuardsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// An administrator's release of every guard held on <paramref name="network"/>, for a lift that
+    /// could not be settled. Returns what it removed, so a release whose row is refused can be put back.
+    /// </summary>
+    Task<ILiftedIpBlock?> ReleaseGuardAsync(string network, CancellationToken ct = default);
 }

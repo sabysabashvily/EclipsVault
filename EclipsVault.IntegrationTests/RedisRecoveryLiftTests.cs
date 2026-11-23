@@ -106,6 +106,23 @@ public sealed class RedisRecoveryLiftTests(RedisSessionFixture fixture) : IClass
         Assert.True(await replicas.Second.IsBlockedAsync(Source));
     }
 
+    [Fact]
+    public async Task An_administrator_release_on_one_replica_lets_every_replica_admit_the_source_and_can_be_undone()
+    {
+        await using var replicas = await Replicas.ConnectAsync(fixture, "lift-release");
+        await fixture.Database.StringSetAsync("lift-release:ipblock:198.51.100.120/32", Host);
+        await replicas.First.LiftForRecoveryAsync(Source);
+        Assert.Equal(["198.51.100.0/24", "198.51.100.120/32"], await replicas.Second.ListGuardsAsync());
+
+        var released = await replicas.Second.ReleaseGuardAsync("198.51.100.120/32");
+
+        Assert.NotNull(released);
+        Assert.False(await replicas.First.IsBlockedAsync(Source));
+        Assert.Equal(["198.51.100.0/24"], await replicas.First.ListGuardsAsync());
+        await released.RestoreAsync();
+        Assert.True(await replicas.First.IsBlockedAsync(Source));
+    }
+
     private sealed class Replicas : IAsyncDisposable
     {
         private readonly ConnectionMultiplexer _first;

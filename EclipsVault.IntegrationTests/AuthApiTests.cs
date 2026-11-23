@@ -425,8 +425,10 @@ public sealed class AuthApiTests(VaultFixture vault)
         Assert.True((await AuthApi.JsonAsync(response)).GetProperty("blockLifted").GetBoolean());
         Assert.False(await blacklist.IsBlockedAsync(source));
         Assert.Equal(HttpStatusCode.OK, (await browser.Client.GetAsync("/api/ui/me")).StatusCode);
+        var rows = (await AuditTrail.RowsAfterAsync(vault, before)).Where(row => row.UserId == account.Id).ToList();
         Assert.Equal([AuditAction.SignInFactorVerified, AuditAction.LoginSucceeded, AuditAction.BreakGlassRecovery, AuditAction.IpRangeUnblocked],
-            (await AuditTrail.RowsAfterAsync(vault, before)).Where(row => row.UserId == account.Id).Select(row => row.Action));
+            rows.Select(row => row.Action));
+        Assert.Equal("Intrusion-defence block lifted by break-glass recovery: 100.74.174.31/32", rows[3].Details);
     }
 
     [Fact]

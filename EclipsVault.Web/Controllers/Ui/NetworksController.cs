@@ -27,7 +27,8 @@ public sealed class NetworksController(ITrustedNetworkService trustedNetworks, I
         return new NetworksResponse(source is null ? "unknown" : NetworkRules.Normalize(source).ToString(), trusted, configured,
             (await trustedNetworks.ListAsync(ct)).Select(network => new TrustedNetworkResponse(
                 network.Id, network.Cidr, network.Label, network.AddedBy, network.CreatedAtUtc)).ToList(),
-            (await blacklist.ListAsync(ct)).Select(block => new NetworkBlockResponse(block.Network, block.Reason, block.BlockedAtUtc)).ToList());
+            (await blacklist.ListAsync(ct)).Select(block => new NetworkBlockResponse(block.Network, block.Reason, block.BlockedAtUtc)).ToList(),
+            await blacklist.ListGuardsAsync(ct));
     }
 
     [HttpPost("trust-current-address")]
@@ -88,6 +89,26 @@ public sealed class NetworksController(ITrustedNetworkService trustedNetworks, I
         }
 
         logger.LogWarning("Administrator {Username} lifted the intrusion-defence block on {Network}", User.GetUsername(), range);
+        return NoContent();
+    }
+
+    /// <summary>Releases the guard a break-glass recovery left when it answered 503 recovery_incomplete (ADR-0032).</summary>
+    [HttpPost("blocks/release-guard")]
+    [RequestSizeLimit(4096)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status403Forbidden, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status404NotFound, "application/problem+json")]
+    [ProducesResponseType<AdministratorProblemResponse>(StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
+    public async Task<IActionResult> ReleaseGuard([FromBody] LiftBlockRequest request, CancellationToken ct)
+    {
+        if (await stepUp.RequireAsync(User, AdministratorAction.LiftBlock, ct) is { } required) return required;
+        var range = request.Range ?? "";
+        if (!await blocks.ReleaseGuardAsync(range, ct))
+        {
+            return AdministratorProblems.Problem(StatusCodes.Status404NotFound, "guard_not_found", "That range has no break-glass guard.");
+        }
+
+        logger.LogWarning("Administrator {Username} released the break-glass guard on {Network}", User.GetUsername(), range);
         return NoContent();
     }
 }

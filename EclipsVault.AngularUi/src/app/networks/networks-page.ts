@@ -12,7 +12,10 @@ import type { components } from '../ui-api/schema.generated';
 type TrustedNetwork = components['schemas']['TrustedNetworkResponse'];
 type Block = components['schemas']['NetworkBlockResponse'];
 type TrustedRange = components['schemas']['TrustedRangeResponse'];
-type Confirmation = { kind: 'remove'; network: TrustedNetwork } | { kind: 'unblock'; block: Block };
+type Confirmation =
+  | { kind: 'remove'; network: TrustedNetwork }
+  | { kind: 'unblock'; block: Block }
+  | { kind: 'release'; range: string };
 
 const path = '/api/ui/networks';
 
@@ -96,6 +99,15 @@ export class NetworksPage {
     this.confirmation().open(`Lift the intrusion-defence block on ${block.range}?`);
   }
 
+  protected askRelease(range: string, opener: HTMLButtonElement): void {
+    if (this.writes.busy() || this.writes.blocked()) return;
+    this.opener = opener;
+    this.pendingConfirmation = { kind: 'release', range };
+    this.confirmation().open(
+      `Release the break-glass guard on ${range}? Requests from it are let in again unless a block still covers it.`,
+    );
+  }
+
   protected confirmed(confirmed: boolean): void {
     const pending = this.pendingConfirmation;
     this.pendingConfirmation = null;
@@ -105,6 +117,18 @@ export class NetworksPage {
         () => this.reloading(this.http.delete<void>(`${path}/${pending.network.networkId}`)),
         () => this.writes.status.set({ message: 'Trusted network removed.', error: false }),
         () => undefined,
+      );
+      return;
+    }
+    if (pending.kind === 'release') {
+      this.writes.send(
+        () =>
+          this.reloading(
+            this.http.post<void>(`${path}/blocks/release-guard`, { range: pending.range }),
+          ),
+        () =>
+          this.writes.status.set({ message: `Guard on ${pending.range} released.`, error: false }),
+        (proof) => this.stepUp().open(proof),
       );
       return;
     }

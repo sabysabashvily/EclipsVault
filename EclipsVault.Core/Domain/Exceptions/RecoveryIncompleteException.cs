@@ -10,5 +10,6 @@ public sealed class RecoveryIncompleteException(string? guard = null) : DomainEx
     public string? Guard { get; } = guard;
 
     public const string FailureMessage =
-        "Your sign-in was recorded, but the vault could not finish restoring network access. This source remains blocked. Contact an administrator.";
+        "Your sign-in was recorded, but the vault could not finish lifting the block, so this network stays blocked. " +
+        "From another network, an administrator can release it under Administration → Networks.";
 }

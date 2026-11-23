@@ -115,6 +115,55 @@ public sealed class RedisIpBlacklist : IIpBlacklist
         }
     }
 
+    public Task<IReadOnlyList<string>> ListGuardsAsync(CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<string>>(ScanKeys($"{_prefix}:ipguard:*")
+            .Select(key => ((string)key!)[$"{_prefix}:ipguard:".Length..])
+            .Order(StringComparer.Ordinal)
+            .ToList());
+
+    public async Task<ILiftedIpBlock?> ReleaseGuardAsync(string network, CancellationToken ct = default)
+    {
+        var canonical = network.Trim();
+        var db = _redis.GetDatabase();
+        var lifts = await db.SetMembersAsync(GuardKey(canonical));
+        if (lifts.Length == 0)
+        {
+            return null;
+        }
+
+        var released = new ReleasedGuard(db, GuardKey(canonical), canonical, lifts);
+        try
+        {
+            // Only the lifts read here go, so a recovery that starts meanwhile keeps its own guard.
+            foreach (var lift in lifts)
+            {
+                await db.SetRemoveAsync(GuardKey(canonical), lift);
+            }
+        }
+        catch (Exception)
+        {
+            // No row records a release that failed halfway, so the guard goes back whole.
+            await released.RestoreAsync();
+            throw;
+        }
+
+        _logger.LogWarning("Break-glass guard on {Network} was released by an administrator", network);
+        return released;
+    }
+
+    private sealed class ReleasedGuard(IDatabase database, RedisKey key, string network, RedisValue[] lifts) : ILiftedIpBlock
+    {
+        public string Network => network;
+
+        public async Task RestoreAsync(CancellationToken ct = default)
+        {
+            foreach (var lift in lifts)
+            {
+                await database.SetAddAsync(key, lift);
+            }
+        }
+    }
+
     public async Task<IRecoveryLift> LiftForRecoveryAsync(IPAddress address)
     {
         // A replica configured for the other block size may have keyed this address either way.
@@ -167,6 +216,8 @@ public sealed class RedisIpBlacklist : IIpBlacklist
         : IRecoveryLift
     {
         public bool Lifted => removed.Count > 0;
+
+        public IReadOnlyList<string> Removed => removed.Select(block => block.Network).ToList();
 
         public string Guard => $"member {lift} of the Redis sets {string.Join(", ", guarded.Select(network => (string)owner.GuardKey(network)!))}";
 

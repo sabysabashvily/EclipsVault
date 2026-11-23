@@ -50,7 +50,7 @@ public sealed class UiApiFailureContractTests(VaultFixture vault)
     [InlineData("audit", 503, "Vault unavailable (fail-closed)", "The audit trail is unavailable, so the vault refused the request.")]
     [InlineData("session_store", 503, "Vault unavailable (fail-closed)", "The session store is unavailable, so the vault refused the change. Nothing was saved.")]
     [InlineData("unblock_unrecorded", 503, "Vault unavailable (fail-closed)", "The block was lifted, but recording and restoring it failed. Check the range before retrying.")]
-    [InlineData("recovery_incomplete", 503, "Vault unavailable (fail-closed)", "Your sign-in was recorded, but the vault could not finish restoring network access. This source remains blocked. Contact an administrator.")]
+    [InlineData("recovery_incomplete", 503, "Vault unavailable (fail-closed)", "Your sign-in was recorded, but the vault could not finish lifting the block, so this network stays blocked. From another network, an administrator can release it under Administration → Networks.")]
     [InlineData("not_found", 404, "Not found", "Not found.")]
     [InlineData("legacy_blob", 409, "Secret needs a one-time upgrade", "This secret is sealed in a format the vault refuses until an administrator re-seals it.")]
     [InlineData("crypto", 500, "Something went wrong", "The vault's encryption is unavailable.")]
@@ -286,6 +286,7 @@ public sealed class UiApiFailureContractTests(VaultFixture vault)
             Assert.Contains("<title>Access blocked — EclipsVault</title>", html);
             Assert.Contains("<h1>Access blocked</h1>", html);
             Assert.Contains("""<a class="button primary wide" href="/Account/Recover">Vault administrator? Recover access</a>""", html);
+            Assert.Contains("Not an administrator? Ask one to lift the block from Administration → Networks.", html);
             Assert.Contains("""<link rel="stylesheet" href="/css/server-page.css" />""", html);
             Assert.DoesNotContain("<script", html);
 

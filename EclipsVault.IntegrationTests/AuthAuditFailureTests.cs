@@ -145,6 +145,7 @@ public sealed class AuthAuditFailureTests(AuditFailureFixture failure)
         var actions = await ProfileHttp.EventsAfterAsync(Vault, recovery.Before, recovery.AccountId);
         Assert.Contains(AuditAction.BreakGlassRecovery, actions);
         Assert.DoesNotContain(await AuditTrail.RowsAfterAsync(Vault, recovery.Before), row => row.Action == AuditAction.IpRangeUnblocked);
+        await AssertRetryAcceptedAsync(recovery.Browser, "it-auth-af-glass-lift");
         await recovery.ReleaseAsync();
     }
 
@@ -180,13 +181,31 @@ public sealed class AuthAuditFailureTests(AuditFailureFixture failure)
         }
 
         var problem = await ProfileApi.AssertProblemAsync(response, 503, "recovery_incomplete");
-        Assert.Equal("Your sign-in was recorded, but the vault could not finish restoring network access. This source remains blocked. Contact an administrator.",
+        Assert.Equal("Your sign-in was recorded, but the vault could not finish lifting the block, so this network stays blocked. From another network, an administrator can release it under Administration → Networks.",
             problem.GetProperty("title").GetString());
         Assert.NotNull(recovery.Browser.SessionCookie);
         Assert.Equal("raised meanwhile", Assert.Single(await blacklist.ListAsync(), block => block.Network == recovery.Network).Reason);
+        await AssertRetryAcceptedAsync(recovery.Browser, "it-auth-af-glass-incomplete");
         // Lifting the block raised meanwhile cannot release the guard of the unsettled lift.
         Assert.NotNull(await blacklist.UnblockAsync(recovery.Network));
         await UiApiFailureContractTests.AssertProblemAsync(await recovery.Browser.Client.GetAsync("/api/ui/me"), 403, "blocked");
+
+        // Once the trail accepts rows again, an administrator releases the stuck guard from Networks.
+        var released = await AuditTrail.HeadAsync(Vault);
+        Assert.Equal(HttpStatusCode.NoContent, (await NetworksApi.ReleaseGuardAsync(await Vault.AdminClientAsync(), recovery.Network)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await recovery.Browser.Client.GetAsync("/api/ui/me")).StatusCode);
+        var row = Assert.Single(await AuditTrail.RowsAfterAsync(Vault, released));
+        Assert.Equal((AuditAction.IpRangeUnblocked, recovery.Network, "Break-glass recovery guard released"), (row.Action, row.ResourceName, row.Details));
+    }
+
+    /// <summary>A recorded session's reissued token is accepted: the retry reaches validation, not antiforgery.</summary>
+    private static async Task AssertRetryAcceptedAsync(VaultSession browser, string username)
+    {
+        var retry = await AuthApi.PostAsync(browser, "/api/ui/auth/recover", AuthApi.ReissuedToken(browser),
+            new { username, password = Password, code = "12" });
+
+        var problem = await ProfileApi.AssertProblemAsync(retry, 400, "validation_failed");
+        Assert.Equal("This field is missing or invalid.", problem.GetProperty("errors").GetProperty("code")[0].GetString());
     }
 
     private async Task<(VaultSession Browser, string Token)> PendingAsync(string username, string createdFrom, string signingInFrom)

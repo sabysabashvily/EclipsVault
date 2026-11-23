@@ -44,9 +44,8 @@ public static class ServerPage
                     {0}
                     <a class="button primary wide" href="/Account/Recover">Vault administrator? Recover access</a>
                     <p class="footnote">
-                        Recovery requires full multi-factor administrator credentials and is
-                        audited. Otherwise, ask an administrator to lift the block from the
-                        Networks console.
+                        Recovery takes your password and authenticator code in one step, and is
+                        audited. Not an administrator? Ask one to lift the block from Administration → Networks.
                     </p>
         """;
 

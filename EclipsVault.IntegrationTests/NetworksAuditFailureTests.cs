@@ -117,6 +117,32 @@ public sealed class NetworksAuditFailureTests(AuditFailureFixture failure)
     }
 
     [Fact]
+    public async Task A_guard_release_that_cannot_be_recorded_keeps_the_source_refused()
+    {
+        var vault = failure.Vault;
+        var admin = await vault.AdminClientAsync();
+        var blacklist = vault.Services.GetRequiredService<IIpBlacklist>();
+        var stuck = await blacklist.LiftForRecoveryAsync(IPAddress.Parse("198.51.100.118"));
+        var before = await AuditTrail.HeadAsync(vault);
+
+        await failure.RejectAuditWritesAsync();
+        try
+        {
+            var response = await NetworksApi.ReleaseGuardAsync(admin, "198.51.100.118/32");
+
+            await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
+            Assert.Contains("198.51.100.118/32", await blacklist.ListGuardsAsync());
+            Assert.Equal(403, (await vault.SendFromAsync(IPAddress.Parse("198.51.100.118"), "/")).Response.StatusCode);
+            Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
+        }
+        finally
+        {
+            await failure.RestoreAuditWritesAsync();
+            await stuck.ReleaseAsync();
+        }
+    }
+
+    [Fact]
     public async Task A_lift_that_can_be_neither_recorded_nor_restored_says_so_and_keeps_the_newer_block()
     {
         var vault = failure.Vault;

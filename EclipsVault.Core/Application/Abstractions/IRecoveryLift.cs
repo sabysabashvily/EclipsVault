@@ -9,6 +9,9 @@ public interface IRecoveryLift
     /// <summary>Whether any block was removed.</summary>
     bool Lifted { get; }
 
+    /// <summary>The ranges whose blocks were removed.</summary>
+    IReadOnlyList<string> Removed { get; }
+
     /// <summary>What holds the source refused while the guard stays, for an operator to reconcile.</summary>
     string Guard { get; }
 

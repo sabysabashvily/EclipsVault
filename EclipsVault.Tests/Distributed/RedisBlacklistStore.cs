@@ -35,7 +35,10 @@ internal sealed class RedisBlacklistStore
     {
         "get_IsConnected" => true,
         "get_IsReplica" => false,
-        nameof(IServer.Keys) => _records.Keys.ToArray(),
+        // Patterns here are a prefix and a trailing *.
+        nameof(IServer.Keys) => _records.Keys.Concat(_sets.Keys)
+            .Where(key => key.ToString().StartsWith(arguments[1]!.ToString()!.TrimEnd('*'), StringComparison.Ordinal))
+            .ToArray(),
         _ => throw new NotSupportedException(method.Name)
     };
 
@@ -65,6 +68,8 @@ internal sealed class RedisBlacklistStore
                 }
 
                 return Task.FromResult(removed);
+            case nameof(IDatabase.SetMembersAsync):
+                return Task.FromResult(_sets.TryGetValue(key, out var listed) ? listed.ToArray() : Array.Empty<RedisValue>());
             case nameof(IDatabase.StringSetAsync):
                 var when = arguments.OfType<ValueCondition>().Single();
                 var added = !when.Equals(ValueCondition.NotExists) || !_records.ContainsKey(key);

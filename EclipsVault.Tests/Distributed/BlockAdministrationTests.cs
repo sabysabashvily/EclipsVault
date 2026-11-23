@@ -140,6 +140,65 @@ public sealed class BlockAdministrationTests
         Assert.False(audit.WriteToken.CanBeCanceled);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Releasing_a_stuck_recovery_guard_lets_the_source_in_with_one_event(bool redis)
+    {
+        var blacklist = Blacklist(redis);
+        await blacklist.BlockAsync("198.51.100.113", "original reason");
+        // A lift that is never settled, as after 503 recovery_incomplete.
+        await blacklist.LiftForRecoveryAsync(IPAddress.Parse("198.51.100.113"));
+        Assert.Contains("198.51.100.113/32", await blacklist.ListGuardsAsync());
+        var audit = new RecordingAudit(blacklist);
+        var administration = new BlockAdministration(blacklist, audit);
+
+        Assert.True(await administration.ReleaseGuardAsync(" 198.51.100.113/32 "));
+
+        Assert.False(await blacklist.IsBlockedAsync(IPAddress.Parse("198.51.100.113")));
+        Assert.DoesNotContain("198.51.100.113/32", await blacklist.ListGuardsAsync());
+        Assert.Equal(new AuditEntry
+        {
+            Action = AuditAction.IpRangeUnblocked,
+            ResourceType = "TrustedNetwork",
+            ResourceName = "198.51.100.113/32",
+            Details = "Break-glass recovery guard released"
+        }, Assert.Single(audit.Recorded));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_guard_release_that_cannot_be_recorded_keeps_the_source_refused(bool redis)
+    {
+        var blacklist = Blacklist(redis);
+        await blacklist.LiftForRecoveryAsync(IPAddress.Parse("198.51.100.113"));
+        var audit = new RecordingAudit(blacklist) { RejectWrites = true };
+        var administration = new BlockAdministration(blacklist, audit);
+
+        await Assert.ThrowsAsync<AuditWriteFailedException>(() => administration.ReleaseGuardAsync("198.51.100.113/32"));
+
+        Assert.True(await blacklist.IsBlockedAsync(IPAddress.Parse("198.51.100.113")));
+        Assert.Contains("198.51.100.113/32", await blacklist.ListGuardsAsync());
+        Assert.Empty(audit.Recorded);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Releasing_an_unguarded_range_keeps_other_guards_and_records_nothing(bool redis)
+    {
+        var blacklist = Blacklist(redis);
+        await blacklist.LiftForRecoveryAsync(IPAddress.Parse("198.51.100.113"));
+        var audit = new RecordingAudit(blacklist);
+        var administration = new BlockAdministration(blacklist, audit);
+
+        Assert.False(await administration.ReleaseGuardAsync("198.51.100.114/32"));
+
+        Assert.True(await blacklist.IsBlockedAsync(IPAddress.Parse("198.51.100.113")));
+        Assert.Equal(0, audit.Attempts);
+    }
+
     private static IIpBlacklist Blacklist(bool redis) => redis
         ? new RedisIpBlacklist(new RedisBlacklistStore().Connection,
             Options.Create(new RedisOptions { InstanceName = "unblock-unit" }),

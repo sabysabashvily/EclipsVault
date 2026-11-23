@@ -13,6 +13,7 @@ const empty: components['schemas']['NetworksResponse'] = {
   configuredRanges: ['127.0.0.1/32', '10.0.0.0/8'],
   trustedNetworks: [],
   blocks: [],
+  recoveryGuards: [],
 };
 const listed: components['schemas']['NetworksResponse'] = {
   currentAddress: '198.51.100.7',
@@ -34,6 +35,11 @@ const listed: components['schemas']['NetworksResponse'] = {
       blockedAtUtc: '2026-11-07T22:30:00Z',
     },
   ],
+  recoveryGuards: [],
+};
+const guarded: components['schemas']['NetworksResponse'] = {
+  ...empty,
+  recoveryGuards: ['198.51.100.7/32'],
 };
 let backend: HttpTestingController;
 const assign = vi.fn();
@@ -372,6 +378,67 @@ describe('Networks', () => {
     expect(status(page, 'alert')).toBe(title);
     expect(status(page, 'status')).toBe('');
   });
+
+  it('lists a stuck break-glass guard with what releasing it does', async () => {
+    const { page } = await loaded(guarded);
+    const guard = page.querySelector('[aria-label="Break-glass guards"] li');
+    expect(guard?.textContent).toContain('198.51.100.7/32');
+    expect(guard?.textContent).toContain('Held by a break-glass recovery that could not finish');
+    expect(page.textContent).toContain(
+      'Release a guard only once the audit log accepts entries again. The release is audited.',
+    );
+    expect(button(page, 'Release guard')).toBeTruthy();
+    expect(page.textContent).not.toContain('No ranges are currently blocked.');
+  });
+
+  it('releases a guard after the exact confirmation and one proof', async () => {
+    const { page, fixture } = await loaded(guarded);
+    button(page, 'Release guard').click();
+    await fixture.whenStable();
+    expect(page.querySelector('[role="alertdialog"]')?.textContent).toContain(
+      'Release the break-glass guard on 198.51.100.7/32? Requests from it are let in again unless a block still covers it.',
+    );
+    button(page, 'Continue').click();
+    stepUpRequired(`${path}/blocks/release-guard`);
+    await reload(fixture, guarded);
+    enterProof(page, '654321');
+    backend.expectOne('/api/ui/step-up').flush(null);
+    const retry = backend.expectOne(`${path}/blocks/release-guard`);
+    expect(retry.request.body).toEqual({ range: '198.51.100.7/32' });
+    retry.flush(null);
+    await reload(fixture, empty);
+    expect(status(page, 'status')).toBe('Guard on 198.51.100.7/32 released.');
+    expect(page.textContent).toContain('No ranges are currently blocked.');
+  });
+
+  it.each([
+    { code: 'guard_not_found', title: 'That range has no break-glass guard.', httpStatus: 404 },
+    {
+      code: 'audit_unavailable',
+      title: 'The audit trail is unavailable, so the vault refused the request.',
+      httpStatus: 503,
+    },
+    {
+      code: 'unblock_unrecorded',
+      title:
+        'The block was lifted, but recording and restoring it failed. Check the range before retrying.',
+      httpStatus: 503,
+    },
+  ])(
+    'reports a $code guard release without claiming it succeeded',
+    async ({ code, title, httpStatus }) => {
+      const { page, fixture } = await loaded(guarded);
+      button(page, 'Release guard').click();
+      await fixture.whenStable();
+      button(page, 'Continue').click();
+      backend
+        .expectOne(`${path}/blocks/release-guard`)
+        .flush({ code, title }, { status: httpStatus, statusText: '' });
+      await reload(fixture, guarded);
+      expect(status(page, 'alert')).toBe(title);
+      expect(status(page, 'status')).toBe('');
+    },
+  );
 
   it('blocks every write after a lost response', async () => {
     const { page, fixture } = await loaded();

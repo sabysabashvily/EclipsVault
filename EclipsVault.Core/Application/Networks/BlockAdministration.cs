@@ -8,7 +8,17 @@ public sealed class BlockAdministration(IIpBlacklist blacklist, IAuditSink audit
     public async Task<bool> LiftAsync(string network, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
-        var lifted = await blacklist.UnblockAsync(network, ct);
+        return await RecordAsync(await blacklist.UnblockAsync(network, ct), "Intrusion-defence block lifted");
+    }
+
+    public async Task<bool> ReleaseGuardAsync(string network, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        return await RecordAsync(await blacklist.ReleaseGuardAsync(network, ct), "Break-glass recovery guard released");
+    }
+
+    private async Task<bool> RecordAsync(ILiftedIpBlock? lifted, string details)
+    {
         if (lifted is null)
         {
             return false;
@@ -23,7 +33,7 @@ public sealed class BlockAdministration(IIpBlacklist blacklist, IAuditSink audit
                 Action = AuditAction.IpRangeUnblocked,
                 ResourceType = "TrustedNetwork",
                 ResourceName = lifted.Network,
-                Details = "Intrusion-defence block lifted"
+                Details = details
             }, CancellationToken.None);
         }
         catch (Exception)

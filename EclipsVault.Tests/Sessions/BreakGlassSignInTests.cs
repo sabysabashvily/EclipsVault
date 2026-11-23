@@ -58,6 +58,22 @@ public sealed class BreakGlassSignInTests
         // The source is still refused while the lift's own row is written: nothing is granted before it commits.
         Assert.Equal([true, true], glass.Audit.SourceBlockedAtEachWrite);
         Assert.Equal("198.18.93.9", glass.Audit.Recorded[1].ResourceName);
+        Assert.Equal("Intrusion-defence block lifted by break-glass recovery: 198.18.93.9/32", glass.Audit.Recorded[1].Details);
+    }
+
+    [Fact]
+    public async Task The_lift_row_names_every_range_the_lift_removed()
+    {
+        var glass = await Glass.CreateAsync();
+        await glass.Blacklist.BlockAsync(Source.ToString(), "exact host");
+        glass.Options.BlockSurroundingRange = true;
+        await glass.Blacklist.BlockAsync("198.18.93.200", "surrounding range");
+        await glass.Blacklist.BlockAsync("203.0.113.5", "elsewhere");
+
+        await glass.FinishAsync(Source);
+
+        var lift = Assert.Single(glass.Audit.Recorded, entry => entry.Action == AuditAction.IpRangeUnblocked);
+        Assert.Equal("Intrusion-defence block lifted by break-glass recovery: 198.18.93.0/24, 198.18.93.9/32", lift.Details);
     }
 
     [Fact]
@@ -208,6 +224,8 @@ public sealed class BreakGlassSignInTests
 
         public bool Lifted => false;
 
+        public IReadOnlyList<string> Removed => [];
+
         public string Guard => "the test's guard";
 
         public Task ReleaseAsync() => ++Releases > failedReleases ? Task.CompletedTask : throw new InvalidOperationException("Store unavailable.");
@@ -223,6 +241,10 @@ public sealed class BreakGlassSignInTests
         public Task<IReadOnlyList<BlockedRangeDto>> ListAsync(CancellationToken ct = default) => throw new NotSupportedException();
 
         public Task<ILiftedIpBlock?> UnblockAsync(string network, CancellationToken ct = default) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<string>> ListGuardsAsync(CancellationToken ct = default) => throw new NotSupportedException();
+
+        public Task<ILiftedIpBlock?> ReleaseGuardAsync(string network, CancellationToken ct = default) => throw new NotSupportedException();
     }
 
     private sealed class Glass

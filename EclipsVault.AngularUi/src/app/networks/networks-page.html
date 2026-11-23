@@ -48,9 +48,9 @@
 
   <section class="panel">
     <div class="panel-header"><h2>Blocks</h2></div>
-    @if (!networks.value().blocks.length) {
+    @if (!networks.value().blocks.length && !networks.value().recoveryGuards.length) {
       <p class="muted">No ranges are currently blocked.</p>
-    } @else {
+    } @else if (networks.value().blocks.length) {
       <ul class="attention-list" aria-label="Blocks">
         @for (block of networks.value().blocks; track block.range) {
           <li>
@@ -76,6 +76,40 @@
                 (click)="askUnblock(block, unblockButton)"
               >
                 Lift block
+              </button>
+            </div>
+          </li>
+        }
+      </ul>
+    }
+    @if (networks.value().recoveryGuards.length) {
+      <p class="muted">
+        Release a guard only once the audit log accepts entries again. The release is audited.
+      </p>
+      <ul class="attention-list" aria-label="Break-glass guards">
+        @for (range of networks.value().recoveryGuards; track range) {
+          <li>
+            <span class="attention-icon tone-warn" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z" />
+                <path d="M12 8v4M12 16h.01" />
+              </svg>
+            </span>
+            <div class="attention-body">
+              <p class="attention-title mono">{{ range }}</p>
+              <p class="attention-meta">
+                Held by a break-glass recovery that could not finish. Requests from it stay refused.
+              </p>
+            </div>
+            <div class="attention-actions">
+              <button
+                #releaseButton
+                type="button"
+                class="button small"
+                [disabled]="writesClosed()"
+                (click)="askRelease(range, releaseButton)"
+              >
+                Release guard
               </button>
             </div>
           </li>

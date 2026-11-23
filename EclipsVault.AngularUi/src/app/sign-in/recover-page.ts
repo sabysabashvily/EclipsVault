@@ -63,7 +63,7 @@ type Schemas = components['schemas'];
       } @else {
         <p class="auth-lede">
           Administrator break-glass recovery. Enter all of your credentials in one step. If they
-          verify and your account holds TopSecret clearance, the intrusion-defence block on your
+          verify and your account holds Top Secret clearance, the intrusion-defence block on your
           network is lifted and your session restored.
         </p>
 
@@ -135,8 +135,7 @@ type Schemas = components['schemas'];
         </form>
 
         <p class="footnote">
-          Not an administrator? Ask one to lift the block from Administration → Networks, or restart
-          the application in development.
+          Not an administrator? Ask one to lift the block from Administration → Networks.
         </p>
       }
     </section>
