@@ -22,19 +22,17 @@ describe('sidebar mapping', () => {
       {
         label: 'Vault',
         items: [
-          { label: 'Overview', icon: 'overview', url: '/', angular: true },
-          { label: 'Secrets', icon: 'secrets', url: '/Secrets', angular: true },
+          { label: 'Overview', icon: 'overview', url: '/' },
+          { label: 'Secrets', icon: 'secrets', url: '/Secrets' },
           {
             label: 'Dynamic secrets',
             icon: 'dynamic-secrets',
             url: '/DynamicSecrets',
-            angular: true,
           },
           {
             label: 'Access requests',
             icon: 'access-requests',
             url: '/AccessRequests',
-            angular: true,
           },
         ],
       },
@@ -45,12 +43,12 @@ describe('sidebar mapping', () => {
             label: 'You',
             icon: 'you',
             children: [
-              { label: 'My access', icon: 'access', url: '/Access', angular: true },
-              { label: 'Security checkup', icon: 'security', url: '/Security', angular: true },
-              { label: 'Sign-in history', icon: 'sign-ins', url: '/SignIns', angular: true },
-              { label: 'Signed-in devices', icon: 'sessions', url: '/Sessions', angular: true },
-              { label: 'My activity', icon: 'activity', url: '/Activity', angular: true },
-              { label: 'Your data', icon: 'data', url: '/Data', angular: true },
+              { label: 'My access', icon: 'access', url: '/Access' },
+              { label: 'Security checkup', icon: 'security', url: '/Security' },
+              { label: 'Sign-in history', icon: 'sign-ins', url: '/SignIns' },
+              { label: 'Signed-in devices', icon: 'sessions', url: '/Sessions' },
+              { label: 'My activity', icon: 'activity', url: '/Activity' },
+              { label: 'Your data', icon: 'data', url: '/Data' },
             ],
           },
         ],
@@ -77,23 +75,21 @@ describe('sidebar mapping', () => {
             label: 'Administration',
             icon: 'administration',
             children: [
-              { label: 'Users', icon: 'users', url: '/Admin/Users', angular: true },
+              { label: 'Users', icon: 'users', url: '/Admin/Users' },
               {
                 label: 'Service accounts',
                 icon: 'service-accounts',
                 url: '/ServiceAccounts',
-                angular: true,
               },
-              { label: 'Networks', icon: 'networks', url: '/Admin/Networks', angular: true },
-              { label: 'Encryption keys', icon: 'encryption', url: '/Encryption', angular: true },
-              { label: 'Audit log', icon: 'audit', url: '/Audit', angular: true },
+              { label: 'Networks', icon: 'networks', url: '/Admin/Networks' },
+              { label: 'Encryption keys', icon: 'encryption', url: '/Encryption' },
+              { label: 'Audit log', icon: 'audit', url: '/Audit' },
               {
                 label: 'Notifications',
                 icon: 'notifications',
                 url: '/Notifications',
-                angular: true,
               },
-              { label: 'License', icon: 'license', url: '/License', angular: true },
+              { label: 'License', icon: 'license', url: '/License' },
             ],
           },
         ],
@@ -111,7 +107,7 @@ describe('sidebar mapping', () => {
           {
             label: 'You',
             icon: 'you',
-            children: [{ label: 'My access', icon: 'access', url: '/Access', angular: true }],
+            children: [{ label: 'My access', icon: 'access', url: '/Access' }],
           },
         ],
       },
@@ -122,17 +118,16 @@ describe('sidebar mapping', () => {
 describe('palette shortcuts', () => {
   it('offers New secret and the Sharing tabs only to accounts whose Areas allow them', () => {
     expect(shortcutsFor(['secrets', 'shared-with-me', 'shared-by-me'])).toEqual([
-      { label: 'New secret', icon: 'secrets', url: '/Secrets/Create', angular: true },
+      { label: 'New secret', icon: 'secrets', url: '/Secrets/Create' },
       {
         label: 'Shared with me',
         icon: 'shared-with-me',
         url: '/Secrets/SharedWithMe',
-        angular: true,
       },
-      { label: 'Shared by me', icon: 'shared-by-me', url: '/Secrets/SharedByMe', angular: true },
+      { label: 'Shared by me', icon: 'shared-by-me', url: '/Secrets/SharedByMe' },
     ]);
     expect(shortcutsFor(['secrets'])).toEqual([
-      { label: 'New secret', icon: 'secrets', url: '/Secrets/Create', angular: true },
+      { label: 'New secret', icon: 'secrets', url: '/Secrets/Create' },
     ]);
     expect(shortcutsFor(['access'])).toEqual([]);
   });

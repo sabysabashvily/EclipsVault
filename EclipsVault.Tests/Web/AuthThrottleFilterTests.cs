@@ -4,6 +4,7 @@ using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Infrastructure.Security;
 using EclipsVault.Web.Authorization;
 using EclipsVault.Web.Controllers;
+using EclipsVault.Web.Controllers.Ui;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
@@ -50,6 +51,14 @@ public sealed class AuthThrottleFilterTests
                 .Single(method => method.Name == name && method.IsDefined(typeof(HttpPostAttribute)))
         };
 
+    private static readonly ControllerActionDescriptor SignOutPost = new()
+    {
+        ControllerTypeInfo = typeof(AuthController).GetTypeInfo(),
+        ControllerName = "Auth",
+        ActionName = nameof(AuthController.SignOutSession),
+        MethodInfo = typeof(AuthController).GetMethod(nameof(AuthController.SignOutSession))!
+    };
+
     private static async Task<(ActionExecutingContext Context, bool Called)> RunAsync(
         IAuthThrottle throttle, ActionDescriptor action, string method = "POST", string? address = "198.51.100.90")
     {
@@ -68,14 +77,14 @@ public sealed class AuthThrottleFilterTests
     }
 
     [Fact]
-    public async Task Logout_succeeds_when_the_real_credential_budget_is_exhausted()
+    public async Task Sign_out_succeeds_when_the_real_credential_budget_is_exhausted()
     {
         using var cache = new MemoryCache(new MemoryCacheOptions());
         var throttle = new InMemoryAuthThrottle(cache, Options.Create(new AuthThrottleOptions { PermitLimit = 1 }), new FrozenClock());
         Assert.True(await throttle.TryAcquireAsync("198.51.100.90", CancellationToken.None));
         Assert.False(await throttle.TryAcquireAsync("198.51.100.90", CancellationToken.None));
 
-        var (context, called) = await RunAsync(throttle, AccountPost(nameof(AccountController.Logout)));
+        var (context, called) = await RunAsync(throttle, SignOutPost);
 
         Assert.Null(context.Result);
         Assert.True(called);
@@ -85,12 +94,12 @@ public sealed class AuthThrottleFilterTests
     }
 
     [Fact]
-    public async Task Logout_does_not_spend_the_remaining_credential_attempt()
+    public async Task Sign_out_does_not_spend_the_remaining_credential_attempt()
     {
         using var cache = new MemoryCache(new MemoryCacheOptions());
         var throttle = new InMemoryAuthThrottle(cache, Options.Create(new AuthThrottleOptions { PermitLimit = 1 }), new FrozenClock());
 
-        var (_, called) = await RunAsync(throttle, AccountPost(nameof(AccountController.Logout)));
+        var (_, called) = await RunAsync(throttle, SignOutPost);
 
         Assert.True(called);
         Assert.True(await throttle.TryAcquireAsync("198.51.100.90", CancellationToken.None));
@@ -106,7 +115,7 @@ public sealed class AuthThrottleFilterTests
             .Where(method => method.IsDefined(typeof(HttpPostAttribute)))
             .Select(method => method.Name).Order(StringComparer.Ordinal).ToArray();
         string[] metered = ["ExternalLogin"];
-        Assert.Equal(metered.Append("Logout").Order(StringComparer.Ordinal), posts);
+        Assert.Equal(metered, posts);
 
         foreach (var name in metered)
         {

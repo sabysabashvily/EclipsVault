@@ -19,7 +19,7 @@ public sealed record SecretListItemResponse(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? ExpiresAtUtc);
 
-/// <summary>The palette search's answer: a bare array, as the Legacy search answered and both palettes read it.</summary>
+/// <summary>The palette search's answer: a bare array, as the Legacy search answered and the palette reads it.</summary>
 public sealed class SecretSearchResponse(IEnumerable<SecretSearchResultResponse> results) : List<SecretSearchResultResponse>(results);
 
 /// <summary>

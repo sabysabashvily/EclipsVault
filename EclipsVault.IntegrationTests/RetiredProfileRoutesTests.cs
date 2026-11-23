@@ -55,7 +55,8 @@ public sealed class RetiredProfileRoutesTests(VaultFixture vault)
     [InlineData("DELETE", "/PROFILE/REMOVEAVATAR", HttpStatusCode.NotFound, "100.91.2.3")]
     [InlineData("PUT", "/profile/changepassword", HttpStatusCode.MethodNotAllowed, "100.91.2.4")]
     [InlineData("DELETE", "/Profile/RemovePasskey/11111111-1111-1111-1111-111111111111", HttpStatusCode.NotFound, "100.91.2.5")]
-    [InlineData("POST", "/pRoFiLe/AvAtAr", HttpStatusCode.MethodNotAllowed, "100.91.2.6")]
+    // The avatar is not a page: another method on its path is the not-found page (ADR-0034).
+    [InlineData("POST", "/pRoFiLe/AvAtAr", HttpStatusCode.NotFound, "100.91.2.6")]
     public async Task No_other_method_or_case_reaches_a_retired_Profile_write(
         string method, string path, HttpStatusCode expected, string source)
     {

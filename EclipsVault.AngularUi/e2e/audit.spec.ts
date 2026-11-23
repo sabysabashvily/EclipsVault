@@ -1,6 +1,5 @@
 import { readFile } from 'node:fs/promises';
 import { test as browserTest, expect } from './fixtures';
-import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { savedAdministratorCookies } from './administrator-cookies';
 import {
   savedProofSetupTimeout,
@@ -130,24 +129,20 @@ for (const [name, link] of [
   });
 }
 
-for (const shell of [legacyShell, '/Access'] as const) {
-  test(`the sidebar on ${shell} opens the Audit log`, async ({ page, browserHealth }) => {
-    expectLegacyShell(browserHealth, shell);
-    await page.context().addCookies(await savedAdministratorCookies());
-    const audit = new AuditLog(page);
-    await audit.fromSidebar(shell);
-    await expect(audit.heading).toBeVisible();
-    await expect(page).toHaveURL(/\/Audit$/);
-  });
+test('the sidebar on /Access opens the Audit log', async ({ page }) => {
+  await page.context().addCookies(await savedAdministratorCookies());
+  const audit = new AuditLog(page);
+  await audit.fromSidebar();
+  await expect(audit.heading).toBeVisible();
+  await expect(page).toHaveURL(/\/Audit$/);
+});
 
-  test(`the palette on ${shell} opens the Audit log`, async ({ page, browserHealth }) => {
-    expectLegacyShell(browserHealth, shell);
-    await page.context().addCookies(await savedAdministratorCookies());
-    const audit = new AuditLog(page);
-    await audit.fromPalette(shell);
-    await expect(audit.heading).toBeVisible();
-  });
-}
+test('the palette on /Access opens the Audit log', async ({ page }) => {
+  await page.context().addCookies(await savedAdministratorCookies());
+  const audit = new AuditLog(page);
+  await audit.fromPalette();
+  await expect(audit.heading).toBeVisible();
+});
 
 for (const theme of ['dark', 'light'] as const) {
   test(`the Audit log lists entries in ${theme} appearance`, async ({ page }, info) => {

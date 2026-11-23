@@ -1,3 +1,4 @@
+import { Location } from '@angular/common';
 import { HttpHeaders, HttpResponse } from '@angular/common/http';
 import {
   HttpTestingController,
@@ -5,7 +6,6 @@ import {
   TestRequest,
 } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { Router } from '@angular/router';
 import { appConfig } from '../app.config';
 import {
   CommandPalette,
@@ -61,7 +61,6 @@ function sidebarElement(pages = [...standardPages, ['Profile', '/Profile']]): HT
     const link = document.createElement('a');
     link.textContent = label;
     link.href = url;
-    if (url === '/Access') link.setAttribute('data-command-angular', '');
     nav.append(link);
   }
   return sidebar;
@@ -76,7 +75,6 @@ describe('paletteCommands', () => {
         ['Profile', '/Profile'],
       ]);
       expect(pages.every((page) => page.kind === 'Go to')).toBe(true);
-      expect(pages.filter((page) => page.angular).map((page) => page.url)).toEqual(['/Access']);
     }
   });
 
@@ -263,6 +261,21 @@ describe('CommandPalette', () => {
     ).toEqual(['Internal', 'Top Secret']);
   });
 
+  it('opens a secret the search found through the router, without a page load', async () => {
+    const { open, type, press, stable } = await render();
+    await open();
+
+    await type('phoenix');
+    (await searched(stable, 'phoenix')).flush(JSON.stringify([hit]), json);
+    await stable();
+    await press('Enter');
+
+    expect(TestBed.inject(Location).path()).toBe(
+      '/Secrets/Details/6d1b2c55-0000-4000-8000-000000000001',
+    );
+    expect(assign).not.toHaveBeenCalled();
+  });
+
   it('cancels a stale search, so an older answer never replaces a newer one', async () => {
     const { open, type, items, stable } = await render();
     await open();
@@ -351,8 +364,8 @@ describe('CommandPalette', () => {
     expect(host.querySelector('.palette-error')).toBeNull();
   });
 
-  it('moves with the arrow keys, opens a Legacy UI page on Enter, and traps Tab in its field', async () => {
-    const { open, press, items, input } = await render();
+  it('opens the page highlighted with the arrow keys when Enter is pressed', async () => {
+    const { open, press, items } = await render();
     await open();
 
     await press('ArrowUp');
@@ -360,25 +373,29 @@ describe('CommandPalette', () => {
     await press('ArrowDown');
     await press('ArrowDown');
     expect(items().findIndex((item) => item.active)).toBe(2);
-    expect(input()?.getAttribute('aria-activedescendant')).toBe('palette-option-2');
+    await press('Enter');
+
+    expect(TestBed.inject(Location).path()).toBe('/Secrets/Create');
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it('keeps focus in the query field when Tab is pressed', async () => {
+    const { open, press, input } = await render();
+    await open();
 
     const tab = await press('Tab');
     expect(tab.defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(input());
-
-    await press('Enter');
-    expect(assign).toHaveBeenCalledExactlyOnceWith('/Secrets/Create');
   });
 
-  it('opens a page the Angular UI owns through the router, without a page load', async () => {
+  it('opens a sidebar page through the router, without a page load', async () => {
     const { open, type, press } = await render();
-    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
     await open();
 
     await type('my access');
     await press('Enter');
 
-    expect(navigate).toHaveBeenCalledExactlyOnceWith('/Access');
+    expect(TestBed.inject(Location).path()).toBe('/Access');
     expect(assign).not.toHaveBeenCalled();
   });
 

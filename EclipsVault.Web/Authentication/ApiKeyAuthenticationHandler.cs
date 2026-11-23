@@ -3,6 +3,7 @@ using System.Text.Encodings.Web;
 using EclipsVault.Core.Application.ServiceAccounts;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Web.Authorization;
+using EclipsVault.Web.Middleware;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 
@@ -66,6 +67,9 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<Authenti
         var identity = new ClaimsIdentity(claims, Scheme.Name);
         return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name));
     }
+
+    protected override Task HandleChallengeAsync(AuthenticationProperties properties)
+        => PublicApiError.WriteAsync(Context, StatusCodes.Status401Unauthorized, "unauthenticated");
 
     private string? ExtractToken()
     {

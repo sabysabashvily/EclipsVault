@@ -57,7 +57,7 @@ export class SecretDetails {
     return this.page.getByText(text, { exact: true });
   }
 
-  /** The revealed value under its Legacy heading, e.g. "Decrypted current value". */
+  /** The revealed value under its heading, e.g. "Decrypted current value". */
   revealed(label: string) {
     return this.page.getByText(`Decrypted ${label}`, { exact: true });
   }

@@ -12,9 +12,9 @@ using Microsoft.AspNetCore.Mvc.Routing;
 namespace EclipsVault.Web.Hosting;
 
 /// <summary>
-/// The paths the Angular UI owns (ADR-0014). Each one serves the Angular UI's <c>index.html</c>
-/// behind a session; every path not listed here still reaches the Legacy UI. An Area migrates by
-/// adding its existing URLs here, so its bookmarks keep working.
+/// The route table: the Angular UI's pages, each with its own authorization rule (ADR-0014, ADR-0034).
+/// Each one serves the Angular UI's <c>index.html</c>. A path not listed here is not a page: a
+/// signed-in caller gets the not-found server page, and a signed-out one is sent to sign-in.
 ///
 /// <para>
 /// The document lives outside <c>wwwroot</c>, in <c>AngularUi/index.html</c> under the content root,
@@ -32,6 +32,10 @@ public static class AngularUiRoutes
 
     private static readonly string[] Paths =
     [
+        // Overview
+        "/",
+        "/Home",
+
         // My access
         "/Access",
         "/Access/Index",
@@ -86,10 +90,7 @@ public static class AngularUiRoutes
         "/Account/Denied",
     ];
 
-    /// <summary>
-    /// Maps every owned path. These endpoints outrank the conventional MVC route, because a literal
-    /// path takes precedence over <c>{controller}/{action}</c>.
-    /// </summary>
+    /// <summary>Maps every page, then the not-found fallback for the paths that are none.</summary>
     public static void MapAngularUi(this IEndpointRouteBuilder endpoints)
     {
         // A signed-out visitor gets the session cookie's usual redirect to sign-in, with a return URL.
@@ -127,10 +128,26 @@ public static class AngularUiRoutes
                     Policy = VaultPolicies.AdminOnly,
                 });
         }
+
+        // A page answers only GET and HEAD; any other method on its path is refused, behind a session as
+        // before. Ranked below the page itself and above the fallback, which would otherwise take it.
+        foreach (var path in Paths.Concat(["/Account/Login", "/Account/Recover"]).Concat(SecondFactorPaths).Concat(administratorPaths))
+        {
+            endpoints.Map(path, MethodNotAllowed).WithOrder(1).RequireAuthorization(session);
+        }
+
+        // A path with a file extension is not a page either; it gets no endpoint, so a bare 404.
+        endpoints.MapFallback("{**path:nonfile}", ServerPage.NotFoundAsync).RequireAuthorization(session);
     }
 
-    private static IResult ServeIndex(HttpContext context, IWebHostEnvironment environment)
-        => Results.File(PrepareIndex(context, environment), "text/html; charset=utf-8");
+    private static IResult MethodNotAllowed(HttpContext context)
+    {
+        context.Response.Headers.Allow = "GET, HEAD";
+        return Results.StatusCode(StatusCodes.Status405MethodNotAllowed);
+    }
+
+    private static IResult ServeIndex(IWebHostEnvironment environment)
+        => Results.File(IndexFile(environment), "text/html; charset=utf-8");
 
     private static IResult ServeLogin(
         HttpContext context, IWebHostEnvironment environment, IAntiforgery antiforgery, ISsoAvailability sso, string? returnUrl)
@@ -146,11 +163,11 @@ public static class AngularUiRoutes
         context.Response.Headers.CacheControl = "no-store";
         // Only a page load takes the one-time notice; a HEAD request or probe must not spend it.
         var notice = HttpMethods.IsGet(context.Request.Method) ? SignInNotice.Take(context) : null;
-        var index = PrepareIndex(context, environment);
+        var index = IndexFile(environment);
         // Only Login starts single sign-on, whose form post redirects to the identity provider.
         if (sso.IdentityProviderOrigin is { Length: > 0 } origin)
         {
-            context.Response.Headers["Content-Security-Policy"] = SecurityHeadersMiddleware.AngularContentSecurityPolicyWithFormTarget(origin);
+            context.Response.Headers["Content-Security-Policy"] = SecurityHeadersMiddleware.ContentSecurityPolicyWithFormTarget(origin);
         }
         return notice is null
             ? Results.File(index, "text/html; charset=utf-8")
@@ -162,18 +179,15 @@ public static class AngularUiRoutes
     {
         UiAntiforgery.IssueToken(context, antiforgery);
         context.Response.Headers.CacheControl = "no-store";
-        return Results.File(PrepareIndex(context, environment), "text/html; charset=utf-8");
+        return Results.File(IndexFile(environment), "text/html; charset=utf-8");
     }
 
     /// <summary>The document with a one-time notice the Login page shows; the notice is one of SignInNotice's constants.</summary>
     private static string WithNotice(string index, string notice)
         => index.Replace("</head>", $"<meta name=\"eclipsvault-sign-in-notice\" content=\"{notice}\" /></head>", StringComparison.Ordinal);
 
-    /// <summary>
-    /// Sets the Angular document's Content Security Policy and returns its path, for a response that
-    /// serves it after authorization. The Overview's <c>HomeController.Index</c> serves it this way too.
-    /// </summary>
-    public static string PrepareIndex(HttpContext context, IWebHostEnvironment environment)
+    /// <summary>The Angular document's path, for a response that serves it after authorization.</summary>
+    private static string IndexFile(IWebHostEnvironment environment)
     {
         var index = environment.ContentRootFileProvider.GetFileInfo(IndexPath);
         if (!index.Exists)
@@ -182,9 +196,6 @@ public static class AngularUiRoutes
                 $"The Angular UI is not built: {IndexPath} is missing. Run `npm run build` in EclipsVault.AngularUi.");
         }
 
-        // Set this only when serving the Angular document, after authorization and the file check.
-        // Redirects, legacy pages, API responses and static bundles retain the existing policy.
-        context.Response.Headers["Content-Security-Policy"] = SecurityHeadersMiddleware.AngularContentSecurityPolicy;
         return index.PhysicalPath!;
     }
 }

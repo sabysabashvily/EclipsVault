@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text.RegularExpressions;
 using Xunit;
 
 namespace EclipsVault.IntegrationTests;
@@ -28,19 +27,6 @@ public sealed class MonitoringPagesTests(VaultFixture vault)
         Assert.True(document.Headers.CacheControl?.NoStore);
         Assert.Contains("<app-root>", await document.Content.ReadAsStringAsync());
         Assert.Contains("require-trusted-types-for 'script'", Assert.Single(document.Headers.GetValues("Content-Security-Policy")));
-    }
-
-    [Theory]
-    [InlineData("Notifications", "/Notifications")]
-    [InlineData("License", "/License")]
-    [InlineData("View license", "/License")]
-    public async Task Legacy_navigation_links_keep_their_destinations(string label, string destination)
-    {
-        var html = await VaultFixture.LegacyShellAsync(await vault.AdminClientAsync());
-        var link = Assert.Single(Regex.Matches(html, "<a\\b[^>]*>[\\s\\S]*?</a>")
-            .Select(match => match.Value), anchor => Regex.Replace(anchor, "<[^>]*>", "").Trim() == label);
-
-        Assert.Contains($"href=\"{destination}\"", link);
     }
 
     [Theory]

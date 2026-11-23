@@ -1,21 +1,34 @@
 import { test, expect } from '../fixtures';
-import { expectLegacyShell, legacyShell } from '../legacy-shell';
 
 // Intentionally failing tests, run only by e2e:verify-guards. The driver checks that each failed
 // specifically in the shared browser-health fixture, rather than accepting any nonzero exit.
-// The inline-script and uncaught-exception probes use a Legacy page, the Legacy shell's error page. On
-// an Angular document, Trusted Types refuses the script's text before script-src can, and Angular's
-// ErrorHandler catches the throw and logs it as console.error, so neither reaches the guard the probe
-// is meant to prove. The page answers 404, which the browser logs; each probe declares that one error.
-test('CSP violation', async ({ browserHealth, page }) => {
-  expectLegacyShell(browserHealth);
-  await page.goto(legacyShell);
+// The inline-script and uncaught-exception probes open a stylesheet: a signed-out 200 document with the
+// vault's CSP and no Angular ErrorHandler, which would log the throw as console.error instead.
+
+/** The part of Chromium's Trusted Types API the probes use; TypeScript's DOM library lacks it. */
+interface TrustedTypesWindow {
+  trustedTypes: {
+    createPolicy(
+      name: string,
+      rules: { createScript(text: string): string },
+    ): { createScript(text: string): string };
+  };
+}
+
+const serverPage = '/css/server-page.css';
+test('CSP violation', async ({ page }) => {
+  await page.goto(serverPage);
   await page.evaluate(
     () =>
       new Promise<void>((resolve) => {
         document.addEventListener('securitypolicyviolation', () => resolve(), { once: true });
+        // Trusted text, so the violation is script-src's, not require-trusted-types-for's.
+        const policy = (window as unknown as TrustedTypesWindow).trustedTypes.createPolicy(
+          'angular',
+          { createScript: (text) => text },
+        );
         const script = document.createElement('script');
-        script.textContent = 'window.inlineScriptRan = true';
+        script.text = policy.createScript('window.inlineScriptRan = true');
         document.body.append(script);
       }),
   );
@@ -23,8 +36,7 @@ test('CSP violation', async ({ browserHealth, page }) => {
 });
 
 test('an expected CSP violation excuses nothing else', async ({ browserHealth, page }) => {
-  expectLegacyShell(browserHealth);
-  await page.goto(legacyShell);
+  await page.goto(serverPage);
   browserHealth.expectCspViolation({
     effectiveDirective: 'script-src-elem',
     blockedURI: 'inline',
@@ -33,17 +45,20 @@ test('an expected CSP violation excuses nothing else', async ({ browserHealth, p
     disposition: 'enforce',
   });
   // The first violation satisfies the expectation; the identical second one must still fail.
-  for (let i = 0; i < 2; i++) {
-    await page.evaluate(
-      () =>
-        new Promise<void>((resolve) => {
-          document.addEventListener('securitypolicyviolation', () => resolve(), { once: true });
-          const script = document.createElement('script');
-          script.textContent = 'window.inlineScriptRan = true';
-          document.body.append(script);
-        }),
-    );
-  }
+  await page.evaluate(async () => {
+    // One policy per page: the CSP allows each name once.
+    const policy = (window as unknown as TrustedTypesWindow).trustedTypes.createPolicy('angular', {
+      createScript: (text) => text,
+    });
+    for (let i = 0; i < 2; i++) {
+      await new Promise<void>((resolve) => {
+        document.addEventListener('securitypolicyviolation', () => resolve(), { once: true });
+        const script = document.createElement('script');
+        script.text = policy.createScript('window.inlineScriptRan = true');
+        document.body.append(script);
+      });
+    }
+  });
 });
 
 test('an expected CSP violation that never occurs', async ({ browserHealth, page }) => {
@@ -65,9 +80,8 @@ test('console.error after navigation in a second page', async ({ context, page }
   await other.close();
 });
 
-test('uncaught browser exception', async ({ browserHealth, page }) => {
-  expectLegacyShell(browserHealth);
-  await page.goto(legacyShell);
+test('uncaught browser exception', async ({ page }) => {
+  await page.goto(serverPage);
   const error = page.waitForEvent('pageerror');
   await page.evaluate(() => {
     setTimeout(() => {

@@ -1,5 +1,4 @@
 import { test, expect } from './fixtures';
-import { expectLegacyShell, legacyShell } from './legacy-shell';
 import { savedAdministratorCookies } from './administrator-cookies';
 import { License } from './license';
 import { AppShell } from './app-shell';
@@ -16,16 +15,6 @@ test('License shows that this vault runs unlicensed', async ({ page }) => {
   await expect(license.details).toHaveCount(0);
 });
 
-test('the Legacy licence notice opens License', async ({ page, browserHealth }) => {
-  expectLegacyShell(browserHealth);
-  await page.context().addCookies(await savedAdministratorCookies());
-  const license = new License(page);
-  await page.goto(legacyShell);
-  await license.viewLicense.click();
-  await expect(license.heading).toBeVisible();
-  await expect(page).toHaveURL(/\/License$/);
-});
-
 test('the Angular licence notice opens License', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const license = new License(page);
@@ -35,35 +24,18 @@ test('the Angular licence notice opens License', async ({ page }) => {
   await expect(page).toHaveURL(/\/License$/);
 });
 
-test('the Legacy sidebar opens License', async ({ page, browserHealth }) => {
-  expectLegacyShell(browserHealth);
-  await page.context().addCookies(await savedAdministratorCookies());
-  const license = new License(page);
-  await license.fromSidebar(legacyShell);
-  await expect(license.heading).toBeVisible();
-  await expect(page).toHaveURL(/\/License$/);
-});
-
 test('the Angular sidebar opens License', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const license = new License(page);
-  await license.fromSidebar('/Access');
+  await license.fromSidebar();
   await expect(license.heading).toBeVisible();
   await expect(page).toHaveURL(/\/License$/);
-});
-
-test('the palette in the Legacy shell opens License', async ({ page, browserHealth }) => {
-  expectLegacyShell(browserHealth);
-  await page.context().addCookies(await savedAdministratorCookies());
-  const license = new License(page);
-  await license.fromPalette(legacyShell);
-  await expect(license.heading).toBeVisible();
 });
 
 test('the palette in the Angular shell opens License', async ({ page }) => {
   await page.context().addCookies(await savedAdministratorCookies());
   const license = new License(page);
-  await license.fromPalette('/Access');
+  await license.fromPalette();
   await expect(license.heading).toBeVisible();
 });
 

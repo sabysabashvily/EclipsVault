@@ -14,19 +14,21 @@ public sealed class SecurityHeadersMiddleware
         "frame-src 'none'; " +       // the app embeds no iframes
         "frame-ancestors 'none'; " + // and refuses to be embedded (clickjacking)
         "form-action 'self'; " +
-        "base-uri 'self'";
-
-    // Only the Angular document handler opts in: legacy site.js still writes innerHTML (ADR-0013).
-    internal const string AngularContentSecurityPolicy = ContentSecurityPolicy +
-        "; require-trusted-types-for 'script'; trusted-types angular angular#bundler";
+        "base-uri 'self'; " +
+        // Trusted Types on every response (ADR-0013, ADR-0034): only Angular's own policies may
+        // turn text into script or markup.
+        "require-trusted-types-for 'script'; " +
+        "trusted-types angular angular#bundler";
 
     /// <summary>
-    /// The Angular policy for a document whose form may redirect to <paramref name="origin"/>:
+    /// The policy for a document whose form may redirect to <paramref name="origin"/>:
     /// form-action also governs a submission's redirects, so single sign-on's hop to the identity
     /// provider needs it. The origin comes from configuration, never from the request.
     /// </summary>
-    internal static string AngularContentSecurityPolicyWithFormTarget(string origin) =>
-        AngularContentSecurityPolicy.Replace("form-action 'self';", $"form-action 'self' {origin};", StringComparison.Ordinal);
+    internal static string ContentSecurityPolicyWithFormTarget(string origin) =>
+        ContentSecurityPolicy.Replace("form-action 'self';", $"form-action 'self' {origin};", StringComparison.Ordinal);
+
+    private static readonly PathString ApiPath = new("/api");
 
     private readonly RequestDelegate _next;
 
@@ -35,15 +37,15 @@ public sealed class SecurityHeadersMiddleware
     public Task InvokeAsync(HttpContext context)
     {
         // Keep authenticated vault pages out of the browser's disk cache — and off the back button
-        // after sign-out. HTML and every UI API response, errors included, are marked no-store: a
-        // UI API reveal is JSON (ADR-0013). Static assets and images (served with their own caching)
-        // are untouched. Content-Type is only known once the response starts, so this is deferred
-        // to OnStarting.
+        // after sign-out. HTML and every API response, errors included, are marked no-store: a
+        // reveal is JSON on both the UI API and the Public API (ADR-0013, ADR-0034). Static assets
+        // and images (served with their own caching) are untouched. Content-Type is only known once
+        // the response starts, so this is deferred to OnStarting.
         context.Response.OnStarting(static state =>
         {
             var ctx = (HttpContext)state;
             var contentType = ctx.Response.ContentType;
-            if (UiApiProblem.IsUiApi(ctx.Request) ||
+            if (ctx.Request.Path.StartsWithSegments(ApiPath) ||
                 (contentType is not null && contentType.Contains("text/html", StringComparison.OrdinalIgnoreCase)))
             {
                 ctx.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";

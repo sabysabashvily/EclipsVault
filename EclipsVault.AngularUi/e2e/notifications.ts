@@ -1,6 +1,5 @@
 import type { Page } from '@playwright/test';
 import { openPalette } from './palette';
-import type { legacyShell } from './legacy-shell';
 import { AppShell } from './app-shell';
 
 export class Notifications {
@@ -12,7 +11,7 @@ export class Notifications {
   readonly deliveryRecordNote;
   constructor(private readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Notifications', exact: true });
-    // eslint-disable-next-line playwright/no-raw-locators -- The Legacy delivery notice has no role of its own; the shell's licence notice is also a .notice.
+    // eslint-disable-next-line playwright/no-raw-locators -- The delivery notice has no role of its own; the shell's licence notice is also a .notice.
     this.notice = page.locator('app-notifications-page .notice');
     // eslint-disable-next-line playwright/no-raw-locators -- A flex row: its parts are spaced by the gap, not by text.
     this.noticeParts = this.notice.locator('> *');
@@ -35,14 +34,14 @@ export class Notifications {
   subject(recipient: string, subject: string) {
     return this.row(recipient).getByRole('cell', { name: subject });
   }
-  async fromSidebar(path: typeof legacyShell | '/Access'): Promise<void> {
-    await this.page.goto(path);
-    // The Angular sidebar folds its administration pages into a group; the Legacy one lists them.
-    if (path === '/Access') await new AppShell(this.page).administration.click();
+  async fromSidebar(): Promise<void> {
+    await this.page.goto('/Access');
+    // The sidebar folds its administration pages into a group.
+    await new AppShell(this.page).administration.click();
     await this.page.getByRole('link', { name: 'Notifications', exact: true }).click();
   }
-  async fromPalette(path: typeof legacyShell | '/Access'): Promise<void> {
-    await this.page.goto(path);
+  async fromPalette(): Promise<void> {
+    await this.page.goto('/Access');
     await openPalette(this.page);
     await this.page.getByRole('combobox').fill('Notifications');
     await this.page.getByRole('option', { name: /Notifications/ }).click();
