@@ -186,16 +186,30 @@ Those rights are why each target is a **separate connection string**:
   vault's database is almost never what you want, and it is not the default.
 - **Use a dedicated login on that server**, granted only `ALTER ANY LOGIN` (plus whatever your role
   statements need). Do not reuse `ConnectionStrings__DefaultConnection`.
-- **On PostgreSQL, that login needs** `CREATEROLE`, `ADMIN OPTION` on each role your recipes grant
-  (for the sample recipes, `pg_read_all_data` and `pg_write_all_data`), and `pg_signal_backend` so
-  revocation can end the minted role's sessions. It also needs the privileges of the roles it creates,
-  or revocation's `REASSIGN OWNED` is refused and the lease lands in `RevocationFailed`; PostgreSQL 16
-  and later give them with `ALTER ROLE eclipsvault_credmgr SET createrole_self_grant = 'set, inherit';`.
-  A PostgreSQL role's statements must double-quote `"{{name}}"`: the minted name has capitals, which
-  PostgreSQL folds to lower case when unquoted.
-- **A failed statement can reach the target's own log**, password included, if the server logs
-  statements (`log_statement`) or failing statements (`log_min_error_statement`). Restrict who reads
-  the target's logs as you would its credentials.
+- **On PostgreSQL, the target must be a different server from the vault's database**, not just a
+  different database. A PostgreSQL role belongs to the whole server, every role may connect to every
+  database by default, and `pg_read_all_data` and `pg_write_all_data` reach every database: a lease on
+  the vault's own server could read or change the vault's data. If they must share a server, run
+  `REVOKE CONNECT ON DATABASE <vault database> FROM PUBLIC;` and grant `CONNECT` to the vault's login
+  only.
+- **The PostgreSQL target must run PostgreSQL 16 or later.** Its login is set up like this, which the
+  integration tests use:
+
+      CREATE ROLE eclipsvault_credmgr LOGIN PASSWORD '…' CREATEROLE;
+      GRANT pg_read_all_data, pg_write_all_data TO eclipsvault_credmgr WITH ADMIN TRUE, INHERIT FALSE, SET FALSE;
+      GRANT pg_signal_backend TO eclipsvault_credmgr;
+      ALTER ROLE eclipsvault_credmgr SET createrole_self_grant = 'set, inherit';
+
+  `ADMIN` lets it grant the roles your recipes name (the sample recipes name those two) without
+  holding them itself. `pg_signal_backend` lets revocation end the minted role's sessions.
+  `createrole_self_grant` gives it the privileges of the roles it creates, without which revocation's
+  `REASSIGN OWNED` is refused and every lease lands in `RevocationFailed`.
+- **A PostgreSQL role's statements must double-quote `"{{name}}"`**: the minted name has capitals,
+  which PostgreSQL folds to lower case when unquoted.
+- **A failing statement reaches the target's own log, password included**, because PostgreSQL logs a
+  failing statement by default (`log_min_error_statement = error`), and so does `log_statement` when
+  set. A failed mint's role is rolled back, so that password never worked, but restrict who reads the
+  target's logs as you would its credentials.
 - **Why they are separate:** `ALTER ANY LOGIN` can re-password *any* principal on the instance that
   holds it. If the vault's own login held it, a compromise of the running application would reach
   the server that stores the audit trail — so the vault never asks for it. See

@@ -48,6 +48,11 @@ public sealed class DynamicSecretAuditFailureTests(AuditFailureFixture failure)
             var response = await DynamicSecretsApi.IssueAsync(admin, roleId, token: token);
 
             await DynamicSecretsApi.AssertProblemAsync(response, 503, "audit_unavailable");
+            // The role was minted and then removed, not refused before it reached the target.
+            Assert.Contains(vault.Log.Lines, line => line.Text.StartsWith("Minted PostgreSQL role", StringComparison.Ordinal)
+                && line.Text.Contains("it_pg_af_issue", StringComparison.Ordinal));
+            Assert.Contains(vault.Log.Lines, line => line.Text.StartsWith("Dropped PostgreSQL role", StringComparison.Ordinal)
+                && line.Text.Contains("it_pg_af_issue", StringComparison.Ordinal));
             Assert.Empty(await PostgresDynamicTarget.RolesOfRoleAsync(vault, "it_pg_af_issue"));
             Assert.Empty(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
         }

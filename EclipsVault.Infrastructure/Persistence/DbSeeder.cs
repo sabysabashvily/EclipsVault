@@ -248,19 +248,30 @@ public static class DbSeeder
             CREATE ROLE "{{name}}" LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}+00' IN ROLE pg_read_all_data, pg_write_all_data;
             """;
 
-        // Idempotent. Ends live sessions first, because a dropped role's open sessions keep working; then
-        // hands anything the role created to the target's login and revokes its grants, which DROP ROLE needs.
+        // Idempotent, and one transaction. A dropped role's open sessions keep working, so it ends them
+        // first and refuses, rolling the drop back, if one will not end or the role signs in again before
+        // the drop commits. Anything the role created goes to the target's login; its grants go, as DROP
+        // ROLE requires.
         const string revokePostgres = """
-            SELECT pg_terminate_backend(pid, 5000) FROM pg_stat_activity WHERE usename = '{{name}}';
             DO $$
+            DECLARE
+                minted oid := (SELECT oid FROM pg_roles WHERE rolname = '{{name}}');
             BEGIN
-                IF EXISTS (SELECT FROM pg_roles WHERE rolname = '{{name}}') THEN
-                    REASSIGN OWNED BY "{{name}}" TO CURRENT_USER;
-                    DROP OWNED BY "{{name}}";
+                IF minted IS NULL THEN
+                    RETURN;
+                END IF;
+                IF (SELECT bool_and(pg_terminate_backend(pid, 5000)) FROM pg_stat_activity WHERE usesysid = minted) IS FALSE THEN
+                    RAISE EXCEPTION 'A session of the role did not end.';
+                END IF;
+                REASSIGN OWNED BY "{{name}}" TO CURRENT_USER;
+                DROP OWNED BY "{{name}}";
+                DROP ROLE "{{name}}";
+                PERFORM pg_stat_clear_snapshot();
+                IF EXISTS (SELECT FROM pg_stat_activity WHERE usesysid = minted) THEN
+                    RAISE EXCEPTION 'The role signed in again while it was being dropped.';
                 END IF;
             END
             $$;
-            DROP ROLE IF EXISTS "{{name}}";
             """;
 
         DynamicSecretRole[] samples =

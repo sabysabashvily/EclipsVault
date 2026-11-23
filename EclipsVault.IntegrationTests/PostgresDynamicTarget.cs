@@ -16,16 +16,25 @@ internal static class PostgresDynamicTarget
 
     /// <summary>The Development seed's revocation: ends the role's sessions and drops it, safe to run again.</summary>
     public const string RepeatableRevocation = """
-        SELECT pg_terminate_backend(pid, 5000) FROM pg_stat_activity WHERE usename = '{{name}}';
         DO $$
+        DECLARE
+            minted oid := (SELECT oid FROM pg_roles WHERE rolname = '{{name}}');
         BEGIN
-            IF EXISTS (SELECT FROM pg_roles WHERE rolname = '{{name}}') THEN
-                REASSIGN OWNED BY "{{name}}" TO CURRENT_USER;
-                DROP OWNED BY "{{name}}";
+            IF minted IS NULL THEN
+                RETURN;
+            END IF;
+            IF (SELECT bool_and(pg_terminate_backend(pid, 5000)) FROM pg_stat_activity WHERE usesysid = minted) IS FALSE THEN
+                RAISE EXCEPTION 'A session of the role did not end.';
+            END IF;
+            REASSIGN OWNED BY "{{name}}" TO CURRENT_USER;
+            DROP OWNED BY "{{name}}";
+            DROP ROLE "{{name}}";
+            PERFORM pg_stat_clear_snapshot();
+            IF EXISTS (SELECT FROM pg_stat_activity WHERE usesysid = minted) THEN
+                RAISE EXCEPTION 'The role signed in again while it was being dropped.';
             END IF;
         END
         $$;
-        DROP ROLE IF EXISTS "{{name}}";
         """;
 
     /// <summary>A revocation the target always refuses.</summary>
@@ -102,6 +111,16 @@ internal static class PostgresDynamicTarget
         {
             return false;
         }
+    }
+
+    /// <summary>The role that owns a table on the target, or null when there is no such table.</summary>
+    public static async Task<string?> TableOwnerAsync(VaultFixture vault, string table)
+    {
+        await using var target = new NpgsqlConnection(ConnectionString(vault));
+        await target.OpenAsync();
+        await using var query = new NpgsqlCommand("SELECT tableowner FROM pg_tables WHERE tablename = @table", target);
+        query.Parameters.AddWithValue("table", table);
+        return await query.ExecuteScalarAsync() as string;
     }
 
     /// <summary>Drops a role a test left on the target on purpose, so the next run starts clean.</summary>

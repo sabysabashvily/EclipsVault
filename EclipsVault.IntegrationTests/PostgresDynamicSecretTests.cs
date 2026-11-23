@@ -64,6 +64,30 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
     }
 
     [Fact]
+    public async Task Handing_back_a_role_that_created_a_table_drops_the_role_and_gives_the_table_to_the_targets_login()
+    {
+        var roleId = await PostgresDynamicTarget.AddRoleAsync(vault, "it_pg_owner", creation: """
+            CREATE ROLE "{{name}}" LOGIN PASSWORD '{{password}}' IN ROLE pg_read_all_data;
+            GRANT CREATE ON SCHEMA public TO "{{name}}";
+            """);
+        var admin = await vault.AdminClientAsync();
+        var (username, password) = await DynamicSecretsApi.IssuedCredentialAsync(await DynamicSecretsApi.IssueAsync(admin, roleId));
+        await using (var session = await PostgresDynamicTarget.SignInAsync(vault, username, password))
+        {
+            await using var create = new Npgsql.NpgsqlCommand("CREATE TABLE it_pg_owned (id int)", session);
+            await create.ExecuteNonQueryAsync();
+        }
+        Assert.Equal(username, await PostgresDynamicTarget.TableOwnerAsync(vault, "it_pg_owned"));
+        var lease = Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
+
+        using var revoked = await DynamicSecretsApi.RevokeAsync(admin, lease.Id);
+
+        Assert.Equal("Revoked", (await DynamicSecretsApi.JsonAsync(revoked)).GetProperty("status").GetString());
+        Assert.Empty(await PostgresDynamicTarget.RolesOfRoleAsync(vault, "it_pg_owner"));
+        Assert.Equal("eclipsvault_credmgr", await PostgresDynamicTarget.TableOwnerAsync(vault, "it_pg_owned"));
+    }
+
+    [Fact]
     public async Task The_page_lists_a_postgres_role_with_its_backend()
     {
         var roleId = await PostgresDynamicTarget.AddRoleAsync(vault, "it_pg_listed");

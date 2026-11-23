@@ -46,8 +46,52 @@ internal abstract class VaultDatabase : IAsyncDisposable
     /// </summary>
     public abstract Task<string> StartDynamicTargetAsync();
 
-    /// <summary>The PostgreSQL counterpart of <see cref="StartDynamicTargetAsync"/>, for <c>Postgres</c> roles.</summary>
-    public abstract Task<string> StartPostgresDynamicTargetAsync();
+    private PostgreSqlContainer? _postgresTarget;
+
+    /// <summary>
+    /// A PostgreSQL server for <c>Postgres</c> roles, always a server of its own: a PostgreSQL role spans
+    /// every database on its server, so a target beside the vault's database would reach it. The vault
+    /// signs in as the least-privilege login docs/INSTALL.md describes, never the superuser, so the
+    /// tests prove those grants are enough. Returns the connection string the vault is given for it.
+    /// </summary>
+    public async Task<string> StartPostgresDynamicTargetAsync()
+    {
+        _postgresTarget = NewPostgresContainer("postgres-target");
+        await _postgresTarget.StartAsync();
+        var password = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+        await using (var server = new NpgsqlConnection(_postgresTarget.GetConnectionString()))
+        {
+            await server.OpenAsync();
+            await using var setUp = server.CreateCommand();
+            // The password is hex, generated above.
+            setUp.CommandText = $"""
+                CREATE ROLE {PostgresTargetLogin} LOGIN PASSWORD '{password}' CREATEROLE;
+                GRANT pg_read_all_data, pg_write_all_data TO {PostgresTargetLogin} WITH ADMIN TRUE, INHERIT FALSE, SET FALSE;
+                GRANT pg_signal_backend TO {PostgresTargetLogin};
+                ALTER ROLE {PostgresTargetLogin} SET createrole_self_grant = 'set, inherit';
+                """;
+            await setUp.ExecuteNonQueryAsync();
+            // CREATE DATABASE refuses to run inside the transaction a multi-statement command is.
+            await using var create = server.CreateCommand();
+            create.CommandText = $"CREATE DATABASE {PostgresDynamicTargetDatabase} OWNER {PostgresTargetLogin}";
+            await create.ExecuteNonQueryAsync();
+        }
+
+        return new NpgsqlConnectionStringBuilder(_postgresTarget.GetConnectionString())
+        {
+            Database = PostgresDynamicTargetDatabase,
+            Username = PostgresTargetLogin,
+            Password = password,
+        }.ConnectionString;
+    }
+
+    protected async ValueTask DisposePostgresTargetAsync()
+    {
+        if (_postgresTarget is not null)
+        {
+            await _postgresTarget.DisposeAsync();
+        }
+    }
 
     public abstract ValueTask DisposeAsync();
 
@@ -64,19 +108,6 @@ internal abstract class VaultDatabase : IAsyncDisposable
         return new SqlConnectionStringBuilder(serverConnectionString) { InitialCatalog = DynamicTargetDatabase }.ConnectionString;
     }
 
-    protected static async Task<string> CreatePostgresDynamicTargetAsync(string serverConnectionString)
-    {
-        await using (var server = new NpgsqlConnection(serverConnectionString))
-        {
-            await server.OpenAsync();
-            await using var create = server.CreateCommand();
-            create.CommandText = $"CREATE DATABASE {PostgresDynamicTargetDatabase}";
-            await create.ExecuteNonQueryAsync();
-        }
-
-        return new NpgsqlConnectionStringBuilder(serverConnectionString) { Database = PostgresDynamicTargetDatabase }.ConnectionString;
-    }
-
     protected static PostgreSqlContainer NewPostgresContainer(string engine) => new PostgreSqlBuilder(PostgresShareIssuerBackfill.PostgresImage)
         .WithName(ContainerName(engine))
         .WithPassword(Convert.ToHexString(RandomNumberGenerator.GetBytes(16)))
@@ -85,6 +116,8 @@ internal abstract class VaultDatabase : IAsyncDisposable
     private const string DynamicTargetDatabase = "DynamicTarget";
 
     private const string PostgresDynamicTargetDatabase = "dynamic_target";
+
+    private const string PostgresTargetLogin = "eclipsvault_credmgr";
 
     protected static string ContainerName(string engine)
         => $"{Environment.GetEnvironmentVariable("ECLIPSVAULT_TEST_RESOURCE_PREFIX") ?? "eclipsvault-it"}-{engine}-{Guid.NewGuid():N}";
@@ -106,26 +139,13 @@ internal sealed class SqlServerVaultDatabase : VaultDatabase
     public override string ConnectionString()
         => new SqlConnectionStringBuilder(_sql.GetConnectionString()) { InitialCatalog = "EclipsVault" }.ConnectionString;
 
-    private PostgreSqlContainer? _postgresTarget;
-
     // The vault's own server already runs SQL Server, so the target is a second database on it.
     public override Task<string> StartDynamicTargetAsync() => CreateDynamicTargetAsync(_sql.GetConnectionString());
-
-    // PostgreSQL roles need a PostgreSQL server, so a SQL Server vault gets one beside it.
-    public override async Task<string> StartPostgresDynamicTargetAsync()
-    {
-        _postgresTarget = NewPostgresContainer("postgres-target");
-        await _postgresTarget.StartAsync();
-        return await CreatePostgresDynamicTargetAsync(_postgresTarget.GetConnectionString());
-    }
 
     public override async ValueTask DisposeAsync()
     {
         await _sql.DisposeAsync();
-        if (_postgresTarget is not null)
-        {
-            await _postgresTarget.DisposeAsync();
-        }
+        await DisposePostgresTargetAsync();
     }
 }
 
@@ -155,9 +175,6 @@ internal sealed class PostgresVaultDatabase : VaultDatabase
         return await CreateDynamicTargetAsync(_dynamicTarget.GetConnectionString());
     }
 
-    // The vault's own server already runs PostgreSQL, so the target is a second database on it.
-    public override Task<string> StartPostgresDynamicTargetAsync() => CreatePostgresDynamicTargetAsync(_postgres.GetConnectionString());
-
     public override async ValueTask DisposeAsync()
     {
         await _postgres.DisposeAsync();
@@ -165,5 +182,6 @@ internal sealed class PostgresVaultDatabase : VaultDatabase
         {
             await _dynamicTarget.DisposeAsync();
         }
+        await DisposePostgresTargetAsync();
     }
 }
