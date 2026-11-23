@@ -57,6 +57,8 @@
   --bg-inset: #0f0f11;
   --bg-hover: #1a1a1d;
   --brand-disc: #05060a;
+  /* QR codes need a white quiet zone for camera scanners in both themes. */
+  --qr-surface: #ffffff;
 
   /* Hairline borders */
   --border: rgba(255, 255, 255, 0.07);
@@ -145,6 +147,7 @@
   --bg-inset: #f3f3f1;
   --bg-hover: #f8f8f6;
   --brand-disc: #05060a;
+  --qr-surface: #ffffff;
 
   --border: #e6e6e4;
   --border-strong: #d6d6d3;
@@ -3181,14 +3184,14 @@ select:focus {
 .secret-code {
   display: block;
   background: var(--bg-inset);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   padding: 0.75rem 0.9rem;
   font-family: var(--mono);
   font-size: 0.88rem;
   word-break: break-all;
   overflow-wrap: anywhere;
-  margin: 0.5rem 0 0.85rem;
+  margin: 0.4rem 0 1rem;
 }
 .revealed-box {
   border-radius: var(--radius);
@@ -3637,185 +3640,70 @@ fieldset {
 }
 
 /* ---- Sign-in pages -------------------------------------------------------- */
-/* Copied from the Legacy site.css auth rules, so the sign-in pages keep their Legacy look. */
+/* Centered single-card layout on the solid canvas, both themes as equals. */
 .auth-body {
-  background:
-    radial-gradient(ellipse 70% 50% at 50% -10%, rgba(255, 159, 10, 0.1), transparent 70%),
-    var(--bg);
+  background: var(--bg);
 }
 
 .auth-wrap {
   min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 2rem 1rem;
-  gap: 1.2rem;
+  gap: 1rem;
+}
+
+.auth-header {
+  width: 100%;
+  max-width: 440px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 
 .auth-brand {
-  font-size: 1.35rem;
-  padding: 0;
-}
-
-/* The routed page lays out as the card it holds, as the Legacy page's own section did. */
-.auth-wrap > router-outlet {
-  display: none;
-}
-.auth-page {
-  display: contents;
-}
-
-.auth-card {
-  width: 100%;
-  max-width: 440px;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 2rem 2.1rem;
-  box-shadow: var(--shadow-lg);
-  animation: content-in 380ms var(--ease);
-}
-.auth-card h1 {
-  font-size: 1.3rem;
-  margin-bottom: 0.45rem;
-}
-.auth-card > .muted {
-  margin-top: 0;
-  font-size: 0.9rem;
-  line-height: 1.5;
-}
-.auth-card form {
-  margin-top: 1.4rem;
-}
-
-.footnote {
-  color: var(--text-faint);
-  font-size: 0.8rem;
-  margin: 1rem 0 0;
-  line-height: 1.5;
-}
-.auth-footnote {
-  color: var(--text-faint);
-  font-size: 0.78rem;
-}
-
-.auth-wrap .flash {
-  width: 100%;
-  max-width: 440px;
-  margin-bottom: 0;
-}
-.flash-info {
-  border-left-color: var(--accent);
-}
-
-/* Step indicator for the multi-step sign-in. */
-.step-track {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 1.1rem;
-}
-.step {
-  height: 3px;
-  flex: 1;
-  border-radius: 2px;
-  background: var(--border-strong);
-  transition: background var(--dur) var(--ease);
-}
-.step.active {
-  background: var(--accent);
-}
-.step.done {
-  background: var(--accent-press);
-}
-
-.auth-divider {
-  display: flex;
-  align-items: center;
-  gap: 0.8rem;
-  margin: 1.3rem 0 1rem;
-  color: var(--text-muted);
-  font-size: 0.8rem;
-}
-.auth-divider::before,
-.auth-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--border);
-}
-
-.passkey-status.status-error {
-  color: var(--danger);
-}
-
-input.code-input {
-  font-family: var(--mono);
-  font-size: 1.5rem;
-  letter-spacing: 0.5em;
-  text-align: center;
-  padding-left: 0.5em;
-}
-
-.totp-secret {
-  margin: 1.2rem 0;
-}
-.totp-qr {
-  display: block;
-  width: 216px;
-  height: 216px;
-  padding: 12px;
-  background: #fff;
-  border-radius: var(--radius);
-  margin: 0.5rem auto 1rem;
-  image-rendering: pixelated;
-  box-shadow: var(--shadow);
-}
-/* Activation names the account it activates; the username is shown, not chosen. */
-.activation-card input[readonly] {
-  background: var(--bg-inset);
-  color: var(--text-secondary);
-}
-/* Keep the QR code inside the card on a 300px phone without widening the page. */
-.activation-card .totp-qr {
-  max-width: 100%;
-  height: auto;
-  aspect-ratio: 1;
-}
-.secret-code {
-  display: block;
-  background: var(--bg-inset);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  padding: 0.75rem 0.9rem;
-  font-family: var(--mono);
-  font-size: 0.88rem;
-  word-break: break-all;
-  margin: 0.4rem 0 1rem;
+  min-height: 2.75rem;
+  padding: 0.25rem 0;
+  font-size: 1.15rem;
 }
 
 /* Shows the icon of the theme a click switches to: a sun in dark mode, a moon in light. */
-.icon-button {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  padding: 0.4rem;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  display: grid;
+.auth-theme-toggle {
+  display: inline-grid;
   place-items: center;
+  flex-shrink: 0;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg-raised);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
   transition:
-    background var(--dur) var(--ease),
+    transform var(--dur-press) ease-out,
+    background var(--dur-press) ease-out,
+    border-color var(--dur) var(--ease),
     color var(--dur) var(--ease);
 }
-.icon-button svg {
-  width: 17px;
-  height: 17px;
+.auth-theme-toggle svg {
+  width: 18px;
+  height: 18px;
 }
-.icon-button:hover {
-  background: var(--bg-hover);
-  color: var(--danger);
+.auth-theme-toggle:hover {
+  background: var(--bg-raised-2);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.auth-theme-toggle:active {
+  transform: scale(0.95);
 }
 .theme-toggle .icon-moon {
   display: none;
@@ -3826,10 +3714,396 @@ input.code-input {
 :root[data-theme='light'] .theme-toggle .icon-moon {
   display: inline;
 }
-.auth-theme-toggle {
-  position: absolute;
-  top: 1.2rem;
-  right: 1.2rem;
+
+/* The routed page lays out directly inside .auth-wrap as the single card it holds. */
+.auth-wrap > router-outlet {
+  display: none;
+}
+.auth-page {
+  display: contents;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  min-width: 0;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 1.75rem 1.85rem;
+  box-shadow: var(--shadow-card);
+  animation: content-in 280ms var(--ease);
+}
+
+.auth-step {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.1rem;
+}
+.auth-card .step-track {
+  display: flex;
+  flex: 1;
+  gap: 6px;
+}
+.auth-card .step {
+  height: 4px;
+  flex: 1;
+  border-radius: var(--radius-pill);
+  background: var(--bg-raised-2);
+  transition: background var(--dur) var(--ease);
+}
+.auth-card .step.active {
+  background: var(--accent);
+}
+.auth-card .step.done {
+  background: var(--ok);
+}
+.auth-step-label {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.auth-context-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.85rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: var(--radius-pill);
+  background: var(--bg-raised-2);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+.auth-context-pill svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.auth-card h1 {
+  font-size: clamp(1.45rem, 1.3rem + 0.5vw, 1.65rem);
+  font-weight: 500;
+  line-height: 1.18;
+  letter-spacing: var(--tracking-heading);
+  margin: 0 0 0.5rem;
+  overflow-wrap: anywhere;
+}
+.auth-lede {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.94rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.auth-card form {
+  margin-top: 1.35rem;
+}
+
+.auth-card .validation-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.8rem;
+  margin-bottom: 1.1rem;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-lg);
+  background: var(--danger-wash);
+  color: var(--danger);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.auth-card .validation-summary ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  flex: 1;
+  min-width: 0;
+}
+.auth-card .validation-summary li {
+  overflow-wrap: anywhere;
+}
+
+.auth-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.8rem;
+  margin: 1.15rem 0 1.25rem;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-lg);
+  color: var(--text);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.auth-notice p {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+.auth-notice .flash-error {
+  background: none;
+  color: inherit;
+}
+.auth-notice-danger {
+  background: var(--danger-wash);
+  color: var(--danger);
+}
+.auth-notice-info {
+  background: var(--info-wash);
+}
+.auth-notice-ok {
+  background: var(--ok-wash);
+}
+.auth-notice-icon {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+}
+.auth-notice-icon svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.auth-notice-icon-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.auth-notice-icon-info {
+  background: var(--info-soft);
+  color: var(--info);
+}
+.auth-notice-icon-ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.auth-card .affix-button {
+  right: 0;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--radius);
+}
+.auth-card .input-affix > input {
+  padding-right: 3rem;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin: 1.35rem 0 1rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.auth-methods {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+.auth-methods form {
+  margin-top: 0;
+}
+.auth-card .button.wide {
+  max-width: 100%;
+  min-width: 0;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.3;
+  padding-block: 0.6rem;
+}
+.auth-method-button svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+.auth-method-button span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.auth-method-note {
+  margin: 0.45rem 0 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.auth-card .passkey-status {
+  min-height: 0;
+  margin: 0.55rem 0 0;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius);
+  background: var(--bg-raised-2);
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.auth-card .passkey-status.status-error {
+  background: var(--danger-wash);
+  color: var(--danger);
+}
+.auth-card .passkey-status.status-ok {
+  background: var(--info-wash);
+  color: var(--text);
+}
+.passkey-status.status-error {
+  color: var(--danger);
+}
+
+.auth-card input.code-input {
+  font-family: var(--mono);
+  font-size: 1.35rem;
+  letter-spacing: 0.35em;
+  text-indent: 0.35em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.auth-card input.code-input.code-input-recovery {
+  font-size: 1.15rem;
+  letter-spacing: 0.14em;
+  text-indent: 0.14em;
+}
+
+/* Inset setup block inside the enrollment card: filled surface, no extra outline. */
+.totp-secret {
+  margin: 1.25rem 0 0;
+  padding: 1.15rem 1.2rem;
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised-2);
+}
+.totp-label {
+  margin: 0 0 0.85rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text);
+}
+.totp-qr {
+  display: block;
+  width: min(200px, 100%);
+  height: auto;
+  aspect-ratio: 1;
+  padding: 12px;
+  background: var(--qr-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 0 auto 1rem;
+  image-rendering: pixelated;
+}
+/* Activation names the account it activates; the username is shown, not chosen. */
+.activation-card input[readonly] {
+  background: var(--bg-inset);
+  color: var(--text-secondary);
+}
+.totp-manual-label {
+  margin: 0 0 0.45rem;
+  font-size: 0.84rem;
+}
+.auth-card .secret-code {
+  margin: 0;
+  padding: 0.7rem 0.9rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  letter-spacing: 0.06em;
+  text-align: center;
+  user-select: all;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+.auth-loading {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  text-align: center;
+}
+
+.auth-commit-note {
+  margin: 0.75rem 0 0;
+  font-size: 0.82rem;
+  text-align: center;
+  line-height: 1.45;
+}
+
+.auth-card .footnote {
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  margin: 1.25rem 0 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.auth-alt-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.1rem 0.35rem;
+}
+.auth-alt-action a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  font-weight: 500;
+}
+
+.auth-footnote {
+  max-width: 440px;
+  margin: 0.25rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  text-align: center;
+}
+.auth-footnote svg {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  vertical-align: -0.15em;
+  margin-right: 0.35rem;
+}
+
+@media (max-width: 480px) {
+  .auth-wrap {
+    padding: 1.25rem 1rem;
+  }
+  .auth-card {
+    padding: 1.35rem 1.15rem;
+  }
+  .totp-secret {
+    padding: 1rem;
+  }
+  .auth-card input.code-input {
+    font-size: 1.2rem;
+    letter-spacing: 0.24em;
+    text-indent: 0.24em;
+  }
+  .auth-card input.code-input.code-input-recovery {
+    font-size: 1.02rem;
+    letter-spacing: 0.08em;
+    text-indent: 0.08em;
+  }
 }
 
 /* Wide screens: the sidebar takes a little more room; the column keeps its readable width. */

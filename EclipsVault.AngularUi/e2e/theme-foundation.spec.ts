@@ -289,4 +289,92 @@ test.describe('signed-out sign-in', () => {
     await page.reload();
     await expect.poll(theme).toBe('light');
   });
+
+  const anonymousPages = [
+    ['/Account/Login', 'Sign in'],
+    ['/Account/Recover', 'Recover access'],
+  ];
+
+  for (const theme of ['dark', 'light']) {
+    for (const width of [300, 2000]) {
+      for (const [route, title] of anonymousPages) {
+        test(`${title} fits ${width}px in ${theme} appearance`, async ({ context, page }) => {
+          await page.setViewportSize({ width, height: 900 });
+          await context.addCookies([
+            {
+              name: 'EclipsVault.Theme',
+              value: theme,
+              url: process.env['E2E_BASE_URL']!,
+              secure: true,
+            },
+          ]);
+          const optionsLoaded =
+            route === '/Account/Login'
+              ? page.waitForResponse(
+                  (response) => new URL(response.url()).pathname === '/api/ui/auth/options',
+                )
+              : null;
+          await page.goto(route);
+          if (optionsLoaded) await optionsLoaded;
+          await expect(
+            page.getByRole('heading', { name: title, exact: true, level: 1 }),
+          ).toBeVisible();
+          await expect
+            .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+            .toBe(width);
+        });
+      }
+    }
+  }
+
+  for (const [label, provider] of [
+    ['multi-word', 'North America Corporate Identity Provider Sign-in'],
+    ['unbroken', 'EnterpriseSingleSignOnIdentityProviderWithoutSpacesOrWordBreaks1'],
+  ]) {
+    for (const width of [300, 768]) {
+      test(`a long ${label} SSO provider name wraps inside its button at ${width}px`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width, height: 900 });
+        await page.route('**/api/ui/auth/options', (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ ssoEnabled: true, ssoDisplayName: provider }),
+          }),
+        );
+        const signIn = new AccountSignIn(page);
+        await signIn.open();
+        const ssoButton = signIn.singleSignOnButton(provider);
+        await expect(ssoButton).toBeVisible();
+        await expect
+          .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+          .toBe(width);
+        const fits = await ssoButton.evaluate(
+          (el, viewportWidth) =>
+            el.scrollWidth <= el.clientWidth + 1 &&
+            el.getBoundingClientRect().right <= viewportWidth,
+          width,
+        );
+        expect(fits).toBe(true);
+      });
+    }
+  }
+
+  test('sign-in controls keep 44px touch targets at 300px', async ({ page }) => {
+    await page.setViewportSize({ width: 300, height: 900 });
+    const signIn = new AccountSignIn(page);
+    await signIn.open();
+
+    const themeSwitch = await signIn.themeSwitch.boundingBox();
+    expect(Math.round(themeSwitch?.height ?? 0)).toBeGreaterThanOrEqual(44);
+    expect(Math.round(themeSwitch?.width ?? 0)).toBeGreaterThanOrEqual(44);
+
+    const reveal = await signIn.showPassword.boundingBox();
+    expect(Math.round(reveal?.height ?? 0)).toBeGreaterThanOrEqual(44);
+    expect(Math.round(reveal?.width ?? 0)).toBeGreaterThanOrEqual(44);
+
+    const submit = await signIn.continueButton.boundingBox();
+    expect(Math.round(submit?.height ?? 0)).toBeGreaterThanOrEqual(44);
+  });
 });

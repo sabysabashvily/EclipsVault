@@ -260,6 +260,7 @@ test('a non-administrator reaches Denied from every service-account bookmark', a
   await expect(creation.status).toContainText('Invitation sent to');
   const reader = await (await browserHealth.newContext()).newPage();
   await signInNewAccount(reader, 'e2e-sa-reader', password);
+  await expect(reader).toHaveURL(/\/Secrets$/);
   await reader.goto('/ServiceAccounts');
   await expect(reader).toHaveURL(/\/Account\/Denied/);
   await reader.goto('/ServiceAccounts/Index');

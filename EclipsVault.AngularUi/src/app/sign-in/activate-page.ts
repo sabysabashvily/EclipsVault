@@ -25,7 +25,7 @@ export const invalidInvitation =
       @if (invalid()) {
         <p class="validation-summary" role="alert">{{ invalid() }}</p>
       } @else if (invitation(); as invitation) {
-        <p class="muted">
+        <p class="auth-lede">
           Choose your password and set up your authenticator. Multi-factor sign-in is mandatory.
         </p>
 
@@ -33,6 +33,12 @@ export const invalidInvitation =
           <fieldset [disabled]="busy()">
             @if (error()) {
               <div class="validation-summary" role="alert">
+                <span class="auth-notice-icon auth-notice-icon-danger" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M12 8v4M12 16h.01" />
+                  </svg>
+                </span>
                 <ul>
                   <li>{{ error() }}</li>
                 </ul>
@@ -122,13 +128,13 @@ export const invalidInvitation =
             </div>
 
             <div class="totp-secret">
-              <p><strong>Scan this QR code with your authenticator app</strong></p>
+              <p class="totp-label">Scan with your authenticator app</p>
               <img
                 class="totp-qr"
                 [src]="invitation.qrCodeDataUri"
                 alt="QR code containing the authenticator enrollment secret"
               />
-              <p class="muted">Can't scan it? Enter this key manually:</p>
+              <p class="totp-manual-label muted">Can't scan it? Enter this setup key manually:</p>
               <code class="secret-code">{{ invitation.secretBase32 }}</code>
             </div>
 
@@ -141,6 +147,7 @@ export const invalidInvitation =
                 inputmode="numeric"
                 autocomplete="one-time-code"
                 maxlength="6"
+                placeholder="000000"
                 required
                 [value]="code()"
                 (input)="code.set($any($event.target).value)"

@@ -108,6 +108,17 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
   });
 
   const secret = await page.locator('.secret-code').innerText();
+  await expect(
+    page.getByRole('img', {
+      name: 'QR code containing the authenticator enrollment secret',
+      exact: true,
+    }),
+  ).toBeVisible();
+  for (const width of [300, 2000]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.getByLabel('Confirmation code').fill(await freshTotp(secret));
   const enrollmentStep = currentTotpStep();
   await page.getByRole('button', { name: 'Confirm enrollment' }).click();
@@ -154,6 +165,12 @@ test('sign in, lazy-load My access with Trusted Types, visit Legacy UI and retur
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(page).toHaveURL(/\/Account\/Totp$/);
+  await expect(page.getByLabel('Authenticator code')).toBeVisible();
+  for (const width of [300, 2000]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.getByLabel('Authenticator code').fill(await freshTotp(secret, enrollmentStep));
   authenticatorSecret = secret;
   lastSignInStep = currentTotpStep();
