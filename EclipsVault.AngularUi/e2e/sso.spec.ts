@@ -96,6 +96,14 @@ test('a user whose identity provider completed MFA lands on Secrets', async ({ b
   clearSignInBudget();
   const vault = new AccountSignIn(page);
   await vault.open();
+  const ssoButton = vault.singleSignOnButton('Keycloak');
+  await expect(ssoButton).toBeVisible();
+  for (const width of [300, 2000]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    expect(await ssoButton.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
   await vault.continueWithSingleSignOn('Keycloak');
   const keycloak = new KeycloakSignIn(page);
   await keycloak.submitPassword('sso-mfa', idpPassword());

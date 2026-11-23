@@ -15,29 +15,68 @@ type Schemas = components['schemas'];
   host: { class: 'auth-page' },
   template: `
     <section class="auth-card">
+      <span class="auth-context-pill">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z" />
+          <path d="M12 8v4M12 16h.01" />
+        </svg>
+        <span>Break-glass recovery</span>
+      </span>
       <h1>Recover access</h1>
+      <div role="status" aria-live="polite" aria-atomic="true">
+        @if (recovered(); as result) {
+          <div class="auth-notice auth-notice-ok">
+            <span class="auth-notice-icon auth-notice-icon-ok" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="9" />
+                <path d="m9 12 2 2 4-4" />
+              </svg>
+            </span>
+            <p id="recover-outcome" class="flash-success">
+              {{
+                result.blockLifted
+                  ? 'The intrusion-defence block on your network was lifted and your session restored.'
+                  : 'Access restored. Your network was not blocked.'
+              }}
+            </p>
+          </div>
+        }
+      </div>
       @if (recovered(); as result) {
-        <p class="flash flash-success" role="status">
-          {{
-            result.blockLifted
-              ? 'The intrusion-defence block on your network was lifted and your session restored.'
-              : 'Access restored. Your network was not blocked.'
-          }}
-        </p>
-        <button type="button" class="button primary wide" appSignInFocus (click)="flow.leave('/')">
+        <button
+          type="button"
+          class="button primary wide"
+          aria-describedby="recover-outcome"
+          appSignInFocus
+          (click)="flow.leave('/')"
+        >
           Continue to the vault
         </button>
       } @else {
-        <p class="muted">
-          Administrator break-glass recovery. Enter all of your credentials in one step — if they
+        <p class="auth-lede">
+          Administrator break-glass recovery. Enter all of your credentials in one step. If they
           verify and your account holds TopSecret clearance, the intrusion-defence block on your
-          network is lifted and your session restored. Every attempt is audited.
+          network is lifted and your session restored.
         </p>
 
         <form (submit)="recover($event)">
           <fieldset [disabled]="busy()">
             @if (error()) {
               <div class="validation-summary" role="alert">
+                <span class="auth-notice-icon auth-notice-icon-danger" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M12 8v4M12 16h.01" />
+                  </svg>
+                </span>
                 <ul>
                   <li>{{ error() }}</li>
                 </ul>
@@ -81,6 +120,7 @@ type Schemas = components['schemas'];
                 inputmode="numeric"
                 autocomplete="one-time-code"
                 maxlength="6"
+                placeholder="000000"
                 required
                 [value]="code()"
                 (input)="code.set($any($event.target).value)"
@@ -88,12 +128,15 @@ type Schemas = components['schemas'];
             </div>
 
             <button type="submit" class="button primary wide">Verify and restore access</button>
+            <p class="auth-commit-note muted">
+              Recovery and any lifted block are saved to the audit log.
+            </p>
           </fieldset>
         </form>
 
         <p class="footnote">
-          Not an administrator? Ask one to lift the block from Admin → Networks, or restart the
-          application in development.
+          Not an administrator? Ask one to lift the block from Administration → Networks, or restart
+          the application in development.
         </p>
       }
     </section>

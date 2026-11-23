@@ -11,6 +11,14 @@ export class AccountSignIn {
     return this.page.getByLabel('Password', { exact: true });
   }
 
+  get showPassword() {
+    return this.page.getByRole('button', { name: 'Show password', exact: true });
+  }
+
+  get continueButton() {
+    return this.page.getByRole('button', { name: 'Continue', exact: true });
+  }
+
   get themeSwitch() {
     return this.page.getByRole('button', { name: 'Switch color theme', exact: true });
   }
@@ -27,11 +35,15 @@ export class AccountSignIn {
     });
   }
 
-  /** Login's StatusLine announces a warning as an alert. */
+  /** Login announces a warning as an alert. */
   get warning() {
     return this.page
       .getByRole('alert')
       .filter({ hasText: "couldn't record it in the audit trail" });
+  }
+
+  singleSignOnButton(provider: string) {
+    return this.page.getByRole('button', { name: `Sign in with ${provider}`, exact: true });
   }
 
   async open(): Promise<void> {
@@ -41,12 +53,12 @@ export class AccountSignIn {
   async submitPassword(username: string, password: string): Promise<void> {
     await this.username.fill(username);
     await this.password.fill(password);
-    await this.page.getByRole('button', { name: 'Continue', exact: true }).click();
+    await this.continueButton.click();
   }
 
   /** Login's single sign-on button, which posts to the identity provider named on it. */
   async continueWithSingleSignOn(provider: string): Promise<void> {
-    await this.page.getByRole('button', { name: `Sign in with ${provider}`, exact: true }).click();
+    await this.singleSignOnButton(provider).click();
   }
 
   /** The second-factor page's authenticator code. */
