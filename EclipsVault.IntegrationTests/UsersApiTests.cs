@@ -128,7 +128,7 @@ public sealed class UsersApiTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.True(response.Headers.CacheControl?.NoStore);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal(["users"], body.RootElement.EnumerateObject().Select(member => member.Name));
+        Assert.Equal(["users", "invitationsAvailable"], body.RootElement.EnumerateObject().Select(member => member.Name));
         var caller = Assert.Single(body.RootElement.GetProperty("users").EnumerateArray(), user => user.GetProperty("isYou").GetBoolean());
         Assert.Equal(["avatarUrl", "awaitingActivation", "clearance", "clearanceLabel", "displayName", "email", "invitationExpiresAtUtc", "isYou", "mfaEnrolled", "project", "status", "userId", "username"], caller.EnumerateObject().Select(member => member.Name).Order());
         Assert.False(caller.GetProperty("awaitingActivation").GetBoolean());

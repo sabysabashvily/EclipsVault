@@ -57,6 +57,9 @@ export class UsersPage {
   protected readonly busy = signal(false);
   protected readonly status = signal({ message: '', error: false });
   protected readonly accountStatus = accountStatus;
+  protected readonly invitationsAvailable = computed(
+    () => this.users.hasValue() && this.users.value().invitationsAvailable,
+  );
   protected readonly filtered = computed(() => {
     const accounts = this.users.hasValue() ? this.users.value().users : [];
     const query = this.query().trim().toLowerCase();

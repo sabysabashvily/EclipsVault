@@ -6999,6 +6999,7 @@ export interface components {
             awaitingActivation: boolean;
             /** Format: date-time */
             invitationExpiresAtUtc: null | string;
+            invitationsAvailable: boolean;
         };
         UserNoticeResponse: {
             message: null | string;
@@ -7030,6 +7031,7 @@ export interface components {
         };
         UsersResponse: {
             users: components["schemas"]["UserResponse"][];
+            invitationsAvailable: boolean;
         };
         VerifiedOperationRequest: {
             /** Format: uuid */

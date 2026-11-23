@@ -8,7 +8,7 @@ public sealed record NewUserResponse(IReadOnlyList<ClearanceOptionResponse> Clea
 
 public sealed record UserDetailsResponse(Guid UserId, string Username, string DisplayName, string Email, int Clearance,
     string Project, bool IsYou, bool IsDisabled, IReadOnlyList<ClearanceOptionResponse> Clearances,
-    bool AwaitingActivation, DateTimeOffset? InvitationExpiresAtUtc);
+    bool AwaitingActivation, DateTimeOffset? InvitationExpiresAtUtc, bool InvitationsAvailable);
 
 public sealed record CreatedUserResponse(Guid UserId, string Username, string Email,
     [property: AllowedValues("sent", "not_delivered")] string Invitation, DateTimeOffset ExpiresAtUtc);

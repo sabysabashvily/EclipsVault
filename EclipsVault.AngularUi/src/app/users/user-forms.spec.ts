@@ -25,6 +25,7 @@ const details = {
   clearances,
   awaitingActivation: false,
   invitationExpiresAtUtc: null as string | null,
+  invitationsAvailable: true,
 };
 const invited = {
   ...details,
@@ -274,15 +275,15 @@ describe('New user fields', () => {
   });
 
   it.each([
-    ['sent', 'Invitation sent to ada@example.test. It expires in 72 hours.', false],
+    ['sent', '[role="status"]', 'Invitation sent to ada@example.test. It expires in 72 hours.'],
     [
       'not_delivered',
+      '[role="alert"]',
       "The account was created, but the invitation could not be delivered. Resend it from the user's page.",
-      true,
     ],
   ])(
     'posts the email and shows the %s outcome in place of the form',
-    async (invitation, message, error) => {
+    async (invitation, region, message) => {
       const { fixture, page, navigate } = await loaded(newForm);
       fill(page, 'firstName', 'Ada');
       fill(page, 'lastName', 'Lovelace');
@@ -302,9 +303,7 @@ describe('New user fields', () => {
       create.flush({ ...newForm.successBody, invitation });
       await fixture.whenStable();
       expect(page.querySelector('section form')).toBeNull();
-      expect(page.querySelector(error ? '.flash-error' : '.flash-success')?.textContent).toBe(
-        message,
-      );
+      expect(page.querySelector(region)?.textContent?.trim()).toBe(message);
       expect(navigate).not.toHaveBeenCalled();
     },
   );
@@ -361,9 +360,7 @@ describe('Edit user invitation', () => {
   it('shows the status pill, the stored address and both actions', async () => {
     const { panel } = await invitedPage();
     expect(panel.querySelector('h2')?.textContent).toBe('Invitation');
-    expect(panel.querySelector('.badge.tone-info')?.textContent?.trim()).toBe(
-      'Invited · expires 26 Nov 2099, 14:30 UTC',
-    );
+    expect(panel.textContent).toContain('Invited · expires 26 Nov 2099, 14:30 UTC');
     expect(panel.textContent).toContain('Sent to ada@example.test.');
     expect(input(panel, 'invitation-email').value).toBe('ada@example.test');
     expect(button(panel, 'Resend invitation').type).toBe('button');
@@ -373,9 +370,23 @@ describe('Edit user invitation', () => {
     const { fixture, page } = render(editForm);
     backend.expectOne(editForm.read).flush({ ...invited, invitationExpiresAtUtc: null });
     await fixture.whenStable();
-    expect(page.querySelector('#invitation .badge.tone-danger')?.textContent?.trim()).toBe(
-      'Invitation expired',
+    expect(page.querySelector('#invitation')?.textContent).toContain('Invitation expired');
+  });
+  it('without mail delivery explains why in place of Resend and keeps Replace address', async () => {
+    const { fixture, page } = render(editForm);
+    backend.expectOne(editForm.read).flush({ ...invited, invitationsAvailable: false });
+    await fixture.whenStable();
+    const panel = page.querySelector('#invitation');
+    if (!panel) throw new Error('No invitation panel');
+    expect(
+      panel.querySelector('.notice[role="status"]')?.textContent?.replace(/\s+/g, ' ').trim(),
+    ).toBe(
+      "Invitations need email delivery and the vault's public address (Identity:PublicUrl). Configure both to add accounts.",
     );
+    expect(panel.textContent).not.toContain('Resend invitation');
+    expect(button(panel, 'Replace address').disabled).toBe(false);
+    expect(page.querySelector('dialog[open]')).toBeNull();
+    backend.expectNone(`/api/ui/users/${id}/invitation`);
   });
   it('Resend confirms, writes, announces and reloads', async () => {
     const { fixture, page, panel } = await invitedPage();

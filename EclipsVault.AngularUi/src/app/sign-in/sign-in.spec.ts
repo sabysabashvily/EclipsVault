@@ -6,7 +6,7 @@ import { provideRouter, Router } from '@angular/router';
 import { PasskeyProof } from '../profile/passkey-proof';
 import { PAGE_LOCATION } from '../shell/command-palette';
 import { signInApiErrors } from '../ui-api/ui-api-errors';
-import { ActivatePage, invalidInvitation } from './activate-page';
+import { ActivatePage } from './activate-page';
 import { EnrollTotpPage } from './enroll-totp-page';
 import { LoginPage, loginNotice } from './login-page';
 import { RecoverPage } from './recover-page';
@@ -662,6 +662,8 @@ describe('sign-in pages', () => {
       expiresAtUtc: '2099-11-26T14:30:00Z',
     };
     const password = 'Correct-horse-battery-1';
+    const invalidLink =
+      'This invitation link is not valid. It may have expired or been used. Ask an administrator to send a new one.';
 
     async function opened() {
       const rendered = await render(ActivatePage, `/Account/Activate#${token}`);
@@ -672,9 +674,9 @@ describe('sign-in pages', () => {
       return rendered;
     }
 
-    function fillIn(page: HTMLElement, confirm = password): void {
+    function fillIn(page: HTMLElement): void {
       type(page, 'new-password', password);
-      type(page, 'confirm-password', confirm);
+      type(page, 'confirm-password', password);
       type(page, 'Code', '123456');
     }
 
@@ -720,15 +722,15 @@ describe('sign-in pages', () => {
     it('says a link without a token is not valid, without calling the vault', async () => {
       const { page, fixture } = await render(ActivatePage, '/Account/Activate');
       await fixture.whenStable();
-      expect(page.querySelector('[role="alert"]')?.textContent?.trim()).toBe(invalidInvitation);
+      expect(page.querySelector('[role="alert"]')?.textContent?.trim()).toBe(invalidLink);
       expect(page.querySelector('form')).toBeNull();
     });
 
     it('says an unknown, used or expired link is not valid', async () => {
       const { page, fixture } = await render(ActivatePage, `/Account/Activate#${token}`);
-      refuse('/api/ui/auth/activation', 404, 'invitation_invalid', invalidInvitation);
+      refuse('/api/ui/auth/activation', 404, 'invitation_invalid', invalidLink);
       await fixture.whenStable();
-      expect(page.querySelector('[role="alert"]')?.textContent?.trim()).toBe(invalidInvitation);
+      expect(page.querySelector('[role="alert"]')?.textContent?.trim()).toBe(invalidLink);
       expect(page.querySelector('form')).toBeNull();
       expect(location.hash).toBe('');
     });
@@ -743,14 +745,23 @@ describe('sign-in pages', () => {
     });
 
     it.each([
-      ['short', 'Your new password must be 12–256 characters.'],
-      [password + 'x', 'The passwords do not match.'],
-    ])('refuses before sending when the confirmation is %s', async (confirm, message) => {
+      [
+        'the password is too short',
+        'short',
+        'short',
+        'Your new password must be 12–256 characters.',
+      ],
+      [
+        'the confirmation differs',
+        'Correct-horse-battery-1',
+        'Correct-horse-battery-1x',
+        'The passwords do not match.',
+      ],
+    ])('refuses before sending when %s', async (_, newPassword, confirm, message) => {
       const { page, fixture } = await opened();
-      if (confirm === 'short') {
-        type(page, 'new-password', 'short');
-        type(page, 'confirm-password', 'short');
-      } else fillIn(page, confirm);
+      type(page, 'new-password', newPassword);
+      type(page, 'confirm-password', confirm);
+      type(page, 'Code', '123456');
       submit(page);
       await fixture.whenStable();
       expect(page.querySelector('.validation-summary li')?.textContent).toBe(message);
@@ -768,7 +779,13 @@ describe('sign-in pages', () => {
     });
 
     it.each([
-      [400, 'code_invalid', 'The confirmation code did not match. Try again.', {}],
+      [
+        400,
+        'code_invalid',
+        'The confirmation code did not match. Try again.',
+        {},
+        'The confirmation code did not match. Try again.',
+      ],
       [
         400,
         'validation_failed',
@@ -776,30 +793,40 @@ describe('sign-in pages', () => {
         {
           password: ['This password has appeared in known data breaches — choose a different one.'],
         },
+        'This password has appeared in known data breaches — choose a different one.',
       ],
-      [503, 'audit_unavailable', 'The audit trail is unavailable. Nothing was changed.', {}],
-    ])('keeps the form for a %i %s refusal and says why', async (status, code, title, errors) => {
-      const { page, fixture } = await opened();
-      fillIn(page);
-      submit(page);
-      backend
-        .expectOne('/api/ui/auth/activation/complete')
-        .flush({ status, code, title, errors }, { status, statusText: 'Refused' });
-      await fixture.whenStable();
-      expect(page.querySelector('.validation-summary li')?.textContent).toBe(
-        Object.values(errors)[0]?.[0] ?? title,
-      );
-      expect(page.querySelector('fieldset')?.disabled).toBe(false);
-      expect(assign).not.toHaveBeenCalled();
-    });
+      [
+        503,
+        'audit_unavailable',
+        'The audit trail is unavailable. Nothing was changed.',
+        {},
+        'The audit trail is unavailable. Nothing was changed.',
+      ],
+    ])(
+      'keeps the form for a %i %s refusal and says why',
+      async (status, code, title, errors, shown) => {
+        const { page, fixture } = await opened();
+        type(page, 'new-password', 'Correct-horse-battery-1');
+        type(page, 'confirm-password', 'Correct-horse-battery-1');
+        type(page, 'Code', '123456');
+        submit(page);
+        backend
+          .expectOne('/api/ui/auth/activation/complete')
+          .flush({ status, code, title, errors }, { status, statusText: 'Refused' });
+        await fixture.whenStable();
+        expect(page.querySelector('.validation-summary li')?.textContent).toBe(shown);
+        expect(page.querySelector('fieldset')?.disabled).toBe(false);
+        expect(assign).not.toHaveBeenCalled();
+      },
+    );
 
     it('says the link is not valid when it died while the form was open', async () => {
       const { page, fixture } = await opened();
       fillIn(page);
       submit(page);
-      refuse('/api/ui/auth/activation/complete', 404, 'invitation_invalid', invalidInvitation);
+      refuse('/api/ui/auth/activation/complete', 404, 'invitation_invalid', invalidLink);
       await fixture.whenStable();
-      expect(page.querySelector('[role="alert"]')?.textContent?.trim()).toBe(invalidInvitation);
+      expect(page.querySelector('[role="alert"]')?.textContent?.trim()).toBe(invalidLink);
       expect(page.querySelector('form')).toBeNull();
     });
   });

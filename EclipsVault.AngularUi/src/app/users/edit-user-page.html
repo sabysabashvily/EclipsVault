@@ -38,9 +38,33 @@
         >.
       </p>
       <fieldset [disabled]="writes.busy() || writes.awaitingProof() || writes.blocked()">
-        <button #resendButton type="button" class="button" (click)="askResend(resendButton)">
-          Resend invitation
-        </button>
+        @if (invited.invitationsAvailable) {
+          <button #resendButton type="button" class="button" (click)="askResend(resendButton)">
+            Resend invitation
+          </button>
+        } @else {
+          <div class="notice notice-warn" role="status">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path
+                d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"
+              />
+            </svg>
+            <span>
+              Invitations need email delivery and the vault's public address (<code
+                class="code-chip"
+                >Identity:PublicUrl</code
+              >). Configure both to add accounts.
+            </span>
+          </div>
+        }
         <form class="invitation-address" (submit)="askReplace($event, replaceButton)">
           <div class="field">
             <label for="invitation-email">Invitation address</label>
