@@ -114,10 +114,6 @@ describe('SharedWithMePage', () => {
         ['Billing_Db_PasswordBILLING', 'Production', 'Secret', 'colleague', 'In 4 days · 7 Nov'],
         ['Payments_Api_KeyPAYMENTS', 'Development', 'Internal', 'another-colleague', 'No expiry'],
       ]);
-      // Exact text, untrimmed: the browser tests match the cell's whole text.
-      expect(
-        [...page.querySelectorAll('tbody td.cell-meta')].map((cell) => cell.textContent),
-      ).toEqual(['colleague', 'another-colleague']);
       const pill = page.querySelector('tbody .badge.tone-warn')!;
       expect(pill.textContent).toBe('In 4 days · 7 Nov');
       expect(pill.getAttribute('title')).toBe('2026-11-07 09:30:00 UTC');

@@ -154,7 +154,7 @@
                     badges[request.status].label
                   }}</span>
                 </td>
-                <!-- One line keeps the cell text untrimmed-exact, which the browser tests match. -->
+                <!-- One line: the browser test anchors a timestamp regex on the untrimmed cell text. -->
                 <!-- prettier-ignore -->
                 <td class="cell-meta cell-nowrap muted" data-label="Requested">{{ requestedAt(request) }}</td>
                 <td class="cell-meta muted" data-label="· Decision">{{ decision(request) }}</td>
