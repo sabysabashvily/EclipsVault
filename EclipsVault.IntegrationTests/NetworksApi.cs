@@ -24,6 +24,9 @@ internal static class NetworksApi
     public static Task<HttpResponseMessage> LiftAsync(HttpClient admin, string range)
         => WriteAsync(admin, HttpMethod.Post, Path + "/blocks/lift", JsonContent.Create(new { range }));
 
+    public static Task<HttpResponseMessage> ReleaseGuardAsync(HttpClient admin, string range)
+        => WriteAsync(admin, HttpMethod.Post, Path + "/blocks/release-guard", JsonContent.Create(new { range }));
+
     public static async Task<HttpResponseMessage> WriteAsync(HttpClient admin, HttpMethod method, string path, HttpContent? content = null)
         => await UiApiRequest.SendWithTokenAsync(admin, await UiApiRequest.AntiforgeryTokenAsync(admin), method, path, content);
 

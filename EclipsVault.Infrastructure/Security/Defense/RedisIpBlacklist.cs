@@ -115,6 +115,88 @@ public sealed class RedisIpBlacklist : IIpBlacklist
         }
     }
 
+    public async Task<IReadOnlyList<string>> ListStuckGuardsAsync(CancellationToken ct = default)
+    {
+        var db = _redis.GetDatabase();
+        var prefix = $"{_prefix}:ipstuck:";
+        var ranges = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var key in ScanKeys($"{prefix}*"))
+        {
+            var network = ((string)key!)[prefix.Length..];
+            var stuck = await db.SetCombineAsync(SetOperation.Intersect, key, GuardKey(network));
+            if (stuck.Length > 0)
+            {
+                ranges.Add(network);
+            }
+        }
+
+        return ranges.Order(StringComparer.Ordinal).ToList();
+    }
+
+    // Claim every eligible member at once so two administrators cannot split the range.
+    private const string ClaimStuckMembers = """
+        local claimed = redis.call('SINTER', KEYS[1], KEYS[2])
+        redis.call('DEL', KEYS[1])
+        return claimed
+        """;
+
+    public async Task<IClaimedGuard?> ClaimStuckGuardAsync(string network, CancellationToken ct = default)
+    {
+        var canonical = network.Trim();
+        var db = _redis.GetDatabase();
+        try
+        {
+            var result = await db.ScriptEvaluateAsync(ClaimStuckMembers, [StuckKey(canonical), GuardKey(canonical)]);
+            var claimed = (RedisValue[]?)result ?? [];
+            return claimed.Length == 0 ? null : new ClaimedGuard(this, db, canonical, claimed);
+        }
+        catch (Exception failure)
+        {
+            _logger.LogCritical(
+                "Could not confirm the break-glass guard claim on {Network} ({Failure}); inspect Redis sets {Guard} and {Stuck}",
+                canonical, failure.GetType().Name, GuardKey(canonical).ToString(), StuckKey(canonical).ToString());
+            throw;
+        }
+    }
+
+    private sealed class ClaimedGuard(RedisIpBlacklist owner, IDatabase database, string network, RedisValue[] lifts) : IClaimedGuard
+    {
+        public string Network => network;
+
+        public async Task ReleaseAsync()
+        {
+            try
+            {
+                // One SREM, so the release is never left halfway; it removes the claimed lifts only.
+                await database.SetRemoveAsync(owner.GuardKey(network), lifts);
+            }
+            catch (Exception failure)
+            {
+                // The audit row has committed. Republishing these members could authorize a second release.
+                owner._logger.LogCritical(
+                    "Could not confirm removal of the audited break-glass guard on {Network} ({Failure}); inspect members {Lifts} in Redis sets {Guard} and {Stuck}",
+                    network, failure.GetType().Name, string.Join(", ", lifts), owner.GuardKey(network).ToString(), owner.StuckKey(network).ToString());
+                throw;
+            }
+
+            owner._logger.LogWarning("Stuck break-glass guard on {Network} was released by an administrator", network);
+        }
+
+        public async Task AbandonAsync()
+        {
+            try
+            {
+                await owner.MarkGuardMembersStuckAsync(database, network, lifts);
+            }
+            catch (Exception failure)
+            {
+                owner._logger.LogCritical(
+                    "Could not restore the stuck break-glass mark on {Network} ({Failure}); the guard still refuses. Inspect members {Lifts} in Redis sets {Guard} and {Stuck}",
+                    network, failure.GetType().Name, string.Join(", ", lifts), owner.GuardKey(network).ToString(), owner.StuckKey(network).ToString());
+            }
+        }
+    }
+
     public async Task<IRecoveryLift> LiftForRecoveryAsync(IPAddress address)
     {
         // A replica configured for the other block size may have keyed this address either way.
@@ -156,6 +238,7 @@ public sealed class RedisIpBlacklist : IIpBlacklist
             _logger.LogCritical(
                 "Break-glass lift failed ({Failure}) after removing {Removed}, possibly removing {Unanswered} with its record unknown (restored: {Restored}); the source stays refused by {Guard}",
                 failure.GetType().Name, string.Join(", ", removed.Select(block => block.Network)), unanswered ?? "nothing else", restored, recovery.Guard);
+            await recovery.MarkStuckAsync();
             throw;
         }
 
@@ -167,6 +250,8 @@ public sealed class RedisIpBlacklist : IIpBlacklist
         : IRecoveryLift
     {
         public bool Lifted => removed.Count > 0;
+
+        public IReadOnlyList<string> Removed => removed.Select(block => block.Network).ToList();
 
         public string Guard => $"member {lift} of the Redis sets {string.Join(", ", guarded.Select(network => (string)owner.GuardKey(network)!))}";
 
@@ -193,6 +278,22 @@ public sealed class RedisIpBlacklist : IIpBlacklist
             catch (Exception)
             {
                 return false;
+            }
+        }
+
+        public async Task MarkStuckAsync()
+        {
+            try
+            {
+                foreach (var network in guarded)
+                {
+                    await owner.MarkGuardMembersStuckAsync(database, network, [lift]);
+                }
+            }
+            catch (Exception failure)
+            {
+                owner._logger.LogCritical("Could not list stuck break-glass lift {Lift} ({Failure}); its guard still refuses: {Guard}",
+                    lift, failure.GetType().Name, Guard);
             }
         }
 
@@ -223,6 +324,22 @@ public sealed class RedisIpBlacklist : IIpBlacklist
 
     // Outside the ipblock: namespace, so neither listing nor any lift of a block can see or remove it.
     private RedisKey GuardKey(string network) => $"{_prefix}:ipguard:{network}";
+
+    // Which guards' lifts are stuck. Marking or claiming one never touches the guard, so it refuses throughout.
+    private RedisKey StuckKey(string network) => $"{_prefix}:ipstuck:{network}";
+
+    // A lift may have failed to install a guard, or removed it before Redis lost the reply.
+    private const string MarkPresentMembersStuck = """
+        for _, member in ipairs(ARGV) do
+            if redis.call('SISMEMBER', KEYS[2], member) == 1 then
+                redis.call('SADD', KEYS[1], member)
+            end
+        end
+        return 1
+        """;
+
+    private Task MarkGuardMembersStuckAsync(IDatabase db, string network, RedisValue[] lifts)
+        => db.ScriptEvaluateAsync(MarkPresentMembersStuck, [StuckKey(network), GuardKey(network)], lifts);
 
     /// <summary>Enumerates matching keys across the connected primary endpoints (admin-only, infrequent).</summary>
     private IEnumerable<RedisKey> ScanKeys(string pattern)

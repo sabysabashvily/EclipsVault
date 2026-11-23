@@ -7,6 +7,7 @@ using EclipsVault.Infrastructure.Distributed;
 using EclipsVault.Infrastructure.Security;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using StackExchange.Redis;
 using Xunit;
 
 namespace EclipsVault.Tests.Distributed;
@@ -140,12 +141,193 @@ public sealed class BlockAdministrationTests
         Assert.False(audit.WriteToken.CanBeCanceled);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Releasing_a_stuck_guard_lets_the_source_in_with_one_event(bool redis)
+    {
+        var blacklist = Blacklist(redis);
+        await StuckLiftAsync(blacklist);
+        var audit = new RecordingAudit(blacklist);
+
+        Assert.True(await new BlockAdministration(blacklist, audit).ReleaseGuardAsync(" 198.51.100.113/32 "));
+
+        Assert.False(await blacklist.IsBlockedAsync(IPAddress.Parse("198.51.100.113")));
+        Assert.DoesNotContain("198.51.100.113/32", await blacklist.ListStuckGuardsAsync());
+        Assert.Equal(new AuditEntry
+        {
+            Action = AuditAction.IpRangeUnblocked,
+            ResourceType = "TrustedNetwork",
+            ResourceName = "198.51.100.113/32",
+            Details = "Break-glass recovery guard released"
+        }, Assert.Single(audit.Recorded));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task The_source_stays_refused_while_the_release_row_is_written(bool redis)
+    {
+        var blacklist = Blacklist(redis);
+        await StuckLiftAsync(blacklist);
+        var audit = new RecordingAudit(blacklist);
+
+        Assert.True(await new BlockAdministration(blacklist, audit).ReleaseGuardAsync("198.51.100.113/32"));
+
+        Assert.True(audit.BlockedDuringWrite);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_release_whose_row_is_refused_keeps_the_guard_stuck_and_the_source_refused(bool redis)
+    {
+        var blacklist = Blacklist(redis);
+        await StuckLiftAsync(blacklist);
+        var audit = new RecordingAudit(blacklist) { RejectWrites = true };
+
+        await Assert.ThrowsAsync<AuditWriteFailedException>(
+            () => new BlockAdministration(blacklist, audit).ReleaseGuardAsync("198.51.100.113/32"));
+
+        Assert.True(await blacklist.IsBlockedAsync(IPAddress.Parse("198.51.100.113")));
+        Assert.Contains("198.51.100.113/32", await blacklist.ListStuckGuardsAsync());
+        Assert.Empty(audit.Recorded);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_live_recovery_guard_is_neither_listed_nor_released(bool redis)
+    {
+        var blacklist = Blacklist(redis);
+        await blacklist.LiftForRecoveryAsync(IPAddress.Parse("198.51.100.113"));
+        var audit = new RecordingAudit(blacklist);
+
+        Assert.False(await new BlockAdministration(blacklist, audit).ReleaseGuardAsync("198.51.100.113/32"));
+
+        Assert.Empty(await blacklist.ListStuckGuardsAsync());
+        Assert.True(await blacklist.IsBlockedAsync(IPAddress.Parse("198.51.100.113")));
+        Assert.Equal(0, audit.Attempts);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_release_leaves_the_guard_of_a_live_recovery_on_the_same_range(bool redis)
+    {
+        var blacklist = Blacklist(redis);
+        await StuckLiftAsync(blacklist);
+        var live = await blacklist.LiftForRecoveryAsync(IPAddress.Parse("198.51.100.113"));
+
+        Assert.True(await new BlockAdministration(blacklist, new RecordingAudit(blacklist)).ReleaseGuardAsync("198.51.100.113/32"));
+
+        Assert.True(await blacklist.IsBlockedAsync(IPAddress.Parse("198.51.100.113")));
+        await live.ReleaseAsync();
+        Assert.False(await blacklist.IsBlockedAsync(IPAddress.Parse("198.51.100.113")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_second_release_while_the_first_is_recorded_claims_nothing(bool redis)
+    {
+        var blacklist = Blacklist(redis);
+        await StuckLiftAsync(blacklist);
+        BlockAdministration administration = null!;
+        bool? second = null;
+        var audit = new RecordingAudit(blacklist)
+        {
+            BeforeWrite = async () => second ??= await administration.ReleaseGuardAsync("198.51.100.113/32")
+        };
+        administration = new BlockAdministration(blacklist, audit);
+
+        Assert.True(await administration.ReleaseGuardAsync("198.51.100.113/32"));
+
+        Assert.False(second);
+        Assert.Single(audit.Recorded);
+    }
+
+    [Fact]
+    public async Task Two_administrators_cannot_split_the_stuck_members_of_one_redis_range()
+    {
+        var store = new RedisBlacklistStore();
+        var blacklist = RedisBlacklist(store);
+        await StuckLiftAsync(blacklist);
+        await StuckLiftAsync(blacklist);
+        var competingAudit = new RecordingAudit(blacklist);
+        var competingAdmin = new BlockAdministration(RedisBlacklist(store), competingAudit);
+        Task<bool>? competingRelease = null;
+        Task TryCompetingReleaseAsync() => competingRelease ??= competingAdmin.ReleaseGuardAsync("198.51.100.113/32");
+
+        store.AfterStuckMemberRemoval = TryCompetingReleaseAsync;
+        var audit = new RecordingAudit(blacklist) { BeforeWrite = TryCompetingReleaseAsync };
+
+        Assert.True(await new BlockAdministration(blacklist, audit).ReleaseGuardAsync("198.51.100.113/32"));
+
+        Assert.False(await competingRelease!);
+        Assert.Empty(competingAudit.Recorded);
+        Assert.Single(audit.Recorded);
+        Assert.False(await blacklist.IsBlockedAsync(IPAddress.Parse("198.51.100.113")));
+    }
+
+    [Fact]
+    public async Task A_lost_reply_after_removing_a_redis_guard_cannot_record_a_second_release()
+    {
+        var store = new RedisBlacklistStore { RemovalWithoutReply = "unblock-unit:ipguard:198.51.100.113/32" };
+        var blacklist = RedisBlacklist(store);
+        await StuckLiftAsync(blacklist);
+        var audit = new RecordingAudit(blacklist);
+        var administration = new BlockAdministration(blacklist, audit);
+
+        await Assert.ThrowsAsync<RedisTimeoutException>(() => administration.ReleaseGuardAsync("198.51.100.113/32"));
+        store.RemovalWithoutReply = null;
+
+        Assert.False(await administration.ReleaseGuardAsync("198.51.100.113/32"));
+        Assert.Single(audit.Recorded);
+        Assert.False(await blacklist.IsBlockedAsync(IPAddress.Parse("198.51.100.113")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Marking_a_settled_lift_stuck_does_not_offer_its_guard_for_release(bool redis)
+    {
+        var blacklist = Blacklist(redis);
+        var lift = await blacklist.LiftForRecoveryAsync(IPAddress.Parse("198.51.100.113"));
+        await lift.ReleaseAsync();
+
+        await lift.MarkStuckAsync();
+
+        Assert.Empty(await blacklist.ListStuckGuardsAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Releasing_an_unguarded_range_keeps_other_guards_and_records_nothing(bool redis)
+    {
+        var blacklist = Blacklist(redis);
+        await StuckLiftAsync(blacklist);
+        var audit = new RecordingAudit(blacklist);
+
+        Assert.False(await new BlockAdministration(blacklist, audit).ReleaseGuardAsync("198.51.100.114/32"));
+
+        Assert.True(await blacklist.IsBlockedAsync(IPAddress.Parse("198.51.100.113")));
+        Assert.Equal(0, audit.Attempts);
+    }
+
+    /// <summary>A lift break-glass could not settle, as after 503 recovery_incomplete.</summary>
+    private static async Task StuckLiftAsync(IIpBlacklist blacklist)
+        => await (await blacklist.LiftForRecoveryAsync(IPAddress.Parse("198.51.100.113"))).MarkStuckAsync();
+
     private static IIpBlacklist Blacklist(bool redis) => redis
-        ? new RedisIpBlacklist(new RedisBlacklistStore().Connection,
-            Options.Create(new RedisOptions { InstanceName = "unblock-unit" }),
-            Options.Create(new IntrusionResponseOptions()), NullLogger<RedisIpBlacklist>.Instance)
+        ? RedisBlacklist(new RedisBlacklistStore())
         : new InMemoryIpBlacklist(new AdvancingClock(), Options.Create(new IntrusionResponseOptions()),
             NullLogger<InMemoryIpBlacklist>.Instance);
+
+    private static RedisIpBlacklist RedisBlacklist(RedisBlacklistStore store)
+        => new(store.Connection, Options.Create(new RedisOptions { InstanceName = "unblock-unit" }),
+            Options.Create(new IntrusionResponseOptions()), NullLogger<RedisIpBlacklist>.Instance);
 
     private sealed class AdvancingClock : TimeProvider
     {

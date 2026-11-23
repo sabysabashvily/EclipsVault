@@ -5,6 +5,36 @@ namespace EclipsVault.Core.Application.Networks;
 
 public sealed class BlockAdministration(IIpBlacklist blacklist, IAuditSink audit) : IBlockAdministration
 {
+    public async Task<bool> ReleaseGuardAsync(string network, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        var claimed = await blacklist.ClaimStuckGuardAsync(network, ct);
+        if (claimed is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            // The guard refuses until this row commits, so the release never grants unrecorded access.
+            await audit.WriteAsync(new AuditEntry
+            {
+                Action = AuditAction.IpRangeUnblocked,
+                ResourceType = "TrustedNetwork",
+                ResourceName = claimed.Network,
+                Details = "Break-glass recovery guard released"
+            }, CancellationToken.None);
+        }
+        catch (Exception)
+        {
+            await claimed.AbandonAsync();
+            throw;
+        }
+
+        await claimed.ReleaseAsync();
+        return true;
+    }
+
     public async Task<bool> LiftAsync(string network, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();

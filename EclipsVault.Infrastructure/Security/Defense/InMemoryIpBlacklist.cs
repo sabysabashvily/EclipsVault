@@ -20,6 +20,8 @@ public sealed class InMemoryIpBlacklist : IIpBlacklist
     private readonly ConcurrentDictionary<string, Entry> _blocked = new();
     // Break-glass guards, keyed by the lift that holds them and the range they cover.
     private readonly ConcurrentDictionary<(Guid Lift, string Network), IPNetwork> _guards = new();
+    // Guards of lifts marked stuck, for an administrator to release; a release in progress holds its own.
+    private readonly HashSet<(Guid Lift, string Network)> _stuck = [];
     // Checks, recovery lifts and their settlement take turns, so a check never reads a block already
     // lifted and then its guard already released, which would let one request through unrecorded.
     private readonly Lock _gate = new();
@@ -93,6 +95,60 @@ public sealed class InMemoryIpBlacklist : IIpBlacklist
         }
     }
 
+    public Task<IReadOnlyList<string>> ListStuckGuardsAsync(CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            return Task.FromResult<IReadOnlyList<string>>(
+                _stuck.Select(guard => guard.Network).Distinct().Order(StringComparer.Ordinal).ToList());
+        }
+    }
+
+    public Task<IClaimedGuard?> ClaimStuckGuardAsync(string network, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            var claimed = _stuck.Where(guard => guard.Network == network.Trim()).ToList();
+            if (claimed.Count == 0)
+            {
+                return Task.FromResult<IClaimedGuard?>(null);
+            }
+
+            _stuck.ExceptWith(claimed);
+            return Task.FromResult<IClaimedGuard?>(new ClaimedGuard(this, network.Trim(), claimed));
+        }
+    }
+
+    private sealed class ClaimedGuard(InMemoryIpBlacklist owner, string network, IReadOnlyList<(Guid Lift, string Network)> claimed) : IClaimedGuard
+    {
+        public string Network => network;
+
+        public Task ReleaseAsync()
+        {
+            lock (owner._gate)
+            {
+                foreach (var guard in claimed)
+                {
+                    owner._guards.TryRemove(guard, out _);
+                    owner._stuck.Remove(guard);
+                }
+            }
+
+            owner._logger.LogWarning("Stuck break-glass guard on {Network} was released by an administrator", network);
+            return Task.CompletedTask;
+        }
+
+        public Task AbandonAsync()
+        {
+            lock (owner._gate)
+            {
+                owner._stuck.UnionWith(claimed.Where(owner._guards.ContainsKey));
+            }
+
+            return Task.CompletedTask;
+        }
+    }
+
     public Task<IRecoveryLift> LiftForRecoveryAsync(IPAddress address)
     {
         lock (_gate)
@@ -129,6 +185,8 @@ public sealed class InMemoryIpBlacklist : IIpBlacklist
     private sealed class RecoveryLift(InMemoryIpBlacklist owner, Guid lift, IReadOnlyList<Entry> removed) : IRecoveryLift
     {
         public bool Lifted => removed.Count > 0;
+
+        public IReadOnlyList<string> Removed => removed.Select(entry => entry.Dto.Network).ToList();
 
         public string Guard
         {
@@ -168,11 +226,22 @@ public sealed class InMemoryIpBlacklist : IIpBlacklist
             }
         }
 
+        public Task MarkStuckAsync()
+        {
+            lock (owner._gate)
+            {
+                owner._stuck.UnionWith(owner._guards.Keys.Where(guard => guard.Lift == lift));
+            }
+
+            return Task.CompletedTask;
+        }
+
         private void Release()
         {
             foreach (var guard in owner._guards.Keys.Where(guard => guard.Lift == lift))
             {
                 owner._guards.TryRemove(guard, out _);
+                owner._stuck.Remove(guard);
             }
         }
     }

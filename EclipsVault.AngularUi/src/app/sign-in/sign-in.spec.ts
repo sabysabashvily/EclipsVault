@@ -852,7 +852,7 @@ describe('sign-in pages', () => {
       expect(page.querySelector('h1')?.textContent).toBe('Recover access');
       expect(visibleText(page)).toContain(
         'Administrator break-glass recovery. Enter all of your credentials in one step. If they ' +
-          'verify and your account holds TopSecret clearance, the intrusion-defence block on your ' +
+          'verify and your account holds Top Secret clearance, the intrusion-defence block on your ' +
           'network is lifted and your session restored.',
       );
       expect(visibleText(page)).toContain(
@@ -867,9 +867,9 @@ describe('sign-in pages', () => {
       expect(page.querySelector('#Code')?.getAttribute('autocomplete')).toBe('one-time-code');
       expect(button(page, 'Verify and restore access').type).toBe('submit');
       expect(visibleText(page)).toContain(
-        'Not an administrator? Ask one to lift the block from Administration → Networks, or ' +
-          'restart the application in development.',
+        'Not an administrator? Ask one to lift the block from Administration → Networks.',
       );
+      expect(text(page)).not.toContain('development');
       expect(page.querySelector('[role="status"]')).not.toBeNull();
       backend.expectNone(() => true);
     });
@@ -914,7 +914,8 @@ describe('sign-in pages', () => {
       [
         503,
         'recovery_incomplete',
-        'Your sign-in was recorded, but the vault could not finish restoring network access. This source remains blocked. Contact an administrator.',
+        'Your sign-in was recorded, but the vault could not finish lifting the block, so this network stays blocked. ' +
+          'From another network, an administrator can release it under Administration → Networks.',
       ],
       [
         503,

@@ -149,7 +149,7 @@ public sealed class SignInRefusalAuditTests(VaultFixture vault)
         Assert.Contains(AuditAction.BreakGlassRecovery, actions);
         Assert.DoesNotContain(AuditAction.SignInRefused, actions);
         Assert.Contains(await AuditTrail.RowsAfterAsync(vault, before),
-            row => row.Action == AuditAction.IpRangeUnblocked && row.ResourceName == source.ToString());
+            row => row.Action == AuditAction.IpRangeUnblocked && row.ResourceName == "198.18.93.7/32");
     }
 
     [Fact]

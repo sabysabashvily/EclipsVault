@@ -43,13 +43,13 @@ public sealed class BreakGlassSignIn(SessionIssuer issuer, IIpBlacklist blacklis
 
         try
         {
-            await audit.WriteAsync(Lift(user, source), CancellationToken.None);
+            await audit.WriteAsync(BreakGlassLiftAudit.Create(user, lift.Removed), CancellationToken.None);
         }
         catch (AuditWriteFailedException)
         {
             if (!await lift.TryRestoreAsync())
             {
-                throw new RecoveryIncompleteException(lift.Guard);
+                throw await IncompleteAsync(lift);
             }
 
             throw;
@@ -93,8 +93,15 @@ public sealed class BreakGlassSignIn(SessionIssuer issuer, IIpBlacklist blacklis
         }
         catch (Exception)
         {
-            throw new RecoveryIncompleteException(lift.Guard);
+            throw await IncompleteAsync(lift);
         }
+    }
+
+    /// <summary>The lift stays unsettled, so its guard is marked stuck: listed for an administrator to release.</summary>
+    private static async Task<RecoveryIncompleteException> IncompleteAsync(IRecoveryLift lift)
+    {
+        await lift.MarkStuckAsync();
+        return new RecoveryIncompleteException(lift.Guard);
     }
 
     private static AuditEntry Recovery(UserDto user, IPAddress? source) => new()
@@ -105,15 +112,5 @@ public sealed class BreakGlassSignIn(SessionIssuer issuer, IIpBlacklist blacklis
         ActorUserId = user.Id,
         ActorUsername = user.Username,
         Details = $"Break-glass recovery from {source}; lifting any intrusion block on it"
-    };
-
-    private static AuditEntry Lift(UserDto user, IPAddress source) => new()
-    {
-        Action = AuditAction.IpRangeUnblocked,
-        ResourceType = "TrustedNetwork",
-        ResourceName = source.ToString(),
-        ActorUserId = user.Id,
-        ActorUsername = user.Username,
-        Details = "Intrusion-defence block lifted by break-glass recovery"
     };
 }

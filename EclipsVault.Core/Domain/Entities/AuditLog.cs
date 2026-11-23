@@ -8,6 +8,8 @@ namespace EclipsVault.Core.Domain.Entities;
 /// </summary>
 public class AuditLog
 {
+    public const int ResourceNameMaxLength = 128;
+
     public Guid Id { get; set; }
 
     public DateTimeOffset TimestampUtc { get; set; }
