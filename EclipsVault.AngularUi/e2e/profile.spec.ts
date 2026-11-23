@@ -586,7 +586,7 @@ test('a real SMTP outage leaves email inactive and reports delivery failure', as
     text: /status of 409/,
     url: /\/api\/ui\/profile\/email\/request$/,
   });
-  setSmtpAvailable(false);
+  await setSmtpAvailable(false);
   try {
     lastStep = await profile.verifyOwner(password, secret, lastStep);
     const unavailable =
@@ -594,7 +594,7 @@ test('a real SMTP outage leaves email inactive and reports delivery failure', as
     await expect(profile.alertSaying(unavailable)).toHaveText(unavailable, { timeout: 90_000 });
     await expect(profile.email).toHaveValue(active);
   } finally {
-    setSmtpAvailable(true);
+    await setSmtpAvailable(true);
   }
   await page.getByRole('button', { name: 'Cancel email change', exact: true }).click();
   await expect(profile.newEmail).toBeVisible();
