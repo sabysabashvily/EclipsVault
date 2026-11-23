@@ -84,7 +84,10 @@
     }
     @if (networks.value().recoveryGuards.length) {
       <p class="muted">
-        Release a guard only once the audit log accepts entries again. The release is audited.
+        These guards were left by break-glass recoveries that could not finish. Before you release
+        one, make sure the audit log accepts entries again and look in it for the recovery's "Range
+        unblocked" entry. If it is missing, re-create any block the recovery removed that should
+        stay, as the README's break-glass section describes. The release is audited.
       </p>
       <ul class="attention-list" aria-label="Break-glass guards">
         @for (range of networks.value().recoveryGuards; track range) {
@@ -98,7 +101,7 @@
             <div class="attention-body">
               <p class="attention-title mono">{{ range }}</p>
               <p class="attention-meta">
-                Held by a break-glass recovery that could not finish. Requests from it stay refused.
+                The vault may still refuse addresses in this range until the guard is released.
               </p>
             </div>
             <div class="attention-actions">

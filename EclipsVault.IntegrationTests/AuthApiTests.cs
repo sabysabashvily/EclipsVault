@@ -8,6 +8,7 @@ using EclipsVault.Infrastructure.Persistence;
 using EclipsVault.Infrastructure.Security;
 using EclipsVault.Web.Authentication;
 using EclipsVault.Web.Authorization;
+using EclipsVault.Web.Models.Ui;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -429,6 +430,24 @@ public sealed class AuthApiTests(VaultFixture vault)
         Assert.Equal([AuditAction.SignInFactorVerified, AuditAction.LoginSucceeded, AuditAction.BreakGlassRecovery, AuditAction.IpRangeUnblocked],
             rows.Select(row => row.Action));
         Assert.Equal("Intrusion-defence block lifted by break-glass recovery: 100.74.174.31/32", rows[3].Details);
+    }
+
+    [Fact]
+    public async Task My_activity_names_the_ranges_a_break_glass_recovery_lifted()
+    {
+        const string username = "it-auth-page-recover-activity";
+        var source = IPAddress.Parse("100.74.174.60");
+        await vault.SignInNewAccountAsync(username, IPAddress.Parse("100.74.174.61"), ClearanceLevel.TopSecret, password: Password);
+        var account = await ProfileHttp.AccountAsync(vault, username);
+        await vault.Services.GetRequiredService<IIpBlacklist>().BlockAsync(source.ToString(), "page recover activity");
+        var browser = vault.CreateSession(source: source);
+        var token = await AuthApi.AnonymousTokenAsync(browser, "/Account/Recover");
+        await AuthApi.JsonAsync(await AuthApi.PostAsync(browser, "/api/ui/auth/recover", token,
+            new { username, password = Password, code = Totp.NextCode(account.TotpSecret!) }));
+
+        var myActivity = await browser.Client.GetFromJsonAsync<ActivityResponse>("/api/ui/activity");
+
+        Assert.Equal("100.74.174.60/32", Assert.Single(myActivity!.Items, item => item.Title == "Unblocked an IP range").ResourceName);
     }
 
     [Fact]

@@ -62,7 +62,7 @@ public sealed class NetworksApiTests(VaultFixture vault)
         Assert.Equal(HttpStatusCode.Created, (await NetworksApi.AddAsync(admin.Client, " 203.0.113.0/24 ", "Office VPN")).StatusCode);
         var blacklist = vault.Services.GetRequiredService<IIpBlacklist>();
         await blacklist.BlockAsync("192.0.2.21", "Honey-token 'FINANCE_DECOY_KEY' tripped");
-        var stuck = await blacklist.LiftForRecoveryAsync(IPAddress.Parse("192.0.2.22"));
+        await StuckGuardAsync("192.0.2.22");
         try
         {
             var response = await admin.Client.GetAsync(NetworksApi.Path);
@@ -93,7 +93,7 @@ public sealed class NetworksApiTests(VaultFixture vault)
         {
             await NetworksApi.ForgetAsync(vault, "203.0.113.0/24");
             await blacklist.UnblockAsync("192.0.2.21/32");
-            await stuck.ReleaseAsync();
+            await ReleaseStuckGuardAsync("192.0.2.22/32");
         }
     }
 
@@ -276,25 +276,44 @@ public sealed class NetworksApiTests(VaultFixture vault)
     [Fact]
     public async Task Releasing_a_stuck_recovery_guard_lets_the_source_in_with_one_event()
     {
+        var owner = await vault.SignInNewAccountAsync("it-net-guard-owner", IPAddress.Parse("198.18.114.28"));
+        var fromGuarded = vault.CreateSession(owner.SessionCookie, IPAddress.Parse("198.51.100.116"));
+        await StuckGuardAsync("198.51.100.116");
+        await UiApiFailureContractTests.AssertProblemAsync(await fromGuarded.Client.GetAsync("/api/ui/me"), 403, "blocked");
+        // Taken before the head, so a refreshed proof's own row falls outside the window.
         var admin = await vault.AdminClientAsync();
-        var blacklist = vault.Services.GetRequiredService<IIpBlacklist>();
-        await blacklist.BlockAsync("198.51.100.116", "Honey-token 'Stuck guard' tripped");
-        // Never settled, as after 503 recovery_incomplete: the block is gone and only the guard refuses.
-        await blacklist.LiftForRecoveryAsync(IPAddress.Parse("198.51.100.116"));
-        Assert.Equal(403, (await vault.SendFromAsync(IPAddress.Parse("198.51.100.116"), "/")).Response.StatusCode);
         var before = await AuditTrail.HeadAsync(vault);
 
         var response = await NetworksApi.ReleaseGuardAsync(admin, "198.51.100.116/32");
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         Assert.True(response.Headers.CacheControl?.NoStore);
-        Assert.NotEqual(403, (await vault.SendFromAsync(IPAddress.Parse("198.51.100.116"), "/")).Response.StatusCode);
-        Assert.DoesNotContain("198.51.100.116/32", await blacklist.ListGuardsAsync());
+        Assert.Equal(HttpStatusCode.OK, (await fromGuarded.Client.GetAsync("/api/ui/me")).StatusCode);
         var row = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before));
         Assert.Equal(AuditAction.IpRangeUnblocked, row.Action);
         Assert.Equal("198.51.100.116/32", row.ResourceName);
         Assert.Equal("Break-glass recovery guard released", row.Details);
         Assert.Equal(VaultFixture.AdminUsername, row.Username);
+    }
+
+    [Fact]
+    public async Task A_live_recovery_guard_is_neither_listed_nor_released()
+    {
+        var admin = await vault.AdminClientAsync();
+        var blacklist = vault.Services.GetRequiredService<IIpBlacklist>();
+        var live = await blacklist.LiftForRecoveryAsync(IPAddress.Parse("198.51.100.124"));
+        try
+        {
+            var page = await admin.GetFromJsonAsync<JsonElement>(NetworksApi.Path);
+            await ProfileApi.AssertProblemAsync(await NetworksApi.ReleaseGuardAsync(admin, "198.51.100.124/32"), 404, "guard_not_found");
+
+            Assert.DoesNotContain("198.51.100.124/32", page.GetProperty("recoveryGuards").EnumerateArray().Select(range => range.GetString()));
+            Assert.True(await blacklist.IsBlockedAsync(IPAddress.Parse("198.51.100.124")));
+        }
+        finally
+        {
+            await live.ReleaseAsync();
+        }
     }
 
     [Fact]
@@ -305,7 +324,7 @@ public sealed class NetworksApiTests(VaultFixture vault)
 
         var problem = await ProfileApi.AssertProblemAsync(await NetworksApi.ReleaseGuardAsync(admin, "198.51.100.119/32"), 404, "guard_not_found");
 
-        Assert.Equal("That range has no break-glass guard.", problem.GetProperty("title").GetString());
+        Assert.Equal("That range has no stuck break-glass guard.", problem.GetProperty("title").GetString());
         Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
     }
 
@@ -316,7 +335,7 @@ public sealed class NetworksApiTests(VaultFixture vault)
         var stale = vault.CreateSession(SessionApi.WithStrongAuthenticationAt(vault, admin, DateTimeOffset.UtcNow.AddMinutes(-11)), IPAddress.Parse("198.18.114.23"));
         var blacklist = vault.Services.GetRequiredService<IIpBlacklist>();
         await blacklist.BlockAsync("192.0.2.23", "Honey-token 'Stale lift' tripped");
-        var stuck = await blacklist.LiftForRecoveryAsync(IPAddress.Parse("192.0.2.33"));
+        await StuckGuardAsync("192.0.2.33");
         var before = await AuditTrail.HeadAsync(vault);
         try
         {
@@ -337,7 +356,7 @@ public sealed class NetworksApiTests(VaultFixture vault)
         finally
         {
             await blacklist.UnblockAsync("192.0.2.23/32");
-            await stuck.ReleaseAsync();
+            await ReleaseStuckGuardAsync("192.0.2.33/32");
         }
     }
 
@@ -360,7 +379,7 @@ public sealed class NetworksApiTests(VaultFixture vault)
         var stale = vault.CreateSession(SessionApi.WithStrongAuthenticationAt(vault, admin, DateTimeOffset.UtcNow.AddMinutes(-11)), IPAddress.Parse("198.18.114.25"));
         var blacklist = vault.Services.GetRequiredService<IIpBlacklist>();
         await blacklist.BlockAsync("192.0.2.25", "Honey-token 'Proof lift' tripped");
-        await blacklist.LiftForRecoveryAsync(IPAddress.Parse("192.0.2.35"));
+        await StuckGuardAsync("192.0.2.35");
         await AdministratorFreshnessTests.AssertStepUpAsync(await NetworksApi.AddAsync(stale.Client, "203.0.113.46"), "code");
         var owner = await ProfileHttp.AccountAsync(vault, "it-net-real-proof");
         try
@@ -383,7 +402,7 @@ public sealed class NetworksApiTests(VaultFixture vault)
             await NetworksApi.ForgetAsync(vault, "203.0.113.46/32");
             await NetworksApi.ForgetAsync(vault, "198.18.114.25/32");
             await blacklist.UnblockAsync("192.0.2.25/32");
-            await blacklist.ReleaseGuardAsync("192.0.2.35/32");
+            await ReleaseStuckGuardAsync("192.0.2.35/32");
         }
     }
 
@@ -468,6 +487,19 @@ public sealed class NetworksApiTests(VaultFixture vault)
         {
             await NetworksApi.ForgetAsync(vault, "203.0.113.48/32");
             await blacklist.UnblockAsync("192.0.2.48/32");
+        }
+    }
+
+    /// <summary>A lift break-glass could not settle, as after 503 recovery_incomplete: only its guard refuses.</summary>
+    private async Task StuckGuardAsync(string address)
+        => await (await vault.Services.GetRequiredService<IIpBlacklist>().LiftForRecoveryAsync(IPAddress.Parse(address))).MarkStuckAsync();
+
+    /// <summary>Releases a stuck guard a test left, if a test step did not release it already.</summary>
+    private async Task ReleaseStuckGuardAsync(string network)
+    {
+        if (await vault.Services.GetRequiredService<IIpBlacklist>().ClaimStuckGuardAsync(network) is { } claimed)
+        {
+            await claimed.ReleaseAsync();
         }
     }
 }

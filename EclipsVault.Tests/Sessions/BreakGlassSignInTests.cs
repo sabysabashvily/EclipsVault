@@ -57,7 +57,7 @@ public sealed class BreakGlassSignInTests
         Assert.Equal([AuditAction.BreakGlassRecovery, AuditAction.IpRangeUnblocked], glass.Audit.Recorded.Select(entry => entry.Action));
         // The source is still refused while the lift's own row is written: nothing is granted before it commits.
         Assert.Equal([true, true], glass.Audit.SourceBlockedAtEachWrite);
-        Assert.Equal("198.18.93.9", glass.Audit.Recorded[1].ResourceName);
+        Assert.Equal("198.18.93.9/32", glass.Audit.Recorded[1].ResourceName);
         Assert.Equal("Intrusion-defence block lifted by break-glass recovery: 198.18.93.9/32", glass.Audit.Recorded[1].Details);
     }
 
@@ -73,7 +73,33 @@ public sealed class BreakGlassSignInTests
         await glass.FinishAsync(Source);
 
         var lift = Assert.Single(glass.Audit.Recorded, entry => entry.Action == AuditAction.IpRangeUnblocked);
+        Assert.Equal("198.18.93.0/24, 198.18.93.9/32", lift.ResourceName);
         Assert.Equal("Intrusion-defence block lifted by break-glass recovery: 198.18.93.0/24, 198.18.93.9/32", lift.Details);
+    }
+
+    [Fact]
+    public async Task A_lift_that_cannot_be_put_back_lists_its_guard_as_stuck_for_an_administrator()
+    {
+        var glass = await Glass.CreateAsync();
+        glass.Audit.Reject = AuditAction.IpRangeUnblocked;
+        glass.Audit.BeforeRejection = () => glass.Blacklist.BlockAsync(Source.ToString(), "raised meanwhile");
+        await glass.Blacklist.BlockAsync(Source.ToString(), "probe");
+
+        await Assert.ThrowsAsync<RecoveryIncompleteException>(() => glass.FinishAsync(Source));
+
+        Assert.Equal(["198.18.93.9/32"], await glass.Blacklist.ListStuckGuardsAsync());
+    }
+
+    [Fact]
+    public async Task A_lift_put_back_exactly_lists_no_stuck_guard()
+    {
+        var glass = await Glass.CreateAsync();
+        glass.Audit.Reject = AuditAction.IpRangeUnblocked;
+        await glass.Blacklist.BlockAsync(Source.ToString(), "probe");
+
+        await Assert.ThrowsAsync<AuditWriteFailedException>(() => glass.FinishAsync(Source));
+
+        Assert.Empty(await glass.Blacklist.ListStuckGuardsAsync());
     }
 
     [Fact]
@@ -217,10 +243,29 @@ public sealed class BreakGlassSignInTests
         Assert.Equal(2, blacklist.Releases);
     }
 
+    [Fact]
+    public async Task A_guard_that_cannot_be_released_twice_is_marked_stuck()
+    {
+        var account = new User { Id = Guid.NewGuid(), Username = "glass", CredentialGeneration = 1 };
+        var revocation = new InMemorySessionRevocationService(NullLogger<InMemorySessionRevocationService>.Instance);
+        var stamp = new SessionStamp(1, await revocation.CaptureAsync(account.Id));
+        var blacklist = new UnreleasedGuardBlacklist(failedReleases: 2);
+        var issuer = new SessionIssuer(new SessionAccountStore(account), revocation,
+            new InMemorySessionRegistry(NullLogger<InMemorySessionRegistry>.Instance, TimeProvider.System),
+            new RecordingAttempt(), NullLogger<SessionIssuer>.Instance);
+
+        await Assert.ThrowsAsync<RecoveryIncompleteException>(() => new BreakGlassSignIn(issuer, blacklist, new RecordingAudit(blacklist))
+            .FinishAsync(Context(), UserDto.From(account), stamp, Source, default));
+
+        Assert.Equal(1, blacklist.MarkedStuck);
+    }
+
     /// <summary>A blacklist with nothing to lift whose guard fails to release <c>failedReleases</c> times.</summary>
     private sealed class UnreleasedGuardBlacklist(int failedReleases) : IIpBlacklist, IRecoveryLift
     {
         public int Releases { get; private set; }
+
+        public int MarkedStuck { get; private set; }
 
         public bool Lifted => false;
 
@@ -242,9 +287,15 @@ public sealed class BreakGlassSignInTests
 
         public Task<ILiftedIpBlock?> UnblockAsync(string network, CancellationToken ct = default) => throw new NotSupportedException();
 
-        public Task<IReadOnlyList<string>> ListGuardsAsync(CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<IReadOnlyList<string>> ListStuckGuardsAsync(CancellationToken ct = default) => throw new NotSupportedException();
 
-        public Task<ILiftedIpBlock?> ReleaseGuardAsync(string network, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<IClaimedGuard?> ClaimStuckGuardAsync(string network, CancellationToken ct = default) => throw new NotSupportedException();
+
+        public Task MarkStuckAsync()
+        {
+            MarkedStuck++;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class Glass

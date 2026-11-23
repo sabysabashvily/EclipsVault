@@ -20,6 +20,8 @@ public sealed class InMemoryIpBlacklist : IIpBlacklist
     private readonly ConcurrentDictionary<string, Entry> _blocked = new();
     // Break-glass guards, keyed by the lift that holds them and the range they cover.
     private readonly ConcurrentDictionary<(Guid Lift, string Network), IPNetwork> _guards = new();
+    // Guards of lifts marked stuck, for an administrator to release; a release in progress holds its own.
+    private readonly HashSet<(Guid Lift, string Network)> _stuck = [];
     // Checks, recovery lifts and their settlement take turns, so a check never reads a block already
     // lifted and then its guard already released, which would let one request through unrecorded.
     private readonly Lock _gate = new();
@@ -93,48 +95,53 @@ public sealed class InMemoryIpBlacklist : IIpBlacklist
         }
     }
 
-    public Task<IReadOnlyList<string>> ListGuardsAsync(CancellationToken ct = default)
+    public Task<IReadOnlyList<string>> ListStuckGuardsAsync(CancellationToken ct = default)
     {
         lock (_gate)
         {
             return Task.FromResult<IReadOnlyList<string>>(
-                _guards.Keys.Select(guard => guard.Network).Distinct().Order(StringComparer.Ordinal).ToList());
+                _stuck.Select(guard => guard.Network).Distinct().Order(StringComparer.Ordinal).ToList());
         }
     }
 
-    public Task<ILiftedIpBlock?> ReleaseGuardAsync(string network, CancellationToken ct = default)
+    public Task<IClaimedGuard?> ClaimStuckGuardAsync(string network, CancellationToken ct = default)
     {
         lock (_gate)
         {
-            var released = _guards.Where(guard => guard.Key.Network == network.Trim()).ToList();
-            foreach (var guard in released)
+            var claimed = _stuck.Where(guard => guard.Network == network.Trim()).ToList();
+            if (claimed.Count == 0)
             {
-                _guards.TryRemove(guard);
+                return Task.FromResult<IClaimedGuard?>(null);
             }
 
-            if (released.Count == 0)
-            {
-                return Task.FromResult<ILiftedIpBlock?>(null);
-            }
-
-            _logger.LogWarning("Break-glass guard on {Network} was released by an administrator", network);
-            return Task.FromResult<ILiftedIpBlock?>(new ReleasedGuard(this, network.Trim(), released));
+            _stuck.ExceptWith(claimed);
+            return Task.FromResult<IClaimedGuard?>(new ClaimedGuard(this, network.Trim(), claimed));
         }
     }
 
-    private sealed class ReleasedGuard(InMemoryIpBlacklist owner, string network, IReadOnlyList<KeyValuePair<(Guid Lift, string Network), IPNetwork>> released)
-        : ILiftedIpBlock
+    private sealed class ClaimedGuard(InMemoryIpBlacklist owner, string network, IReadOnlyList<(Guid Lift, string Network)> claimed) : IClaimedGuard
     {
         public string Network => network;
 
-        public Task RestoreAsync(CancellationToken ct = default)
+        public Task ReleaseAsync()
         {
             lock (owner._gate)
             {
-                foreach (var guard in released)
+                foreach (var guard in claimed)
                 {
-                    owner._guards[guard.Key] = guard.Value;
+                    owner._guards.TryRemove(guard, out _);
                 }
+            }
+
+            owner._logger.LogWarning("Stuck break-glass guard on {Network} was released by an administrator", network);
+            return Task.CompletedTask;
+        }
+
+        public Task AbandonAsync()
+        {
+            lock (owner._gate)
+            {
+                owner._stuck.UnionWith(claimed);
             }
 
             return Task.CompletedTask;
@@ -216,6 +223,16 @@ public sealed class InMemoryIpBlacklist : IIpBlacklist
                 Release();
                 return Task.FromResult(true);
             }
+        }
+
+        public Task MarkStuckAsync()
+        {
+            lock (owner._gate)
+            {
+                owner._stuck.UnionWith(owner._guards.Keys.Where(guard => guard.Lift == lift));
+            }
+
+            return Task.CompletedTask;
         }
 
         private void Release()

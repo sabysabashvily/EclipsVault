@@ -24,4 +24,10 @@ public interface IRecoveryLift
     /// </summary>
     /// <returns>Whether the restoration was confirmed; when it was not, the guard stays.</returns>
     Task<bool> TryRestoreAsync();
+
+    /// <summary>
+    /// The lift cannot be settled (recovery incomplete): its guards stay, and become listed for an
+    /// administrator to release once the trail and blocks are reconciled. Never throws.
+    /// </summary>
+    Task MarkStuckAsync();
 }

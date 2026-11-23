@@ -379,16 +379,25 @@ describe('Networks', () => {
     expect(status(page, 'status')).toBe('');
   });
 
-  it('lists a stuck break-glass guard with what releasing it does', async () => {
+  it('lists a stuck break-glass guard with what it may still refuse', async () => {
     const { page } = await loaded(guarded);
     const guard = page.querySelector('[aria-label="Break-glass guards"] li');
     expect(guard?.textContent).toContain('198.51.100.7/32');
-    expect(guard?.textContent).toContain('Held by a break-glass recovery that could not finish');
-    expect(page.textContent).toContain(
-      'Release a guard only once the audit log accepts entries again. The release is audited.',
+    expect(guard?.textContent).toContain(
+      'The vault may still refuse addresses in this range until the guard is released.',
     );
     expect(button(page, 'Release guard')).toBeTruthy();
     expect(page.textContent).not.toContain('No ranges are currently blocked.');
+  });
+
+  it('tells the operator to reconcile the trail and the blocks before releasing a guard', async () => {
+    const { page } = await loaded(guarded);
+    expect(page.textContent?.replace(/\s+/g, ' ')).toContain(
+      'These guards were left by break-glass recoveries that could not finish. Before you release ' +
+        "one, make sure the audit log accepts entries again and look in it for the recovery's " +
+        '"Range unblocked" entry. If it is missing, re-create any block the recovery removed that ' +
+        "should stay, as the README's break-glass section describes. The release is audited.",
+    );
   });
 
   it('releases a guard after the exact confirmation and one proof', async () => {
@@ -396,7 +405,7 @@ describe('Networks', () => {
     button(page, 'Release guard').click();
     await fixture.whenStable();
     expect(page.querySelector('[role="alertdialog"]')?.textContent).toContain(
-      'Release the break-glass guard on 198.51.100.7/32? Requests from it are let in again unless a block still covers it.',
+      'Release the break-glass guard on 198.51.100.7/32? Addresses it refuses are let in again unless a block still covers them.',
     );
     button(page, 'Continue').click();
     stepUpRequired(`${path}/blocks/release-guard`);
@@ -412,16 +421,14 @@ describe('Networks', () => {
   });
 
   it.each([
-    { code: 'guard_not_found', title: 'That range has no break-glass guard.', httpStatus: 404 },
+    {
+      code: 'guard_not_found',
+      title: 'That range has no stuck break-glass guard.',
+      httpStatus: 404,
+    },
     {
       code: 'audit_unavailable',
       title: 'The audit trail is unavailable, so the vault refused the request.',
-      httpStatus: 503,
-    },
-    {
-      code: 'unblock_unrecorded',
-      title:
-        'The block was lifted, but recording and restoring it failed. Check the range before retrying.',
       httpStatus: 503,
     },
   ])(

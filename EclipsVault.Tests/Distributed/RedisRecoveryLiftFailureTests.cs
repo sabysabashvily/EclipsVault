@@ -36,6 +36,19 @@ public sealed class RedisRecoveryLiftFailureTests
         Assert.Contains("lift-failure:ipguard:198.51.100.120/32", critical, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task A_lift_that_failed_partway_lists_every_range_it_guards_as_stuck()
+    {
+        var store = new RedisBlacklistStore { RemovalWithoutReply = "lift-failure:ipblock:198.51.100.0/24" };
+        var blacklist = new RedisIpBlacklist(store.Connection, Options.Create(new RedisOptions { InstanceName = "lift-failure" }),
+            Options.Create(new IntrusionResponseOptions()), new CriticalLog());
+        await store.Connection.GetDatabase().StringSetAsync("lift-failure:ipblock:198.51.100.0/24", "range", when: When.NotExists);
+
+        await Assert.ThrowsAsync<RedisTimeoutException>(() => blacklist.LiftForRecoveryAsync(Source));
+
+        Assert.Equal(["198.51.100.0/24", "198.51.100.120/32"], await blacklist.ListStuckGuardsAsync());
+    }
+
     private sealed class CriticalLog : ILogger<RedisIpBlacklist>
     {
         public List<string> Messages { get; } = [];

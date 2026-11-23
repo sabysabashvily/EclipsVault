@@ -43,13 +43,13 @@ public sealed class BreakGlassSignIn(SessionIssuer issuer, IIpBlacklist blacklis
 
         try
         {
-            await audit.WriteAsync(Lift(user, source, lift.Removed), CancellationToken.None);
+            await audit.WriteAsync(Lift(user, lift.Removed), CancellationToken.None);
         }
         catch (AuditWriteFailedException)
         {
             if (!await lift.TryRestoreAsync())
             {
-                throw new RecoveryIncompleteException(lift.Guard);
+                throw await IncompleteAsync(lift);
             }
 
             throw;
@@ -93,8 +93,15 @@ public sealed class BreakGlassSignIn(SessionIssuer issuer, IIpBlacklist blacklis
         }
         catch (Exception)
         {
-            throw new RecoveryIncompleteException(lift.Guard);
+            throw await IncompleteAsync(lift);
         }
+    }
+
+    /// <summary>The lift stays unsettled, so its guard is marked stuck: listed for an administrator to release.</summary>
+    private static async Task<RecoveryIncompleteException> IncompleteAsync(IRecoveryLift lift)
+    {
+        await lift.MarkStuckAsync();
+        return new RecoveryIncompleteException(lift.Guard);
     }
 
     private static AuditEntry Recovery(UserDto user, IPAddress? source) => new()
@@ -107,13 +114,18 @@ public sealed class BreakGlassSignIn(SessionIssuer issuer, IIpBlacklist blacklis
         Details = $"Break-glass recovery from {source}; lifting any intrusion block on it"
     };
 
-    private static AuditEntry Lift(UserDto user, IPAddress source, IReadOnlyList<string> removed) => new()
+    // The ranges are the row's resource, as for an administrator's lift, so My Activity shows them too.
+    private static AuditEntry Lift(UserDto user, IReadOnlyList<string> removed)
     {
-        Action = AuditAction.IpRangeUnblocked,
-        ResourceType = "TrustedNetwork",
-        ResourceName = source.ToString(),
-        ActorUserId = user.Id,
-        ActorUsername = user.Username,
-        Details = $"Intrusion-defence block lifted by break-glass recovery: {string.Join(", ", removed.Order(StringComparer.Ordinal))}"
-    };
+        var ranges = string.Join(", ", removed.Order(StringComparer.Ordinal));
+        return new AuditEntry
+        {
+            Action = AuditAction.IpRangeUnblocked,
+            ResourceType = "TrustedNetwork",
+            ResourceName = ranges,
+            ActorUserId = user.Id,
+            ActorUsername = user.Username,
+            Details = $"Intrusion-defence block lifted by break-glass recovery: {ranges}"
+        };
+    }
 }

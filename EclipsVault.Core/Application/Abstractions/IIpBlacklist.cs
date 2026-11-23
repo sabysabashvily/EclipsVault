@@ -28,12 +28,12 @@ public interface IIpBlacklist
     /// </summary>
     Task<IRecoveryLift> LiftForRecoveryAsync(IPAddress address);
 
-    /// <summary>The ranges a break-glass guard holds refused, whether its lift is in flight or stuck.</summary>
-    Task<IReadOnlyList<string>> ListGuardsAsync(CancellationToken ct = default);
+    /// <summary>The ranges held by a guard whose lift was marked stuck; a lift still in flight is not listed.</summary>
+    Task<IReadOnlyList<string>> ListStuckGuardsAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// An administrator's release of every guard held on <paramref name="network"/>, for a lift that
-    /// could not be settled. Returns what it removed, so a release whose row is refused can be put back.
+    /// Claims the stuck guards on <paramref name="network"/> for an administrator's release, leaving them
+    /// in force. Null when there is none to claim; guards of lifts still in flight are never claimed.
     /// </summary>
-    Task<ILiftedIpBlock?> ReleaseGuardAsync(string network, CancellationToken ct = default);
+    Task<IClaimedGuard?> ClaimStuckGuardAsync(string network, CancellationToken ct = default);
 }

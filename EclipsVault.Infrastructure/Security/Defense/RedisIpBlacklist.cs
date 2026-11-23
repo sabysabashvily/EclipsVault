@@ -115,51 +115,75 @@ public sealed class RedisIpBlacklist : IIpBlacklist
         }
     }
 
-    public Task<IReadOnlyList<string>> ListGuardsAsync(CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<string>>(ScanKeys($"{_prefix}:ipguard:*")
-            .Select(key => ((string)key!)[$"{_prefix}:ipguard:".Length..])
+    public Task<IReadOnlyList<string>> ListStuckGuardsAsync(CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<string>>(ScanKeys($"{_prefix}:ipstuck:*")
+            .Select(key => ((string)key!)[$"{_prefix}:ipstuck:".Length..])
             .Order(StringComparer.Ordinal)
             .ToList());
 
-    public async Task<ILiftedIpBlock?> ReleaseGuardAsync(string network, CancellationToken ct = default)
+    public async Task<IClaimedGuard?> ClaimStuckGuardAsync(string network, CancellationToken ct = default)
     {
         var canonical = network.Trim();
         var db = _redis.GetDatabase();
-        var lifts = await db.SetMembersAsync(GuardKey(canonical));
-        if (lifts.Length == 0)
-        {
-            return null;
-        }
-
-        var released = new ReleasedGuard(db, GuardKey(canonical), canonical, lifts);
+        var claimed = new List<RedisValue>();
+        var claim = new ClaimedGuard(this, db, canonical, claimed);
         try
         {
-            // Only the lifts read here go, so a recovery that starts meanwhile keeps its own guard.
-            foreach (var lift in lifts)
+            // Each removal is atomic and says whether this release won that lift, so two releases never
+            // claim the same one. The guard itself stays: claiming refuses nothing less.
+            foreach (var lift in await db.SetMembersAsync(StuckKey(canonical)))
             {
-                await db.SetRemoveAsync(GuardKey(canonical), lift);
+                if (await db.SetRemoveAsync(StuckKey(canonical), lift))
+                {
+                    claimed.Add(lift);
+                }
             }
         }
         catch (Exception)
         {
-            // No row records a release that failed halfway, so the guard goes back whole.
-            await released.RestoreAsync();
+            await claim.AbandonAsync();
             throw;
         }
 
-        _logger.LogWarning("Break-glass guard on {Network} was released by an administrator", network);
-        return released;
+        return claimed.Count == 0 ? null : claim;
     }
 
-    private sealed class ReleasedGuard(IDatabase database, RedisKey key, string network, RedisValue[] lifts) : ILiftedIpBlock
+    private sealed class ClaimedGuard(RedisIpBlacklist owner, IDatabase database, string network, List<RedisValue> lifts) : IClaimedGuard
     {
         public string Network => network;
 
-        public async Task RestoreAsync(CancellationToken ct = default)
+        public async Task ReleaseAsync()
         {
-            foreach (var lift in lifts)
+            try
             {
-                await database.SetAddAsync(key, lift);
+                // One SREM, so the release is never left halfway; it removes the claimed lifts only.
+                await database.SetRemoveAsync(owner.GuardKey(network), lifts.ToArray());
+            }
+            catch (Exception)
+            {
+                await AbandonAsync();
+                throw;
+            }
+
+            owner._logger.LogWarning("Stuck break-glass guard on {Network} was released by an administrator", network);
+        }
+
+        public async Task AbandonAsync()
+        {
+            if (lifts.Count == 0)
+            {
+                return;
+            }
+
+            try
+            {
+                await database.SetAddAsync(owner.StuckKey(network), lifts.ToArray());
+            }
+            catch (Exception failure)
+            {
+                owner._logger.LogCritical(
+                    "Could not list the stuck break-glass guard on {Network} again ({Failure}); it still refuses, held by members {Lifts} of {Guard}",
+                    network, failure.GetType().Name, string.Join(", ", lifts), (string)owner.GuardKey(network)!);
             }
         }
     }
@@ -205,6 +229,7 @@ public sealed class RedisIpBlacklist : IIpBlacklist
             _logger.LogCritical(
                 "Break-glass lift failed ({Failure}) after removing {Removed}, possibly removing {Unanswered} with its record unknown (restored: {Restored}); the source stays refused by {Guard}",
                 failure.GetType().Name, string.Join(", ", removed.Select(block => block.Network)), unanswered ?? "nothing else", restored, recovery.Guard);
+            await recovery.MarkStuckAsync();
             throw;
         }
 
@@ -247,6 +272,22 @@ public sealed class RedisIpBlacklist : IIpBlacklist
             }
         }
 
+        public async Task MarkStuckAsync()
+        {
+            try
+            {
+                foreach (var network in guarded)
+                {
+                    await database.SetAddAsync(owner.StuckKey(network), lift);
+                }
+            }
+            catch (Exception failure)
+            {
+                owner._logger.LogCritical("Could not list stuck break-glass lift {Lift} ({Failure}); its guard still refuses: {Guard}",
+                    lift, failure.GetType().Name, Guard);
+            }
+        }
+
         /// <summary>Puts back each removed record, keeping a block raised meanwhile. Never throws.</summary>
         /// <returns>Whether every removed record is confirmed back as it was.</returns>
         public async Task<bool> RestoreRemovedAsync()
@@ -274,6 +315,9 @@ public sealed class RedisIpBlacklist : IIpBlacklist
 
     // Outside the ipblock: namespace, so neither listing nor any lift of a block can see or remove it.
     private RedisKey GuardKey(string network) => $"{_prefix}:ipguard:{network}";
+
+    // Which guards' lifts are stuck. Marking or claiming one never touches the guard, so it refuses throughout.
+    private RedisKey StuckKey(string network) => $"{_prefix}:ipstuck:{network}";
 
     /// <summary>Enumerates matching keys across the connected primary endpoints (admin-only, infrequent).</summary>
     private IEnumerable<RedisKey> ScanKeys(string pattern)

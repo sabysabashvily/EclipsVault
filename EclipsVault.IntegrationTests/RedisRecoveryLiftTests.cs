@@ -107,20 +107,62 @@ public sealed class RedisRecoveryLiftTests(RedisSessionFixture fixture) : IClass
     }
 
     [Fact]
-    public async Task An_administrator_release_on_one_replica_lets_every_replica_admit_the_source_and_can_be_undone()
+    public async Task A_stuck_lift_is_listed_on_every_replica_and_a_live_one_is_not()
     {
-        await using var replicas = await Replicas.ConnectAsync(fixture, "lift-release");
-        await fixture.Database.StringSetAsync("lift-release:ipblock:198.51.100.120/32", Host);
-        await replicas.First.LiftForRecoveryAsync(Source);
-        Assert.Equal(["198.51.100.0/24", "198.51.100.120/32"], await replicas.Second.ListGuardsAsync());
+        await using var replicas = await Replicas.ConnectAsync(fixture, "stuck-list");
+        await (await replicas.First.LiftForRecoveryAsync(Source)).MarkStuckAsync();
+        await replicas.First.LiftForRecoveryAsync(IPAddress.Parse("198.51.100.130"));
 
-        var released = await replicas.Second.ReleaseGuardAsync("198.51.100.120/32");
+        Assert.Equal(["198.51.100.0/24", "198.51.100.120/32"], await replicas.Second.ListStuckGuardsAsync());
+    }
 
-        Assert.NotNull(released);
-        Assert.False(await replicas.First.IsBlockedAsync(Source));
-        Assert.Equal(["198.51.100.0/24"], await replicas.First.ListGuardsAsync());
-        await released.RestoreAsync();
+    [Fact]
+    public async Task A_claimed_guard_keeps_refusing_on_every_replica_until_it_is_released()
+    {
+        await using var replicas = await Replicas.ConnectAsync(fixture, "stuck-claim");
+        await (await replicas.First.LiftForRecoveryAsync(Source)).MarkStuckAsync();
+
+        var claimed = await replicas.Second.ClaimStuckGuardAsync("198.51.100.120/32");
+
         Assert.True(await replicas.First.IsBlockedAsync(Source));
+        await claimed!.ReleaseAsync();
+        Assert.False(await replicas.First.IsBlockedAsync(Source));
+    }
+
+    [Fact]
+    public async Task A_second_replica_cannot_claim_a_guard_another_release_holds()
+    {
+        await using var replicas = await Replicas.ConnectAsync(fixture, "stuck-twice");
+        await (await replicas.First.LiftForRecoveryAsync(Source)).MarkStuckAsync();
+        Assert.NotNull(await replicas.First.ClaimStuckGuardAsync("198.51.100.120/32"));
+
+        Assert.Null(await replicas.Second.ClaimStuckGuardAsync("198.51.100.120/32"));
+    }
+
+    [Fact]
+    public async Task An_abandoned_claim_lists_the_guard_again_and_it_still_refuses()
+    {
+        await using var replicas = await Replicas.ConnectAsync(fixture, "stuck-abandon");
+        await (await replicas.First.LiftForRecoveryAsync(Source)).MarkStuckAsync();
+
+        await (await replicas.Second.ClaimStuckGuardAsync("198.51.100.120/32"))!.AbandonAsync();
+
+        Assert.Contains("198.51.100.120/32", await replicas.First.ListStuckGuardsAsync());
+        Assert.True(await replicas.First.IsBlockedAsync(Source));
+    }
+
+    [Fact]
+    public async Task A_release_leaves_the_guard_of_a_live_recovery_on_the_same_range()
+    {
+        await using var replicas = await Replicas.ConnectAsync(fixture, "stuck-live");
+        await (await replicas.First.LiftForRecoveryAsync(Source)).MarkStuckAsync();
+        var live = await replicas.First.LiftForRecoveryAsync(Source);
+
+        await (await replicas.Second.ClaimStuckGuardAsync("198.51.100.120/32"))!.ReleaseAsync();
+
+        Assert.True(await replicas.Second.IsBlockedAsync(Source));
+        await live.ReleaseAsync();
+        Assert.False(await replicas.Second.IsBlockedAsync(Source));
     }
 
     private sealed class Replicas : IAsyncDisposable

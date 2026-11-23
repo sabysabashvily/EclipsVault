@@ -58,16 +58,21 @@ internal sealed class RedisBlacklistStore
                     _sets[key] = members = [];
                 }
 
-                return Task.FromResult(members.Add((RedisValue)arguments[1]!));
+                return arguments[1] is RedisValue[] adding
+                    ? Task.FromResult((long)adding.Count(members.Add))
+                    : Task.FromResult(members.Add((RedisValue)arguments[1]!));
             case nameof(IDatabase.SetRemoveAsync):
-                var removed = _sets.TryGetValue(key, out var held) && held.Remove((RedisValue)arguments[1]!);
+                _sets.TryGetValue(key, out var held);
+                var batch = arguments[1] as RedisValue[];
+                var removing = batch ?? [(RedisValue)arguments[1]!];
+                var removed = removing.Count(member => held?.Remove(member) == true);
                 // Redis deletes a set when its last member goes.
                 if (held is { Count: 0 })
                 {
                     _sets.Remove(key);
                 }
 
-                return Task.FromResult(removed);
+                return batch is null ? Task.FromResult(removed == 1) : Task.FromResult((long)removed);
             case nameof(IDatabase.SetMembersAsync):
                 return Task.FromResult(_sets.TryGetValue(key, out var listed) ? listed.ToArray() : Array.Empty<RedisValue>());
             case nameof(IDatabase.StringSetAsync):

@@ -117,12 +117,13 @@ public sealed class NetworksAuditFailureTests(AuditFailureFixture failure)
     }
 
     [Fact]
-    public async Task A_guard_release_that_cannot_be_recorded_keeps_the_source_refused()
+    public async Task A_guard_release_that_cannot_be_recorded_keeps_the_guard_listed_and_the_source_refused()
     {
         var vault = failure.Vault;
         var admin = await vault.AdminClientAsync();
         var blacklist = vault.Services.GetRequiredService<IIpBlacklist>();
         var stuck = await blacklist.LiftForRecoveryAsync(IPAddress.Parse("198.51.100.118"));
+        await stuck.MarkStuckAsync();
         var before = await AuditTrail.HeadAsync(vault);
 
         await failure.RejectAuditWritesAsync();
@@ -131,13 +132,45 @@ public sealed class NetworksAuditFailureTests(AuditFailureFixture failure)
             var response = await NetworksApi.ReleaseGuardAsync(admin, "198.51.100.118/32");
 
             await UiApiFailureContractTests.AssertProblemAsync(response, 503, "audit_unavailable");
-            Assert.Contains("198.51.100.118/32", await blacklist.ListGuardsAsync());
+            Assert.Contains("198.51.100.118/32", await blacklist.ListStuckGuardsAsync());
             Assert.Equal(403, (await vault.SendFromAsync(IPAddress.Parse("198.51.100.118"), "/")).Response.StatusCode);
             Assert.Empty(await AuditTrail.RowsAfterAsync(vault, before));
         }
         finally
         {
             await failure.RestoreAuditWritesAsync();
+            await stuck.ReleaseAsync();
+        }
+    }
+
+    [Fact]
+    public async Task A_released_guard_keeps_refusing_until_its_row_commits()
+    {
+        var vault = failure.Vault;
+        var admin = await vault.AdminClientAsync();
+        var blacklist = vault.Services.GetRequiredService<IIpBlacklist>();
+        var stuck = await blacklist.LiftForRecoveryAsync(IPAddress.Parse("198.51.100.125"));
+        await stuck.MarkStuckAsync();
+        try
+        {
+            Task<HttpResponseMessage> release;
+            var held = await HeldAuditChain.TakeAsync(vault);
+            try
+            {
+                release = NetworksApi.ReleaseGuardAsync(admin, "198.51.100.125/32");
+                await held.WaitForQueuedWritersAsync(1);
+
+                Assert.Equal(403, (await vault.SendFromAsync(IPAddress.Parse("198.51.100.125"), "/")).Response.StatusCode);
+            }
+            finally
+            {
+                await held.DisposeAsync();
+            }
+
+            Assert.Equal(HttpStatusCode.NoContent, (await release).StatusCode);
+        }
+        finally
+        {
             await stuck.ReleaseAsync();
         }
     }

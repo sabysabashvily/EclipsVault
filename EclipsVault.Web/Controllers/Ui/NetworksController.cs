@@ -28,7 +28,7 @@ public sealed class NetworksController(ITrustedNetworkService trustedNetworks, I
             (await trustedNetworks.ListAsync(ct)).Select(network => new TrustedNetworkResponse(
                 network.Id, network.Cidr, network.Label, network.AddedBy, network.CreatedAtUtc)).ToList(),
             (await blacklist.ListAsync(ct)).Select(block => new NetworkBlockResponse(block.Network, block.Reason, block.BlockedAtUtc)).ToList(),
-            await blacklist.ListGuardsAsync(ct));
+            await blacklist.ListStuckGuardsAsync(ct));
     }
 
     [HttpPost("trust-current-address")]
@@ -92,7 +92,7 @@ public sealed class NetworksController(ITrustedNetworkService trustedNetworks, I
         return NoContent();
     }
 
-    /// <summary>Releases the guard a break-glass recovery left when it answered 503 recovery_incomplete (ADR-0032).</summary>
+    /// <summary>Releases the guards a break-glass recovery left when it answered 503 recovery_incomplete (ADR-0032).</summary>
     [HttpPost("blocks/release-guard")]
     [RequestSizeLimit(4096)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -105,7 +105,7 @@ public sealed class NetworksController(ITrustedNetworkService trustedNetworks, I
         var range = request.Range ?? "";
         if (!await blocks.ReleaseGuardAsync(range, ct))
         {
-            return AdministratorProblems.Problem(StatusCodes.Status404NotFound, "guard_not_found", "That range has no break-glass guard.");
+            return AdministratorProblems.Problem(StatusCodes.Status404NotFound, "guard_not_found", "That range has no stuck break-glass guard.");
         }
 
         logger.LogWarning("Administrator {Username} released the break-glass guard on {Network}", User.GetUsername(), range);
