@@ -110,6 +110,10 @@ import { Component, input } from '@angular/core';
         @case ('administration') {
           <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" />
         }
+        @case ('theme') {
+          <circle cx="12" cy="12" r="8" />
+          <path d="M12 4v16a8 8 0 0 0 0-16Z" fill="currentColor" stroke="none" />
+        }
       }
     </svg>
   `,

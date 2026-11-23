@@ -390,6 +390,27 @@ const sidebarThemes = [
   { name: 'light', switchLabel: 'Switch to dark' },
 ] as const;
 
+test('the compact rail switches theme without opening the account menu', async ({
+  page,
+  baseURL,
+}) => {
+  await openMyAccessBookmark(page, administratorCookies, baseURL, 'dark');
+  const shell = new AppShell(page);
+
+  await shell.collapseSidebar.click();
+  await expect(shell.expandSidebar).toHaveAttribute('aria-expanded', 'false');
+  await shell.lightTheme.click();
+
+  await expect(shell.darkTheme).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Profile', exact: true })).toBeHidden();
+  await expect(shell.expandSidebar).toBeVisible();
+  expect(await page.context().cookies()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ name: 'EclipsVault.Theme', value: 'light' }),
+    ]),
+  );
+});
+
 for (const account of sidebarAccounts) {
   for (const theme of sidebarThemes) {
     test(`the ${account.kind} sidebar shows its page links in ${theme.name}`, async ({

@@ -16,6 +16,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { catchError, debounce, map, of, Subject, switchMap, timer } from 'rxjs';
+import { APPLE_PLATFORM, chordLabel, chords, pressed } from './shortcuts';
 import type { SidebarLink } from './sidebar';
 
 /** Where a full page load starts: the browser's own location, replaceable in tests. */
@@ -57,11 +58,6 @@ export function paletteCommands(
     ...pages,
     ...shortcuts.map(({ label, url }): PaletteCommand => ({ kind: 'Go to', label, url })),
   ];
-}
-
-/** The chord as this keyboard spells it: ⌘ is a Mac key, so everyone else is shown Ctrl. */
-export function commandChord(platform: string): string {
-  return /Mac|iPhone|iPad|iPod/.test(platform) ? '⌘K' : 'Ctrl K';
 }
 
 interface SecretHit {
@@ -124,6 +120,15 @@ export function secretsFrom(response: HttpResponse<string>, origin: string): Pal
   }));
 }
 
+/** ⌘K and ⌘⇧P (Ctrl K and Ctrl Shift P off Apple platforms) open the palette, even while typing. */
+export function opensPalette(event: KeyboardEvent, apple: boolean): boolean {
+  return (
+    !event.repeat &&
+    !event.isComposing &&
+    (pressed(event, chords.search, apple) || pressed(event, chords.searchAlt, apple))
+  );
+}
+
 /** One search's outcome, tied to the query it answered so it never stands in for another. */
 interface Search {
   readonly query: string;
@@ -144,8 +149,17 @@ interface Search {
 export class CommandPalette {
   readonly sidebar = input.required<HTMLElement>();
   readonly shortcuts = input<readonly SidebarLink[]>([]);
+  readonly desktop = input(true);
 
   private readonly document = inject(DOCUMENT);
+  private readonly apple = inject(APPLE_PLATFORM);
+  /** The shell's shortcuts, listed in the footer as this keyboard spells them. */
+  protected readonly keys = {
+    search: chordLabel(chords.search, this.apple),
+    searchAlt: chordLabel(chords.searchAlt, this.apple),
+    compact: chordLabel(chords.compact, this.apple),
+    peek: chordLabel(chords.peek, this.apple),
+  };
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
   private readonly injector = inject(Injector);
@@ -223,7 +237,7 @@ export class CommandPalette {
   }
 
   protected toggleOnChord(event: KeyboardEvent): void {
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+    if (opensPalette(event, this.apple) && !this.document.querySelector('dialog:modal')) {
       event.preventDefault();
       if (this.isOpen()) this.close();
       else this.open();

@@ -7,13 +7,8 @@ import {
 } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { appConfig } from '../app.config';
-import {
-  CommandPalette,
-  commandChord,
-  PAGE_LOCATION,
-  paletteCommands,
-  secretsFrom,
-} from './command-palette';
+import { APPLE_PLATFORM } from './shortcuts';
+import { CommandPalette, PAGE_LOCATION, paletteCommands, secretsFrom } from './command-palette';
 
 const hit = {
   id: '6d1b2c55-0000-4000-8000-000000000001',
@@ -98,15 +93,6 @@ describe('paletteCommands', () => {
   });
 });
 
-describe('commandChord', () => {
-  it('shows ⌘K on Apple platforms and Ctrl K everywhere else, as the Legacy UI does', () => {
-    expect(commandChord('MacIntel')).toBe('⌘K');
-    expect(commandChord('iPad')).toBe('⌘K');
-    expect(commandChord('Win32')).toBe('Ctrl K');
-    expect(commandChord('Linux x86_64')).toBe('Ctrl K');
-  });
-});
-
 describe('secretsFrom', () => {
   it('rejects a redirected response even when its destination answers valid JSON', () => {
     const response = new HttpResponse({
@@ -123,12 +109,13 @@ describe('CommandPalette', () => {
   let backend: HttpTestingController;
   let opener: HTMLButtonElement;
 
-  async function render() {
+  async function render(apple = false) {
     TestBed.configureTestingModule({
       providers: [
         ...appConfig.providers,
         provideHttpClientTesting(),
         { provide: PAGE_LOCATION, useValue: { assign } },
+        { provide: APPLE_PLATFORM, useValue: apple },
       ],
     });
     backend = TestBed.inject(HttpTestingController);
@@ -158,7 +145,7 @@ describe('CommandPalette', () => {
       }));
     const open = async () => {
       opener.focus();
-      await press('k', { metaKey: true });
+      await press('k', { ctrlKey: true });
     };
     return { host, fixture, input, press, type, items, open, stable };
   }
@@ -191,7 +178,7 @@ describe('CommandPalette', () => {
     );
   }
 
-  it('opens on ⌘K or Ctrl K as a modal dialog listing the sidebar pages, focused on its field', async () => {
+  it('opens on Ctrl K off Apple platforms as a modal dialog listing the sidebar pages, focused on its field', async () => {
     const { host, input, press, items } = await render();
     expect(host.querySelector('[role="dialog"]')).toBeNull();
 
@@ -206,8 +193,40 @@ describe('CommandPalette', () => {
     ]);
     expect(items()[0].active).toBe(true);
 
-    await press('K', { metaKey: true });
+    await press('K', { ctrlKey: true });
     expect(host.querySelector('[role="dialog"]')).toBeNull();
+
+    // ⌘ is not a modifier off Apple platforms; Ctrl Shift P opens the palette as well.
+    await press('k', { metaKey: true });
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    await press('P', { ctrlKey: true, shiftKey: true });
+    expect(host.querySelector('[role="dialog"]')).not.toBeNull();
+  });
+
+  it('opens on ⌘K and ⌘⇧P on Apple platforms, and not on Ctrl', async () => {
+    const { host, press } = await render(true);
+
+    await press('k', { ctrlKey: true });
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    await press('k', { metaKey: true });
+    expect(host.querySelector('[role="dialog"]')).not.toBeNull();
+    await press('Escape');
+    await press('p', { metaKey: true, shiftKey: true });
+    expect(host.querySelector('[role="dialog"]')).not.toBeNull();
+  });
+
+  it('lists every shell shortcut in its footer, spelled for this keyboard', async () => {
+    const { host, open } = await render();
+    await open();
+
+    const shortcuts = [...host.querySelectorAll('.palette-shortcuts li')].map((item) =>
+      item.textContent?.replace(/\s+/g, ' ').trim(),
+    );
+    expect(shortcuts).toEqual([
+      'Open search anywhere Ctrl K or Ctrl Shift P',
+      'Ctrl B compact sidebar',
+      'Ctrl . peek on hover',
+    ]);
   });
 
   it('filters pages locally and never asks the server about a one-character query', async () => {

@@ -2,12 +2,13 @@ import { RouterLink } from '@angular/router';
 import { Component, DOCUMENT, ElementRef, inject, input, signal } from '@angular/core';
 import { Me } from '../account/me';
 import { SessionSignOut } from '../ui-api/ui-api-errors';
+import { NavIcon } from './nav-icon';
 import { currentTheme, otherTheme, switchTheme, Theme } from './theme';
 
 /** The Legacy UI's account menu: who is signed in, their profile, the theme and sign-out. */
 @Component({
   selector: 'app-account-menu',
-  imports: [RouterLink],
+  imports: [RouterLink, NavIcon],
   templateUrl: './account-menu.html',
   host: {
     '(document:click)': 'closeUnlessInside($event)',
@@ -16,6 +17,7 @@ import { currentTheme, otherTheme, switchTheme, Theme } from './theme';
 })
 export class AccountMenu {
   readonly me = input.required<Me>();
+  readonly rail = input(false);
   private readonly document = inject(DOCUMENT);
   private readonly sessionSignOut = inject(SessionSignOut);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);

@@ -79,6 +79,19 @@
         <span><kbd>↵</kbd> to open</span>
         <span><kbd>esc</kbd> to close</span>
       </p>
+      <ul class="palette-hint palette-shortcuts">
+        <li>
+          Open search anywhere <kbd>{{ keys.search }}</kbd> or <kbd>{{ keys.searchAlt }}</kbd>
+        </li>
+        @if (desktop()) {
+          <li>
+            <kbd>{{ keys.compact }}</kbd> compact sidebar
+          </li>
+          <li>
+            <kbd>{{ keys.peek }}</kbd> peek on hover
+          </li>
+        }
+      </ul>
     </div>
   </div>
 }

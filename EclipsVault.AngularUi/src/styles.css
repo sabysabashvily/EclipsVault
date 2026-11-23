@@ -63,9 +63,9 @@
   /* Hairline borders */
   --border: rgba(255, 255, 255, 0.09);
   --border-strong: rgba(255, 255, 255, 0.16);
-  /* Interactive control and selected-state boundaries meeting WCAG 1.4.11 (>= 3:1). */
+  /* Interactive control boundaries meeting WCAG 1.4.11 (>= 3:1). */
   --border-control: #6c6e78;
-  --nav-active-border: #747681;
+  --tab-active-border: #747681;
 
   --text: #f2f2f4;
   --text-secondary: #b8b8bf;
@@ -88,6 +88,9 @@
   --warn-soft: rgba(255, 214, 10, 0.12);
   --warn-wash: rgba(255, 214, 10, 0.07);
   --warn-dot: #ffd60a;
+  --notice-warn-bg: var(--warn-wash);
+  --notice-warn-icon: var(--warn-dot);
+  --notice-warn-link: var(--accent);
   --ok: #30d158;
   --ok-soft: rgba(48, 209, 88, 0.13);
   --ok-wash: rgba(48, 209, 88, 0.07);
@@ -95,12 +98,17 @@
   --info-soft: rgba(100, 168, 255, 0.14);
   --info-wash: rgba(100, 168, 255, 0.07);
 
-  /* The primary button is high-contrast off-white ink; the selected nav row is elevated graphite. */
+  /* Inverted ink ties the primary button, selected nav pill and selected rail circle together. */
   --ink-button: #f2f2f4;
   --ink-button-text: #111113;
   --ink-button-hover: #e2e2e6;
-  --nav-active-bg: #26272c;
-  --nav-active-text: #f5f5f7;
+  --nav-active-bg: #ffffff;
+  --nav-active-text: #111113;
+  --nav-pill-focus: #b45f04;
+  --rail-selected-focus: var(--nav-pill-focus);
+  --rail-control-bg: var(--bg-raised-2);
+  --tab-active-bg: #26272c;
+  --tab-active-text: #f5f5f7;
   --tree-line: rgba(255, 255, 255, 0.13);
 
   --radius-xl: 22px;
@@ -176,6 +184,9 @@
   --warn-soft: rgba(255, 204, 0, 0.18);
   --warn-wash: rgba(255, 204, 0, 0.09);
   --warn-dot: #b58900;
+  --notice-warn-bg: #fff6db;
+  --notice-warn-icon: #946b00;
+  --notice-warn-link: var(--accent-hover);
   --ok: #1a7f37;
   --ok-soft: rgba(26, 127, 55, 0.1);
   --ok-wash: rgba(26, 127, 55, 0.06);
@@ -187,9 +198,11 @@
   --ink-button-text: #ffffff;
   --ink-button-hover: #3a3a38;
   --nav-active-bg: #ffffff;
-  /* The rail's selected ring: 3.39:1 on the rail, 4.01:1 on the white pill (WCAG 1.4.11). */
-  --nav-active-border: #807f7a;
   --nav-active-text: #232322;
+  --rail-selected-focus: #ff9f0a;
+  --rail-control-bg: var(--bg-raised);
+  --tab-active-bg: var(--nav-active-bg);
+  --tab-active-text: var(--nav-active-text);
   --tree-line: #aeada8;
 
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -392,7 +405,16 @@ body:has(.mobile-navigation[open]) {
   position: sticky;
   top: 0;
   height: 100vh;
-  transition: width var(--dur) var(--ease);
+  transition:
+    width var(--dur) var(--ease),
+    margin-inline-end var(--dur) var(--ease);
+}
+
+/* The negative margin gives the page the same space as the closed rail while the sidebar peeks. */
+.sidebar.is-peek {
+  margin-inline-end: calc(var(--sidebar-collapsed-width) - var(--sidebar-width));
+  z-index: 20;
+  box-shadow: var(--shadow);
 }
 
 .sidebar-header {
@@ -480,6 +502,7 @@ body:has(.mobile-navigation[open]) {
 }
 
 .nav-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -502,6 +525,9 @@ body:has(.mobile-navigation[open]) {
 .nav-item:hover {
   color: var(--text);
 }
+.nav-item:focus-visible {
+  outline-offset: -2px;
+}
 /* The selected row is an elevated pill so orange stays reserved for brand, focus and links. */
 .nav-item.active {
   background: var(--nav-active-bg);
@@ -509,27 +535,20 @@ body:has(.mobile-navigation[open]) {
   font-weight: 500;
   box-shadow: var(--shadow-sm);
 }
-/* In dark mode, a >= 3:1 border ring and accent icon tint clearly mark active nav and tabs. The
-   collapsed rail has no labels, so it gets the same cue in both themes. */
-:root:not([data-theme='light']) .nav-item.active,
-:root:not([data-theme='light']) .tab-link.active,
-.sidebar.is-collapsed .nav-item.active,
-.sidebar.is-collapsed .nav-group-summary.has-active {
-  box-shadow:
-    inset 0 0 0 1px var(--nav-active-border),
-    var(--shadow-sm);
-}
-:root:not([data-theme='light']) .nav-item.active svg,
-.sidebar.is-collapsed .nav-item.active svg,
-.sidebar.is-collapsed .nav-group-summary.has-active svg {
-  color: var(--accent);
-  opacity: 1;
-}
 .nav-item.active svg {
   opacity: 1;
 }
-.nav-item {
-  position: relative;
+.nav-item.active:focus-visible {
+  outline-color: var(--nav-pill-focus);
+}
+/* The ink mark identifies the selected row even where the white pill sits on a light surface. */
+.nav-current-marker {
+  width: 3px;
+  height: 0.85rem;
+  margin-inline-start: auto;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  flex-shrink: 0;
 }
 
 /* Collapsible nav groups (native <details>, no script). A group opens itself and tints its
@@ -616,6 +635,7 @@ body:has(.mobile-navigation[open]) {
 .sidebar.is-collapsed {
   width: var(--sidebar-collapsed-width);
   padding: 1.2rem 0.625rem;
+  z-index: 10;
 }
 .sidebar.is-collapsed .sidebar-header {
   flex-direction: column;
@@ -633,7 +653,8 @@ body:has(.mobile-navigation[open]) {
 }
 .sidebar.is-collapsed .sidebar-brand .brand-name,
 .sidebar.is-collapsed .nav-section,
-.sidebar.is-collapsed .nav-label,
+.sidebar.is-collapsed .sidenav > .nav-item .nav-label,
+.sidebar.is-collapsed .nav-group-summary .nav-label,
 .sidebar.is-collapsed .user-meta {
   position: absolute;
   width: 1px;
@@ -647,33 +668,117 @@ body:has(.mobile-navigation[open]) {
 .sidebar.is-collapsed .sidenav {
   align-items: center;
   gap: 0.3rem;
+  scrollbar-width: none;
 }
 .sidebar.is-collapsed .nav-gap {
   height: 0.65rem;
 }
-.sidebar.is-collapsed .nav-item {
+.sidebar.is-collapsed .sidenav > .nav-item,
+.sidebar.is-collapsed .nav-group-summary,
+.sidebar .rail-control {
   width: 2.75rem;
   height: 2.75rem;
   min-height: 2.75rem;
   padding: 0;
   justify-content: center;
   border-radius: 50%;
+  background: var(--rail-control-bg);
+  color: var(--text-secondary);
 }
-.sidebar.is-collapsed .nav-item:not(.active):hover {
+.sidebar .rail-control {
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  cursor: pointer;
+  transition:
+    background var(--dur-press) var(--ease),
+    color var(--dur-press) var(--ease);
+}
+.rail-control svg {
+  width: 18px;
+  height: 18px;
+}
+.sidebar.is-collapsed .sidenav > .nav-item:hover,
+.sidebar.is-collapsed .nav-group-summary:hover,
+.sidebar .rail-control:hover {
   background: var(--bg-hover);
+  color: var(--text);
 }
 .sidebar.is-collapsed .nav-chevron,
-.sidebar.is-collapsed .nav-group-items,
+.sidebar.is-collapsed .sidenav > .nav-item .nav-current-marker,
 .sidebar.is-collapsed .user-chevron {
   display: none;
 }
+.sidebar.is-collapsed .sidenav > .nav-item.active,
 .sidebar.is-collapsed .nav-group-summary.has-active {
-  background: var(--nav-active-bg);
-  color: var(--nav-active-text);
+  background: var(--ink-button);
+  color: var(--ink-button-text);
+  box-shadow: none;
 }
-.sidebar.is-collapsed .sidebar-footer {
+.sidebar.is-collapsed .sidenav > .nav-item.active:focus-visible,
+.sidebar.is-collapsed .nav-group-summary.has-active:focus-visible {
+  outline-color: var(--rail-selected-focus);
+}
+
+/* The panel is positioned by the sidebar so it can open outside the navigation's scroll area. */
+.sidebar.is-collapsed .nav-group-items {
+  position: absolute;
+  z-index: 10;
+  inset-inline-start: calc(100% + 0.25rem);
+  inset-block-start: auto;
+  width: 15rem;
+  /* Reserve room above the last of the six rail rows so the panel can scroll beside its trigger. */
+  max-height: calc(100dvh - 22rem);
+  overflow-y: auto;
+  margin: -2.75rem 0 0;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow);
+  transform-origin: left top;
+}
+.sidebar.is-collapsed .nav-group[open] > .nav-group-items {
+  animation: nav-flyout-in var(--dur) var(--ease);
+}
+.sidebar.is-collapsed .nav-group-items > .nav-item::before,
+.sidebar.is-collapsed .nav-group-items > .nav-item::after {
+  content: none;
+}
+.sidebar.is-collapsed .nav-group-items > .nav-item:hover:not(.active) {
+  background: var(--bg-hover);
+}
+@keyframes nav-flyout-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (max-height: 31rem) {
+  .sidebar.is-collapsed .nav-group-items {
+    inset-block-end: 1rem;
+    max-height: calc(100dvh - 2rem);
+    margin-block-start: 0;
+    transform-origin: left center;
+  }
+}
+
+.sidebar:is(.is-collapsed, .is-peek) .sidebar-footer {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  gap: 0.3rem;
+  align-items: center;
+}
+.sidebar.is-peek .sidebar-footer {
+  align-items: flex-start;
+  padding-inline-start: 0.15rem;
+}
+.sidebar.is-peek .account-menu {
+  align-self: stretch;
 }
 .sidebar.is-collapsed .sidebar-footer .user-card {
   width: 2.75rem;
@@ -683,15 +788,15 @@ body:has(.mobile-navigation[open]) {
   border-radius: 50%;
 }
 .sidebar.is-collapsed .account-menu-panel {
-  left: 0;
+  left: calc(100% + 0.7rem);
   right: auto;
   min-width: 13.5rem;
-  bottom: calc(100% + 8px);
+  bottom: 0;
 }
 
 .sidebar-footer {
-  padding-top: 0.85rem;
-  margin-top: 0.85rem;
+  padding-top: 1.7rem;
+  margin-top: auto;
 }
 .sidebar-footer .user-card {
   padding: 0.6rem 0.7rem;
@@ -903,10 +1008,21 @@ body:has(.mobile-navigation[open]) {
 }
 .notice-warn {
   border-color: transparent;
-  background: var(--warn-wash);
+  background: var(--notice-warn-bg);
+  color: var(--text);
 }
 .notice-warn svg {
-  color: var(--warn-dot);
+  color: var(--notice-warn-icon);
+}
+.notice-warn a {
+  color: var(--notice-warn-link);
+}
+.notice-warn a:hover {
+  text-decoration: underline;
+}
+.notice-warn > svg + span {
+  flex: 1;
+  min-width: 0;
 }
 .notice-ok {
   border-color: transparent;
@@ -1621,16 +1737,20 @@ kbd {
 
 .palette-hint {
   display: flex;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.3rem 1rem;
   margin: 0;
   padding: 0.6rem 1rem;
   border-top: 1px solid var(--border);
   background: var(--bg-raised-2);
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-size: 0.72rem;
 }
 .palette-hint kbd {
   margin-right: 0.15rem;
+}
+.palette-shortcuts {
+  list-style: none;
 }
 
 .palette-error {
@@ -3819,9 +3939,14 @@ fieldset {
   text-decoration: none;
 }
 .tab-link.active {
-  background: var(--nav-active-bg);
-  color: var(--nav-active-text);
+  background: var(--tab-active-bg);
+  color: var(--tab-active-text);
   box-shadow: var(--shadow-sm);
+}
+:root:not([data-theme='light']) .tab-link.active {
+  box-shadow:
+    inset 0 0 0 1px var(--tab-active-border),
+    var(--shadow-sm);
 }
 
 .table-toolbar {

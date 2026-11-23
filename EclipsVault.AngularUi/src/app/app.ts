@@ -14,17 +14,20 @@ import {
 import { RouterOutlet } from '@angular/router';
 import { CurrentAccount } from './account/current-account';
 import { AccountMenu } from './shell/account-menu';
-import { CommandPalette, commandChord } from './shell/command-palette';
+import { CommandPalette, opensPalette } from './shell/command-palette';
 import { PageActions } from './shell/page-actions';
 import { shortcutsFor } from './shell/sidebar';
 import { SidebarNav } from './shell/sidebar-nav';
+import { APPLE_PLATFORM, chordLabel, chordName, chords, pressed, typing } from './shell/shortcuts';
 import { UiApiError } from './ui-api/ui-api-errors';
 
 const sidebarCollapsedKey = 'eclipsvault.sidebar.collapsed';
+const sidebarPeekKey = 'eclipsvault.sidebar.peek';
 
 @Component({
   imports: [RouterOutlet, SidebarNav, AccountMenu, CommandPalette, NgTemplateOutlet],
   selector: 'app-root',
+  host: { '(document:keydown)': 'shortcut($event)' },
   template: `
     <div class="shell">
       @if (compact()) {
@@ -43,7 +46,14 @@ const sidebarCollapsedKey = 'eclipsvault.sidebar.collapsed';
           </div>
         </dialog>
       } @else {
-        <aside #sidebar class="sidebar" [class.is-collapsed]="desktopSidebarCollapsed()">
+        <aside
+          #sidebar
+          class="sidebar"
+          [class.is-collapsed]="railCollapsed()"
+          [class.is-peek]="peeking()"
+          (pointerenter)="peekIn($event)"
+          (pointerleave)="leaveSidebar($event)"
+        >
           <ng-container [ngTemplateOutlet]="sidebarContent" />
         </aside>
       }
@@ -83,6 +93,8 @@ const sidebarCollapsedKey = 'eclipsvault.sidebar.collapsed';
               type="button"
               class="search-pill"
               aria-label="Search secrets or jump to a page"
+              [title]="searchTitle"
+              [attr.aria-keyshortcuts]="searchKeyNames"
               (click)="openSearch()"
             >
               <svg
@@ -139,8 +151,8 @@ const sidebarCollapsedKey = 'eclipsvault.sidebar.collapsed';
         <a
           class="brand sidebar-brand"
           href="/"
-          [attr.aria-label]="desktopSidebarCollapsed() ? 'EclipsVault' : null"
-          [attr.title]="desktopSidebarCollapsed() ? 'EclipsVault' : null"
+          [attr.aria-label]="railCollapsed() ? 'EclipsVault' : null"
+          [attr.title]="railCollapsed() ? 'EclipsVault' : null"
         >
           <span class="brand-mark" aria-hidden="true"></span>
           <span class="brand-name">EclipsVault</span>
@@ -163,48 +175,59 @@ const sidebarCollapsedKey = 'eclipsvault.sidebar.collapsed';
               <path d="m6 6 12 12M18 6 6 18" />
             </svg>
           </button>
-        } @else {
-          <button
-            type="button"
-            class="sidebar-toggle"
-            [attr.aria-label]="sidebarCollapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
-            [attr.title]="sidebarCollapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
-            [attr.aria-expanded]="!sidebarCollapsed()"
-            (click)="toggleSidebar()"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <rect width="18" height="18" x="3" y="3" rx="2" />
-              <path d="M9 3v18" />
-            </svg>
-          </button>
+        } @else if (!sidebarCollapsed()) {
+          <ng-container [ngTemplateOutlet]="sidebarToggle" />
         }
       </div>
       @if (me.hasValue()) {
-        <app-sidebar-nav
-          [areas]="me.value().areas"
-          [collapsed]="desktopSidebarCollapsed()"
-          (expandRequested)="expandSidebar()"
-        />
-        <div class="sidebar-footer">
-          <app-account-menu [me]="me.value()" />
-        </div>
+        <app-sidebar-nav [areas]="me.value().areas" [collapsed]="railCollapsed()" />
       } @else if (me.error(); as error) {
         <p class="sidebar-error" role="alert">
           Could not load your account ({{ problemCode(error) }}).
         </p>
       }
+      <div class="sidebar-footer">
+        @if (desktopSidebarCollapsed()) {
+          <ng-container [ngTemplateOutlet]="sidebarToggle" />
+        }
+        @if (me.hasValue()) {
+          <app-account-menu [me]="me.value()" [rail]="desktopSidebarCollapsed()" />
+        }
+      </div>
     </ng-template>
+    <ng-template #sidebarToggle>
+      <button
+        type="button"
+        class="sidebar-toggle"
+        [class.rail-control]="sidebarCollapsed()"
+        [attr.aria-label]="sidebarCollapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
+        [attr.title]="toggleTitle()"
+        [attr.aria-keyshortcuts]="compactKeyName"
+        [attr.aria-expanded]="!sidebarCollapsed()"
+        (click)="toggleSidebar()"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <rect width="18" height="18" x="3" y="3" rx="2" />
+          <path d="M9 3v18" />
+        </svg>
+      </button>
+    </ng-template>
+    <p class="visually-hidden" role="status">{{ peekStatus() }}</p>
     @if (me.hasValue()) {
       @if (sidebar(); as region) {
-        <app-command-palette [sidebar]="region.nativeElement" [shortcuts]="shortcuts()" />
+        <app-command-palette
+          [sidebar]="region.nativeElement"
+          [shortcuts]="shortcuts()"
+          [desktop]="!compact()"
+        />
       }
     }
   `,
@@ -214,15 +237,23 @@ export class App {
   protected readonly palette = viewChild(CommandPalette);
   private readonly document = inject(DOCUMENT);
   private readonly injector = inject(Injector);
-  private readonly navigator = this.document.defaultView?.navigator;
+  private readonly apple = inject(APPLE_PLATFORM);
   private readonly viewport = this.document.defaultView?.matchMedia?.('(max-width: 1199px)');
   protected readonly pageActions = inject(PageActions);
   protected readonly compact = this.pageActions.compact;
   protected readonly navigationOpen = signal(false);
-  protected readonly sidebarCollapsed = signal(this.readSidebarCollapsed());
+  protected readonly sidebarCollapsed = signal(this.readFlag(sidebarCollapsedKey));
   protected readonly desktopSidebarCollapsed = computed(
     () => !this.compact() && this.sidebarCollapsed(),
   );
+  private readonly peekEnabled = signal(this.readFlag(sidebarPeekKey));
+  protected readonly peeking = signal(false);
+  private mouseOverSidebar = false;
+  /** The rail as drawn: collapsed, unless a peek is showing the full sidebar over the page. */
+  protected readonly railCollapsed = computed(
+    () => this.desktopSidebarCollapsed() && !this.peeking(),
+  );
+  protected readonly peekStatus = signal('');
   protected readonly shortcuts = computed(() =>
     this.me.hasValue() ? shortcutsFor(this.me.value().areas) : [],
   );
@@ -231,8 +262,15 @@ export class App {
     viewChild<ElementRef<HTMLDialogElement>>('navigationDialog');
   protected readonly navigationToggle =
     viewChild<ElementRef<HTMLButtonElement>>('navigationToggle');
-  protected readonly chord = commandChord(
-    this.navigator?.platform || this.navigator?.userAgent || '',
+  protected readonly chord = chordLabel(chords.search, this.apple);
+  protected readonly searchTitle = `Search (${this.chord} or ${chordLabel(chords.searchAlt, this.apple)})`;
+  protected readonly searchKeyNames = `${chordName(chords.search, this.apple)} ${chordName(chords.searchAlt, this.apple)}`;
+  private readonly compactChord = chordLabel(chords.compact, this.apple);
+  private readonly peekChord = chordLabel(chords.peek, this.apple);
+  protected readonly compactKeyName = chordName(chords.compact, this.apple);
+  protected readonly toggleTitle = computed(
+    () =>
+      `${this.sidebarCollapsed() ? 'Expand' : 'Collapse'} sidebar (${this.compactChord}) · Peek on hover (${this.peekChord})`,
   );
 
   constructor() {
@@ -240,46 +278,99 @@ export class App {
     const resized = (event: MediaQueryListEvent) => {
       const hadFocus = this.document.activeElement !== this.document.body;
       this.closeNavigation();
+      this.mouseOverSidebar = false;
+      this.endPeek();
       this.compact.set(event.matches);
-      // Crossing 1200px swaps the navigation markup; focus on a removed control goes to its successor.
-      afterNextRender(
-        () => {
-          if (!hadFocus || this.document.activeElement !== this.document.body) return;
-          const toggle = event.matches
-            ? this.navigationToggle()?.nativeElement
-            : this.sidebar()?.nativeElement.querySelector<HTMLElement>('.sidebar-toggle');
-          toggle?.focus();
-        },
-        { injector: this.injector },
-      );
+      this.keepFocusOnToggle(hadFocus);
     };
     this.viewport?.addEventListener('change', resized);
     inject(DestroyRef).onDestroy(() => this.viewport?.removeEventListener('change', resized));
   }
 
+  /**
+   * Swapping the navigation markup (crossing 1200px, or moving the toggle between the header and the
+   * rail's foot) removes the focused control; focus goes to the toggle that replaces it.
+   */
+  private keepFocusOnToggle(hadFocus: boolean): void {
+    afterNextRender(
+      () => {
+        if (!hadFocus || this.document.activeElement !== this.document.body) return;
+        const toggle = this.compact()
+          ? this.navigationToggle()?.nativeElement
+          : this.sidebar()?.nativeElement.querySelector<HTMLElement>('.sidebar-toggle');
+        toggle?.focus();
+      },
+      { injector: this.injector },
+    );
+  }
+
+  /** ⌘B and ⌘. (Ctrl off Apple platforms) work the desktop sidebar, never while typing. */
+  protected shortcut(event: KeyboardEvent): void {
+    if (this.compact() || event.repeat || event.isComposing || typing(event.target)) return;
+    if (pressed(event, chords.compact, this.apple)) {
+      event.preventDefault();
+      this.toggleSidebar();
+    } else if (pressed(event, chords.peek, this.apple)) {
+      event.preventDefault();
+      this.togglePeek();
+    }
+  }
+
   protected toggleSidebar(): void {
+    const hadFocus = this.document.activeElement !== this.document.body;
     const next = !this.sidebarCollapsed();
+    this.peeking.set(false);
     this.sidebarCollapsed.set(next);
-    this.writeSidebarCollapsed(next);
+    this.writeFlag(sidebarCollapsedKey, next);
+    this.keepFocusOnToggle(hadFocus);
   }
 
-  protected expandSidebar(): void {
-    if (!this.sidebarCollapsed()) return;
-    this.sidebarCollapsed.set(false);
-    this.writeSidebarCollapsed(false);
+  private togglePeek(): void {
+    const next = !this.peekEnabled();
+    this.peekEnabled.set(next);
+    this.writeFlag(sidebarPeekKey, next);
+    if (!next) this.endPeek();
+    else if (this.mouseOverSidebar && this.desktopSidebarCollapsed()) this.peeking.set(true);
+    this.peekStatus.set(
+      next
+        ? 'Peek on hover is on: hovering the collapsed sidebar shows it in full.'
+        : 'Peek on hover is off.',
+    );
   }
 
-  private readSidebarCollapsed(): boolean {
+  protected peekIn(event: PointerEvent): void {
+    if (event.pointerType !== 'mouse') return;
+    this.mouseOverSidebar = true;
+    if (this.desktopSidebarCollapsed() && this.peekEnabled()) this.peeking.set(true);
+  }
+
+  protected leaveSidebar(event: PointerEvent): void {
+    if (event.pointerType !== 'mouse') return;
+    this.mouseOverSidebar = false;
+    this.endPeek();
+  }
+
+  private endPeek(): void {
+    if (!this.peeking()) return;
+    // A folded group hides its child links when the preview ends.
+    this.document.activeElement
+      ?.closest('.nav-group-items')
+      ?.parentElement?.querySelector('summary')
+      ?.focus();
+    this.peeking.set(false);
+  }
+
+  private readFlag(key: string): boolean {
     try {
-      return this.document.defaultView?.localStorage?.getItem(sidebarCollapsedKey) === '1';
+      return this.document.defaultView?.localStorage?.getItem(key) === '1';
     } catch {
       return false;
     }
   }
 
-  private writeSidebarCollapsed(collapsed: boolean): void {
+  private writeFlag(key: string, on: boolean): void {
     try {
-      this.document.defaultView?.localStorage?.setItem(sidebarCollapsedKey, collapsed ? '1' : '0');
+      this.document.defaultView?.localStorage?.setItem(key, on ? '1' : '0');
     } catch {
       // Storage may be unavailable in private browsing or restricted iframes.
     }
@@ -313,7 +404,7 @@ export class App {
   }
 
   protected navigationKeydown(event: KeyboardEvent): void {
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+    if (opensPalette(event, this.apple)) {
       event.preventDefault();
       event.stopPropagation();
       this.openSearch();
