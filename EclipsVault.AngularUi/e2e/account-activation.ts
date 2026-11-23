@@ -1,13 +1,10 @@
 import type { Page } from '@playwright/test';
-import { setTimeout } from 'node:timers/promises';
 import { emailOf } from './account-creation';
 import { AccountSignIn } from './account-sign-in';
 import { clearSignInBudget } from './profile-state';
 import { invitationToken } from './smtp-capture';
-import { currentTotpStep, freshTotp, totp } from './totp';
+import { serverTotp } from './totp';
 import type { components } from '../src/app/ui-api/schema.generated';
-
-const stepMilliseconds = 30_000;
 
 /**
  * Activates the account just invited as `username` with `password`, through the API an activation
@@ -29,29 +26,15 @@ export async function signInNewAccount(
     await activationCall(page, 'activation', { token })
   ).json();
   const secret = invitation.secretBase32;
-  // Activation spends the previous step, which the vault still accepts, so the sign-in below can
-  // spend the current one without waiting for a new step.
-  const activationStep = await previousStep();
-  await activationCall(page, 'activation/complete', {
-    token,
-    password,
-    code: totp(secret, activationStep * stepMilliseconds),
-  });
+  const activation = await serverTotp(page.request, secret);
+  await activationCall(page, 'activation/complete', { token, password, code: activation.code });
 
   await signIn.open();
   await signIn.submitPassword(username, password);
-  await signIn.submitAuthenticatorCode(await freshTotp(secret, activationStep));
-  const step = currentTotpStep();
+  const signInCode = await serverTotp(page.request, secret, activation.step);
+  await signIn.submitAuthenticatorCode(signInCode.code);
   await page.waitForURL(/\/Secrets$/);
-  return { secret, step };
-}
-
-/** The step before this one, taken early enough in this step that the vault still accepts it. */
-async function previousStep(): Promise<number> {
-  const margin = 5_000;
-  const remaining = stepMilliseconds - (Date.now() % stepMilliseconds);
-  if (remaining < margin) await setTimeout(remaining + 100);
-  return currentTotpStep() - 1;
+  return { secret, step: signInCode.step };
 }
 
 /** Posts with the request token the sign-in page set, as the Angular sign-in pages do. */

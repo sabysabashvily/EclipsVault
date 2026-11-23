@@ -1,3 +1,4 @@
+import type { APIRequestContext } from '@playwright/test';
 import { createHmac } from 'node:crypto';
 import { setTimeout } from 'node:timers/promises';
 
@@ -25,11 +26,34 @@ export function currentTotpStep(): number {
 }
 
 export async function freshTotp(secret: string, previousStep = -1): Promise<string> {
-  const now = Date.now();
-  // Enrollment consumes its code. Wait for a new step before the subsequent sign-in, and avoid
-  // sending a code just as it expires. The vault's replay protection stays enabled.
-  if (Math.floor(now / 30_000) <= previousStep || now % 30_000 > 25_000) {
+  // Enrollment consumes its code. Wait for a step after `previousStep`, which can be two boundaries
+  // away when the vault accepted the next step early, and avoid sending a code just as it expires.
+  // The vault's replay protection stays enabled.
+  for (;;) {
+    const now = Date.now();
+    if (Math.floor(now / 30_000) > previousStep && now % 30_000 <= 25_000) return totp(secret);
     await setTimeout(30_000 - (now % 30_000) + 100);
   }
-  return totp(secret);
+}
+
+/**
+ * A code the vault accepts and has not spent, timed by the vault's clock rather than this host's.
+ * The vault accepts one step either side of its own and never a step at or below `spentStep`, so
+ * this takes its current step, or the step after `spentStep` while that is at most one step ahead.
+ * Only when even that is spent does it wait, by the vault's clock, for the vault to catch up.
+ */
+export async function serverTotp(
+  request: APIRequestContext,
+  secret: string,
+  spentStep = -1,
+): Promise<{ code: string; step: number }> {
+  for (;;) {
+    const sent = Date.parse((await request.get('/favicon.svg')).headers()['date'] ?? '');
+    if (!Number.isFinite(sent)) throw new Error('The vault sent no readable Date header');
+    const vaultStep = Math.floor(sent / 30_000);
+    const step = Math.max(vaultStep, spentStep + 1);
+    if (step <= vaultStep + 1) return { code: totp(secret, step * 30_000), step };
+    // The Date header drops the milliseconds, so the vault is at least this far into its step.
+    await setTimeout(spentStep * 30_000 - sent);
+  }
 }

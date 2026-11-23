@@ -420,3 +420,31 @@ The GPT re-check requested changes. Its remaining test and UI decisions are in
 Restart with CI on the commit that adds this section. The coordinator pushes the branch and records
 the exact-head results for both databases, the full browser suite and `e2e:verify-guards`. The PR body
 is in `logs/ticket-182/pr-body.md` with `<run id>` pending final CI.
+
+## Delivery: 8b ticket 4 round 2 (#182, owner 23 November)
+
+Started from `58a975bc`, the PR #204 head. `ce05242b` merges `main` `5b5edf7d` (PR #203, Redesign R26):
+`service-accounts.spec.ts` keeps #203's `/Secrets` check after the invitation sign-in, `styles.css`
+takes R26's auth-card rules and keeps only 8b's readonly-username rule, and the Activation page uses
+R26's enrollment block. The next three commits resolve every open GPT Sol 6.2 finding (S1, S2, S4–S8,
+P1, P2, P4, P5); each item's resolution, and the parts left for the owner, are in
+`logs/ticket-182/review-ledger.md` under "Round 2".
+
+- P4: the Users list and user details report `invitationsAvailable`; Users and Edit user hide Resend and
+  explain why before any confirmation or fresh proof. Vitest drops derived expectations and badge classes.
+- Integration and unit tests: race tests check codes on a stopped clock, single-proof activation helpers
+  no longer wait, the upgrade fixture writes its history through the real audit sink, refusals are one
+  case each, pre-upgrade proofs go through the real cookie check and session issuer on both databases,
+  the preserved administrator enrolls and gets a session, an invited passkey is refused over HTTP, and a
+  unit test pins activation's single commit.
+- Browser specs: invitation, SSO and notification cases set up their own state, codes come from the
+  vault's `Date` header, and the notifications 180 s override is gone. Not run locally (CI only).
+
+Checks on the final source: `scripts/check.sh` (restore, build, unit); the guarded integration filter
+(`logs/ticket-182/round2/integration-filter.txt`) passed 316 tests, PostgreSQL for HTTP and both
+databases for the upgrade and race fixtures; `dotnet format`, both EF pending-model checks, agent
+guardrail tests; Angular lint, format, 802 Vitest tests, build checks, API-type check, build and the
+high-severity audit. Evidence: `logs/ticket-182/round2/`.
+
+Restart: the coordinator pushes to PR #204, runs CI (both databases, full browser suite,
+`e2e:verify-guards`), a fresh GPT Sol 6.2 xhigh PR review and a fresh Opus 5.5 high security delta review.

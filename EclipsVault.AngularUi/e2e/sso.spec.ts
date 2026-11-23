@@ -4,11 +4,11 @@ import { AccountCreation, emailOf } from './account-creation';
 import { AccountSignIn } from './account-sign-in';
 import { savedAdministratorCookies } from './administrator-cookies';
 import { refreshAdministratorProof } from './administrator-proof';
-import { test, expect } from './fixtures';
+import { test as base, expect, type BrowserHealth } from './fixtures';
 import { clearSignInBudget } from './profile-state';
 import { SecretsList } from './secrets-list';
 import { KeycloakSignIn } from './sso';
-import { freshTotp } from './totp';
+import { freshTotp, serverTotp } from './totp';
 
 const mfaUsername = 'e2e-sso-mfa';
 const passwordUsername = 'e2e-sso-password';
@@ -28,19 +28,30 @@ function idpAuthenticatorSecret(): string {
   return secret;
 }
 
-test.describe.configure({ mode: 'serial' });
-const vaultPassword = `E2e-${randomBytes(24).toString('hex')}`;
-let vaultAuthenticatorSecret = '';
-let vaultAuthenticatorStep = -1;
+interface SsoAccounts {
+  /** The password-only user's vault password, which the MFA user's account never needs. */
+  password: string;
+  secret: string;
+  /** The step the password-only user's vault sign-in spent, which the vault never accepts again. */
+  step: number;
+}
 
-test('an administrator invites the vault accounts both identity provider users sign in as', async ({
-  page,
-}) => {
-  test.setTimeout(180_000);
-  await page.context().addCookies(await savedAdministratorCookies());
-  await refreshAdministratorProof(page);
+// Single sign-on refuses an account awaiting activation, and both identity provider users map to
+// one vault account each by address. Provisioned once per worker, by whichever case needs it first.
+let provisioned: Promise<SsoAccounts> | undefined;
 
-  const creation = new AccountCreation(page);
+const test = base.extend<{ ssoAccounts: SsoAccounts }>({
+  ssoAccounts: async ({ browserHealth }, use) => {
+    provisioned ??= provisionSsoAccounts(browserHealth);
+    await use(await provisioned);
+  },
+});
+
+async function provisionSsoAccounts(browserHealth: BrowserHealth): Promise<SsoAccounts> {
+  const administrator = await (await browserHealth.newContext()).newPage();
+  await administrator.context().addCookies(await savedAdministratorCookies());
+  await refreshAdministratorProof(administrator);
+  const creation = new AccountCreation(administrator);
   for (const [lastName, username] of [
     ['Multifactor', mfaUsername],
     ['Passwordonly', passwordUsername],
@@ -55,26 +66,26 @@ test('an administrator invites the vault accounts both identity provider users s
     });
     await expect(creation.status).toContainText(`Invitation sent to ${emailOf(username)}.`);
   }
-});
 
-// Single sign-on refuses an account awaiting activation, so both owners activate first.
-test('both identity provider users activate their vault accounts', async ({ browserHealth }) => {
-  test.setTimeout(180_000);
   await signInNewAccount(
     await (await browserHealth.newContext()).newPage(),
     mfaUsername,
     `E2e-${randomBytes(24).toString('hex')}`,
   );
+  const password = `E2e-${randomBytes(24).toString('hex')}`;
   const enrolled = await signInNewAccount(
     await (await browserHealth.newContext()).newPage(),
     passwordUsername,
-    vaultPassword,
+    password,
   );
-  vaultAuthenticatorSecret = enrolled.secret;
-  vaultAuthenticatorStep = enrolled.step;
-});
+  return { password, ...enrolled };
+}
 
-test('a user whose identity provider completed MFA lands on Secrets', async ({ browserHealth }) => {
+test('a user whose identity provider completed MFA lands on Secrets', async ({
+  browserHealth,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Asking for it activates sso-mfa's vault account.
+  ssoAccounts,
+}) => {
   test.setTimeout(120_000);
   const page = await (await browserHealth.newContext()).newPage();
   clearSignInBudget();
@@ -98,6 +109,7 @@ test('a user whose identity provider completed MFA lands on Secrets', async ({ b
 
 test('a user whose identity provider did not complete MFA finishes with an authenticator code', async ({
   browserHealth,
+  ssoAccounts,
 }) => {
   test.setTimeout(120_000);
   const page = await (await browserHealth.newContext()).newPage();
@@ -107,22 +119,22 @@ test('a user whose identity provider did not complete MFA finishes with an authe
   await vault.continueWithSingleSignOn('Keycloak');
   await new KeycloakSignIn(page).submitPassword('sso-password', idpPassword());
   await expect(page).toHaveURL(/\/Account\/Totp$/);
-  await vault.submitAuthenticatorCode(
-    await freshTotp(vaultAuthenticatorSecret, vaultAuthenticatorStep),
-  );
+  const code = await serverTotp(page.request, ssoAccounts.secret, ssoAccounts.step);
+  await vault.submitAuthenticatorCode(code.code);
   await expect(page).toHaveURL(/\/Secrets$/);
   await expect(new SecretsList(page).heading).toBeVisible();
 });
 
 test('a restarted second factor loads Login with its notice and permits single sign-on', async ({
   browserHealth,
+  ssoAccounts,
 }) => {
   test.setTimeout(120_000);
   const page = await (await browserHealth.newContext()).newPage();
   const signIn = new AccountSignIn(page);
   clearSignInBudget();
   await signIn.open();
-  await signIn.submitPassword(passwordUsername, vaultPassword);
+  await signIn.submitPassword(passwordUsername, ssoAccounts.password);
   await expect(page).toHaveURL(/\/Account\/Totp$/);
   // A directly loaded second-factor document permits only same-origin form targets.
   const secondFactor = await page.reload();
