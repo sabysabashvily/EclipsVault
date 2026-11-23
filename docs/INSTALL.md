@@ -43,8 +43,9 @@ What it trades for simplicity, compared with the numbered sections:
        install -m 600 .env.example .env
 
 4. Replace every `<placeholder>` in `.env`. Each line says how to generate its value. `.env` holds
-   the master key and the audit signing key: keep a copy of both in your secret manager, never
-   beside a backup (see [`BACKUP_AND_RECOVERY.md`](BACKUP_AND_RECOVERY.md)).
+   the master key and the audit signing key, so the whole file belongs in your secret manager, never
+   beside a backup (see [`BACKUP_AND_RECOVERY.md`](BACKUP_AND_RECOVERY.md)). Save it there after the
+   first sign-in below, and again after every change to it.
 5. Start it:
 
        docker compose up -d
@@ -60,6 +61,9 @@ Open `https://<your host name>/` and sign in as `vault-admin` with the password 
 
     docker compose up -d
 
+Now save the whole `.env` to your secret manager. Save it again whenever you change it: a new
+`EV_IMAGE` digest, or a rotated master key with its `ECLIPSVAULT_KEK_RETIRED` line.
+
 Adding accounts sends invitations, which need email delivery. Add your SMTP settings (`Email__*`) to
 the vault's `environment` in `compose.yaml`; `Identity__PublicUrl` is already set to your host name.
 
@@ -67,18 +71,27 @@ the vault's `environment` in `compose.yaml`; `Identity__PublicUrl` is already se
 
 Back up the database and the key ring together, onto separate, encrypted backup storage. Never write
 them into the folder that holds `.env`, and never put `.env` in the backup: the master key and the
-data it unlocks must not be found together. From the `deploy/production/` folder, with `BACKUP` set
-to a directory on that storage:
+data it unlocks must not be found together. Each backup goes into a new private directory, and is
+marked `COMPLETE` only when both parts were written. From the `deploy/production/` folder, with
+`BACKUP_ROOT` set to a directory on that storage:
 
-    umask 077
-    BACKUP=/mnt/encrypted-backup/eclipsvault
-    docker compose exec -T db pg_dump --username=postgres --format=custom eclipsvault > "$BACKUP/eclipsvault.dump"
-    docker compose exec -T vault tar -C /keyring -cf - . > "$BACKUP/keyring.tar"
+    (
+      set -e
+      umask 077
+      BACKUP_ROOT=/mnt/encrypted-backup/eclipsvault
+      BACKUP="$BACKUP_ROOT/$(date -u +%Y%m%dT%H%M%SZ)"
+      mkdir -m 700 "$BACKUP"
+      docker compose exec -T db pg_dump --username=postgres --format=custom eclipsvault > "$BACKUP/eclipsvault.dump"
+      docker compose exec -T vault tar -C /keyring -cf - . > "$BACKUP/keyring.tar"
+      touch "$BACKUP/COMPLETE"
+    )
+
+Restore only from a directory that holds `COMPLETE`.
 
 To restore onto a new host, install as above, but take `.env` from your secret manager instead of
 filling it in. If you have rotated the master key, its `ECLIPSVAULT_KEK_RETIRED` must hold every
 earlier key the restored data or key ring still needs. Then, before the first `docker compose up -d`,
-with `BACKUP` set to the directory holding the backup:
+with `BACKUP` set to the newest backup directory that holds `COMPLETE`:
 
     docker compose up -d --wait db
     docker compose exec -T db pg_restore --username=postgres --dbname=eclipsvault --clean --if-exists --exit-on-error < "$BACKUP/eclipsvault.dump"
