@@ -292,4 +292,3 @@ public class DbSeederTests : IDisposable
         await db.Database.ExecuteSqlRawAsync("CREATE UNIQUE INDEX \"IX_DynamicSecretRoles_Name\" ON \"DynamicSecretRoles\" (\"Name\")");
     }
 }
-

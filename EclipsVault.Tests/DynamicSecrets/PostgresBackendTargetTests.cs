@@ -21,7 +21,7 @@ public class PostgresBackendTargetTests
         {
             PostgresTargetConnectionString = postgresTarget,
             TargetConnectionString = sqlServerTarget,
-        }), logger ?? NullLogger<PostgresBackend>.Instance);
+        }), TimeProvider.System, logger ?? NullLogger<PostgresBackend>.Instance);
 
     /// <summary>Keeps every message the backend logs, as its log sinks would receive it.</summary>
     private sealed class RecordingLogger : ILogger<PostgresBackend>

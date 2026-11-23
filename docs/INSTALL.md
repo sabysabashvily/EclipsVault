@@ -209,10 +209,14 @@ Those rights are why each target is a **separate connection string**:
   `REVOKE CONNECT ON DATABASE postgres FROM PUBLIC;`). A minted role that creates something in another
   database blocks its own `DROP ROLE`; the vault has already stopped it signing in, but the lease ends
   in `RevocationFailed`.
-- **Revoking a PostgreSQL credential first turns its sign-in off, then runs the role's revocation, then
-  checks the target for any session of that role still open.** If one is, the lease lands in
-  `RevocationFailed` with a critical audit row. End the session as a superuser or a member of
-  `pg_signal_backend` (`SELECT pg_terminate_backend(<pid>);`); the role can no longer sign in.
+- **Revoking a PostgreSQL credential ends its sessions before the role is dropped.** The vault turns the
+  role's sign-in off, waits for any connection that was already starting up (one that passed the
+  sign-in check just before is not yet listed in `pg_stat_activity`, but its startup holds a lock that
+  `pg_locks` shows), ends the role's sessions, confirms none is left, and only then runs the role's
+  statements and confirms the role is gone. It waits at most the target's `authentication_timeout` plus
+  five seconds. If anything stays unconfirmed, the role stays in place, unable to sign in, and the lease
+  lands in `RevocationFailed` with a critical audit row: end any session of that role as a superuser
+  (`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = '<login>';`), then drop it.
 - **A PostgreSQL role's statements must double-quote `"{{name}}"`**: the minted name has capitals,
   which PostgreSQL folds to lower case when unquoted.
 - **A failing statement reaches the target's own log, password included**, because PostgreSQL logs a

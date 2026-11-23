@@ -11,7 +11,7 @@ namespace EclipsVault.IntegrationTests;
 /// </summary>
 internal static class PostgresDynamicTarget
 {
-    /// <summary>A revocation that drops the role but leaves its sessions running, as a careless recipe would.</summary>
+    /// <summary>A revocation that only drops the role, leaving its sessions to the vault.</summary>
     public const string DropOnlyRevocation = """DROP ROLE IF EXISTS "{{name}}";""";
 
     /// <summary>A revocation the target always refuses.</summary>
@@ -71,6 +71,74 @@ internal static class PostgresDynamicTarget
             return true;
         }
         catch (PostgresException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Starts signing in as a minted role with its startup held for <paramref name="delay"/> after the
+    /// sign-in check (<c>post_auth_delay</c>, which any client may ask for), so the connection has passed the
+    /// check but is not yet listed in <c>pg_stat_activity</c>.
+    /// </summary>
+    public static Task<NpgsqlConnection> StartSigningInAsync(VaultFixture vault, string username, string password, TimeSpan delay)
+    {
+        var asRole = new NpgsqlConnectionStringBuilder(ConnectionString(vault))
+        {
+            Username = username,
+            Password = password,
+            Pooling = false,
+            Options = $"-c post_auth_delay={(int)delay.TotalSeconds}",
+            Timeout = 60,
+        };
+        return OpenAsync(new NpgsqlConnection(asRole.ConnectionString));
+    }
+
+    private static async Task<NpgsqlConnection> OpenAsync(NpgsqlConnection connection)
+    {
+        await connection.OpenAsync();
+        return connection;
+    }
+
+    /// <summary>Waits until the target holds a startup transaction whose process it does not list yet.</summary>
+    public static async Task WaitForUnlistedStartupAsync(VaultFixture vault)
+    {
+        await using var target = new NpgsqlConnection(ConnectionString(vault));
+        await target.OpenAsync();
+        await using var query = new NpgsqlCommand("""
+            SELECT count(*) FROM pg_locks
+            WHERE locktype = 'virtualxid' AND granted AND pid NOT IN (SELECT pid FROM pg_stat_activity)
+            """, target);
+        for (var attempt = 0; attempt < 100; attempt++)
+        {
+            if ((long)(await query.ExecuteScalarAsync())! > 0)
+            {
+                return;
+            }
+            await Task.Delay(100);
+        }
+        throw new InvalidOperationException("No connection started up within ten seconds.");
+    }
+
+    /// <summary>Whether the target lets the role sign in, or null when there is no such role.</summary>
+    public static async Task<bool?> CanSignInAsync(VaultFixture vault, string role)
+    {
+        await using var target = new NpgsqlConnection(ConnectionString(vault));
+        await target.OpenAsync();
+        await using var query = new NpgsqlCommand("SELECT rolcanlogin FROM pg_roles WHERE rolname = @role", target);
+        query.Parameters.AddWithValue("role", role);
+        return await query.ExecuteScalarAsync() as bool?;
+    }
+
+    /// <summary>Whether a connection that was still signing in ended up with a session that runs queries.</summary>
+    public static async Task<bool> EndsUpWorkingAsync(Task<NpgsqlConnection> signingIn)
+    {
+        try
+        {
+            await using var connection = await signingIn;
+            return await StillWorksAsync(connection);
+        }
+        catch (NpgsqlException)
         {
             return false;
         }

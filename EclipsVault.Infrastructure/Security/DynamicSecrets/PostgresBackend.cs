@@ -25,8 +25,14 @@ public sealed class PostgresBackend : IDynamicSecretBackend
 {
     private const string SettingName = $"{DynamicSecretTargetOptions.SectionName}:PostgresTargetConnectionString";
 
-    /// <summary>How long after a revocation to look again for a session that was still starting up.</summary>
-    private static readonly TimeSpan StartupGrace = TimeSpan.FromSeconds(1);
+    /// <summary>
+    /// How long past the target's <c>authentication_timeout</c> to wait for a connection still starting up.
+    /// A startup transaction begins just before authentication, which the server ends at that timeout, so
+    /// what remains is ordinary startup work, or a client's own <c>post_auth_delay</c>.
+    /// </summary>
+    private static readonly TimeSpan StartupMargin = TimeSpan.FromSeconds(5);
+
+    private static readonly TimeSpan StartupPollInterval = TimeSpan.FromMilliseconds(100);
 
     private const string NotConfiguredMessage =
         "PostgreSQL dynamic secrets need a target database of their own. Set " +
@@ -51,10 +57,12 @@ public sealed class PostgresBackend : IDynamicSecretBackend
         """;
 
     private readonly string? _connectionString;
+    private readonly TimeProvider _clock;
     private readonly ILogger<PostgresBackend> _logger;
 
-    public PostgresBackend(IOptions<DynamicSecretTargetOptions> target, ILogger<PostgresBackend> logger)
+    public PostgresBackend(IOptions<DynamicSecretTargetOptions> target, TimeProvider clock, ILogger<PostgresBackend> logger)
     {
+        _clock = clock;
         _connectionString = target.Value.PostgresTargetConnectionString;
         _logger = logger;
     }
@@ -74,9 +82,14 @@ public sealed class PostgresBackend : IDynamicSecretBackend
     }
 
     /// <summary>
-    /// Each step is its own command, so its own transaction: sign-in is off and committed before the role's
-    /// statements run, and the check for live sessions afterwards reads the server afresh rather than the
-    /// statistics snapshot PostgreSQL keeps for the length of a transaction.
+    /// Ends the credential: turns its sign-in off, waits out any connection that may have signed in just
+    /// before, ends the role's sessions and confirms none is left, and only then runs the role's statements,
+    /// which drop it. Each step is its own command, so its own transaction, and every check reads the server
+    /// afresh rather than the activity snapshot PostgreSQL keeps for the length of a transaction.
+    ///
+    /// Throws, leaving the role in place and unable to sign in, when any of that cannot be confirmed. A role
+    /// that is already gone was dropped by a revocation that confirmed it had no sessions, so revoking it
+    /// again succeeds without doing anything.
     /// </summary>
     public async Task RevokeAsync(DynamicSecretRole role, string identity, CancellationToken ct)
     {
@@ -85,36 +98,114 @@ public sealed class PostgresBackend : IDynamicSecretBackend
         var revocation = CredentialStatementTemplate.Render(role.RevocationStatements, identity, "unused", DateTimeOffset.UnixEpoch);
 
         await using var connection = await OpenTargetAsync(ct);
-        var roleId = await RoleIdAsync(connection, identity, ct);
-        await RunAsync(connection, disableSignIn, ct);
-        await RunAsync(connection, revocation, ct);
-        if (roleId is { } minted)
+        if (await RoleIdAsync(connection, identity, ct) is not { } roleId)
         {
-            await RequireNoSessionsAsync(connection, minted, identity, ct);
+            _logger.LogInformation("PostgreSQL role {Identity} for role {RoleName} was already dropped", identity, role.Name);
+            return;
+        }
+
+        await RunAsync(connection, disableSignIn, ct);
+        await AwaitStartupsAsync(connection, identity, ct);
+        await EndSessionsAsync(connection, roleId, identity, ct);
+        await RunAsync(connection, revocation, ct);
+        if (await RoleIdAsync(connection, identity, ct) is not null)
+        {
+            _logger.LogWarning("The revocation statements of role {RoleName} left PostgreSQL role {Identity} in place", role.Name, identity);
+            throw new InvalidOperationException("The revocation statements did not drop the PostgreSQL role.");
         }
 
         _logger.LogInformation("Dropped PostgreSQL role {Identity} for role {RoleName}", identity, role.Name);
     }
 
     /// <summary>
-    /// Throws when a session of the role is still open. Dropping a role leaves its sessions running, and
-    /// <c>pg_terminate_backend</c> reports a session it could not end only by returning false, so this
-    /// looks for itself. The second look is after <see cref="StartupGrace"/>: PostgreSQL 17 lists a
-    /// connection only once its startup has finished, and one that passed the sign-in check just before
-    /// <c>NOLOGIN</c> committed would otherwise be missed.
+    /// Waits until no connection that began starting up before sign-in was turned off is still invisible.
+    ///
+    /// PostgreSQL 17 checks a connection's right to sign in inside its startup transaction, and lists the
+    /// connection in <c>pg_stat_activity</c> only near that transaction's end. A client may also hold it
+    /// between the two with <c>post_auth_delay</c>. So a connection that passed the check before
+    /// <c>NOLOGIN</c> committed may not be listed yet. Every startup transaction holds its virtual
+    /// transaction lock, though, which <c>pg_locks</c> shows with its process id. This samples those locks
+    /// once, then the activity, and follows each lock whose process was not listed until the lock is released
+    /// (its startup ended, so it is listed by now or gone) or the process is listed. Locks taken later belong
+    /// to connections that check sign-in after <c>NOLOGIN</c> committed, so they are not followed, and listed
+    /// sessions are never waited on.
     /// </summary>
-    private async Task RequireNoSessionsAsync(NpgsqlConnection connection, uint roleId, string identity, CancellationToken ct)
+    private async Task AwaitStartupsAsync(NpgsqlConnection connection, string identity, CancellationToken ct)
     {
-        foreach (var wait in new[] { TimeSpan.Zero, StartupGrace })
+        var limit = await AuthenticationTimeoutAsync(connection, ct) + StartupMargin;
+        var started = _clock.GetTimestamp();
+        var startups = await VirtualTransactionsAsync(connection, ct);
+        startups.ExceptWith(await ListedProcessesAsync(connection, startups, ct));
+        while (startups.Count > 0)
         {
-            await Task.Delay(wait, ct);
-            await using var count = new NpgsqlCommand("SELECT count(*) FROM pg_stat_activity WHERE usesysid = @role", connection);
-            count.Parameters.AddWithValue("role", NpgsqlTypes.NpgsqlDbType.Oid, roleId);
-            if ((long)(await count.ExecuteScalarAsync(ct))! > 0)
+            if (_clock.GetElapsedTime(started) > limit)
             {
-                _logger.LogWarning("PostgreSQL role {Identity} still has an open session after its revocation", identity);
-                throw new InvalidOperationException("A session of the revoked PostgreSQL role is still open.");
+                _logger.LogWarning(
+                    "Revoking PostgreSQL role {Identity}: {StartupCount} connection(s) still starting up could belong to it",
+                    identity, startups.Count);
+                throw new InvalidOperationException("A connection still starting up may belong to the revoked PostgreSQL role.");
             }
+
+            await Task.Delay(StartupPollInterval, _clock, ct);
+            var held = await VirtualTransactionsAsync(connection, ct);
+            startups.IntersectWith(held);
+            startups.ExceptWith(await ListedProcessesAsync(connection, startups, ct));
+        }
+    }
+
+    /// <summary>The granted virtual transaction locks of live processes, as (process id, virtual transaction id).</summary>
+    private static async Task<HashSet<(int Pid, string VirtualXid)>> VirtualTransactionsAsync(NpgsqlConnection connection, CancellationToken ct)
+    {
+        await using var query = new NpgsqlCommand(
+            "SELECT pid, virtualxid FROM pg_locks WHERE locktype = 'virtualxid' AND granted AND pid IS NOT NULL", connection);
+        var locks = new HashSet<(int, string)>();
+        await using var rows = await query.ExecuteReaderAsync(ct);
+        while (await rows.ReadAsync(ct))
+        {
+            locks.Add((rows.GetInt32(0), rows.GetString(1)));
+        }
+        return locks;
+    }
+
+    /// <summary>Those of <paramref name="locks"/> whose process <c>pg_stat_activity</c> lists now.</summary>
+    private static async Task<IEnumerable<(int Pid, string VirtualXid)>> ListedProcessesAsync(
+        NpgsqlConnection connection, HashSet<(int Pid, string VirtualXid)> locks, CancellationToken ct)
+    {
+        await using var query = new NpgsqlCommand("SELECT pid FROM pg_stat_activity WHERE pid = ANY(@pids)", connection);
+        query.Parameters.AddWithValue("pids", locks.Select(held => held.Pid).ToArray());
+        var listed = new HashSet<int>();
+        await using var rows = await query.ExecuteReaderAsync(ct);
+        while (await rows.ReadAsync(ct))
+        {
+            listed.Add(rows.GetInt32(0));
+        }
+        return locks.Where(held => listed.Contains(held.Pid)).ToList();
+    }
+
+    private static async Task<TimeSpan> AuthenticationTimeoutAsync(NpgsqlConnection connection, CancellationToken ct)
+    {
+        await using var query = new NpgsqlCommand("SELECT setting::int FROM pg_settings WHERE name = 'authentication_timeout'", connection);
+        return TimeSpan.FromSeconds((int)(await query.ExecuteScalarAsync(ct))!);
+    }
+
+    /// <summary>
+    /// Ends the role's sessions and confirms with a fresh look that none is left. The role can no longer sign
+    /// in and no connection that could be its own is still starting, so none can appear afterwards.
+    /// </summary>
+    private async Task EndSessionsAsync(NpgsqlConnection connection, uint roleId, string identity, CancellationToken ct)
+    {
+        await using (var end = new NpgsqlCommand("SELECT pg_terminate_backend(pid, 5000) FROM pg_stat_activity WHERE usesysid = @role", connection))
+        {
+            end.Parameters.AddWithValue("role", NpgsqlTypes.NpgsqlDbType.Oid, roleId);
+            await end.ExecuteNonQueryAsync(ct);
+        }
+
+        await using var count = new NpgsqlCommand("SELECT count(*) FROM pg_stat_activity WHERE usesysid = @role", connection);
+        count.Parameters.AddWithValue("role", NpgsqlTypes.NpgsqlDbType.Oid, roleId);
+        if ((long)(await count.ExecuteScalarAsync(ct))! > 0)
+        {
+            _logger.LogWarning("PostgreSQL role {Identity} still has an open session after its sessions were ended", identity);
+            throw new InvalidOperationException("A session of the revoked PostgreSQL role is still open.");
         }
     }
 

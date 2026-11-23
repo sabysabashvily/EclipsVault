@@ -74,6 +74,14 @@ internal abstract class VaultDatabase : IAsyncDisposable
             await using var create = server.CreateCommand();
             create.CommandText = $"CREATE DATABASE {PostgresDynamicTargetDatabase}";
             await create.ExecuteNonQueryAsync();
+            // Revocation waits up to this plus a margin for a connection still starting up; two seconds keeps
+            // the tests that make it wait short. ALTER SYSTEM also refuses a transaction.
+            await using var shortenAuthentication = server.CreateCommand();
+            shortenAuthentication.CommandText = "ALTER SYSTEM SET authentication_timeout = '2s'";
+            await shortenAuthentication.ExecuteNonQueryAsync();
+            await using var reload = server.CreateCommand();
+            reload.CommandText = "SELECT pg_reload_conf()";
+            await reload.ExecuteNonQueryAsync();
         }
 
         var targetAsSuperuser = new NpgsqlConnectionStringBuilder(_postgresTarget.GetConnectionString()) { Database = PostgresDynamicTargetDatabase };
