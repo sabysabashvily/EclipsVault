@@ -207,4 +207,28 @@ public class DbSeederTests : IDisposable
         Assert.Equal(2, secrets.Count(s => s.IsHoneyToken));
         Assert.NotEmpty(await db.DynamicSecretRoles.ToListAsync());
     }
+
+    [Fact]
+    public async Task Development_adds_the_postgres_roles_to_a_database_seeded_with_only_the_sql_server_ones()
+    {
+        await SeedAsync(Environments.Development);
+        await using (var seeded = Read())
+        {
+            await seeded.DynamicSecretRoles.Where(role => role.Backend == DynamicSecretBackend.Postgres).ExecuteDeleteAsync();
+        }
+
+        await SeedAsync(Environments.Development);
+
+        await using var db = Read();
+        var roles = await db.DynamicSecretRoles.OrderBy(role => role.Name).Select(role => new { role.Name, role.Backend }).ToListAsync();
+        Assert.Equal(
+            new[]
+            {
+                new { Name = "global_db_writer", Backend = DynamicSecretBackend.SqlServer },
+                new { Name = "global_pg_writer", Backend = DynamicSecretBackend.Postgres },
+                new { Name = "phoenix_db_reader", Backend = DynamicSecretBackend.SqlServer },
+                new { Name = "phoenix_pg_reader", Backend = DynamicSecretBackend.Postgres },
+            },
+            roles);
+    }
 }

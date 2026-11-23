@@ -28,6 +28,11 @@
 #   ConnectionStrings__DefaultConnection="Host=localhost;Port=5432;Database=EclipsVaultUmbraDb;Username=eclipsvault;Password=dev-postgres-password" \
 #   dotnet run --project EclipsVault.Web
 #
+# The seeded PostgreSQL dynamic roles (phoenix_pg_reader, global_pg_writer) mint only once their target
+# is set. Locally it can be this server's postgres database, by adding this line to the run above; a real
+# deployment gives the target its own login (docs/INSTALL.md):
+#   DynamicSecrets__PostgresTargetConnectionString="Host=localhost;Port=5432;Database=postgres;Username=eclipsvault;Password=dev-postgres-password" \
+#
 # UIs:  Mailpit  http://127.0.0.1:8025   ·   Vault  http://127.0.0.1:8200 (token: dev-root)
 
 services:

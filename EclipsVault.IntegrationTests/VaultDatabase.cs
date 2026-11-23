@@ -46,6 +46,9 @@ internal abstract class VaultDatabase : IAsyncDisposable
     /// </summary>
     public abstract Task<string> StartDynamicTargetAsync();
 
+    /// <summary>The PostgreSQL counterpart of <see cref="StartDynamicTargetAsync"/>, for <c>Postgres</c> roles.</summary>
+    public abstract Task<string> StartPostgresDynamicTargetAsync();
+
     public abstract ValueTask DisposeAsync();
 
     protected static async Task<string> CreateDynamicTargetAsync(string serverConnectionString)
@@ -61,7 +64,27 @@ internal abstract class VaultDatabase : IAsyncDisposable
         return new SqlConnectionStringBuilder(serverConnectionString) { InitialCatalog = DynamicTargetDatabase }.ConnectionString;
     }
 
+    protected static async Task<string> CreatePostgresDynamicTargetAsync(string serverConnectionString)
+    {
+        await using (var server = new NpgsqlConnection(serverConnectionString))
+        {
+            await server.OpenAsync();
+            await using var create = server.CreateCommand();
+            create.CommandText = $"CREATE DATABASE {PostgresDynamicTargetDatabase}";
+            await create.ExecuteNonQueryAsync();
+        }
+
+        return new NpgsqlConnectionStringBuilder(serverConnectionString) { Database = PostgresDynamicTargetDatabase }.ConnectionString;
+    }
+
+    protected static PostgreSqlContainer NewPostgresContainer(string engine) => new PostgreSqlBuilder(PostgresShareIssuerBackfill.PostgresImage)
+        .WithName(ContainerName(engine))
+        .WithPassword(Convert.ToHexString(RandomNumberGenerator.GetBytes(16)))
+        .Build();
+
     private const string DynamicTargetDatabase = "DynamicTarget";
+
+    private const string PostgresDynamicTargetDatabase = "dynamic_target";
 
     protected static string ContainerName(string engine)
         => $"{Environment.GetEnvironmentVariable("ECLIPSVAULT_TEST_RESOURCE_PREFIX") ?? "eclipsvault-it"}-{engine}-{Guid.NewGuid():N}";
@@ -83,20 +106,34 @@ internal sealed class SqlServerVaultDatabase : VaultDatabase
     public override string ConnectionString()
         => new SqlConnectionStringBuilder(_sql.GetConnectionString()) { InitialCatalog = "EclipsVault" }.ConnectionString;
 
+    private PostgreSqlContainer? _postgresTarget;
+
     // The vault's own server already runs SQL Server, so the target is a second database on it.
     public override Task<string> StartDynamicTargetAsync() => CreateDynamicTargetAsync(_sql.GetConnectionString());
 
-    public override ValueTask DisposeAsync() => _sql.DisposeAsync();
+    // PostgreSQL roles need a PostgreSQL server, so a SQL Server vault gets one beside it.
+    public override async Task<string> StartPostgresDynamicTargetAsync()
+    {
+        _postgresTarget = NewPostgresContainer("postgres-target");
+        await _postgresTarget.StartAsync();
+        return await CreatePostgresDynamicTargetAsync(_postgresTarget.GetConnectionString());
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        await _sql.DisposeAsync();
+        if (_postgresTarget is not null)
+        {
+            await _postgresTarget.DisposeAsync();
+        }
+    }
 }
 
 internal sealed class PostgresVaultDatabase : VaultDatabase
 {
     // The vault signs in as the server's superuser, as it signs in to SQL Server as sa, so this
     // password is per run too.
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder(PostgresShareIssuerBackfill.PostgresImage)
-        .WithName(ContainerName("postgres"))
-        .WithPassword(Convert.ToHexString(RandomNumberGenerator.GetBytes(16)))
-        .Build();
+    private readonly PostgreSqlContainer _postgres = NewPostgresContainer("postgres");
 
     public override string Provider => DatabaseProvider.Postgres;
 
@@ -117,6 +154,9 @@ internal sealed class PostgresVaultDatabase : VaultDatabase
         await _dynamicTarget.StartAsync();
         return await CreateDynamicTargetAsync(_dynamicTarget.GetConnectionString());
     }
+
+    // The vault's own server already runs PostgreSQL, so the target is a second database on it.
+    public override Task<string> StartPostgresDynamicTargetAsync() => CreatePostgresDynamicTargetAsync(_postgres.GetConnectionString());
 
     public override async ValueTask DisposeAsync()
     {

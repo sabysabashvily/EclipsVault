@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace EclipsVault.Core.Application.DynamicSecrets;
 
 /// <summary>
@@ -23,7 +25,7 @@ public static class CredentialStatementTemplate
         return template
             .Replace(NamePlaceholder, name, StringComparison.Ordinal)
             .Replace(PasswordPlaceholder, password, StringComparison.Ordinal)
-            .Replace(ExpirationPlaceholder, expiresAtUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss"), StringComparison.Ordinal);
+            .Replace(ExpirationPlaceholder, expiresAtUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture), StringComparison.Ordinal);
     }
 
     /// <summary>True when the value is safe to interpolate into backend DDL.</summary>

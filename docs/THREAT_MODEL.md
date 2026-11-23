@@ -165,9 +165,10 @@ These hold by construction and are worth stating because they limit how bad a fa
   rewrite the schema or the audit tables.
   - **Dynamic secrets and managed rotation do not weaken this.** They run `CREATE LOGIN`,
     `DROP LOGIN`, and `ALTER LOGIN`, which need server-level rights (`ALTER ANY LOGIN` on SQL
-    Server) — rights that can re-password *any* principal on that instance. Those statements
-    therefore run against a **separately configured target database** over its own connection
-    (`DynamicSecrets:TargetConnectionString`), never over the vault's. The privileged credential is
+    Server, `CREATEROLE` on PostgreSQL) — rights that can re-password principals on that instance.
+    Those statements therefore run against a **separately configured target database** over its own
+    connection (`DynamicSecrets:TargetConnectionString`, or `DynamicSecrets:PostgresTargetConnectionString`
+    for PostgreSQL roles), never over the vault's. The privileged credential is
     the target's, not the vault's, and the target can be — and normally should be — a different
     server entirely. If no target is configured, minting and rotation **refuse**; there is no
     fallback to the vault's connection, because a fallback would silently require the vault's own

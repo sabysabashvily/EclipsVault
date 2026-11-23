@@ -1,3 +1,4 @@
+using System.Globalization;
 using EclipsVault.Core.Application.DynamicSecrets;
 using Xunit;
 
@@ -31,8 +32,34 @@ public class CredentialStatementTemplateTests
         Assert.Equal("CREATE USER [ev_x_1] FOR LOGIN [ev_x_1]; -- until 2026-07-16 12:30:00", sql);
     }
 
+    [Fact]
+    public void Renders_a_postgres_role_with_its_quoted_name_and_its_expiry_in_utc()
+    {
+        var sql = CredentialStatementTemplate.Render(
+            """CREATE ROLE "{{name}}" LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}+00';""", "ev_reader_Ab12", "Pw0rd", Expiry);
+
+        Assert.Equal("""CREATE ROLE "ev_reader_Ab12" LOGIN PASSWORD 'Pw0rd' VALID UNTIL '2026-07-16 12:30:00+00';""", sql);
+    }
+
+    [Fact]
+    public void Renders_the_expiration_with_colons_whatever_the_current_culture()
+    {
+        var current = CultureInfo.CurrentCulture;
+        // Finnish separates hours, minutes and seconds with '.', which a backend would not read as a time.
+        CultureInfo.CurrentCulture = new CultureInfo("fi-FI");
+        try
+        {
+            Assert.Equal("until 2026-07-16 12:30:00", CredentialStatementTemplate.Render("until {{expiration}}", "ev_x_1", "Ab1", Expiry));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = current;
+        }
+    }
+
     [Theory]
     [InlineData("ev'; DROP DATABASE Umbra; --")]
+    [InlineData("ev\"; DROP ROLE postgres; --")]
     [InlineData("ev]--")]
     [InlineData("ev name")]
     [InlineData("ev-name")]

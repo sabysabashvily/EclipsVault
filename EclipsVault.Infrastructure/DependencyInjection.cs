@@ -174,6 +174,7 @@ public static class DependencyInjection
         services.AddScoped<SqlServerBackend>();
         services.AddScoped<IDynamicSecretBackend>(sp => sp.GetRequiredService<SqlServerBackend>());
         services.AddScoped<IManagedSecretBackend>(sp => sp.GetRequiredService<SqlServerBackend>());
+        services.AddScoped<IDynamicSecretBackend, PostgresBackend>();
         services.AddScoped<IDynamicSecretService, DynamicSecretService>();
 
         services.AddScoped<ITrustedNetworkService, TrustedNetworkService>();

@@ -48,7 +48,8 @@ internal static class DynamicSecretsApi
     public static async Task<Guid> AddRoleAsync(
         VaultFixture vault, string name, SensitivityLevel sensitivity = SensitivityLevel.Internal,
         string creation = ReaderRecipe, string revocation = RepeatableRevocation, int defaultTtlMinutes = 15, int maxTtlMinutes = 60,
-        string project = "GLOBAL", SecretEnvironment environment = SecretEnvironment.Development, bool enabled = true)
+        string project = "GLOBAL", SecretEnvironment environment = SecretEnvironment.Development, bool enabled = true,
+        DynamicSecretBackend backend = DynamicSecretBackend.SqlServer)
     {
         using var scope = vault.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>();
@@ -60,7 +61,7 @@ internal static class DynamicSecretsApi
             ProjectKey = project,
             Environment = environment,
             Sensitivity = sensitivity,
-            Backend = DynamicSecretBackend.SqlServer,
+            Backend = backend,
             CreationStatements = creation,
             RevocationStatements = revocation,
             DefaultTtlMinutes = defaultTtlMinutes,

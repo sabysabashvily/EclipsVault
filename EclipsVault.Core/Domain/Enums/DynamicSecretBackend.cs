@@ -7,5 +7,8 @@ namespace EclipsVault.Core.Domain.Enums;
 public enum DynamicSecretBackend
 {
     /// <summary>A real SQL Server login + database user, created and dropped on demand.</summary>
-    SqlServer = 1
+    SqlServer = 1,
+
+    /// <summary>A real PostgreSQL login role, created and dropped on demand.</summary>
+    Postgres = 2
 }

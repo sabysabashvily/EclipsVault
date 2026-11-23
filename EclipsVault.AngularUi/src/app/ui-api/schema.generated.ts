@@ -6345,7 +6345,7 @@ export interface components {
             sensitivity: number | string;
             sensitivityLabel: string;
             /** @enum {string} */
-            backend: "SqlServer";
+            backend: "SqlServer" | "Postgres";
             /** Format: int32 */
             defaultTtlMinutes: number | string;
             /** Format: int32 */

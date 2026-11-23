@@ -36,6 +36,28 @@ public sealed class DynamicSecretAuditFailureTests(AuditFailureFixture failure)
     }
 
     [Fact]
+    public async Task A_postgres_issue_whose_lease_cannot_be_recorded_removes_the_role_and_stores_nothing()
+    {
+        var roleId = await PostgresDynamicTarget.AddRoleAsync(vault, "it_pg_af_issue");
+        var admin = await vault.AdminClientAsync();
+        var token = await DynamicSecretsApi.TokenAsync(admin);
+
+        await failure.RejectAuditWritesAsync();
+        try
+        {
+            var response = await DynamicSecretsApi.IssueAsync(admin, roleId, token: token);
+
+            await DynamicSecretsApi.AssertProblemAsync(response, 503, "audit_unavailable");
+            Assert.Empty(await PostgresDynamicTarget.RolesOfRoleAsync(vault, "it_pg_af_issue"));
+            Assert.Empty(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
+        }
+        finally
+        {
+            await failure.RestoreAuditWritesAsync();
+        }
+    }
+
+    [Fact]
     public async Task A_destroyed_credential_whose_close_cannot_be_recorded_stays_active_until_a_recorded_sweep_expires_it()
     {
         var roleId = await DynamicSecretsApi.AddRoleAsync(vault, "it_dyn_af_revoke");

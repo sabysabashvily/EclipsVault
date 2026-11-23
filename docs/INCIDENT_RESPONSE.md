@@ -82,6 +82,17 @@ password was never shown or stored, so no one was handed a working credential, b
 4. Find out why the revocation statements failed (the vault logged the target's error type and number)
    before the role issues again.
 
+For a PostgreSQL role, the target is `DynamicSecrets:PostgresTargetConnectionString`, and the leftover
+is a login role:
+
+1. Connect to that database with the login that holds `CREATEROLE` there.
+2. Confirm the role exists: `SELECT rolname, rolvaliduntil FROM pg_roles WHERE rolname = '<login>';`
+   Its password stops working at `rolvaliduntil` if the role's recipe set one, but open sessions continue.
+3. Run the role's revocation statements with `{{name}}` replaced by the login, or, for the seeded recipes:
+   `SELECT pg_terminate_backend(pid, 5000) FROM pg_stat_activity WHERE usename = '<login>';`
+   then `REASSIGN OWNED BY "<login>" TO CURRENT_USER; DROP OWNED BY "<login>"; DROP ROLE "<login>";`
+4. As above, find out why the revocation failed (the vault logged the error type and SQLSTATE).
+
 ## Your own trust roots (do not skip in a rush)
 
 Release images are signed **keyless** (Sigstore) by the GitHub Actions release workflow's identity, so

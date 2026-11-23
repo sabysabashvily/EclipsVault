@@ -202,19 +202,15 @@ public static class DbSeeder
     }
 
     /// <summary>
-    /// Dynamic-secret recipes. These mint real SQL Server principals against the vault's own server,
-    /// so the sample roles are genuinely usable: issue one and you can connect with it.
+    /// Dynamic-secret recipes, two on SQL Server and two on PostgreSQL. They mint real principals on the
+    /// configured targets, so the sample roles are genuinely usable: issue one and you can connect with it.
+    /// Each is added by name when missing, so a database seeded before a role existed gains it.
     ///
     /// Roles are seeded rather than authored in the UI on purpose — the statements run with the
     /// vault's backend rights, so defining one is a privileged, out-of-band act.
     /// </summary>
     private static async Task SeedDynamicSecretRolesAsync(EclipsVaultDbContext db, ILogger logger, DateTimeOffset now)
     {
-        if (await db.DynamicSecretRoles.AnyAsync())
-        {
-            return;
-        }
-
         // {{name}} and {{password}} are substituted by CredentialStatementTemplate, which refuses any
         // value that is not strictly alphanumeric — the reason interpolating into DDL is safe here.
         const string createReader = """
@@ -241,7 +237,34 @@ public static class DbSeeder
             IF EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'{{name}}') DROP LOGIN [{{name}}];
             """;
 
-        db.DynamicSecretRoles.AddRange(
+        // PostgreSQL folds an unquoted name to lower case, and the minted name has capitals, so it is
+        // always quoted. VALID UNTIL stops the password working at the lease's end even if revocation fails;
+        // {{expiration}} is UTC, which the '+00' says.
+        const string createPostgresReader = """
+            CREATE ROLE "{{name}}" LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}+00' IN ROLE pg_read_all_data;
+            """;
+
+        const string createPostgresWriter = """
+            CREATE ROLE "{{name}}" LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}+00' IN ROLE pg_read_all_data, pg_write_all_data;
+            """;
+
+        // Idempotent. Ends live sessions first, because a dropped role's open sessions keep working; then
+        // hands anything the role created to the target's login and revokes its grants, which DROP ROLE needs.
+        const string revokePostgres = """
+            SELECT pg_terminate_backend(pid, 5000) FROM pg_stat_activity WHERE usename = '{{name}}';
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT FROM pg_roles WHERE rolname = '{{name}}') THEN
+                    REASSIGN OWNED BY "{{name}}" TO CURRENT_USER;
+                    DROP OWNED BY "{{name}}";
+                END IF;
+            END
+            $$;
+            DROP ROLE IF EXISTS "{{name}}";
+            """;
+
+        DynamicSecretRole[] samples =
+        [
             new DynamicSecretRole
             {
                 Id = Guid.NewGuid(),
@@ -273,10 +296,51 @@ public static class DbSeeder
                 MaxTtlMinutes = 30,
                 IsEnabled = true,
                 CreatedAtUtc = now
-            });
+            },
+            new DynamicSecretRole
+            {
+                Id = Guid.NewGuid(),
+                Name = "phoenix_pg_reader",
+                Description = "Read-only PostgreSQL role on the PostgreSQL target, minted on demand.",
+                ProjectKey = "PHOENIX",
+                Environment = SecretEnvironment.Development,
+                Sensitivity = SensitivityLevel.Internal,
+                Backend = DynamicSecretBackend.Postgres,
+                CreationStatements = createPostgresReader,
+                RevocationStatements = revokePostgres,
+                DefaultTtlMinutes = 15,
+                MaxTtlMinutes = 60,
+                IsEnabled = true,
+                CreatedAtUtc = now
+            },
+            new DynamicSecretRole
+            {
+                Id = Guid.NewGuid(),
+                Name = "global_pg_writer",
+                Description = "Read/write PostgreSQL role on the PostgreSQL target. Short leases only.",
+                ProjectKey = "GLOBAL",
+                Environment = SecretEnvironment.Production,
+                Sensitivity = SensitivityLevel.Secret,
+                Backend = DynamicSecretBackend.Postgres,
+                CreationStatements = createPostgresWriter,
+                RevocationStatements = revokePostgres,
+                DefaultTtlMinutes = 10,
+                MaxTtlMinutes = 30,
+                IsEnabled = true,
+                CreatedAtUtc = now
+            }
+        ];
 
+        var existing = await db.DynamicSecretRoles.Select(role => role.Name).ToListAsync();
+        var missing = samples.Where(role => !existing.Contains(role.Name)).ToList();
+        if (missing.Count == 0)
+        {
+            return;
+        }
+
+        db.DynamicSecretRoles.AddRange(missing);
         await db.SaveChangesAsync();
-        logger.LogInformation("Seeded {RoleCount} dynamic-secret roles (SQL Server backend)", 2);
+        logger.LogInformation("Seeded {RoleCount} dynamic-secret roles: {RoleNames}", missing.Count, missing.Select(role => role.Name));
     }
 
     private static async Task<Secret> SealSecretAsync(
