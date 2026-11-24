@@ -76,14 +76,25 @@ public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBacke
         $$;
         """;
 
+    private const string SameClusterMessage =
+        $"'{SettingName}' points at the vault's own PostgreSQL cluster. " +
+        "PostgreSQL roles and pg_read_all_data/pg_write_all_data span every database in a cluster, so dynamic " +
+        "secrets must target a separate PostgreSQL server.";
+
     private readonly string? _connectionString;
+    private readonly string? _vaultConnectionString;
     private readonly TimeProvider _clock;
     private readonly ILogger<PostgresBackend> _logger;
 
-    public PostgresBackend(IOptions<DynamicSecretTargetOptions> target, TimeProvider clock, ILogger<PostgresBackend> logger)
+    public PostgresBackend(
+        IOptions<DynamicSecretTargetOptions> target,
+        TimeProvider clock,
+        ILogger<PostgresBackend> logger,
+        VaultPostgresConnection? vaultConnection = null)
     {
         _clock = clock;
         _connectionString = target.Value.PostgresTargetConnectionString;
+        _vaultConnectionString = vaultConnection?.ConnectionString;
         _logger = logger;
     }
 
@@ -94,8 +105,51 @@ public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBacke
     {
         var verifier = ScramSha256Verifier.Create(password);
         var sql = CredentialStatementTemplate.RenderWithScramVerifier(role.CreationStatements, identity, verifier, expiresAtUtc);
-        await using var connection = await OpenTargetAsync(ct, _ => new MintRefusedException(role.Name));
-        await RunAsync(connection, sql, ct);
+        await using var connection = await OpenTargetAsync(ct, _ => new MintRefusedException(role.Name), enforceDistinctEndpoint: true);
+
+        if (string.IsNullOrWhiteSpace(_vaultConnectionString))
+        {
+            await RunAsync(connection, sql, ct);
+        }
+        else
+        {
+            NpgsqlTransaction? transaction = null;
+            try
+            {
+                // Keep the live cluster identity check and the DDL inside one explicit transaction so a
+                // transaction-pooling proxy or Npgsql multiplexing cannot route them to different servers.
+                transaction = await connection.BeginTransactionAsync(ct);
+                await EnsureClusterDistinctAsync(connection, transaction, ct);
+            }
+            catch (Exception ex)
+            {
+                if (transaction is not null)
+                {
+                    await transaction.DisposeAsync();
+                }
+
+                if (ex is not InvalidOperationException || ex.Message != SameClusterMessage)
+                {
+                    LogFailure(ex);
+                }
+
+                throw new MintRefusedException(role.Name);
+            }
+
+            await using (transaction)
+            {
+                await RunAsync(connection, transaction, sql, ct);
+                try
+                {
+                    await transaction.CommitAsync(ct);
+                }
+                catch (Exception ex)
+                {
+                    LogFailure(ex);
+                    throw;
+                }
+            }
+        }
 
         _logger.LogInformation(
             "Minted PostgreSQL role {Identity} for role {RoleName}; lease elapses at {ExpiresAtUtc}",
@@ -313,9 +367,14 @@ public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBacke
     /// <summary>
     /// Opens the PostgreSQL target, refusing when none is configured. When <paramref name="nothingSent"/> is
     /// given, a failure before anything reached the target throws what it returns instead, so the caller
-    /// knows there is nothing to undo.
+    /// knows there is nothing to undo. When <paramref name="enforceDistinctEndpoint"/> is true and the vault
+    /// itself runs on PostgreSQL, refuses any target that statically shares an endpoint with the vault's
+    /// own PostgreSQL connection before opening a socket.
     /// </summary>
-    private async Task<NpgsqlConnection> OpenTargetAsync(CancellationToken ct, Func<Exception, Exception>? nothingSent = null)
+    private async Task<NpgsqlConnection> OpenTargetAsync(
+        CancellationToken ct,
+        Func<Exception, Exception>? nothingSent = null,
+        bool enforceDistinctEndpoint = false)
     {
         if (string.IsNullOrWhiteSpace(_connectionString))
         {
@@ -324,11 +383,11 @@ public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBacke
             throw nothingSent?.Invoke(notConfigured) ?? notConfigured;
         }
 
-        NpgsqlConnection connection;
+        NpgsqlConnectionStringBuilder targetBuilder;
         try
         {
             // Npgsql parses the setting here, so a malformed one fails before anything is sent.
-            connection = new NpgsqlConnection(_connectionString);
+            targetBuilder = new NpgsqlConnectionStringBuilder(_connectionString);
         }
         catch (Exception ex)
         {
@@ -343,15 +402,28 @@ public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBacke
             throw nothingSent(ex);
         }
 
+        if (enforceDistinctEndpoint && !string.IsNullOrWhiteSpace(_vaultConnectionString))
+        {
+            EnsureEndpointsDistinct(targetBuilder, nothingSent);
+        }
+
+        NpgsqlConnection? connection = null;
+
         try
         {
+            connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync(ct);
             return connection;
         }
         catch (Exception ex)
         {
-            await connection.DisposeAsync();
+            if (connection is not null)
+            {
+                await connection.DisposeAsync();
+            }
+
             LogFailure(ex);
+
             if (nothingSent is null)
             {
                 throw;
@@ -361,11 +433,58 @@ public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBacke
         }
     }
 
-    private async Task RunAsync(NpgsqlConnection connection, string sql, CancellationToken ct)
+    private void EnsureEndpointsDistinct(NpgsqlConnectionStringBuilder targetBuilder, Func<Exception, Exception>? nothingSent)
+    {
+        bool sharesEndpoint;
+        try
+        {
+            var vaultBuilder = new NpgsqlConnectionStringBuilder(_vaultConnectionString);
+            sharesEndpoint = PostgresClusterGuard.SharesEndpoint(vaultBuilder, targetBuilder);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError("Cannot verify PostgreSQL cluster separation because the connection endpoints failed to parse: {ExceptionType}",
+                ex.GetType().Name);
+            throw nothingSent?.Invoke(ex) ?? ex;
+        }
+
+        if (sharesEndpoint)
+        {
+            _logger.LogError(SameClusterMessage);
+            var sameCluster = new InvalidOperationException(SameClusterMessage);
+            throw nothingSent?.Invoke(sameCluster) ?? sameCluster;
+        }
+    }
+
+    private async Task EnsureClusterDistinctAsync(
+        NpgsqlConnection targetConnection,
+        NpgsqlTransaction targetTransaction,
+        CancellationToken ct)
+    {
+        var targetClusterId = await PostgresClusterGuard.ReadSystemIdentifierAsync(targetConnection, targetTransaction, ct);
+
+        foreach (var vaultEndpointConnectionString in PostgresClusterGuard.ExpandHostConnectionStrings(_vaultConnectionString!))
+        {
+            await using var vaultConnection = new NpgsqlConnection(vaultEndpointConnectionString);
+            await vaultConnection.OpenAsync(ct);
+            var vaultClusterId = await PostgresClusterGuard.ReadSystemIdentifierAsync(vaultConnection, transaction: null, ct);
+
+            if (targetClusterId == vaultClusterId)
+            {
+                _logger.LogError(SameClusterMessage);
+                throw new InvalidOperationException(SameClusterMessage);
+            }
+        }
+    }
+
+    private Task RunAsync(NpgsqlConnection connection, string sql, CancellationToken ct)
+        => RunAsync(connection, transaction: null, sql, ct);
+
+    private async Task RunAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction, string sql, CancellationToken ct)
     {
         try
         {
-            await using var command = new NpgsqlCommand(sql, connection);
+            await using var command = new NpgsqlCommand(sql, connection, transaction);
             await command.ExecuteNonQueryAsync(ct);
         }
         catch (Exception ex)
