@@ -84,8 +84,47 @@ public sealed class PostgresBackend : IDynamicSecretBackend
         DynamicSecretRole role, string identity, string password, DateTimeOffset expiresAtUtc, CancellationToken ct)
     {
         var sql = CredentialStatementTemplate.Render(role.CreationStatements, identity, password, expiresAtUtc);
-        await using var connection = await OpenTargetAsync(ct, _ => new MintRefusedException(role.Name), enforceDistinctCluster: true);
-        await RunAsync(connection, sql, ct);
+        await using var connection = await OpenTargetAsync(ct, _ => new MintRefusedException(role.Name), enforceDistinctEndpoint: true);
+
+        NpgsqlTransaction? transaction = null;
+        try
+        {
+            // Keep the live cluster identity check and the DDL inside one explicit transaction so a
+            // transaction-pooling proxy or Npgsql multiplexing cannot route them to different servers.
+            transaction = await connection.BeginTransactionAsync(ct);
+            if (!string.IsNullOrWhiteSpace(_vaultConnectionString))
+            {
+                await EnsureClusterDistinctAsync(connection, transaction, ct);
+            }
+        }
+        catch (Exception ex)
+        {
+            if (transaction is not null)
+            {
+                await transaction.DisposeAsync();
+            }
+
+            if (ex is not InvalidOperationException || ex.Message != SameClusterMessage)
+            {
+                LogFailure(ex);
+            }
+
+            throw new MintRefusedException(role.Name);
+        }
+
+        await using (transaction)
+        {
+            await RunAsync(connection, transaction, sql, ct);
+            try
+            {
+                await transaction.CommitAsync(ct);
+            }
+            catch (Exception ex)
+            {
+                LogFailure(ex);
+                throw;
+            }
+        }
 
         _logger.LogInformation(
             "Minted PostgreSQL role {Identity} for role {RoleName}; lease elapses at {ExpiresAtUtc}",
@@ -231,14 +270,14 @@ public sealed class PostgresBackend : IDynamicSecretBackend
     /// <summary>
     /// Opens the PostgreSQL target, refusing when none is configured. When <paramref name="nothingSent"/> is
     /// given, a failure before anything reached the target throws what it returns instead, so the caller
-    /// knows there is nothing to undo. When <paramref name="enforceDistinctCluster"/> is true and the vault
-    /// itself runs on PostgreSQL, refuses any target that shares an endpoint or cluster
-    /// <c>system_identifier</c> with the vault's own PostgreSQL cluster.
+    /// knows there is nothing to undo. When <paramref name="enforceDistinctEndpoint"/> is true and the vault
+    /// itself runs on PostgreSQL, refuses any target that statically shares an endpoint with the vault's
+    /// own PostgreSQL connection before opening a socket.
     /// </summary>
     private async Task<NpgsqlConnection> OpenTargetAsync(
         CancellationToken ct,
         Func<Exception, Exception>? nothingSent = null,
-        bool enforceDistinctCluster = false)
+        bool enforceDistinctEndpoint = false)
     {
         if (string.IsNullOrWhiteSpace(_connectionString))
         {
@@ -266,30 +305,27 @@ public sealed class PostgresBackend : IDynamicSecretBackend
             throw nothingSent(ex);
         }
 
-        if (enforceDistinctCluster && !string.IsNullOrWhiteSpace(_vaultConnectionString))
+        if (enforceDistinctEndpoint && !string.IsNullOrWhiteSpace(_vaultConnectionString))
         {
             EnsureEndpointsDistinct(targetBuilder, nothingSent);
         }
 
-        var connection = new NpgsqlConnection(_connectionString);
+        NpgsqlConnection? connection = null;
 
         try
         {
+            connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync(ct);
-            if (enforceDistinctCluster && !string.IsNullOrWhiteSpace(_vaultConnectionString))
-            {
-                await EnsureClusterDistinctAsync(connection, ct);
-            }
-
             return connection;
         }
         catch (Exception ex)
         {
-            await connection.DisposeAsync();
-            if (ex is not InvalidOperationException || ex.Message != SameClusterMessage)
+            if (connection is not null)
             {
-                LogFailure(ex);
+                await connection.DisposeAsync();
             }
+
+            LogFailure(ex);
 
             if (nothingSent is null)
             {
@@ -322,13 +358,16 @@ public sealed class PostgresBackend : IDynamicSecretBackend
         }
     }
 
-    private async Task EnsureClusterDistinctAsync(NpgsqlConnection targetConnection, CancellationToken ct)
+    private async Task EnsureClusterDistinctAsync(
+        NpgsqlConnection targetConnection,
+        NpgsqlTransaction targetTransaction,
+        CancellationToken ct)
     {
-        var targetClusterId = await PostgresClusterGuard.ReadSystemIdentifierAsync(targetConnection, ct);
+        var targetClusterId = await PostgresClusterGuard.ReadSystemIdentifierAsync(targetConnection, targetTransaction, ct);
 
         await using var vaultConnection = new NpgsqlConnection(_vaultConnectionString);
         await vaultConnection.OpenAsync(ct);
-        var vaultClusterId = await PostgresClusterGuard.ReadSystemIdentifierAsync(vaultConnection, ct);
+        var vaultClusterId = await PostgresClusterGuard.ReadSystemIdentifierAsync(vaultConnection, transaction: null, ct);
 
         if (targetClusterId == vaultClusterId)
         {
@@ -337,11 +376,14 @@ public sealed class PostgresBackend : IDynamicSecretBackend
         }
     }
 
-    private async Task RunAsync(NpgsqlConnection connection, string sql, CancellationToken ct)
+    private Task RunAsync(NpgsqlConnection connection, string sql, CancellationToken ct)
+        => RunAsync(connection, transaction: null, sql, ct);
+
+    private async Task RunAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction, string sql, CancellationToken ct)
     {
         try
         {
-            await using var command = new NpgsqlCommand(sql, connection);
+            await using var command = new NpgsqlCommand(sql, connection, transaction);
             await command.ExecuteNonQueryAsync(ct);
         }
         catch (Exception ex)

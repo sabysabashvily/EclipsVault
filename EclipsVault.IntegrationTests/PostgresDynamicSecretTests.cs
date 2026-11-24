@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
@@ -6,10 +7,13 @@ using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Core.Domain.Exceptions;
+using EclipsVault.Infrastructure;
 using EclipsVault.Infrastructure.Persistence;
 using EclipsVault.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -286,7 +290,9 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
         forwarder.Start();
         var forwardedPort = ((IPEndPoint)forwarder.LocalEndpoint).Port;
         using var shutdown = new CancellationTokenSource();
-        var relay = RelayConnectionsAsync(forwarder, target.Host!, target.Port, shutdown.Token);
+        var relayErrors = new ConcurrentBag<Exception>();
+        var acceptedCount = 0;
+        var relay = RelayConnectionsAsync(forwarder, target.Host!, target.Port, relayErrors, () => Interlocked.Increment(ref acceptedCount), shutdown.Token);
         try
         {
             var viaDifferentPort = new NpgsqlConnectionStringBuilder(target.ConnectionString)
@@ -295,11 +301,11 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
                 Port = forwardedPort,
                 Pooling = false,
             };
-            var backend = new PostgresBackend(
-                Options.Create(new DynamicSecretTargetOptions { PostgresTargetConnectionString = viaDifferentPort.ConnectionString }),
-                TimeProvider.System,
-                NullLogger<PostgresBackend>.Instance,
-                new VaultPostgresConnection(target.ConnectionString));
+            var logger = new CapturingLogger<PostgresBackend>();
+            using var provider = BuildDiPostgresVault(target.ConnectionString, viaDifferentPort.ConnectionString, logger);
+            using var scope = provider.CreateScope();
+            var backend = scope.ServiceProvider.GetServices<IDynamicSecretBackend>()
+                .Single(candidate => candidate.Backend == DynamicSecretBackend.Postgres);
             var role = new DynamicSecretRole
             {
                 Name = "it_pg_same_cluster",
@@ -312,6 +318,10 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
                 backend.MintAsync(role, "ev_it_pg_same_cluster_1", "Abc123Def456Ghi789Jkl012Mno345Pqr678Stu9",
                     DateTimeOffset.UtcNow.AddMinutes(10), CancellationToken.None));
 
+            Assert.True(acceptedCount > 0, "The TCP forwarder never received a connection from PostgresBackend.");
+            Assert.Empty(relayErrors);
+            Assert.Contains(logger.Messages, message =>
+                message.Contains("own PostgreSQL cluster", StringComparison.Ordinal));
             Assert.Empty(await PostgresDynamicTarget.RolesOfRoleAsync(vault, "it_pg_same_cluster"));
         }
         finally
@@ -322,33 +332,161 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
         }
     }
 
-    private static async Task RelayConnectionsAsync(TcpListener listener, string destinationHost, int destinationPort, CancellationToken ct)
+    [Fact]
+    public async Task Minting_refuses_same_cluster_even_when_search_path_shadows_pg_control_system()
     {
+        var target = new NpgsqlConnectionStringBuilder(vault.PostgresDynamicTargetConnectionString!);
+        await using (var setup = new NpgsqlConnection(target.ConnectionString))
+        {
+            await setup.OpenAsync();
+            await using var createShadow = new NpgsqlCommand(
+                "CREATE OR REPLACE FUNCTION public.pg_control_system() RETURNS TABLE(system_identifier bigint) LANGUAGE sql AS $$ SELECT 999999999999::bigint $$;",
+                setup);
+            await createShadow.ExecuteNonQueryAsync();
+        }
+
+        using var forwarder = new TcpListener(IPAddress.Loopback, 0);
+        forwarder.Start();
+        var forwardedPort = ((IPEndPoint)forwarder.LocalEndpoint).Port;
+        using var shutdown = new CancellationTokenSource();
+        var relayErrors = new ConcurrentBag<Exception>();
+        var acceptedCount = 0;
+        var relay = RelayConnectionsAsync(forwarder, target.Host!, target.Port, relayErrors, () => Interlocked.Increment(ref acceptedCount), shutdown.Token);
+        try
+        {
+            var viaShadowedSearchPath = new NpgsqlConnectionStringBuilder(target.ConnectionString)
+            {
+                Host = IPAddress.Loopback.ToString(),
+                Port = forwardedPort,
+                SearchPath = "public,pg_catalog",
+                Pooling = false,
+            };
+            var logger = new CapturingLogger<PostgresBackend>();
+            using var provider = BuildDiPostgresVault(target.ConnectionString, viaShadowedSearchPath.ConnectionString, logger);
+            using var scope = provider.CreateScope();
+            var backend = scope.ServiceProvider.GetServices<IDynamicSecretBackend>()
+                .Single(candidate => candidate.Backend == DynamicSecretBackend.Postgres);
+            var role = new DynamicSecretRole
+            {
+                Name = "it_pg_shadowed",
+                Backend = DynamicSecretBackend.Postgres,
+                CreationStatements = DbSeeder.PostgresReaderRecipe,
+                RevocationStatements = DbSeeder.PostgresRevocation,
+            };
+
+            await Assert.ThrowsAsync<MintRefusedException>(() =>
+                backend.MintAsync(role, "ev_it_pg_shadowed_1", "Abc123Def456Ghi789Jkl012Mno345Pqr678Stu9",
+                    DateTimeOffset.UtcNow.AddMinutes(10), CancellationToken.None));
+
+            Assert.True(acceptedCount > 0, "The TCP forwarder never received a connection from PostgresBackend.");
+            Assert.Empty(relayErrors);
+            Assert.Contains(logger.Messages, message =>
+                message.Contains("own PostgreSQL cluster", StringComparison.Ordinal));
+            Assert.Empty(await PostgresDynamicTarget.RolesOfRoleAsync(vault, "it_pg_shadowed"));
+        }
+        finally
+        {
+            await shutdown.CancelAsync();
+            forwarder.Stop();
+            await relay;
+            await using var cleanup = new NpgsqlConnection(target.ConnectionString);
+            await cleanup.OpenAsync();
+            await using var dropShadow = new NpgsqlCommand("DROP FUNCTION IF EXISTS public.pg_control_system();", cleanup);
+            await dropShadow.ExecuteNonQueryAsync();
+        }
+    }
+
+    private static ServiceProvider BuildDiPostgresVault(
+        string vaultConnectionString,
+        string dynamicTargetConnectionString,
+        ILogger<PostgresBackend> logger)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Database:Provider"] = "Postgres",
+                ["ConnectionStrings:DefaultConnection"] = vaultConnectionString,
+                ["DynamicSecrets:PostgresTargetConnectionString"] = dynamicTargetConnectionString,
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddEclipsVaultInfrastructure(configuration);
+        services.AddSingleton(logger);
+        return services.BuildServiceProvider();
+    }
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public ConcurrentQueue<string> Messages { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Messages.Enqueue($"{formatter(state, exception)} {exception}");
+    }
+
+    private static async Task RelayConnectionsAsync(
+        TcpListener listener,
+        string destinationHost,
+        int destinationPort,
+        ConcurrentBag<Exception> errors,
+        Action onAccepted,
+        CancellationToken ct)
+    {
+        var workers = new List<Task>();
         try
         {
             while (!ct.IsCancellationRequested)
             {
                 var client = await listener.AcceptTcpClientAsync(ct);
-                _ = Task.Run(async () =>
+                onAccepted();
+                workers.Add(Task.Run(async () =>
                 {
-                    using (client)
-                    using (var upstream = new TcpClient())
+                    try
                     {
-                        await upstream.ConnectAsync(destinationHost, destinationPort, ct);
-                        var clientStream = client.GetStream();
-                        var upstreamStream = upstream.GetStream();
-                        await Task.WhenAny(
-                            clientStream.CopyToAsync(upstreamStream, ct),
-                            upstreamStream.CopyToAsync(clientStream, ct));
+                        using (client)
+                        using (var upstream = new TcpClient())
+                        {
+                            await upstream.ConnectAsync(destinationHost, destinationPort, ct);
+                            var clientStream = client.GetStream();
+                            var upstreamStream = upstream.GetStream();
+                            await Task.WhenAny(
+                                clientStream.CopyToAsync(upstreamStream, ct),
+                                upstreamStream.CopyToAsync(clientStream, ct));
+                        }
                     }
-                }, CancellationToken.None);
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                    {
+                    }
+                    catch (IOException) when (ct.IsCancellationRequested)
+                    {
+                    }
+                    catch (SocketException) when (ct.IsCancellationRequested)
+                    {
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add(ex);
+                    }
+                }, CancellationToken.None));
             }
         }
         catch (OperationCanceledException)
         {
         }
-        catch (SocketException)
+        catch (SocketException) when (ct.IsCancellationRequested)
         {
+        }
+        catch (Exception ex)
+        {
+            errors.Add(ex);
+        }
+        finally
+        {
+            await Task.WhenAll(workers);
         }
     }
 

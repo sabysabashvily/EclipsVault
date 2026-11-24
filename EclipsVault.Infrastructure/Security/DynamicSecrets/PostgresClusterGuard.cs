@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net;
+using EclipsVault.Core.Application.Networks;
 using Npgsql;
 
 namespace EclipsVault.Infrastructure.Security;
@@ -9,7 +10,12 @@ namespace EclipsVault.Infrastructure.Security;
 /// Held separately so <see cref="PostgresBackend"/> can confirm its dynamic-secret target is a different
 /// PostgreSQL cluster without taking a dependency on EF Core or configuration binders.
 /// </summary>
-public sealed record VaultPostgresConnection(string? ConnectionString);
+public sealed class VaultPostgresConnection(string? connectionString)
+{
+    public string? ConnectionString { get; } = connectionString;
+
+    public override string ToString() => nameof(VaultPostgresConnection);
+}
 
 /// <summary>
 /// Confirms that a PostgreSQL dynamic-secret target is not the vault's own PostgreSQL cluster.
@@ -19,11 +25,12 @@ public sealed record VaultPostgresConnection(string? ConnectionString);
 internal static class PostgresClusterGuard
 {
     private const int DefaultPort = 5432;
-    private const string CanonicalLoopback = "localhost";
 
     /// <summary>
-    /// True when the two PostgreSQL connection strings name any common <c>(host, port)</c> endpoint,
-    /// after normalising case, trailing DNS dots, IPv6 brackets, default port 5432, and loopback aliases.
+    /// True when the two PostgreSQL connection strings name any common endpoint, after normalising DNS case,
+    /// trailing DNS dots, IPv6 brackets, IPv4-mapped IPv6 addresses, and default port 5432 while preserving
+    /// case-sensitive Unix socket paths and distinct loopback addresses (aliases are resolved live via
+    /// <c>pg_catalog.pg_control_system()</c>).
     /// </summary>
     public static bool SharesEndpoint(NpgsqlConnectionStringBuilder vault, NpgsqlConnectionStringBuilder target)
     {
@@ -45,27 +52,33 @@ internal static class PostgresClusterGuard
     }
 
     /// <summary>
-    /// Reads the cluster's immutable 64-bit <c>system_identifier</c> from <c>pg_control_system()</c>,
-    /// which uniquely identifies an initialised PostgreSQL cluster regardless of hostnames, proxies,
-    /// port forwards, or database names.
+    /// Reads the cluster's immutable 64-bit <c>system_identifier</c> from
+    /// <c>pg_catalog.pg_control_system()</c>, which uniquely identifies an initialised PostgreSQL cluster
+    /// regardless of hostnames, proxies, port forwards, <c>search_path</c>, or database names.
     /// </summary>
-    public static async Task<long> ReadSystemIdentifierAsync(NpgsqlConnection connection, CancellationToken ct)
+    public static async Task<long> ReadSystemIdentifierAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction? transaction,
+        CancellationToken ct)
     {
-        await using var query = new NpgsqlCommand("SELECT system_identifier FROM pg_control_system()", connection);
+        await using var query = new NpgsqlCommand(
+            "SELECT system_identifier FROM pg_catalog.pg_control_system()",
+            connection,
+            transaction);
         var value = await query.ExecuteScalarAsync(ct);
-        if (value is null or DBNull)
+        if (value is not long systemIdentifier)
         {
-            throw new InvalidOperationException("PostgreSQL returned no system_identifier from pg_control_system().");
+            throw new InvalidOperationException("PostgreSQL did not return an int64 system_identifier from pg_catalog.pg_control_system().");
         }
 
-        return Convert.ToInt64(value, CultureInfo.InvariantCulture);
+        return systemIdentifier;
     }
 
-    private static HashSet<(string Host, int Port)> EndpointsOf(NpgsqlConnectionStringBuilder builder)
+    private static HashSet<PostgresEndpoint> EndpointsOf(NpgsqlConnectionStringBuilder builder)
     {
         var defaultPort = builder.Port > 0 ? builder.Port : DefaultPort;
         var rawHost = builder.Host;
-        var result = new HashSet<(string Host, int Port)>();
+        var result = new HashSet<PostgresEndpoint>();
         if (string.IsNullOrWhiteSpace(rawHost))
         {
             return result;
@@ -82,7 +95,7 @@ internal static class PostgresClusterGuard
         return result;
     }
 
-    private static bool TryParseEndpoint(string segment, int defaultPort, out (string Host, int Port) endpoint)
+    private static bool TryParseEndpoint(string segment, int defaultPort, out PostgresEndpoint endpoint)
     {
         endpoint = default;
         if (string.IsNullOrWhiteSpace(segment))
@@ -90,19 +103,27 @@ internal static class PostgresClusterGuard
             return false;
         }
 
+        var trimmed = segment.Trim();
+        if (trimmed.StartsWith('/'))
+        {
+            var socketPath = trimmed.Length > 1 ? trimmed.TrimEnd('/') : trimmed;
+            endpoint = new PostgresEndpoint(IsUnixSocket: true, socketPath, defaultPort);
+            return true;
+        }
+
         string hostPart;
         var port = defaultPort;
 
-        if (segment.StartsWith('['))
+        if (trimmed.StartsWith('['))
         {
-            var close = segment.IndexOf(']');
+            var close = trimmed.IndexOf(']');
             if (close < 0)
             {
                 return false;
             }
 
-            hostPart = segment[1..close];
-            var rest = segment[(close + 1)..];
+            hostPart = trimmed[1..close];
+            var rest = trimmed[(close + 1)..];
             if (rest.StartsWith(':') && int.TryParse(rest[1..], NumberStyles.None, CultureInfo.InvariantCulture, out var parsedPort))
             {
                 port = parsedPort;
@@ -110,32 +131,32 @@ internal static class PostgresClusterGuard
         }
         else
         {
-            var firstColon = segment.IndexOf(':');
-            var lastColon = segment.LastIndexOf(':');
+            var firstColon = trimmed.IndexOf(':');
+            var lastColon = trimmed.LastIndexOf(':');
             // Exactly one colon means host:port; multiple colons mean a bare IPv6 literal without a port.
             if (firstColon > 0 && firstColon == lastColon
-                && int.TryParse(segment[(lastColon + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out var parsedPort))
+                && int.TryParse(trimmed[(lastColon + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out var parsedPort))
             {
-                hostPart = segment[..lastColon];
+                hostPart = trimmed[..lastColon];
                 port = parsedPort;
             }
             else
             {
-                hostPart = segment;
+                hostPart = trimmed;
             }
         }
 
-        var normalized = NormalizeHost(hostPart);
+        var normalized = NormalizeTcpHost(hostPart);
         if (normalized.Length == 0)
         {
             return false;
         }
 
-        endpoint = (normalized, port);
+        endpoint = new PostgresEndpoint(IsUnixSocket: false, normalized, port);
         return true;
     }
 
-    private static string NormalizeHost(string host)
+    private static string NormalizeTcpHost(string host)
     {
         var trimmed = host.Trim().TrimEnd('.').ToLowerInvariant();
         if (trimmed.Length == 0)
@@ -143,21 +164,13 @@ internal static class PostgresClusterGuard
             return string.Empty;
         }
 
-        if (trimmed == CanonicalLoopback)
-        {
-            return CanonicalLoopback;
-        }
-
         if (IPAddress.TryParse(trimmed, out var ip))
         {
-            if (ip.IsIPv4MappedToIPv6)
-            {
-                ip = ip.MapToIPv4();
-            }
-
-            return IPAddress.IsLoopback(ip) ? CanonicalLoopback : ip.ToString().ToLowerInvariant();
+            return NetworkRules.Normalize(ip).ToString().ToLowerInvariant();
         }
 
         return trimmed;
     }
+
+    private readonly record struct PostgresEndpoint(bool IsUnixSocket, string Host, int Port);
 }
