@@ -379,11 +379,10 @@ public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBacke
             throw nothingSent?.Invoke(notConfigured) ?? notConfigured;
         }
 
-        NpgsqlConnectionStringBuilder targetBuilder;
+        HashSet<PostgresClusterGuard.PostgresEndpoint> targetEndpoints;
         try
         {
-            // Npgsql parses the setting here, so a malformed one fails before anything is sent.
-            targetBuilder = new NpgsqlConnectionStringBuilder(_connectionString);
+            targetEndpoints = PostgresClusterGuard.ReadEndpoints(new NpgsqlConnectionStringBuilder(_connectionString));
         }
         catch (Exception ex)
         {
@@ -400,7 +399,7 @@ public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBacke
 
         if (enforceDistinctEndpoint && !string.IsNullOrWhiteSpace(_vaultConnectionString))
         {
-            EnsureEndpointsDistinct(targetBuilder, nothingSent);
+            EnsureEndpointsDistinct(targetEndpoints, nothingSent);
         }
 
         NpgsqlConnection? connection = null;
@@ -429,13 +428,14 @@ public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBacke
         }
     }
 
-    private void EnsureEndpointsDistinct(NpgsqlConnectionStringBuilder targetBuilder, Func<Exception, Exception>? nothingSent)
+    private void EnsureEndpointsDistinct(
+        HashSet<PostgresClusterGuard.PostgresEndpoint> targetEndpoints, Func<Exception, Exception>? nothingSent)
     {
         bool sharesEndpoint;
         try
         {
             var vaultBuilder = new NpgsqlConnectionStringBuilder(_vaultConnectionString);
-            sharesEndpoint = PostgresClusterGuard.SharesEndpoint(vaultBuilder, targetBuilder);
+            sharesEndpoint = PostgresClusterGuard.ReadEndpoints(vaultBuilder).Overlaps(targetEndpoints);
         }
         catch (Exception ex)
         {

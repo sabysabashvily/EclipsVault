@@ -84,6 +84,9 @@ public class PostgresBackendTargetTests
     [InlineData("Host=app-pg;Colour=blue;Password=Pw4Target9")]
     [InlineData("Database=app;Password=Pw4Target9")]
     [InlineData("Host=app-pg:notaport;Password=Pw4Target9")]
+    [InlineData("Host=127.0.0.1,;Port=1;Password=Pw4Target9")]
+    [InlineData("Host=127.0.0.1,   ,other-pg;Port=1;Password=Pw4Target9")]
+    [InlineData("Host=127.0.0.1,:5432;Port=1;Password=Pw4Target9")]
     public async Task A_malformed_target_refuses_minting_as_nothing_sent_and_logs_the_setting_without_its_value(string connectionString)
     {
         var logger = new RecordingLogger();
@@ -92,7 +95,8 @@ public class PostgresBackendTargetTests
             Backend(connectionString, logger: logger).MintAsync(
                 Role(), "svc_reporting", "Abc123", DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None));
 
-        Assert.NotEmpty(logger.Messages);
+        Assert.Contains(logger.Messages, message =>
+            message.Contains("DynamicSecrets:PostgresTargetConnectionString", StringComparison.Ordinal));
         Assert.DoesNotContain(logger.Messages, message => message.Contains("Pw4Target9", StringComparison.Ordinal));
     }
 
