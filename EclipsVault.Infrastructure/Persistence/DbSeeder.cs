@@ -247,13 +247,9 @@ public static class DbSeeder
             ALTER ROLE db_datawriter ADD MEMBER [{{name}}];
             """;
 
-        // Idempotent, and kills live sessions first: DROP LOGIN fails while the principal is
-        // connected, and a lease that cannot be reclaimed is the failure mode that matters.
+        // Idempotent: SqlServerBackend disables sign-in and confirms active sessions have closed
+        // before running these statements.
         const string revoke = """
-            DECLARE @sessions nvarchar(max) = N'';
-            SELECT @sessions = @sessions + N'KILL ' + CAST(session_id AS nvarchar(10)) + N';'
-            FROM sys.dm_exec_sessions WHERE login_name = N'{{name}}';
-            IF LEN(@sessions) > 0 EXEC sp_executesql @sessions;
             DROP USER IF EXISTS [{{name}}];
             IF EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'{{name}}') DROP LOGIN [{{name}}];
             """;
