@@ -184,8 +184,9 @@ Those rights are why each target is a **separate connection string**:
 
 - **Point it at the database you want managed, not at the vault's own.** Minting credentials on the
   vault's database is almost never what you want, and it is not the default.
-- **Use a dedicated login on that server**, granted only `ALTER ANY LOGIN` (plus whatever your role
-  statements need). Do not reuse `ConnectionStrings__DefaultConnection`.
+- **Use a dedicated login on that server**, granted only `ALTER ANY LOGIN` (plus `VIEW SERVER STATE`
+  and `ALTER ANY CONNECTION` for SQL Server dynamic-secret session termination, and whatever your
+  role statements need). Do not reuse `ConnectionStrings__DefaultConnection`.
 - **On PostgreSQL, the target must be a distinct PostgreSQL cluster from the vault's database**, not
   another database in the same cluster. Roles and the catalogs that hold them are shared by every
   database in a cluster, and `pg_read_all_data` and `pg_write_all_data` reach every database: a lease

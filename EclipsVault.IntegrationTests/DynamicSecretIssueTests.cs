@@ -8,7 +8,11 @@ using EclipsVault.Core.Application.Licensing;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
 using EclipsVault.Infrastructure.Persistence;
+using EclipsVault.Infrastructure.Security;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Serilog.Events;
 using Xunit;
 
@@ -446,6 +450,86 @@ public sealed partial class DynamicSecretIssueTests(DynamicSecretsFixture fixtur
         var listed = Assert.Single(page.GetProperty("leases").EnumerateArray(), row => row.GetProperty("leaseId").GetGuid() == lease.Id);
         Assert.Equal("The backend refused to destroy the credential; it may still work.", listed.GetProperty("revocationNote").GetString());
         Assert.DoesNotContain("sql-prod-07", page.GetRawText(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Revoking_a_login_with_an_active_session_and_open_transaction_drains_the_session_before_dropping_the_login()
+    {
+        var roleId = await DynamicSecretsApi.AddRoleAsync(vault, "it_dyn_active_session",
+            revocation: "DROP USER IF EXISTS [{{name}}]; IF EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'{{name}}') DROP LOGIN [{{name}}];");
+        var admin = await vault.AdminClientAsync();
+        var (username, password) = await DynamicSecretsApi.IssuedCredentialAsync(await DynamicSecretsApi.IssueAsync(admin, roleId));
+        var lease = Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
+
+        var sessionBuilder = new SqlConnectionStringBuilder(vault.DynamicTargetConnectionString)
+        {
+            UserID = username,
+            Password = password,
+            Pooling = false,
+        };
+        await using var activeSession = new SqlConnection(sessionBuilder.ConnectionString);
+        await activeSession.OpenAsync();
+        await using var tx = activeSession.BeginTransaction();
+        await using (var ping = activeSession.CreateCommand())
+        {
+            ping.Transaction = tx;
+            ping.CommandText = "SELECT 1";
+            Assert.Equal(1, await ping.ExecuteScalarAsync());
+        }
+
+        using var revoked = await DynamicSecretsApi.RevokeAsync(admin, lease.Id);
+
+        Assert.Equal(HttpStatusCode.OK, revoked.StatusCode);
+        Assert.Equal("Revoked", (await DynamicSecretsApi.JsonAsync(revoked)).GetProperty("status").GetString());
+        Assert.Empty(await DynamicSecretsApi.LoginsOfRoleAsync(vault, "it_dyn_active_session"));
+        await Assert.ThrowsAnyAsync<Exception>(() => DynamicSecretsApi.SignInToTargetAsync(vault, username, password));
+    }
+
+    [Fact]
+    public async Task A_session_still_open_past_the_drain_deadline_fails_revocation_and_leaves_the_login_disabled()
+    {
+        var roleId = await DynamicSecretsApi.AddRoleAsync(vault, "it_dyn_drain_timeout");
+        var admin = await vault.AdminClientAsync();
+        var (username, password) = await DynamicSecretsApi.IssuedCredentialAsync(await DynamicSecretsApi.IssueAsync(admin, roleId));
+        var lease = Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
+        var sessionBuilder = new SqlConnectionStringBuilder(vault.DynamicTargetConnectionString)
+        {
+            UserID = username,
+            Password = password,
+            Pooling = false,
+        };
+        var activeSession = new SqlConnection(sessionBuilder.ConnectionString);
+        await activeSession.OpenAsync();
+        try
+        {
+            var backend = new SqlServerBackend(
+                Options.Create(new DynamicSecretTargetOptions { TargetConnectionString = vault.DynamicTargetConnectionString }),
+                NullLogger<SqlServerBackend>.Instance,
+                new MinuteEveryReadClock());
+            var role = new DynamicSecretRole
+            {
+                Name = "it_dyn_drain_timeout",
+                RevocationStatements = DynamicSecretsApi.RepeatableRevocation,
+            };
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => backend.RevokeAsync(role, username, CancellationToken.None));
+
+            Assert.Single(await DynamicSecretsApi.LoginsOfRoleAsync(vault, "it_dyn_drain_timeout"));
+            await Assert.ThrowsAnyAsync<Exception>(() => DynamicSecretsApi.SignInToTargetAsync(vault, username, password));
+        }
+        finally
+        {
+            await activeSession.DisposeAsync();
+            await DynamicSecretsApi.RevokeAsync(admin, lease.Id);
+        }
+    }
+
+    /// <summary>A clock a minute further on at every read, so the drain deadline expires immediately.</summary>
+    private sealed class MinuteEveryReadClock : TimeProvider
+    {
+        private long _now;
+
+        public override long GetTimestamp() => _now += TimestampFrequency * 60;
     }
 
     /// <summary>A minted password's shape: 40 letters and digits, standing alone.</summary>
