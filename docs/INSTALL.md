@@ -130,7 +130,8 @@ and restore, not just a new image.
 | `ECLIPSVAULT_KEK` | Master key: `openssl rand -base64 32`. Or use a KMS engine — set `Crypto__Engine=VaultTransit` and the `Vault` settings (see `docker-compose.yml` for the shape). |
 | `ECLIPSVAULT_AUDIT_SIGNING_KEY` | Base64 PKCS#8 P-256 private key for signing audit checkpoints. |
 | `DataProtection__KeyRingPath` | Durable directory shared by all nodes (the keys are sealed at rest with the KEK). |
-| `DynamicSecrets__TargetConnectionString` | **Only if you use dynamic secrets or managed rotation.** The database whose logins the vault manages — see [Dynamic secrets: the managed target](#dynamic-secrets-the-managed-target) below. Deliberately separate from `ConnectionStrings__DefaultConnection`. |
+| `DynamicSecrets__TargetConnectionString` | **Only if you use dynamic secrets or managed rotation on SQL Server.** The database whose logins the vault manages — see [Dynamic secrets: the managed target](#dynamic-secrets-the-managed-target) below. Deliberately separate from `ConnectionStrings__DefaultConnection`. |
+| `DynamicSecrets__PostgresTargetConnectionString` | **Only if you use dynamic secrets on PostgreSQL.** The PostgreSQL database whose login roles the vault mints — see the same section. Also separate from `ConnectionStrings__DefaultConnection`. |
 | `ECLIPSVAULT_LICENSE` | Your license token (or place it in a `license.key` file in the content root). |
 | `ASPNETCORE_ENVIRONMENT` | Must be `Production` (anything other than `Development` disables dev seeding and fallbacks). |
 | `ForwardedHeaders__KnownProxies` | The IP(s) of your reverse proxy, so the real client IP is trusted for rate limiting, the IP blacklist, ABAC network rules, and audit. |
@@ -164,26 +165,73 @@ app verifies the schema at startup and refuses to start against a mismatched one
 
 ### Dynamic secrets: the managed target
 
-Skip this unless you use **dynamic secrets** or **managed rotation**. Both work by issuing
-`CREATE LOGIN`, `DROP LOGIN`, and `ALTER LOGIN` against the database whose credentials you want the
-vault to manage. That needs server-level rights there — `ALTER ANY LOGIN` on SQL Server.
+Skip this unless you use **dynamic secrets** or **managed rotation**. Both work by creating,
+dropping, or re-passwording principals on the database whose credentials you want the vault to
+manage. That needs server-level rights there: `ALTER ANY LOGIN` on SQL Server, `CREATEROLE` on
+PostgreSQL.
 
-The managed target must be SQL Server, whichever database the vault itself runs on: SQL Server is
-the only target the vault supports.
+Each dynamic role names its backend, and each backend has its own target, whichever database the
+vault itself runs on:
 
-Those rights are why this is a **second, separate connection string**:
+- **SQL Server** roles and managed rotation use `DynamicSecrets__TargetConnectionString`.
+- **PostgreSQL** roles use `DynamicSecrets__PostgresTargetConnectionString`. Managed rotation is
+  SQL Server only.
+
+Those rights are why each target is a **separate connection string**:
 
     DynamicSecrets__TargetConnectionString="Server=app-db;Database=app;User Id=eclipsvault_credmgr;Password=…;Encrypt=True;TrustServerCertificate=False"
+    DynamicSecrets__PostgresTargetConnectionString="Host=app-pg;Port=5432;Database=app;Username=eclipsvault_credmgr;Password=…;SSL Mode=VerifyFull"
 
 - **Point it at the database you want managed, not at the vault's own.** Minting credentials on the
   vault's database is almost never what you want, and it is not the default.
 - **Use a dedicated login on that server**, granted only `ALTER ANY LOGIN` (plus whatever your role
   statements need). Do not reuse `ConnectionStrings__DefaultConnection`.
+- **On PostgreSQL, the target must be a distinct PostgreSQL cluster from the vault's database**, not
+  another database in the same cluster. Roles and the catalogs that hold them are shared by every
+  database in a cluster, and `pg_read_all_data` and `pg_write_all_data` reach every database: a lease
+  on the vault's own cluster could read or change the vault's data. Revoking `CONNECT` on the vault's
+  database does not separate them. The vault does not yet refuse a target on its own cluster, so this
+  is yours to keep.
+- **The PostgreSQL target must run PostgreSQL 16 or later.** Its login is set up like this, which the
+  integration tests use:
+
+      CREATE ROLE eclipsvault_credmgr LOGIN PASSWORD '…' CREATEROLE;
+      GRANT pg_read_all_data, pg_write_all_data TO eclipsvault_credmgr WITH ADMIN TRUE, INHERIT FALSE, SET FALSE;
+      ALTER ROLE eclipsvault_credmgr SET createrole_self_grant = 'inherit';
+
+  `ADMIN` lets it grant the roles your recipes name (the sample recipes name those two), plus whatever
+  else your role statements need. `createrole_self_grant` gives it the privileges of the roles it
+  creates, which revocation needs to end their sessions; without it every lease lands in
+  `RevocationFailed`. Through the roles it mints, this login can effectively read and write every
+  database on the target cluster, which is one more reason that cluster holds only what you want
+  managed.
+- **Minted roles are for existing objects.** The sample recipes read and write what is already there.
+  Revocation never moves, drops or re-grants anything a minted role owns or was granted directly, so
+  ownership never crosses to the target's login. If something still depends on the role (a table it
+  created, a privilege granted to it), its `DROP ROLE` fails and the lease lands in `RevocationFailed`
+  with a critical audit row; the role keeps its objects, cannot sign in, and has no sessions. Decide
+  what happens to those objects, then drop the role (below). Revoking `CONNECT` from `PUBLIC` on the
+  target cluster's other databases (for example `REVOKE CONNECT ON DATABASE postgres FROM PUBLIC;`)
+  keeps minted roles from creating objects there.
+- **Revoking a PostgreSQL credential ends its sessions before the role is dropped.** The vault disables
+  sign-in, checks that pending startups have cleared, then ends the role's sessions and confirms none
+  remain. It runs the role's statements only after those checks and then confirms the role is gone.
+  The startup check has a deadline of the target's `authentication_timeout` plus five seconds. If
+  startup or session termination stays unconfirmed, the role stays disabled and the lease lands in
+  `RevocationFailed` with a critical audit row. Follow the
+  [incident runbook](INCIDENT_RESPONSE.md#a-minted-login-may-remain-on-the-target-operators) to verify
+  pending startups and session termination before dropping the role.
+- **A PostgreSQL role's statements must double-quote `"{{name}}"`**: the minted name has capitals,
+  which PostgreSQL folds to lower case when unquoted.
+- **A failing statement reaches the target's own log, password included**, because PostgreSQL logs a
+  failing statement by default (`log_min_error_statement = error`), and so does `log_statement` when
+  set. A failed mint's role is rolled back, so that password never worked, but restrict who reads the
+  target's logs as you would its credentials.
 - **Why they are separate:** `ALTER ANY LOGIN` can re-password *any* principal on the instance that
   holds it. If the vault's own login held it, a compromise of the running application would reach
   the server that stores the audit trail — so the vault never asks for it. See
   `docs/THREAT_MODEL.md` → *Invariants that bound the blast radius*.
-- **If it is unset, minting and rotation refuse**, with an error naming this setting. There is no
+- **If it is unset, minting and rotation refuse**, with an error naming the setting. There is no
   fallback to the vault's connection: falling back would quietly require the privilege above.
 - The target may be a different server, and in most deployments it should be.
 

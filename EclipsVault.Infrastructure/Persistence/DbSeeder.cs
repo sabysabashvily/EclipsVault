@@ -201,20 +201,37 @@ public static class DbSeeder
         await SeedDynamicSecretRolesAsync(db, logger, now);
     }
 
+    // The PostgreSQL samples' statements, public so the integration tests run these rather than copies.
+    // PostgreSQL folds an unquoted name to lower case, and the minted name has capitals, so it is
+    // always quoted. VALID UNTIL stops the password working at the lease's end even if revocation fails;
+    // {{expiration}} is UTC, which the '+00' says.
+    public const string PostgresReaderRecipe = """
+        CREATE ROLE "{{name}}" LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}+00' IN ROLE pg_read_all_data;
+        """;
+
+    public const string PostgresWriterRecipe = """
+        CREATE ROLE "{{name}}" LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}+00' IN ROLE pg_read_all_data, pg_write_all_data;
+        """;
+
+    // Idempotent: ends the role's sessions, then drops it. It never moves or drops anything the role owns,
+    // and never revokes what it was granted: if anything still depends on the role, DROP ROLE fails, the
+    // lease ends in RevocationFailed, and an operator reconciles that before dropping it. The sample roles
+    // read and write existing objects, so nothing depends on them.
+    public const string PostgresRevocation = """
+        SELECT pg_terminate_backend(pid, 5000) FROM pg_stat_activity WHERE usename = '{{name}}';
+        DROP ROLE IF EXISTS "{{name}}";
+        """;
+
     /// <summary>
-    /// Dynamic-secret recipes. These mint real SQL Server principals against the vault's own server,
-    /// so the sample roles are genuinely usable: issue one and you can connect with it.
+    /// Dynamic-secret recipes, two on SQL Server and two on PostgreSQL. They mint real principals on the
+    /// configured targets, so the sample roles are genuinely usable: issue one and you can connect with it.
+    /// The SQL Server pair seeds an empty table; each PostgreSQL role is added by name when missing.
     ///
     /// Roles are seeded rather than authored in the UI on purpose — the statements run with the
     /// vault's backend rights, so defining one is a privileged, out-of-band act.
     /// </summary>
     private static async Task SeedDynamicSecretRolesAsync(EclipsVaultDbContext db, ILogger logger, DateTimeOffset now)
     {
-        if (await db.DynamicSecretRoles.AnyAsync())
-        {
-            return;
-        }
-
         // {{name}} and {{password}} are substituted by CredentialStatementTemplate, which refuses any
         // value that is not strictly alphanumeric — the reason interpolating into DDL is safe here.
         const string createReader = """
@@ -241,7 +258,8 @@ public static class DbSeeder
             IF EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'{{name}}') DROP LOGIN [{{name}}];
             """;
 
-        db.DynamicSecretRoles.AddRange(
+        DynamicSecretRole[] sqlServerSamples =
+        [
             new DynamicSecretRole
             {
                 Id = Guid.NewGuid(),
@@ -273,10 +291,70 @@ public static class DbSeeder
                 MaxTtlMinutes = 30,
                 IsEnabled = true,
                 CreatedAtUtc = now
-            });
+            }
+        ];
 
+        DynamicSecretRole[] postgresSamples =
+        [
+            new DynamicSecretRole
+            {
+                Id = Guid.NewGuid(),
+                Name = "phoenix_pg_reader",
+                Description = "Read-only PostgreSQL role on the PostgreSQL target, minted on demand.",
+                ProjectKey = "PHOENIX",
+                Environment = SecretEnvironment.Development,
+                Sensitivity = SensitivityLevel.Internal,
+                Backend = DynamicSecretBackend.Postgres,
+                CreationStatements = PostgresReaderRecipe,
+                RevocationStatements = PostgresRevocation,
+                DefaultTtlMinutes = 15,
+                MaxTtlMinutes = 60,
+                IsEnabled = true,
+                CreatedAtUtc = now
+            },
+            new DynamicSecretRole
+            {
+                Id = Guid.NewGuid(),
+                Name = "global_pg_writer",
+                Description = "Read/write PostgreSQL role on the PostgreSQL target. Short leases only.",
+                ProjectKey = "GLOBAL",
+                Environment = SecretEnvironment.Production,
+                Sensitivity = SensitivityLevel.Secret,
+                Backend = DynamicSecretBackend.Postgres,
+                CreationStatements = PostgresWriterRecipe,
+                RevocationStatements = PostgresRevocation,
+                DefaultTtlMinutes = 10,
+                MaxTtlMinutes = 30,
+                IsEnabled = true,
+                CreatedAtUtc = now
+            }
+        ];
+
+        // The SQL Server pair seeds an empty table only, so a sample a developer deleted stays deleted. The
+        // PostgreSQL pair came later, so it is added by name to a table seeded before it existed.
+        var missing = new List<DynamicSecretRole>();
+        if (!await db.DynamicSecretRoles.AnyAsync())
+        {
+            missing.AddRange(sqlServerSamples);
+        }
+
+        foreach (var sample in postgresSamples)
+        {
+            // Compared by the database, so its own collation decides whether the name is taken.
+            if (!await db.DynamicSecretRoles.AnyAsync(role => role.Name == sample.Name))
+            {
+                missing.Add(sample);
+            }
+        }
+
+        if (missing.Count == 0)
+        {
+            return;
+        }
+
+        db.DynamicSecretRoles.AddRange(missing);
         await db.SaveChangesAsync();
-        logger.LogInformation("Seeded {RoleCount} dynamic-secret roles (SQL Server backend)", 2);
+        logger.LogInformation("Seeded {RoleCount} dynamic-secret roles: {RoleNames}", missing.Count, missing.Select(role => role.Name));
     }
 
     private static async Task<Secret> SealSecretAsync(

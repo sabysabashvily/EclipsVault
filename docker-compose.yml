@@ -28,6 +28,9 @@
 #   ConnectionStrings__DefaultConnection="Host=localhost;Port=5432;Database=EclipsVaultUmbraDb;Username=eclipsvault;Password=dev-postgres-password" \
 #   dotnet run --project EclipsVault.Web
 #
+# To try the seeded PostgreSQL dynamic roles, set DynamicSecrets__PostgresTargetConnectionString
+# to a separate PostgreSQL cluster. See docs/INSTALL.md for the target login and permissions.
+#
 # UIs:  Mailpit  http://127.0.0.1:8025   ·   Vault  http://127.0.0.1:8200 (token: dev-root)
 
 services:

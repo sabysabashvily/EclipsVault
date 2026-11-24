@@ -82,6 +82,52 @@ password was never shown or stored, so no one was handed a working credential, b
 4. Find out why the revocation statements failed (the vault logged the target's error type and number)
    before the role issues again.
 
+For a PostgreSQL role, the target is `DynamicSecrets:PostgresTargetConnectionString`, and the leftover
+is a login role. Use these steps for a lease in `RevocationFailed` as well.
+
+1. Connect to the target primary with the login that manages the role. Run each query in its own
+   transaction so it reads a fresh snapshot.
+2. Confirm the role exists and record its `oid`.
+
+   ```sql
+   SELECT oid, rolcanlogin FROM pg_roles WHERE rolname = '<login>';
+   ```
+
+   If `rolcanlogin` is true, run `ALTER ROLE "<login>" NOLOGIN;` and commit before continuing.
+3. Confirm that pending startups have cleared. A connection that passed the login check before
+   `NOLOGIN` committed may still be starting and have no role in the activity view. First record
+   the virtual transaction locks, then record the PIDs whose roles are visible.
+
+   ```sql
+   SELECT pid, virtualxid FROM pg_locks
+   WHERE locktype = 'virtualxid' AND granted AND pid IS NOT NULL;
+   ```
+
+   ```sql
+   SELECT pid FROM pg_stat_activity WHERE usesysid IS NOT NULL;
+   ```
+
+   Follow each recorded `(pid, virtualxid)` whose PID was missing from the second result. Repeat both
+   reads in that order. A pair clears when its lock disappears or its PID appears with a role.
+   Keep the role in place with `NOLOGIN` if you cannot confirm every sampled startup has cleared.
+4. End the role's sessions using the OID recorded in step 2, then check for remaining sessions in a
+   separate transaction.
+
+   ```sql
+   SELECT pg_terminate_backend(pid, 5000) FROM pg_stat_activity WHERE usesysid = <role_oid>;
+   ```
+
+   ```sql
+   SELECT pid FROM pg_stat_activity WHERE usesysid = <role_oid>;
+   ```
+
+   Continue only when the second query returns no rows. Keep the role disabled if any session remains.
+5. Settle what still depends on the role. `DROP ROLE` names what blocks it (objects it owns, privileges
+   granted to it). Decide for each object whether to keep it under an owner you choose
+   (`ALTER TABLE … OWNER TO …`) or drop it. Never reassign everything it owns to the vault's login.
+6. `DROP ROLE "<login>";`
+7. Find out why revocation failed. The vault logs the target's error type and SQLSTATE.
+
 ## Your own trust roots (do not skip in a rush)
 
 Release images are signed **keyless** (Sigstore) by the GitHub Actions release workflow's identity, so

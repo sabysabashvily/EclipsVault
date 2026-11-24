@@ -14,7 +14,8 @@ public sealed class AuditFailureFixture : IAsyncLifetime
         Mailbox = new SmtpCapture(),
         PublicUrl = "https://vault.example.test",
         RetiredMasterKey = RetiredMasterKey,
-        DynamicSecretsTarget = true
+        DynamicSecretsTarget = true,
+        PostgresDynamicSecretsTarget = true
     };
 
     /// <summary>Loaded beside the current key, so a test can rotate secrets sealed under it.</summary>

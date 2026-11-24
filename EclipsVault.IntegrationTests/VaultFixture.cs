@@ -95,6 +95,12 @@ public sealed partial class VaultFixture : IAsyncLifetime
     /// <summary>The database dynamic credentials are minted on, when <see cref="DynamicSecretsTarget"/> is set.</summary>
     public string? DynamicTargetConnectionString { get; private set; }
 
+    /// <summary>Gives the vault a PostgreSQL database of its own to mint <c>Postgres</c> roles' credentials on.</summary>
+    public bool PostgresDynamicSecretsTarget { get; init; }
+
+    /// <summary>The database <c>Postgres</c> roles mint on, when <see cref="PostgresDynamicSecretsTarget"/> is set.</summary>
+    public string? PostgresDynamicTargetConnectionString { get; private set; }
+
     /// <summary>Every line the vault logs, as its log sinks receive it.</summary>
     public LogCapture Log { get; } = new();
 
@@ -113,6 +119,11 @@ public sealed partial class VaultFixture : IAsyncLifetime
         {
             DynamicTargetConnectionString = await _database.StartDynamicTargetAsync();
             SetEnvironment("DynamicSecrets__TargetConnectionString", DynamicTargetConnectionString);
+        }
+        if (PostgresDynamicSecretsTarget)
+        {
+            PostgresDynamicTargetConnectionString = await _database.StartPostgresDynamicTargetAsync();
+            SetEnvironment("DynamicSecrets__PostgresTargetConnectionString", PostgresDynamicTargetConnectionString);
         }
 
         if (PublicUrl is not null)

@@ -264,6 +264,21 @@ public sealed partial class DynamicSecretIssueTests(DynamicSecretsFixture fixtur
     }
 
     [Fact]
+    public async Task A_postgres_role_on_a_vault_with_no_postgres_target_is_refused_naming_the_setting_and_issues_nothing()
+    {
+        var roleId = await PostgresDynamicTarget.AddRoleAsync(vault, "it_dyn_no_pg_target");
+        var admin = await vault.AdminClientAsync();
+
+        using var refused = await DynamicSecretsApi.IssueAsync(admin, roleId);
+
+        Assert.Equal("The backend refused to mint a credential for 'it_dyn_no_pg_target'. Nothing was issued.",
+            (await DynamicSecretsApi.AssertProblemAsync(refused, 502, "mint_refused")).GetProperty("title").GetString());
+        Assert.Empty(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
+        Assert.Contains(vault.Log.Lines, line => line.Level == LogEventLevel.Error
+            && line.Text.Contains("DynamicSecrets:PostgresTargetConnectionString", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task A_mint_whose_cleanup_also_fails_says_so_and_logs_the_login_at_critical_with_no_password_anywhere()
     {
         // SQL Server's error for this CREATE USER quotes the login it names, which here is the password.

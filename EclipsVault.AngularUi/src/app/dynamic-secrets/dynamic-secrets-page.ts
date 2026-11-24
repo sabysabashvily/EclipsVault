@@ -26,6 +26,10 @@ type Revoked = components['schemas']['RevokedLeaseResponse'];
 
 const path = '/api/ui/dynamic-secrets';
 const backendRefused = 'The backend refused to destroy the credential; it may still work.';
+const backendNames: Record<Role['backend'], string> = {
+  SqlServer: 'SQL Server',
+  Postgres: 'PostgreSQL',
+};
 
 @Component({
   selector: 'app-dynamic-secrets-page',
@@ -65,6 +69,10 @@ export class DynamicSecretsPage {
     return null;
   });
 
+  protected backendName(role: Role): string {
+    return backendNames[role.backend];
+  }
+
   constructor() {
     // Leaving the page, a lost session or a lost response forgets the credential with the pending write.
     this.writes.onClear(() => {
@@ -91,14 +99,14 @@ export class DynamicSecretsPage {
       ttlMinutes === null ? `${role.defaultTtlMinutes} min (default)` : `${ttlMinutes} min`;
     this.pendingAction = () => this.issue(role, ttlMinutes, opener);
     this.confirmation().open(
-      `Mint a live credential for '${role.name}' on ${role.backend}? The password is shown once and cannot be recovered.`,
+      `Mint a live credential for '${role.name}' on ${this.backendName(role)}? The password is shown once and cannot be recovered.`,
       {
         title: 'Issue dynamic credential?',
         confirm: 'Issue credential',
         tone: 'primary',
         facts: [
           ['Role', role.name],
-          ['Backend', role.backend],
+          ['Backend', this.backendName(role)],
           ['Lease', lease],
         ],
         note: 'Issuance saved to the audit log',
@@ -114,7 +122,7 @@ export class DynamicSecretsPage {
       roleId: role.roleId,
       ttlMinutes,
     };
-    const detail = `Confirming mints a live credential for '${role.name}' on ${role.backend}. The password is shown once. Issuing the credential is saved to the audit log.`;
+    const detail = `Confirming mints a live credential for '${role.name}' on ${this.backendName(role)}. The password is shown once. Issuing the credential is saved to the audit log.`;
     this.writes.send(
       () => this.reloading(this.http.post<Issued>(`${path}/issue`, request)),
       (issued) => {

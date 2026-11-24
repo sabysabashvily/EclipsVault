@@ -46,6 +46,71 @@ internal abstract class VaultDatabase : IAsyncDisposable
     /// </summary>
     public abstract Task<string> StartDynamicTargetAsync();
 
+    private PostgreSqlContainer? _postgresTarget;
+
+    /// <summary>
+    /// A PostgreSQL server for <c>Postgres</c> roles, always a server of its own: a PostgreSQL role spans
+    /// every database on its server, so a target beside the vault's database would reach it. The vault
+    /// signs in as the least-privilege login docs/INSTALL.md describes, never the superuser, so the
+    /// tests prove those grants are enough. Returns the connection string the vault is given for it.
+    /// </summary>
+    public async Task<string> StartPostgresDynamicTargetAsync()
+    {
+        _postgresTarget = NewPostgresContainer("postgres-target",
+            Environment.GetEnvironmentVariable(PostgresTargetImageVariable) ?? PostgresShareIssuerBackfill.PostgresImage);
+        await _postgresTarget.StartAsync();
+        var password = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+        await using (var server = new NpgsqlConnection(_postgresTarget.GetConnectionString()))
+        {
+            await server.OpenAsync();
+            await using var setUp = server.CreateCommand();
+            // The password is hex, generated above.
+            setUp.CommandText = $"""
+                CREATE ROLE {PostgresTargetLogin} LOGIN PASSWORD '{password}' CREATEROLE;
+                GRANT pg_read_all_data, pg_write_all_data TO {PostgresTargetLogin} WITH ADMIN TRUE, INHERIT FALSE, SET FALSE;
+                ALTER ROLE {PostgresTargetLogin} SET createrole_self_grant = 'inherit';
+                """;
+            await setUp.ExecuteNonQueryAsync();
+            // CREATE DATABASE refuses to run inside the transaction a multi-statement command is.
+            await using var create = server.CreateCommand();
+            create.CommandText = $"CREATE DATABASE {PostgresDynamicTargetDatabase}";
+            await create.ExecuteNonQueryAsync();
+            // Revocation waits up to this plus a margin for a connection still starting up; two seconds keeps
+            // the tests that make it wait short. ALTER SYSTEM also refuses a transaction.
+            await using var shortenAuthentication = server.CreateCommand();
+            shortenAuthentication.CommandText = "ALTER SYSTEM SET authentication_timeout = '2s'";
+            await shortenAuthentication.ExecuteNonQueryAsync();
+            await using var reload = server.CreateCommand();
+            reload.CommandText = "SELECT pg_reload_conf()";
+            await reload.ExecuteNonQueryAsync();
+        }
+
+        var targetAsSuperuser = new NpgsqlConnectionStringBuilder(_postgresTarget.GetConnectionString()) { Database = PostgresDynamicTargetDatabase };
+        await using (var target = new NpgsqlConnection(targetAsSuperuser.ConnectionString))
+        {
+            await target.OpenAsync();
+            await using var grant = target.CreateCommand();
+            // What a recipe that lets its role create tables needs, as "whatever your role statements need" in INSTALL.md.
+            grant.CommandText = $"GRANT CREATE ON SCHEMA public TO {PostgresTargetLogin} WITH GRANT OPTION";
+            await grant.ExecuteNonQueryAsync();
+        }
+
+        return new NpgsqlConnectionStringBuilder(_postgresTarget.GetConnectionString())
+        {
+            Database = PostgresDynamicTargetDatabase,
+            Username = PostgresTargetLogin,
+            Password = password,
+        }.ConnectionString;
+    }
+
+    protected async ValueTask DisposePostgresTargetAsync()
+    {
+        if (_postgresTarget is not null)
+        {
+            await _postgresTarget.DisposeAsync();
+        }
+    }
+
     public abstract ValueTask DisposeAsync();
 
     protected static async Task<string> CreateDynamicTargetAsync(string serverConnectionString)
@@ -61,7 +126,22 @@ internal abstract class VaultDatabase : IAsyncDisposable
         return new SqlConnectionStringBuilder(serverConnectionString) { InitialCatalog = DynamicTargetDatabase }.ConnectionString;
     }
 
+    /// <summary>
+    /// Runs the PostgreSQL dynamic-secret target on another image than the pinned PostgreSQL 17, to prove the
+    /// revocation on another version (PostgreSQL 18 lists a connection before it records its role).
+    /// </summary>
+    public const string PostgresTargetImageVariable = "ECLIPSVAULT_TEST_POSTGRES_TARGET_IMAGE";
+
+    protected static PostgreSqlContainer NewPostgresContainer(string engine, string image = PostgresShareIssuerBackfill.PostgresImage) => new PostgreSqlBuilder(image)
+        .WithName(ContainerName(engine))
+        .WithPassword(Convert.ToHexString(RandomNumberGenerator.GetBytes(16)))
+        .Build();
+
     private const string DynamicTargetDatabase = "DynamicTarget";
+
+    private const string PostgresDynamicTargetDatabase = "dynamic_target";
+
+    private const string PostgresTargetLogin = "eclipsvault_credmgr";
 
     protected static string ContainerName(string engine)
         => $"{Environment.GetEnvironmentVariable("ECLIPSVAULT_TEST_RESOURCE_PREFIX") ?? "eclipsvault-it"}-{engine}-{Guid.NewGuid():N}";
@@ -86,17 +166,18 @@ internal sealed class SqlServerVaultDatabase : VaultDatabase
     // The vault's own server already runs SQL Server, so the target is a second database on it.
     public override Task<string> StartDynamicTargetAsync() => CreateDynamicTargetAsync(_sql.GetConnectionString());
 
-    public override ValueTask DisposeAsync() => _sql.DisposeAsync();
+    public override async ValueTask DisposeAsync()
+    {
+        await _sql.DisposeAsync();
+        await DisposePostgresTargetAsync();
+    }
 }
 
 internal sealed class PostgresVaultDatabase : VaultDatabase
 {
     // The vault signs in as the server's superuser, as it signs in to SQL Server as sa, so this
     // password is per run too.
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder(PostgresShareIssuerBackfill.PostgresImage)
-        .WithName(ContainerName("postgres"))
-        .WithPassword(Convert.ToHexString(RandomNumberGenerator.GetBytes(16)))
-        .Build();
+    private readonly PostgreSqlContainer _postgres = NewPostgresContainer("postgres");
 
     public override string Provider => DatabaseProvider.Postgres;
 
@@ -125,5 +206,6 @@ internal sealed class PostgresVaultDatabase : VaultDatabase
         {
             await _dynamicTarget.DisposeAsync();
         }
+        await DisposePostgresTargetAsync();
     }
 }
