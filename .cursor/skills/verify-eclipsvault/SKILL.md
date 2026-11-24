@@ -13,7 +13,7 @@ Read `features/README.md` before driving, then follow the feature file. Run the 
 
 Launch creates an empty PostgreSQL database named `evverify` plus 8 hex characters, migrates it, and seeds the Development demo world. It does not touch `EclipsVaultUmbraDb`. Ports `7443` and `5080` are the vault's fixed dev ports: if either is already taken, launch refuses. Two vaults cannot share them.
 
-Docker must already be running (`docker info`). Launch reuses `eclipsvault-postgres` when it is already healthy; otherwise it starts only the compose `db` service, under the main checkout's project name `eclipsevault` so a worktree does not create a second volume or network. It leaves PostgreSQL up.
+Docker must already be running (`docker info`). Launch reuses the `eclipsvault-postgres` container whichever compose project created it, starting it first when it is stopped. It refuses when that container stays unhealthy, naming its compose project. Only when no such container exists does it start the compose `db` service, under the main checkout's project name `eclipsevault` so a worktree does not create a second volume or network. It leaves PostgreSQL up.
 
 Launch and the browser commands use the Node version in `EclipsVault.AngularUi/.nvmrc`, from `~/.nvm/versions/node/` when it is installed there. They refuse any other version.
 
@@ -45,8 +45,9 @@ Sign in once, through the real password form and the authenticator enrollment pa
 .cursor/skills/verify-eclipsvault/verify-eclipsvault browser click --text "You" --exact
 .cursor/skills/verify-eclipsvault/verify-eclipsvault browser click --role link --name "Sign-in history" --exact
 .cursor/skills/verify-eclipsvault/verify-eclipsvault browser expect --role heading --name "Sign-in history" --exact
+.cursor/skills/verify-eclipsvault/verify-eclipsvault browser click --role button --name "Search secrets or jump to a page" --exact
 .cursor/skills/verify-eclipsvault/verify-eclipsvault browser fill --role combobox --name "Search secrets, or jump to a page" --value "sign-in history"
-.cursor/skills/verify-eclipsvault/verify-eclipsvault browser press --key Control+k
+.cursor/skills/verify-eclipsvault/verify-eclipsvault browser press --key Enter
 .cursor/skills/verify-eclipsvault/verify-eclipsvault browser screenshot --path logs/verify/evidence/sign-in-history/history.png
 .cursor/skills/verify-eclipsvault/verify-eclipsvault browser snapshot --path logs/verify/evidence/sign-in-history/history.aria.txt
 ```
@@ -77,4 +78,4 @@ Run cleanup after a failed launch too, so the next launch is not blocked by the 
 
 ## Helpers
 
-`.cursor/skills/verify-eclipsvault/verify-eclipsvault` is the only command. It launches, checks, signs in, drives the browser, and cleans up. `.cursor/skills/verify-eclipsvault/browser.mjs` is the Chromium session it starts; call it only through the shell script so `VERIFY_ROOT` is set.
+`.cursor/skills/verify-eclipsvault/verify-eclipsvault` is the only command. It launches, checks, signs in, drives the browser, and cleans up. `.cursor/skills/verify-eclipsvault/browser.mjs` is the Chromium session it starts; call it only through the shell script so `VERIFY_ROOT` and `VERIFY_SOCKET` are set. The session's socket is `/tmp/ev-verify-<uid>-<hash of the checkout path>.sock`, owner-only, because a socket path inside a worktree is too long for macOS; cleanup removes it.

@@ -12,6 +12,8 @@ base_url="https://localhost:7443"
 dll="$root/EclipsVault.Web/bin/Release/net10.0/EclipsVault.Web.dll"
 # The main checkout's project name, so a worktree reuses its eclipsvault-postgres volume and network.
 compose=(docker compose --project-name eclipsevault --file "$root/docker-compose.yml")
+# macOS limits a Unix socket path to 104 bytes, which a path inside a worktree exceeds.
+socket="/tmp/ev-verify-$(id -u)-$(python3 -I -c 'import hashlib, sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest()[:12])' "$root").sock"
 
 die() { printf '%s\n' "$1" >&2; exit 1; }
 
@@ -54,11 +56,52 @@ use_pinned_node() {
     || die "Node $wanted is required (EclipsVault.AngularUi/.nvmrc); found $(node --version 2>/dev/null || echo none). Install it with nvm."
 }
 
+# Prints the body of a complete HTTP 200 answer. A redirect, any other status, or a cut-off
+# transfer fails.
+body_of_200() {
+  local answer newline=$'\n'
+  answer="$(curl -sk --max-time 10 -w '\n%{http_code}' "$1")" || return 1
+  [[ "${answer##*"$newline"}" == "200" ]] || return 1
+  printf '%s' "${answer%"$newline"*}"
+}
+
 # Login is the Angular document and the sign-in steps call the UI API, so both must answer.
 # The host serves nothing until migrations and seeding finish.
 sign_in_ready() {
-  [[ "$(curl -skf --max-time 10 "$base_url/Account/Login" || true)" == *"<app-root"* ]] \
-    && [[ "$(curl -skf --max-time 10 "$base_url/api/ui/auth/options" || true)" == *'"ssoEnabled"'* ]]
+  local document options
+  document="$(body_of_200 "$base_url/Account/Login")" && [[ "$document" == *"<app-root"* ]] || return 1
+  options="$(body_of_200 "$base_url/api/ui/auth/options")" || return 1
+  python3 -I -c 'import json, sys
+answer = json.loads(sys.argv[1])
+sys.exit(0 if isinstance(answer, dict) and isinstance(answer.get("ssoEnabled"), bool) else 1)' \
+    "$options" 2>/dev/null
+}
+
+# Reuses the dev PostgreSQL container whoever started it; compose creates it only when it is absent.
+ensure_postgres() {
+  local container=eclipsvault-postgres status health project
+  if ! docker container inspect "$container" >/dev/null 2>&1; then
+    "${compose[@]}" up -d --wait db
+    return
+  fi
+  read -r status project < <(docker container inspect --format \
+    '{{.State.Status}} {{index .Config.Labels "com.docker.compose.project"}}' "$container")
+  project="${project:-none}"
+  case "$status" in
+    running) ;;
+    created | exited) docker start "$container" >/dev/null || die "Could not start $container (compose project $project)." ;;
+    *) die "$container (compose project $project) is $status. Fix it by hand; this skill will not replace it." ;;
+  esac
+  local deadline=$((SECONDS + 90))
+  while (( SECONDS < deadline )); do
+    # A container only has a health state once it runs, so this is read after any start.
+    health="$(docker container inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container")"
+    [[ "$health" == healthy ]] && return
+    [[ "$health" == none ]] && die "$container (compose project $project) has no health check, so it cannot be trusted as the dev database."
+    [[ "$health" == unhealthy ]] && break
+    sleep 2
+  done
+  die "$container (compose project $project) is $health, not healthy. Fix it by hand; this skill will not replace it."
 }
 
 require_instance() {
@@ -111,9 +154,7 @@ launch() {
   mkdir -p "$instance" "$evidence"
   chmod 700 "$instance"
 
-  if [[ "$(docker inspect --format '{{.State.Health.Status}}' eclipsvault-postgres 2>/dev/null || true)" != "healthy" ]]; then
-    "${compose[@]}" up -d --wait db
-  fi
+  ensure_postgres
   psql EclipsVaultUmbraDb -c 'SELECT 1' >/dev/null
 
   local database password_admin password_dev kek audit_key
@@ -187,7 +228,7 @@ PY
       die "The vault exited before sign-in was ready. See logs/verify/instance/vault.log."
     fi
     if sign_in_ready; then
-      VERIFY_ROOT="$root" node "$root/.cursor/skills/verify-eclipsvault/browser.mjs" start \
+      VERIFY_ROOT="$root" VERIFY_SOCKET="$socket" node "$root/.cursor/skills/verify-eclipsvault/browser.mjs" start \
         || die "The browser session did not start. Run cleanup, then launch again."
       printf 'launched %s pid %s database %s\n' "$base_url" "$vault_pid" "$database"
       return
@@ -251,13 +292,14 @@ cleanup() {
     psql EclipsVaultUmbraDb -c "DROP DATABASE IF EXISTS \"$database\"" >/dev/null || true
   fi
   rm -rf "$instance"
+  rm -f "$socket"
   printf 'cleaned instance; evidence remains in logs/verify/evidence\n'
 }
 
 drive() {
   require_instance
   use_pinned_node
-  VERIFY_ROOT="$root" node "$root/.cursor/skills/verify-eclipsvault/browser.mjs" "$@"
+  VERIFY_ROOT="$root" VERIFY_SOCKET="$socket" node "$root/.cursor/skills/verify-eclipsvault/browser.mjs" "$@"
 }
 
 usage() {

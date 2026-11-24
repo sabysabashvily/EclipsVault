@@ -11,7 +11,9 @@ import { spawn } from 'node:child_process';
 const root = process.env.VERIFY_ROOT;
 if (!root) throw new Error('VERIFY_ROOT is not set.');
 const instance = resolve(root, 'logs/verify/instance');
-const socketPath = resolve(instance, 'browser.sock');
+// The shell script derives this short path in /tmp: a socket inside a worktree is too long for macOS.
+const socketPath = process.env.VERIFY_SOCKET;
+if (!socketPath) throw new Error('VERIFY_SOCKET is not set.');
 const pidPath = resolve(instance, 'browser.pid');
 const storagePath = resolve(instance, 'storage.json');
 const urlPath = resolve(instance, 'url');
@@ -247,6 +249,8 @@ async function serve() {
     // No stale socket from an earlier session.
   }
   await writeFile(pidPath, String(process.pid));
+  // The socket sits in shared /tmp; creating it under this mask makes it owner-only from the start.
+  process.umask(0o077);
   const idleMs = 30 * 60 * 1000;
   let idleTimer;
   let activeRequests = 0;
