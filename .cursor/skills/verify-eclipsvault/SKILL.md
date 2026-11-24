@@ -13,7 +13,7 @@ Read `features/README.md` before driving, then follow the feature file. Run the 
 
 Launch creates an empty PostgreSQL database named `evverify` plus 8 hex characters, migrates it, and seeds the Development demo world. It does not touch `EclipsVaultUmbraDb`. Ports `7443` and `5080` are the vault's fixed dev ports: if either is already taken, launch refuses. Two vaults cannot share them.
 
-Docker must already be running (`docker info`). Launch reuses the `eclipsvault-postgres` container whichever compose project created it, starting it first when it is stopped. It refuses when that container stays unhealthy, naming its compose project. Only when no such container exists does it start the compose `db` service, under the main checkout's project name `eclipsevault` so a worktree does not create a second volume or network. It leaves PostgreSQL up.
+Docker must already be running (`docker info`). Launch reuses the `eclipsvault-postgres` container whichever compose project created it. A stopped container needs a configured health check before launch starts it. If the check is missing or the container stays unhealthy, launch names the compose project in its error. When Docker confirms the container is absent, launch starts the compose `db` service under the main checkout's project name `eclipsevault` so a worktree does not create a second volume or network. It leaves PostgreSQL up.
 
 Launch and the browser commands use the Node version in `EclipsVault.AngularUi/.nvmrc`, from `~/.nvm/versions/node/` when it is installed there. They refuse any other version.
 
@@ -21,7 +21,7 @@ Launch and the browser commands use the Node version in `EclipsVault.AngularUi/.
 .cursor/skills/verify-eclipsvault/verify-eclipsvault launch
 ```
 
-Ready means `https://localhost:7443/Account/Login` returns the Angular document and `/api/ui/auth/options` answers, the API the sign-in steps call. The host serves neither until migrations and seeding finish. Launch prints the base URL, pid, and database name. It writes the administrator password, the KEK, and the audit signing key to `logs/verify/instance/env` and does not print them.
+Ready means `https://localhost:7443/Account/Login` and `/api/ui/auth/options` both return complete HTTP 200 responses in valid UTF-8. The sign-in document contains `<app-root` and the API returns a JSON object with a boolean `ssoEnabled`. The host serves neither until migrations and seeding finish. Launch prints the base URL, pid, and database name. It writes the administrator password, the KEK, and the audit signing key to `logs/verify/instance/env` and does not print them.
 
 The Development host uses a throwaway KEK and a throwaway audit signing key generated for this process. The dev HTTPS certificate is created with `dotnet dev-certs https` when the machine does not have one. The Angular UI is built into `EclipsVault.Web/AngularUi/index.html` before the process starts; without that file the Angular routes cannot load.
 
@@ -78,4 +78,4 @@ Run cleanup after a failed launch too, so the next launch is not blocked by the 
 
 ## Helpers
 
-`.cursor/skills/verify-eclipsvault/verify-eclipsvault` is the only command. It launches, checks, signs in, drives the browser, and cleans up. `.cursor/skills/verify-eclipsvault/browser.mjs` is the Chromium session it starts; call it only through the shell script so `VERIFY_ROOT` and `VERIFY_SOCKET` are set. The session's socket is `/tmp/ev-verify-<uid>-<hash of the checkout path>.sock`, owner-only, because a socket path inside a worktree is too long for macOS; cleanup removes it.
+`.cursor/skills/verify-eclipsvault/verify-eclipsvault` is the only command. It launches, checks, signs in, drives the browser, and cleans up. `.cursor/skills/verify-eclipsvault/browser.mjs` is the Chromium session it starts. Call it through the shell script so `VERIFY_ROOT` and `VERIFY_SOCKET` are set. The socket lives in an owner-only directory created by `mktemp -d /tmp/evv.XXXXXX` to fit the macOS socket path limit. Later commands read the path from `logs/verify/instance/browser.sockpath`. Daemon shutdown and cleanup remove the temporary directory.

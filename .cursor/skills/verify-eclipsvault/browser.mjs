@@ -1,8 +1,7 @@
 // One Chromium session for a verification run. Later commands reuse the same page,
 // so an opened navigation group or the command palette stays open.
 import { createHmac } from 'node:crypto';
-import { unlinkSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rmdir, unlink, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { createConnection, createServer } from 'node:net';
 import { dirname, resolve } from 'node:path';
@@ -11,9 +10,10 @@ import { spawn } from 'node:child_process';
 const root = process.env.VERIFY_ROOT;
 if (!root) throw new Error('VERIFY_ROOT is not set.');
 const instance = resolve(root, 'logs/verify/instance');
-// The shell script derives this short path in /tmp: a socket inside a worktree is too long for macOS.
 const socketPath = process.env.VERIFY_SOCKET;
-if (!socketPath) throw new Error('VERIFY_SOCKET is not set.');
+if (!socketPath || !/^\/tmp\/evv\.[a-zA-Z0-9]{6}\/s$/u.test(socketPath)) {
+  throw new Error('VERIFY_SOCKET must name the socket in the verification temporary directory.');
+}
 const pidPath = resolve(instance, 'browser.pid');
 const storagePath = resolve(instance, 'storage.json');
 const urlPath = resolve(instance, 'url');
@@ -243,14 +243,13 @@ async function stopRecordedVault() {
 }
 
 async function serve() {
+  process.umask(0o077);
   try {
-    unlinkSync(socketPath);
-  } catch {
-    // No stale socket from an earlier session.
+    await unlink(socketPath);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
   }
   await writeFile(pidPath, String(process.pid));
-  // The socket sits in shared /tmp; creating it under this mask makes it owner-only from the start.
-  process.umask(0o077);
   const idleMs = 30 * 60 * 1000;
   let idleTimer;
   let activeRequests = 0;
@@ -269,6 +268,12 @@ async function serve() {
     if (stopVault) await stopRecordedVault();
     await browser?.close().catch(() => {});
     server.close();
+    // Closing a Unix server unlinks its socket before we remove the directory.
+    try {
+      await rmdir(dirname(socketPath));
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
     process.exit(0);
   };
   server = createServer((connection) => {
