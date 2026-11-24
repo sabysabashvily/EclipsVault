@@ -10,7 +10,8 @@ state="$instance/state.json"
 env_file="$instance/env"
 base_url="https://localhost:7443"
 dll="$root/EclipsVault.Web/bin/Release/net10.0/EclipsVault.Web.dll"
-compose=(docker compose --file "$root/docker-compose.yml")
+# The main checkout's project name, so a worktree reuses its eclipsvault-postgres volume and network.
+compose=(docker compose --project-name eclipsevault --file "$root/docker-compose.yml")
 
 die() { printf '%s\n' "$1" >&2; exit 1; }
 
@@ -40,6 +41,24 @@ listening_pid() {
     return
   fi
   ss -ltnp "sport = :$port" 2>/dev/null | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -n 1
+}
+
+# The Angular build and Playwright expect the Node version in .nvmrc.
+use_pinned_node() {
+  local wanted
+  wanted="v$(cat "$root/EclipsVault.AngularUi/.nvmrc")"
+  if [[ -d "$HOME/.nvm/versions/node/$wanted/bin" ]]; then
+    PATH="$HOME/.nvm/versions/node/$wanted/bin:$PATH"
+  fi
+  [[ "$(node --version 2>/dev/null)" == "$wanted" ]] \
+    || die "Node $wanted is required (EclipsVault.AngularUi/.nvmrc); found $(node --version 2>/dev/null || echo none). Install it with nvm."
+}
+
+# Login is the Angular document and the sign-in steps call the UI API, so both must answer.
+# The host serves nothing until migrations and seeding finish.
+sign_in_ready() {
+  [[ "$(curl -skf --max-time 10 "$base_url/Account/Login" || true)" == *"<app-root"* ]] \
+    && [[ "$(curl -skf --max-time 10 "$base_url/api/ui/auth/options" || true)" == *'"ssoEnabled"'* ]]
 }
 
 require_instance() {
@@ -88,10 +107,13 @@ launch() {
     fi
   done
 
+  use_pinned_node
   mkdir -p "$instance" "$evidence"
   chmod 700 "$instance"
 
-  "${compose[@]}" up -d --wait db
+  if [[ "$(docker inspect --format '{{.State.Health.Status}}' eclipsvault-postgres 2>/dev/null || true)" != "healthy" ]]; then
+    "${compose[@]}" up -d --wait db
+  fi
   psql EclipsVaultUmbraDb -c 'SELECT 1' >/dev/null
 
   local database password_admin password_dev kek audit_key
@@ -120,6 +142,7 @@ values = {
     "Seed__DevPassword": dev,
     "ECLIPSVAULT_KEK": kek,
     "ECLIPSVAULT_AUDIT_SIGNING_KEY": audit,
+    "Identity__PublicUrl": "https://localhost:7443",
 }
 with open(path, "w") as env:
     for key, value in values.items():
@@ -163,10 +186,7 @@ PY
       tail -n 40 "$instance/vault.log" >&2 || true
       die "The vault exited before sign-in was ready. See logs/verify/instance/vault.log."
     fi
-    local code
-    code="$(curl -sk -o "$instance/login.body" -w '%{http_code}' "$base_url/Account/Login" || true)"
-    if [[ "$code" == "200" ]] && grep -q 'Sign in' "$instance/login.body"; then
-      rm -f "$instance/login.body"
+    if sign_in_ready; then
       VERIFY_ROOT="$root" node "$root/.cursor/skills/verify-eclipsvault/browser.mjs" start \
         || die "The browser session did not start. Run cleanup, then launch again."
       printf 'launched %s pid %s database %s\n' "$base_url" "$vault_pid" "$database"
@@ -187,16 +207,13 @@ doctor() {
   our_process "$pid" || die "Vault pid $pid is not the dll recorded for this run."
   listener="$(listening_pid 7443 || true)"
   [[ "$listener" == "$pid" ]] || die "Port 7443 is owned by pid ${listener:-nobody}, not the verification vault pid $pid."
-  local code
-  code="$(curl -sk -o "$instance/login.body" -w '%{http_code}' --max-time 10 "$base_url/Account/Login" || true)"
-  [[ "$code" == "200" ]] && grep -q 'Sign in' "$instance/login.body" \
-    || die "https://localhost:7443/Account/Login did not serve the sign-in page (HTTP ${code:-none})."
-  rm -f "$instance/login.body"
+  sign_in_ready \
+    || die "$base_url/Account/Login did not serve the Angular sign-in, or /api/ui/auth/options did not answer."
   [[ -f "$root/EclipsVault.Web/AngularUi/index.html" ]] \
     || die "Angular UI document is missing, so /SignIns cannot be served."
   users="$(psql "$database" -tA -c 'SELECT COUNT(*) FROM "Users"')"
   [[ "$users" -ge 2 ]] || die "The disposable database has $users accounts. Seed has not finished."
-  printf 'ok vault\nbase %s\npid %s\ndatabase %s\naccounts %s\nlogin Sign in\n' \
+  printf 'ok vault\nbase %s\npid %s\ndatabase %s\naccounts %s\nsign-in ready\n' \
     "$base_url" "$pid" "$database" "$users"
 }
 
@@ -239,6 +256,7 @@ cleanup() {
 
 drive() {
   require_instance
+  use_pinned_node
   VERIFY_ROOT="$root" node "$root/.cursor/skills/verify-eclipsvault/browser.mjs" "$@"
 }
 
