@@ -9,8 +9,13 @@ using Npgsql;
 namespace EclipsVault.Infrastructure.Security;
 
 /// <summary>
-/// The PostgreSQL backend: mints and destroys short-lived login roles on the PostgreSQL target configured
-/// in <see cref="DynamicSecretTargetOptions.PostgresTargetConnectionString"/>, never on the vault's own
+/// The PostgreSQL backend, for both kinds of credential the vault owns:
+/// <list type="bullet">
+/// <item><see cref="IDynamicSecretBackend"/> — mints and destroys short-lived login roles of its own.</item>
+/// <item><see cref="IManagedSecretBackend"/> — re-passwords an existing login role.</item>
+/// </list>
+/// Both talk to the PostgreSQL target configured in
+/// <see cref="DynamicSecretTargetOptions.PostgresTargetConnectionString"/>, never to the vault's own
 /// database, for the reason <see cref="DynamicSecretTargetOptions"/> gives.
 ///
 /// As on SQL Server, the statements are DDL and cannot take parameters, so credentials are rendered in
@@ -21,9 +26,23 @@ namespace EclipsVault.Infrastructure.Security;
 /// One command runs a role's statements as one implicit transaction, so a recipe that fails part-way
 /// leaves nothing behind; the service still runs the revocation after such a failure.
 /// </summary>
-public sealed class PostgresBackend : IDynamicSecretBackend
+public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBackend
 {
     private const string SettingName = $"{DynamicSecretTargetOptions.SectionName}:PostgresTargetConnectionString";
+
+    /// <summary>
+    /// Fixed, not operator-supplied: rotating a managed secret must only ever change a password.
+    /// A per-secret statement would make every managed secret a place to hide arbitrary SQL.
+    /// </summary>
+    private const string RotateStatement = """ALTER ROLE "{{name}}" WITH PASSWORD '{{password}}';""";
+
+    /// <summary>
+    /// SQLSTATE codes with which PostgreSQL refuses <c>ALTER ROLE ... WITH PASSWORD</c> before changing
+    /// anything: no such role (42704), insufficient privilege (42501), invalid parameter value (22023),
+    /// and a read-only transaction (25006). Any other error leaves it unknown whether the change held.
+    /// </summary>
+    private static readonly HashSet<string> PasswordUnchangedSqlStates =
+        new(["42704", "42501", "22023", "25006"], StringComparer.Ordinal);
 
     /// <summary>
     /// How long past the target's <c>authentication_timeout</c> to wait for a connection still starting up.
@@ -115,6 +134,38 @@ public sealed class PostgresBackend : IDynamicSecretBackend
         }
 
         _logger.LogInformation("Dropped PostgreSQL role {Identity} for role {RoleName}", identity, role.Name);
+    }
+
+    /// <summary>
+    /// Throws <see cref="UpstreamRotationRefusedException"/> only when the password certainly did not
+    /// change: the statement was never sent, or PostgreSQL refused it with a SQLSTATE that leaves the
+    /// password untouched. Any other failure (a timeout, a lost connection, a cancelled call) leaves it
+    /// unknown whether the server ran it.
+    /// </summary>
+    public async Task RotatePrincipalAsync(string principal, string newPassword, CancellationToken ct)
+    {
+        string sql;
+        try
+        {
+            sql = CredentialStatementTemplate.Render(RotateStatement, principal, newPassword, DateTimeOffset.UnixEpoch);
+        }
+        catch (Exception notSent)
+        {
+            throw new UpstreamRotationRefusedException(notSent);
+        }
+
+        await using var connection = await OpenTargetAsync(ct, notSent => new UpstreamRotationRefusedException(notSent));
+        try
+        {
+            await RunAsync(connection, sql, ct);
+        }
+        catch (PostgresException refused) when (refused.SqlState is not null && PasswordUnchangedSqlStates.Contains(refused.SqlState))
+        {
+            throw new UpstreamRotationRefusedException(refused);
+        }
+
+        // Never log the password — only that the principal moved.
+        _logger.LogInformation("Rotated the password of PostgreSQL role {Principal}", principal);
     }
 
     /// <summary>

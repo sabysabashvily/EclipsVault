@@ -100,4 +100,36 @@ public class PostgresBackendTargetTests
 
         Assert.DoesNotContain(logger.Messages, message => message.Contains("Pw4Target9", StringComparison.Ordinal));
     }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Rotating_a_managed_principal_refuses_when_no_postgres_target_is_configured(string? connectionString)
+    {
+        var refused = await Assert.ThrowsAsync<UpstreamRotationRefusedException>(() =>
+            Backend(connectionString).RotatePrincipalAsync("svc_reporting", "Abc123", CancellationToken.None));
+
+        Assert.IsType<InvalidOperationException>(refused.InnerException);
+    }
+
+    [Fact]
+    public async Task Rotating_a_managed_principal_refuses_on_an_unreachable_postgres_target()
+        => await Assert.ThrowsAsync<UpstreamRotationRefusedException>(() =>
+            Backend("Host=127.0.0.1;Port=1;Timeout=1").RotatePrincipalAsync("svc_reporting", "Abc123", CancellationToken.None));
+
+    [Theory]
+    [InlineData("bad\"; DROP ROLE postgres;--", "Abc123")]
+    [InlineData("svc_reporting", "bad'; DROP ROLE postgres;--")]
+    public async Task Rotating_a_managed_principal_refuses_unrenderable_inputs_without_echoing_the_password(string principal, string password)
+    {
+        var logger = new RecordingLogger();
+
+        var refused = await Assert.ThrowsAsync<UpstreamRotationRefusedException>(() =>
+            Backend("Host=app-pg;Port=5432;Password=TargetPw2", logger: logger).RotatePrincipalAsync(principal, password, CancellationToken.None));
+
+        Assert.IsType<ArgumentException>(refused.InnerException);
+        Assert.DoesNotContain("bad';", refused.InnerException!.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(logger.Messages, message => message.Contains("TargetPw2", StringComparison.Ordinal));
+    }
 }

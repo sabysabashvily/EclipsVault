@@ -68,13 +68,14 @@ internal static class SecretDetailsApi
     }
 
     /// <summary>Binds a secret to a backend login the way an operator does, in the database: no screen makes one.</summary>
-    public static async Task MakeManagedAsync(VaultFixture vault, string details, string login)
+    public static async Task MakeManagedAsync(
+        VaultFixture vault, string details, string login, DynamicSecretBackend backend = DynamicSecretBackend.SqlServer)
     {
         using var scope = vault.Services.CreateScope();
         var secretId = SecretSharing.SecretIdOf(details);
         await scope.ServiceProvider.GetRequiredService<EclipsVaultDbContext>().Secrets.Where(secret => secret.Id == secretId)
             .ExecuteUpdateAsync(set => set
-                .SetProperty(secret => secret.RotationBackend, DynamicSecretBackend.SqlServer)
+                .SetProperty(secret => secret.RotationBackend, backend)
                 .SetProperty(secret => secret.RotationPrincipal, login));
     }
 

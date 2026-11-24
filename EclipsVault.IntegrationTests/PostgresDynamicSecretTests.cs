@@ -274,6 +274,78 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
         Assert.Empty(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
     }
 
+    [Fact]
+    public async Task Managed_rotation_updates_a_postgres_role_and_stored_value_together_without_logging_the_password()
+    {
+        var admin = await vault.AdminClientAsync();
+        var password = ManagedTargetLogins.NewPassword();
+        const string role = "it_pg_managed_rotated";
+        await PostgresDynamicTarget.CreateManagedRoleAsync(vault, role, password);
+        try
+        {
+            var details = await SecretSharing.CreateSecretAsync(admin, "it-pg-managed-rotated", value: password);
+            await SecretDetailsApi.MakeManagedAsync(vault, details, role, DynamicSecretBackend.Postgres);
+            var before = await AuditTrail.HeadAsync(vault);
+
+            var response = await SecretDetailsApi.RotateUpstreamAsync(admin, details);
+
+            SecretDetailsApi.AssertNoContent(response);
+            Assert.Equal([AuditAction.SecretUpstreamRotated], await SecretDetailsApi.ActionsAfterAsync(vault, before, details));
+            var stored = await UpstreamRotationTests.StoredValueAsync(vault, details);
+            Assert.NotEqual(password, stored);
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, role, stored));
+            Assert.False(await PostgresDynamicTarget.OpensWithAsync(vault, role, password));
+            Assert.DoesNotContain(vault.Log.Lines, line => line.Text.Contains(stored, StringComparison.Ordinal));
+        }
+        finally
+        {
+            await PostgresDynamicTarget.DropRoleAsync(vault, role);
+        }
+    }
+
+    [Fact]
+    public async Task Managed_rotation_refuses_a_missing_postgres_role_and_leaves_the_stored_value_unchanged()
+    {
+        var admin = await vault.AdminClientAsync();
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-pg-managed-missing", value: "it-pg-managed-missing-value");
+        await SecretDetailsApi.MakeManagedAsync(vault, details, "it_pg_no_such_managed_role", DynamicSecretBackend.Postgres);
+        var before = await AuditTrail.HeadAsync(vault);
+
+        var response = await SecretDetailsApi.RotateUpstreamAsync(admin, details);
+
+        var problem = await SecretsApi.AssertProblemAsync(response, 502, "upstream_refused");
+        Assert.Equal("The backend refused the rotation. The credential is unchanged.", problem.GetProperty("title").GetString());
+        Assert.Empty(await SecretDetailsApi.ActionsAfterAsync(vault, before, details));
+        Assert.Equal("it-pg-managed-missing-value", await UpstreamRotationTests.StoredValueAsync(vault, details));
+    }
+
+    [Fact]
+    public async Task Restoring_a_version_of_a_postgres_managed_secret_is_refused_and_keeps_the_live_password()
+    {
+        var admin = await vault.AdminClientAsync();
+        var password = ManagedTargetLogins.NewPassword();
+        const string role = "it_pg_managed_restore";
+        await PostgresDynamicTarget.CreateManagedRoleAsync(vault, role, password);
+        try
+        {
+            var details = await SecretSharing.CreateSecretAsync(admin, "it-pg-managed-restore", value: password);
+            await SecretDetailsApi.MakeManagedAsync(vault, details, role, DynamicSecretBackend.Postgres);
+            SecretDetailsApi.AssertNoContent(await SecretDetailsApi.RotateUpstreamAsync(admin, details));
+            var live = await UpstreamRotationTests.StoredValueAsync(vault, details);
+
+            var response = await SecretDetailsApi.RestoreAsync(admin, details, await SecretDetailsApi.NewestVersionAsync(vault, details));
+
+            var problem = await SecretsApi.AssertProblemAsync(response, 409, "restore_managed");
+            Assert.Contains(role, problem.GetProperty("title").GetString(), StringComparison.Ordinal);
+            Assert.Equal(live, await UpstreamRotationTests.StoredValueAsync(vault, details));
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, role, live));
+        }
+        finally
+        {
+            await PostgresDynamicTarget.DropRoleAsync(vault, role);
+        }
+    }
+
     /// <summary>A minted password's shape: 40 letters and digits, standing alone.</summary>
     [GeneratedRegex(@"(?<![A-Za-z0-9])[A-Za-z0-9]{40}(?![A-Za-z0-9])")]
     private static partial Regex MintedPassword();

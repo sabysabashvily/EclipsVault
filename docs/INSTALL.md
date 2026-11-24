@@ -174,8 +174,7 @@ Each dynamic role names its backend, and each backend has its own target, whiche
 vault itself runs on:
 
 - **SQL Server** roles and managed rotation use `DynamicSecrets__TargetConnectionString`.
-- **PostgreSQL** roles use `DynamicSecrets__PostgresTargetConnectionString`. Managed rotation is
-  SQL Server only.
+- **PostgreSQL** roles and managed rotation use `DynamicSecrets__PostgresTargetConnectionString`.
 
 Those rights are why each target is a **separate connection string**:
 
