@@ -213,14 +213,14 @@ Those rights are why each target is a **separate connection string**:
   what happens to those objects, then drop the role (below). Revoking `CONNECT` from `PUBLIC` on the
   target cluster's other databases (for example `REVOKE CONNECT ON DATABASE postgres FROM PUBLIC;`)
   keeps minted roles from creating objects there.
-- **Revoking a PostgreSQL credential ends its sessions before the role is dropped.** The vault turns the
-  role's sign-in off, waits for any connection that was already starting up (one that passed the
-  sign-in check just before is not yet listed in `pg_stat_activity`, but its startup holds a lock that
-  `pg_locks` shows), ends the role's sessions, confirms none is left, and only then runs the role's
-  statements and confirms the role is gone. It waits at most the target's `authentication_timeout` plus
-  five seconds. If anything stays unconfirmed, the role stays in place, unable to sign in, and the lease
-  lands in `RevocationFailed` with a critical audit row. Recover it as `docs/INCIDENT_RESPONSE.md`
-  describes: confirm the role has no sessions, settle what depends on it, then drop it.
+- **Revoking a PostgreSQL credential ends its sessions before the role is dropped.** The vault disables
+  sign-in, checks that pending startups have cleared, then ends the role's sessions and confirms none
+  remain. It runs the role's statements only after those checks and then confirms the role is gone.
+  The startup check has a deadline of the target's `authentication_timeout` plus five seconds. If
+  startup or session termination stays unconfirmed, the role stays disabled and the lease lands in
+  `RevocationFailed` with a critical audit row. Follow the
+  [incident runbook](INCIDENT_RESPONSE.md#a-minted-login-may-remain-on-the-target-operators) to verify
+  pending startups and session termination before dropping the role.
 - **A PostgreSQL role's statements must double-quote `"{{name}}"`**: the minted name has capitals,
   which PostgreSQL folds to lower case when unquoted.
 - **A failing statement reaches the target's own log, password included**, because PostgreSQL logs a
