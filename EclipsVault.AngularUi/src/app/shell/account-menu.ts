@@ -48,7 +48,6 @@ export class AccountMenu {
     this.sessionSignOut.end().subscribe({ error: () => this.signOutFailed.set(true) });
   }
 
-  /** Profile calls this too: a click on the page already open does not navigate. */
   protected close(): void {
     this.menu()?.removeAttribute('open');
   }
@@ -58,6 +57,7 @@ export class AccountMenu {
     if (!this.host.nativeElement.contains(event.target as Node)) this.close();
   }
 
+  /** Profile calls this too: on the page already open nothing navigates, and its link is hidden. */
   protected closeAndRefocus(): void {
     const menu = this.menu();
     if (!menu?.open) return;

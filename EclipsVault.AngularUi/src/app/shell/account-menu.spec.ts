@@ -88,6 +88,16 @@ describe.each([
     expect(menu.open).toBe(false);
   });
 
+  it('returns focus to its trigger when Profile is chosen from the keyboard', async () => {
+    const { host, menu } = await openMenu();
+    const profile = host.querySelector<HTMLElement>('a[href="/Profile"]')!;
+    profile.focus();
+
+    profile.click();
+
+    expect(document.activeElement).toBe(menu.querySelector('summary'));
+  });
+
   it('closes when a navigation finishes elsewhere', async () => {
     const { menu } = await openMenu();
 

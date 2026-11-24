@@ -1829,6 +1829,12 @@ app-command-palette {
   gap: 0.6rem;
   color: var(--text-muted);
 }
+/* The word sits under its tile, so the tile stays centred beneath its environment at every width. */
+.access-matrix .matrix-cell {
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.4rem;
+}
 button.matrix-cell {
   min-height: 44px;
   padding: 0 0.4rem 0 0;
@@ -3056,16 +3062,21 @@ ol.steps > li::before {
   font-size: 0.9rem;
   overflow-wrap: anywhere;
 }
-/* The value, then its status pill, on one line; in a narrow card that line moves under its label. */
+/* The value, then its status pill, on one line; in a narrow card that line moves under its label.
+   Only an address too long for the card (a full IPv6 one) breaks, so the page never scrolls sideways. */
 .facts div:has(> .fact-with-status) {
   flex-wrap: wrap;
   gap: 0.4rem 1rem;
 }
 .facts dd.fact-with-status {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem 0.5rem;
   margin-inline-start: auto;
+}
+.fact-with-status > :not(.mono) {
   white-space: nowrap;
 }
 /* The checkpoint's details drop below their label, left-aligned, when the card is too narrow. */
@@ -3758,7 +3769,8 @@ details.rotate > summary::-webkit-details-marker {
 .add-network-form .button {
   flex-shrink: 0;
 }
-/* On a phone the trusted-network fields and their button stack at full width. */
+/* Scoped by id: Secret details' share form also uses .add-network-form, and stacking would stretch
+   its narrow number field. */
 @media (max-width: 639px) {
   #add-network {
     flex-direction: column;
