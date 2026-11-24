@@ -56,14 +56,25 @@ public sealed class PostgresBackend : IDynamicSecretBackend
         $$;
         """;
 
+    private const string SameClusterMessage =
+        $"'{SettingName}' points at the vault's own PostgreSQL cluster. " +
+        "PostgreSQL roles and pg_read_all_data/pg_write_all_data span every database in a cluster, so dynamic " +
+        "secrets must target a separate PostgreSQL server.";
+
     private readonly string? _connectionString;
+    private readonly string? _vaultConnectionString;
     private readonly TimeProvider _clock;
     private readonly ILogger<PostgresBackend> _logger;
 
-    public PostgresBackend(IOptions<DynamicSecretTargetOptions> target, TimeProvider clock, ILogger<PostgresBackend> logger)
+    public PostgresBackend(
+        IOptions<DynamicSecretTargetOptions> target,
+        TimeProvider clock,
+        ILogger<PostgresBackend> logger,
+        VaultPostgresConnection? vaultConnection = null)
     {
         _clock = clock;
         _connectionString = target.Value.PostgresTargetConnectionString;
+        _vaultConnectionString = vaultConnection?.ConnectionString;
         _logger = logger;
     }
 
@@ -73,7 +84,7 @@ public sealed class PostgresBackend : IDynamicSecretBackend
         DynamicSecretRole role, string identity, string password, DateTimeOffset expiresAtUtc, CancellationToken ct)
     {
         var sql = CredentialStatementTemplate.Render(role.CreationStatements, identity, password, expiresAtUtc);
-        await using var connection = await OpenTargetAsync(ct, _ => new MintRefusedException(role.Name));
+        await using var connection = await OpenTargetAsync(ct, _ => new MintRefusedException(role.Name), enforceDistinctCluster: true);
         await RunAsync(connection, sql, ct);
 
         _logger.LogInformation(
@@ -220,9 +231,14 @@ public sealed class PostgresBackend : IDynamicSecretBackend
     /// <summary>
     /// Opens the PostgreSQL target, refusing when none is configured. When <paramref name="nothingSent"/> is
     /// given, a failure before anything reached the target throws what it returns instead, so the caller
-    /// knows there is nothing to undo.
+    /// knows there is nothing to undo. When <paramref name="enforceDistinctCluster"/> is true and the vault
+    /// itself runs on PostgreSQL, refuses any target that shares an endpoint or cluster
+    /// <c>system_identifier</c> with the vault's own PostgreSQL cluster.
     /// </summary>
-    private async Task<NpgsqlConnection> OpenTargetAsync(CancellationToken ct, Func<Exception, Exception>? nothingSent = null)
+    private async Task<NpgsqlConnection> OpenTargetAsync(
+        CancellationToken ct,
+        Func<Exception, Exception>? nothingSent = null,
+        bool enforceDistinctCluster = false)
     {
         if (string.IsNullOrWhiteSpace(_connectionString))
         {
@@ -231,11 +247,11 @@ public sealed class PostgresBackend : IDynamicSecretBackend
             throw nothingSent?.Invoke(notConfigured) ?? notConfigured;
         }
 
-        NpgsqlConnection connection;
+        NpgsqlConnectionStringBuilder targetBuilder;
         try
         {
             // Npgsql parses the setting here, so a malformed one fails before anything is sent.
-            connection = new NpgsqlConnection(_connectionString);
+            targetBuilder = new NpgsqlConnectionStringBuilder(_connectionString);
         }
         catch (Exception ex)
         {
@@ -250,21 +266,74 @@ public sealed class PostgresBackend : IDynamicSecretBackend
             throw nothingSent(ex);
         }
 
+        if (enforceDistinctCluster && !string.IsNullOrWhiteSpace(_vaultConnectionString))
+        {
+            EnsureEndpointsDistinct(targetBuilder, nothingSent);
+        }
+
+        var connection = new NpgsqlConnection(_connectionString);
+
         try
         {
             await connection.OpenAsync(ct);
+            if (enforceDistinctCluster && !string.IsNullOrWhiteSpace(_vaultConnectionString))
+            {
+                await EnsureClusterDistinctAsync(connection, ct);
+            }
+
             return connection;
         }
         catch (Exception ex)
         {
             await connection.DisposeAsync();
-            LogFailure(ex);
+            if (ex is not InvalidOperationException || ex.Message != SameClusterMessage)
+            {
+                LogFailure(ex);
+            }
+
             if (nothingSent is null)
             {
                 throw;
             }
 
             throw nothingSent(ex);
+        }
+    }
+
+    private void EnsureEndpointsDistinct(NpgsqlConnectionStringBuilder targetBuilder, Func<Exception, Exception>? nothingSent)
+    {
+        NpgsqlConnectionStringBuilder vaultBuilder;
+        try
+        {
+            vaultBuilder = new NpgsqlConnectionStringBuilder(_vaultConnectionString);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError("Cannot verify PostgreSQL cluster separation because the vault connection string failed to parse: {ExceptionType}",
+                ex.GetType().Name);
+            throw nothingSent?.Invoke(ex) ?? ex;
+        }
+
+        if (PostgresClusterGuard.SharesEndpoint(vaultBuilder, targetBuilder))
+        {
+            _logger.LogError(SameClusterMessage);
+            var sameCluster = new InvalidOperationException(SameClusterMessage);
+            throw nothingSent?.Invoke(sameCluster) ?? sameCluster;
+        }
+    }
+
+    private async Task EnsureClusterDistinctAsync(NpgsqlConnection targetConnection, CancellationToken ct)
+    {
+        var targetClusterId = await PostgresClusterGuard.ReadSystemIdentifierAsync(targetConnection, ct);
+
+        await using var vaultConnection = new NpgsqlConnection(_vaultConnectionString);
+        await vaultConnection.OpenAsync(ct);
+        var vaultClusterId = await PostgresClusterGuard.ReadSystemIdentifierAsync(vaultConnection, ct);
+
+        if (targetClusterId == vaultClusterId)
+        {
+            _logger.LogError(SameClusterMessage);
+            throw new InvalidOperationException(SameClusterMessage);
         }
     }
 

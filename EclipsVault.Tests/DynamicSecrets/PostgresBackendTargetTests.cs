@@ -16,12 +16,16 @@ namespace EclipsVault.Tests.DynamicSecrets;
 /// </summary>
 public class PostgresBackendTargetTests
 {
-    private static PostgresBackend Backend(string? postgresTarget, string? sqlServerTarget = null, ILogger<PostgresBackend>? logger = null) =>
+    private static PostgresBackend Backend(
+        string? postgresTarget,
+        string? sqlServerTarget = null,
+        ILogger<PostgresBackend>? logger = null,
+        string? vaultPostgres = null) =>
         new(Options.Create(new DynamicSecretTargetOptions
         {
             PostgresTargetConnectionString = postgresTarget,
             TargetConnectionString = sqlServerTarget,
-        }), TimeProvider.System, logger ?? NullLogger<PostgresBackend>.Instance);
+        }), TimeProvider.System, logger ?? NullLogger<PostgresBackend>.Instance, new VaultPostgresConnection(vaultPostgres));
 
     /// <summary>Keeps every message the backend logs, as its log sinks would receive it.</summary>
     private sealed class RecordingLogger : ILogger<PostgresBackend>
@@ -99,5 +103,40 @@ public class PostgresBackendTargetTests
             Backend("Host=app-pg;Colour=blue;Password=Pw4Target9", logger: logger).RevokeAsync(Role(), "svc_reporting", CancellationToken.None));
 
         Assert.DoesNotContain(logger.Messages, message => message.Contains("Pw4Target9", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("Host=vault-pg;Port=5432;Database=vault;Password=VaultPw1", "Host=vault-pg;Port=5432;Database=app;Password=TargetPw2")]
+    [InlineData("Host=VAULT-PG.;Database=vault;Password=VaultPw1", "Host=vault-pg;Port=5432;Database=app;Password=TargetPw2")]
+    [InlineData("Host=127.0.0.1;Port=5432;Database=vault;Password=VaultPw1", "Host=localhost;Database=app;Password=TargetPw2")]
+    [InlineData("Host=[::1]:5432;Database=vault;Password=VaultPw1", "Host=127.0.0.1;Port=5432;Database=app;Password=TargetPw2")]
+    [InlineData("Host=pg-a:5432,pg-b:5433;Database=vault;Password=VaultPw1", "Host=pg-b:5433;Database=app;Password=TargetPw2")]
+    public async Task Minting_refuses_when_the_target_shares_an_endpoint_with_the_vaults_postgres_cluster_and_logs_no_passwords(
+        string vaultConnection, string targetConnection)
+    {
+        var logger = new RecordingLogger();
+
+        await Assert.ThrowsAsync<MintRefusedException>(() =>
+            Backend(targetConnection, logger: logger, vaultPostgres: vaultConnection).MintAsync(
+                Role(), "svc_reporting", "Abc123", DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None));
+
+        Assert.Contains(logger.Messages, message =>
+            message.Contains("DynamicSecrets:PostgresTargetConnectionString", StringComparison.Ordinal)
+            && message.Contains("own PostgreSQL cluster", StringComparison.Ordinal));
+        Assert.DoesNotContain(logger.Messages, message => message.Contains("VaultPw1", StringComparison.Ordinal));
+        Assert.DoesNotContain(logger.Messages, message => message.Contains("TargetPw2", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Minting_refuses_fail_closed_when_the_vault_postgres_connection_cannot_be_parsed_without_logging_it()
+    {
+        var logger = new RecordingLogger();
+
+        await Assert.ThrowsAsync<MintRefusedException>(() =>
+            Backend("Host=app-pg;Port=5432;Password=TargetPw2", logger: logger, vaultPostgres: "Host=vault-pg;Colour=blue;Password=VaultPw1")
+                .MintAsync(Role(), "svc_reporting", "Abc123", DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None));
+
+        Assert.DoesNotContain(logger.Messages, message => message.Contains("VaultPw1", StringComparison.Ordinal));
+        Assert.DoesNotContain(logger.Messages, message => message.Contains("TargetPw2", StringComparison.Ordinal));
     }
 }

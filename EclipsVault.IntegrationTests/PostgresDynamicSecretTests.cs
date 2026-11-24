@@ -1,14 +1,18 @@
+using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Infrastructure.Persistence;
 using EclipsVault.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using Serilog.Events;
 using Xunit;
 
@@ -272,6 +276,80 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
         Assert.Equal("The backend refused to mint a credential for 'it_pg_no_sql_target'. Nothing was issued.",
             (await DynamicSecretsApi.AssertProblemAsync(refused, 502, "mint_refused")).GetProperty("title").GetString());
         Assert.Empty(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
+    }
+
+    [Fact]
+    public async Task Minting_refuses_when_the_target_reaches_the_same_postgres_cluster_through_a_different_endpoint()
+    {
+        var target = new NpgsqlConnectionStringBuilder(vault.PostgresDynamicTargetConnectionString!);
+        using var forwarder = new TcpListener(IPAddress.Loopback, 0);
+        forwarder.Start();
+        var forwardedPort = ((IPEndPoint)forwarder.LocalEndpoint).Port;
+        using var shutdown = new CancellationTokenSource();
+        var relay = RelayConnectionsAsync(forwarder, target.Host!, target.Port, shutdown.Token);
+        try
+        {
+            var viaDifferentPort = new NpgsqlConnectionStringBuilder(target.ConnectionString)
+            {
+                Host = IPAddress.Loopback.ToString(),
+                Port = forwardedPort,
+                Pooling = false,
+            };
+            var backend = new PostgresBackend(
+                Options.Create(new DynamicSecretTargetOptions { PostgresTargetConnectionString = viaDifferentPort.ConnectionString }),
+                TimeProvider.System,
+                NullLogger<PostgresBackend>.Instance,
+                new VaultPostgresConnection(target.ConnectionString));
+            var role = new DynamicSecretRole
+            {
+                Name = "it_pg_same_cluster",
+                Backend = DynamicSecretBackend.Postgres,
+                CreationStatements = DbSeeder.PostgresReaderRecipe,
+                RevocationStatements = DbSeeder.PostgresRevocation,
+            };
+
+            await Assert.ThrowsAsync<MintRefusedException>(() =>
+                backend.MintAsync(role, "ev_it_pg_same_cluster_1", "Abc123Def456Ghi789Jkl012Mno345Pqr678Stu9",
+                    DateTimeOffset.UtcNow.AddMinutes(10), CancellationToken.None));
+
+            Assert.Empty(await PostgresDynamicTarget.RolesOfRoleAsync(vault, "it_pg_same_cluster"));
+        }
+        finally
+        {
+            await shutdown.CancelAsync();
+            forwarder.Stop();
+            await relay;
+        }
+    }
+
+    private static async Task RelayConnectionsAsync(TcpListener listener, string destinationHost, int destinationPort, CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                var client = await listener.AcceptTcpClientAsync(ct);
+                _ = Task.Run(async () =>
+                {
+                    using (client)
+                    using (var upstream = new TcpClient())
+                    {
+                        await upstream.ConnectAsync(destinationHost, destinationPort, ct);
+                        var clientStream = client.GetStream();
+                        var upstreamStream = upstream.GetStream();
+                        await Task.WhenAny(
+                            clientStream.CopyToAsync(upstreamStream, ct),
+                            upstreamStream.CopyToAsync(clientStream, ct));
+                    }
+                }, CancellationToken.None);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (SocketException)
+        {
+        }
     }
 
     /// <summary>A minted password's shape: 40 letters and digits, standing alone.</summary>
