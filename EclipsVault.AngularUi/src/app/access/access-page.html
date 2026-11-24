@@ -109,7 +109,7 @@
         </div>
         <div>
           <dt>Network</dt>
-          <dd>
+          <dd class="fact-with-status">
             <span class="mono">{{ model.sourceIp }}</span>
             @if (model.isTrustedNetwork) {
               <span class="badge tone-ok">Trusted</span>
@@ -120,13 +120,13 @@
         </div>
         <div>
           <dt>Production window</dt>
-          <dd>
+          <dd class="fact-with-status">
+            <span class="muted">{{ windowRange(model) }}</span>
             @if (model.isProductionWindowOpen) {
               <span class="badge tone-ok">Open now</span>
             } @else {
               <span class="badge tone-warn">Closed</span>
             }
-            <span class="muted">{{ windowRange(model) }}</span>
           </dd>
         </div>
       </dl>

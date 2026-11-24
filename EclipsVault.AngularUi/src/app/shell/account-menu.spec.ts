@@ -1,5 +1,6 @@
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import { Me } from '../account/me';
 import { appConfig } from '../app.config';
 import { AccountMenu } from './account-menu';
@@ -58,6 +59,69 @@ describe('AccountMenu', () => {
 
     expect(document.documentElement.dataset['theme']).toBe('light');
     expect(toggle.textContent?.trim()).toBe('Switch to dark');
+  });
+});
+
+describe.each([
+  ['the expanded sidebar', false],
+  ['the compact rail', true],
+])('AccountMenu closing in %s', (_mode, rail) => {
+  async function openMenu() {
+    TestBed.configureTestingModule({
+      providers: [...appConfig.providers, provideHttpClientTesting()],
+    });
+    const fixture = TestBed.createComponent(AccountMenu);
+    fixture.componentRef.setInput('me', me);
+    fixture.componentRef.setInput('rail', rail);
+    await fixture.whenStable();
+    const host = fixture.nativeElement as HTMLElement;
+    const menu = host.querySelector<HTMLDetailsElement>('details.account-menu')!;
+    menu.open = true;
+    return { host, menu };
+  }
+
+  it('closes as soon as Profile is chosen', async () => {
+    const { host, menu } = await openMenu();
+
+    host.querySelector<HTMLElement>('a[href="/Profile"]')!.click();
+
+    expect(menu.open).toBe(false);
+  });
+
+  it('returns focus to its trigger when Profile is chosen from the keyboard', async () => {
+    const { host, menu } = await openMenu();
+    const profile = host.querySelector<HTMLElement>('a[href="/Profile"]')!;
+    profile.focus();
+
+    profile.click();
+
+    expect(document.activeElement).toBe(menu.querySelector('summary'));
+  });
+
+  it('closes when a navigation finishes elsewhere', async () => {
+    const { menu } = await openMenu();
+
+    await TestBed.inject(Router).navigateByUrl('/Profile');
+
+    expect(menu.open).toBe(false);
+  });
+
+  it('closes on a click outside it', async () => {
+    const { menu } = await openMenu();
+
+    document.body.click();
+
+    expect(menu.open).toBe(false);
+  });
+
+  it('closes on Escape and returns focus to its trigger', async () => {
+    const { menu } = await openMenu();
+    menu.querySelector<HTMLElement>('.menu-item')!.focus();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+    expect(menu.open).toBe(false);
+    expect(document.activeElement).toBe(menu.querySelector('summary'));
   });
 });
 

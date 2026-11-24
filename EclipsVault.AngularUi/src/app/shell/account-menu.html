@@ -36,7 +36,7 @@
 
   <div class="account-menu-panel" role="menu">
     @if (me().areas.includes('profile')) {
-      <a class="menu-item" role="menuitem" routerLink="/Profile">
+      <a class="menu-item" role="menuitem" routerLink="/Profile" (click)="closeAndRefocus()">
         <svg
           viewBox="0 0 24 24"
           fill="none"

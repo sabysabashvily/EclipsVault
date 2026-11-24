@@ -65,7 +65,6 @@
   --border-strong: rgba(255, 255, 255, 0.16);
   /* Interactive control boundaries meeting WCAG 1.4.11 (>= 3:1). */
   --border-control: #6c6e78;
-  --tab-active-border: #747681;
 
   --text: #f2f2f4;
   --text-secondary: #b8b8bf;
@@ -104,11 +103,12 @@
   --ink-button-hover: #e2e2e6;
   --nav-active-bg: #ffffff;
   --nav-active-text: #111113;
+  --nav-active-shadow: var(--shadow-sm);
   --nav-pill-focus: #b45f04;
   --rail-selected-focus: var(--nav-pill-focus);
   --rail-control-bg: var(--bg-raised-2);
-  --tab-active-bg: #26272c;
-  --tab-active-text: #f5f5f7;
+  --tab-active-bg: var(--nav-active-bg);
+  --tab-active-text: var(--nav-active-text);
   --tree-line: rgba(255, 255, 255, 0.13);
 
   --radius-xl: 22px;
@@ -199,10 +199,10 @@
   --ink-button-hover: #3a3a38;
   --nav-active-bg: #ffffff;
   --nav-active-text: #232322;
+  /* A hairline keeps the white pill distinct from the warm canvas it sits on. */
+  --nav-active-shadow: 0 0 0 1px var(--border-strong), var(--shadow-sm);
   --rail-selected-focus: #ff9f0a;
   --rail-control-bg: var(--bg-raised);
-  --tab-active-bg: var(--nav-active-bg);
-  --tab-active-text: var(--nav-active-text);
   --tree-line: #aeada8;
 
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -533,7 +533,7 @@ body:has(.mobile-navigation[open]) {
   background: var(--nav-active-bg);
   color: var(--nav-active-text);
   font-weight: 500;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--nav-active-shadow);
 }
 .nav-item.active svg {
   opacity: 1;
@@ -541,16 +541,6 @@ body:has(.mobile-navigation[open]) {
 .nav-item.active:focus-visible {
   outline-color: var(--nav-pill-focus);
 }
-/* The ink mark identifies the selected row even where the white pill sits on a light surface. */
-.nav-current-marker {
-  width: 3px;
-  height: 0.85rem;
-  margin-inline-start: auto;
-  border-radius: var(--radius-pill);
-  background: currentColor;
-  flex-shrink: 0;
-}
-
 /* Collapsible nav groups (native <details>, no script). A group opens itself and tints its
    header when one of its children is the active page. */
 .nav-group {
@@ -705,7 +695,6 @@ body:has(.mobile-navigation[open]) {
   color: var(--text);
 }
 .sidebar.is-collapsed .nav-chevron,
-.sidebar.is-collapsed .sidenav > .nav-item .nav-current-marker,
 .sidebar.is-collapsed .user-chevron {
   display: none;
 }
@@ -1794,7 +1783,7 @@ app-command-palette {
 }
 
 /* ---- My access (permission matrix) ------------------------------------ */
-/* Read-only: a tinted tile per verdict, the word beside it while the card has room. */
+/* Read-only: a tinted tile per verdict, the word below it while the card has room. */
 .matrix-card {
   container: matrix / inline-size;
 }
@@ -1829,11 +1818,22 @@ app-command-palette {
 .access-matrix td {
   white-space: normal;
 }
+/* Verdicts sit centred under their environment; sensitivity labels stay aligned to the left. */
+.access-matrix thead th + th,
+.access-matrix td {
+  text-align: center;
+}
 .matrix-cell {
   display: inline-flex;
   align-items: center;
   gap: 0.6rem;
   color: var(--text-muted);
+}
+/* The word sits under its tile, so the tile stays centred beneath its environment at every width. */
+.access-matrix .matrix-cell {
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.4rem;
 }
 button.matrix-cell {
   min-height: 44px;
@@ -3062,6 +3062,38 @@ ol.steps > li::before {
   font-size: 0.9rem;
   overflow-wrap: anywhere;
 }
+/* The value, then its status pill, on one line; in a narrow card that line moves under its label.
+   Only an address too long for the card (a full IPv6 one) breaks, so the page never scrolls sideways. */
+.facts div:has(> .fact-with-status) {
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+}
+.facts dd.fact-with-status {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+  margin-inline-start: auto;
+}
+.fact-with-status > :not(.mono) {
+  white-space: nowrap;
+}
+/* The checkpoint's details drop below their label, left-aligned, when the card is too narrow. */
+.checkpoint-facts div {
+  flex-wrap: wrap;
+}
+.checkpoint-facts dt {
+  white-space: nowrap;
+}
+.facts.checkpoint-facts dd {
+  text-align: left;
+}
+@media (max-width: 767px) {
+  .checkpoint-actions > .button {
+    flex: 1 1 100%;
+  }
+}
 
 /* Below 768px a decision dialog is a bottom sheet: full width, pinned buttons, a grab handle. */
 @media (max-width: 767px) {
@@ -3737,6 +3769,13 @@ details.rotate > summary::-webkit-details-marker {
 .add-network-form .button {
   flex-shrink: 0;
 }
+/* Scoped by id: Secret details' share form also uses .add-network-form, and stacking would stretch
+   its narrow number field. */
+@media (max-width: 639px) {
+  #add-network {
+    flex-direction: column;
+  }
+}
 .cidr-list {
   list-style: none;
   margin: 0;
@@ -3943,10 +3982,8 @@ fieldset {
   color: var(--tab-active-text);
   box-shadow: var(--shadow-sm);
 }
-:root:not([data-theme='light']) .tab-link.active {
-  box-shadow:
-    inset 0 0 0 1px var(--tab-active-border),
-    var(--shadow-sm);
+.tab-link.active:focus-visible {
+  outline-color: var(--nav-pill-focus);
 }
 
 .table-toolbar {
