@@ -180,8 +180,10 @@ public sealed class SqlServerBackend : IDynamicSecretBackend, IManagedSecretBack
         var loginSid = await LoginSidAsync(connection, identity, ct);
         if (loginSid is not null)
         {
-            await RunAsync(connection, disableSignIn, ct);
-            await EndSessionsAndConfirmClosedAsync(connection, identity, loginSid, ct);
+            if (await TryDisableLoginAsync(connection, disableSignIn, identity, ct))
+            {
+                await EndSessionsAndConfirmClosedAsync(connection, identity, loginSid, ct);
+            }
         }
 
         await RunAsync(connection, revocation, ct);
@@ -277,14 +279,37 @@ public sealed class SqlServerBackend : IDynamicSecretBackend, IManagedSecretBack
         }
     }
 
+    private async Task<bool> TryDisableLoginAsync(
+        SqlConnection connection, string disableSignIn, string identity, CancellationToken ct)
+    {
+        try
+        {
+            await RunAsync(connection, disableSignIn, ct);
+            return true;
+        }
+        catch (SqlException ex) when (ex.Number == 15151)
+        {
+            // Error 15151 is ambiguous between "login does not exist" (a concurrent revoke dropped it)
+            // and "no permission". Confirm catalog visibility and absence before continuing.
+            await EnsureCatalogVisibilityAsync(connection, ct);
+            if (await LoginSidAsync(connection, identity, ct) is null)
+            {
+                return false;
+            }
+
+            throw;
+        }
+    }
+
     private static async Task EnsureSessionVisibilityAsync(SqlConnection connection, CancellationToken ct)
     {
         await using var query = connection.CreateCommand();
         query.CommandText = """
             SELECT CAST(
-                CASE WHEN HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER STATE') = 1
-                       OR HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER PERFORMANCE STATE') = 1
-                     THEN 1 ELSE 0 END AS bit);
+                CASE WHEN TRY_CAST(SERVERPROPERTY('ProductMajorVersion') AS int) >= 16
+                     THEN CASE WHEN HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER PERFORMANCE STATE') = 1 THEN 1 ELSE 0 END
+                     ELSE CASE WHEN HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER STATE') = 1 THEN 1 ELSE 0 END
+                END AS bit);
             """;
         if (await query.ExecuteScalarAsync(ct) is not true)
         {

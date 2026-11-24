@@ -543,9 +543,59 @@ public sealed partial class DynamicSecretIssueTests(DynamicSecretsFixture fixtur
     }
 
     [Fact]
+    public async Task Revocation_fails_when_the_drain_deadline_expires_during_post_kill_polling()
+    {
+        var roleId = await DynamicSecretsApi.AddRoleAsync(vault, "it_dyn_post_kill_poll");
+        var admin = await vault.AdminClientAsync();
+        var (username, password) = await DynamicSecretsApi.IssuedCredentialAsync(await DynamicSecretsApi.IssueAsync(admin, roleId));
+        var lease = Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
+        var before = await AuditTrail.HeadAsync(vault);
+        var sessionBuilder = new SqlConnectionStringBuilder(vault.DynamicTargetConnectionString)
+        {
+            UserID = username,
+            Password = password,
+            Pooling = false,
+        };
+        var activeSession = new SqlConnection(sessionBuilder.ConnectionString);
+        await activeSession.OpenAsync();
+        try
+        {
+            var clock = new AdvancePastDeadlineOnPollDelayClock();
+            var backend = new SqlServerBackend(
+                Options.Create(new DynamicSecretTargetOptions { TargetConnectionString = vault.DynamicTargetConnectionString }),
+                NullLogger<SqlServerBackend>.Instance,
+                clock);
+            using var scope = vault.Services.CreateScope();
+            var service = new DynamicSecretService(
+                scope.ServiceProvider.GetRequiredService<IDynamicSecretRepository>(),
+                [backend],
+                scope.ServiceProvider.GetRequiredService<IAuditContext>(),
+                TimeProvider.System,
+                scope.ServiceProvider.GetRequiredService<IPremiumFeatureUsage>(),
+                scope.ServiceProvider.GetRequiredService<IAuditSink>());
+
+            var status = await service.RevokeAsync(lease.Id, lease.UserId, isAdmin: true, CancellationToken.None);
+
+            Assert.True(clock.PollDelayInvoked, "Expected revocation to enter the post-kill polling loop.");
+            Assert.Equal(LeaseStatus.RevocationFailed, status);
+            Assert.Equal(LeaseStatus.RevocationFailed, Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId)).Status);
+            var failure = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before), row => row.ResourceId == lease.Id);
+            Assert.Equal((AuditAction.DynamicCredentialRevocationFailed, true), (failure.Action, failure.IsCritical));
+            Assert.True(await IsSqlLoginDisabledAsync(vault.DynamicTargetConnectionString!, username));
+            Assert.Single(await DynamicSecretsApi.LoginsOfRoleAsync(vault, "it_dyn_post_kill_poll"));
+        }
+        finally
+        {
+            await activeSession.DisposeAsync();
+            await DropSqlLoginForceAsync(vault.DynamicTargetConnectionString!, username);
+        }
+    }
+
+    [Fact]
     public async Task A_restricted_target_login_lacking_catalog_visibility_fails_revocation_instead_of_reporting_revoked()
     {
-        var roleId = await DynamicSecretsApi.AddRoleAsync(vault, "it_dyn_restricted_vis");
+        // Use a harmless recipe that succeeds under the restricted login so only the catalog-visibility guard can fail revocation.
+        var roleId = await DynamicSecretsApi.AddRoleAsync(vault, "it_dyn_restricted_vis", revocation: "SELECT 1;");
         var admin = await vault.AdminClientAsync();
         var (username, password) = await DynamicSecretsApi.IssuedCredentialAsync(await DynamicSecretsApi.IssueAsync(admin, roleId));
         var lease = Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
@@ -637,6 +687,31 @@ public sealed partial class DynamicSecretIssueTests(DynamicSecretsFixture fixtur
         private long _now;
 
         public override long GetTimestamp() => _now += TimestampFrequency * 60;
+    }
+
+    /// <summary>
+    /// Keeps elapsed time at zero through the first active-session read and KILL, then jumps past the
+    /// 10-second drain deadline on the post-kill poll delay so the second poll observes deadline expiry.
+    /// </summary>
+    private sealed class AdvancePastDeadlineOnPollDelayClock : TimeProvider
+    {
+        private long _now;
+
+        public bool PollDelayInvoked { get; private set; }
+
+        public override long GetTimestamp() => Interlocked.Read(ref _now);
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            if (dueTime == TimeSpan.FromMilliseconds(100))
+            {
+                PollDelayInvoked = true;
+                Interlocked.Add(ref _now, TimestampFrequency * 15);
+                return base.CreateTimer(callback, state, TimeSpan.Zero, Timeout.InfiniteTimeSpan);
+            }
+
+            return base.CreateTimer(callback, state, dueTime, period);
+        }
     }
 
     /// <summary>A minted password's shape: 40 letters and digits, standing alone.</summary>
