@@ -24,26 +24,6 @@ public sealed class VaultPostgresConnection(string? connectionString)
 internal static class PostgresClusterGuard
 {
     /// <summary>
-    /// True when the two PostgreSQL connection strings name any common endpoint, after normalising DNS case,
-    /// trailing DNS dots, IPv6 brackets, IPv4-mapped IPv6 addresses, and default port 5432 while preserving
-    /// case-sensitive Unix socket paths and distinct loopback addresses (aliases are resolved live via
-    /// <c>pg_catalog.pg_control_system()</c>).
-    /// </summary>
-    public static bool SharesEndpoint(NpgsqlConnectionStringBuilder vault, NpgsqlConnectionStringBuilder target)
-    {
-        var vaultEndpoints = EndpointsOf(vault);
-        foreach (var endpoint in EndpointsOf(target))
-        {
-            if (vaultEndpoints.Contains(endpoint))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /// <summary>
     /// Reads the cluster's immutable 64-bit <c>system_identifier</c> from
     /// <c>pg_catalog.pg_control_system()</c>, which uniquely identifies an initialised PostgreSQL cluster
     /// regardless of hostnames, proxies, port forwards, <c>search_path</c>, or database names.
@@ -99,7 +79,11 @@ internal static class PostgresClusterGuard
         return expanded;
     }
 
-    private static HashSet<PostgresEndpoint> EndpointsOf(NpgsqlConnectionStringBuilder builder)
+    /// <summary>
+    /// Parses and normalizes the endpoints in a connection string for comparison. Aliases are resolved
+    /// separately by comparing cluster identities on live connections.
+    /// </summary>
+    public static HashSet<PostgresEndpoint> ReadEndpoints(NpgsqlConnectionStringBuilder builder)
     {
         var segments = HostSegments(builder);
         var result = new HashSet<PostgresEndpoint>();
@@ -188,5 +172,5 @@ internal static class PostgresClusterGuard
         return trimmed;
     }
 
-    private readonly record struct PostgresEndpoint(bool IsUnixSocket, string Host, int Port);
+    internal readonly record struct PostgresEndpoint(bool IsUnixSocket, string Host, int Port);
 }
