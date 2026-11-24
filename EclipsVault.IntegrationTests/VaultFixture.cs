@@ -101,6 +101,8 @@ public sealed partial class VaultFixture : IAsyncLifetime
     /// <summary>The database <c>Postgres</c> roles mint on, when <see cref="PostgresDynamicSecretsTarget"/> is set.</summary>
     public string? PostgresDynamicTargetConnectionString { get; private set; }
 
+    public Task<string> PostgresDynamicTargetLogsAsync() => _database.GetPostgresDynamicTargetLogsAsync();
+
     /// <summary>Every line the vault logs, as its log sinks receive it.</summary>
     public LogCapture Log { get; } = new();
 

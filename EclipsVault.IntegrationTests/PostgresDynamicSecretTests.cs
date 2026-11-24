@@ -274,6 +274,27 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
         Assert.Empty(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
     }
 
+    [Fact]
+    public async Task Minting_sends_a_scram_verifier_so_target_ddl_logs_never_record_the_plaintext_password()
+    {
+        var roleId = await PostgresDynamicTarget.AddRoleAsync(vault, "it_pg_scram_log");
+        var admin = await vault.AdminClientAsync();
+
+        var (username, password) = await DynamicSecretsApi.IssuedCredentialAsync(await DynamicSecretsApi.IssueAsync(admin, roleId));
+        var lease = Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
+        try
+        {
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, username, password));
+            var serverLog = await fixture.Vault.PostgresDynamicTargetLogsAsync();
+            Assert.Contains("SCRAM-SHA-256$4096:", serverLog, StringComparison.Ordinal);
+            Assert.DoesNotContain(password, serverLog, StringComparison.Ordinal);
+        }
+        finally
+        {
+            await DynamicSecretsApi.RevokeAsync(admin, lease.Id);
+        }
+    }
+
     /// <summary>A minted password's shape: 40 letters and digits, standing alone.</summary>
     [GeneratedRegex(@"(?<![A-Za-z0-9])[A-Za-z0-9]{40}(?![A-Za-z0-9])")]
     private static partial Regex MintedPassword();

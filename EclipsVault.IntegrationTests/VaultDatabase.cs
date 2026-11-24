@@ -76,10 +76,14 @@ internal abstract class VaultDatabase : IAsyncDisposable
             create.CommandText = $"CREATE DATABASE {PostgresDynamicTargetDatabase}";
             await create.ExecuteNonQueryAsync();
             // Revocation waits up to this plus a margin for a connection still starting up; two seconds keeps
-            // the tests that make it wait short. ALTER SYSTEM also refuses a transaction.
+            // the tests that make it wait short. Log DDL statements too so tests can confirm mints never log
+            // plaintext passwords. ALTER SYSTEM refuses a transaction.
             await using var shortenAuthentication = server.CreateCommand();
             shortenAuthentication.CommandText = "ALTER SYSTEM SET authentication_timeout = '2s'";
             await shortenAuthentication.ExecuteNonQueryAsync();
+            await using var logDdl = server.CreateCommand();
+            logDdl.CommandText = "ALTER SYSTEM SET log_statement = 'ddl'";
+            await logDdl.ExecuteNonQueryAsync();
             await using var reload = server.CreateCommand();
             reload.CommandText = "SELECT pg_reload_conf()";
             await reload.ExecuteNonQueryAsync();
@@ -101,6 +105,17 @@ internal abstract class VaultDatabase : IAsyncDisposable
             Username = PostgresTargetLogin,
             Password = password,
         }.ConnectionString;
+    }
+
+    public async Task<string> GetPostgresDynamicTargetLogsAsync()
+    {
+        if (_postgresTarget is null)
+        {
+            throw new InvalidOperationException("This vault has no PostgreSQL target; set PostgresDynamicSecretsTarget.");
+        }
+
+        var (stdout, stderr) = await _postgresTarget.GetLogsAsync();
+        return $"{stdout}\n{stderr}";
     }
 
     protected async ValueTask DisposePostgresTargetAsync()

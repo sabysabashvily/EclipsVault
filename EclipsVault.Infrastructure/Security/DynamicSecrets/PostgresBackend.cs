@@ -72,7 +72,8 @@ public sealed class PostgresBackend : IDynamicSecretBackend
     public async Task MintAsync(
         DynamicSecretRole role, string identity, string password, DateTimeOffset expiresAtUtc, CancellationToken ct)
     {
-        var sql = CredentialStatementTemplate.Render(role.CreationStatements, identity, password, expiresAtUtc);
+        var verifier = ScramSha256Verifier.Create(password);
+        var sql = CredentialStatementTemplate.RenderWithScramVerifier(role.CreationStatements, identity, verifier, expiresAtUtc);
         await using var connection = await OpenTargetAsync(ct, _ => new MintRefusedException(role.Name));
         await RunAsync(connection, sql, ct);
 

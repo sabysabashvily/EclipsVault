@@ -122,4 +122,57 @@ public class CredentialStatementTemplateTests
             Assert.Contains(password, char.IsAsciiDigit);
         }
     }
+
+    [Fact]
+    public void Scram_verifier_matches_the_rfc_7677_test_vector()
+    {
+        // RFC 7677 section 5: password "pencil", salt "QSXCR+Q6sek8bf92" (base64), 4096 iterations.
+        var salt = Convert.FromBase64String("QSXCR+Q6sek8bf92");
+
+        var verifier = ScramSha256Verifier.Create("pencil", salt, 4096);
+
+        Assert.Equal(
+            "SCRAM-SHA-256$4096:QSXCR+Q6sek8bf92$FO+9jBb3MUukt6jJnzjPZOWc5ow/Pu6JtPyju0aqaE8=:qxJ1SbmSAi5EcS0J5Ck/cKAm/+Ixa+Kwp63f4OHDgzo=",
+            verifier);
+    }
+
+    [Fact]
+    public void Rendering_with_a_scram_verifier_replaces_the_password_placeholder_and_omits_the_plaintext()
+    {
+        var password = CredentialMint.NewPassword();
+        var verifier = ScramSha256Verifier.Create(password);
+
+        var sql = CredentialStatementTemplate.RenderWithScramVerifier(
+            """CREATE ROLE "{{name}}" LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}+00';""",
+            "ev_reader_Ab12", verifier, Expiry);
+
+        Assert.True(CredentialStatementTemplate.IsRenderableScramVerifier(verifier));
+        Assert.Contains($"PASSWORD '{verifier}'", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain(password, sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Each_scram_verifier_uses_a_fresh_salt()
+    {
+        var first = ScramSha256Verifier.Create("Abc123Def456");
+        var second = ScramSha256Verifier.Create("Abc123Def456");
+
+        Assert.NotEqual(first, second);
+    }
+
+    [Theory]
+    [InlineData("not-a-verifier")]
+    [InlineData("SCRAM-SHA-256$4096:QSXCR+Q6sek8bf92$'; DROP ROLE postgres;--")]
+    [InlineData("SCRAM-SHA-256$0:QSXCR+Q6sek8bf92$6rriTRBi23WpRR/wtup+mMhUZUn/dB5nLTJRsjl95G4=:6rriTRBi23WpRR/wtup+mMhUZUn/dB5nLTJRsjl95G4=")]
+    [InlineData("")]
+    public void Refuses_a_malformed_scram_verifier_without_echoing_it(string badVerifier)
+    {
+        var ex = Assert.Throws<ArgumentException>(() =>
+            CredentialStatementTemplate.RenderWithScramVerifier("""CREATE ROLE "{{name}}" PASSWORD '{{password}}';""", "ev_x_1", badVerifier, Expiry));
+
+        if (badVerifier.Length > 0)
+        {
+            Assert.DoesNotContain(badVerifier, ex.Message, StringComparison.Ordinal);
+        }
+    }
 }
