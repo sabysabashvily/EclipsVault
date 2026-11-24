@@ -19,7 +19,8 @@ describe('SidebarNav', () => {
     const page = fixture.nativeElement as HTMLElement;
     const link = (label: string) =>
       [...page.querySelectorAll('a')].find((anchor) => anchor.textContent?.trim() === label)!;
-    return { fixture, page, group: page.querySelector('details')!, link };
+    const group = page.querySelector('details')!;
+    return { fixture, page, group, trigger: group.querySelector('summary')!, link };
   }
 
   it('keeps Secrets active on its Sharing tabs, New secret and detail pages', async () => {
@@ -60,28 +61,72 @@ describe('SidebarNav', () => {
     expect(link('Users').getAttribute('aria-current')).toBe('page');
   });
 
-  it('adds accessible labels and tooltips to rail items when collapsed, and asks to expand when a group is clicked', async () => {
-    const { fixture, group, link } = await renderAt('/Secrets', true);
-    const expanded = vi.fn();
-    fixture.componentInstance.expandRequested.subscribe(expanded);
+  it('opens the collapsed group beside the rail and marks the current page', async () => {
+    const { fixture, group, trigger, link } = await renderAt('/Admin/Users', true);
 
     const secrets = link('Secrets');
-    const summary = group.querySelector<HTMLElement>('summary')!;
     expect(secrets.getAttribute('aria-label')).toBe('Secrets');
     expect(secrets.getAttribute('title')).toBe('Secrets');
-    expect(summary.getAttribute('aria-label')).toBe('Administration');
-    expect(summary.getAttribute('title')).toBe('Administration');
+    expect(trigger.getAttribute('aria-label')).toBe('Administration, current section');
+    expect(trigger.getAttribute('title')).toBe('Administration');
     expect(group.open).toBe(false);
 
-    summary.click();
+    trigger.click();
     await fixture.whenStable();
 
-    expect(group.open).toBe(false);
-    expect(expanded).toHaveBeenCalledTimes(1);
-
-    fixture.componentRef.setInput('collapsed', false);
-    await fixture.whenStable();
     expect(group.open).toBe(true);
+    expect(link('Users').getAttribute('aria-current')).toBe('page');
+    expect(link('Networks').getAttribute('aria-current')).toBeNull();
+  });
+
+  it('moves through a rail flyout with arrows and returns focus on Escape', async () => {
+    const { fixture, group, trigger, link } = await renderAt('/Secrets', true);
+    const press = (target: HTMLElement, key: string) =>
+      target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+
+    trigger.focus();
+    press(trigger, 'ArrowDown');
+    await fixture.whenStable();
+
+    expect(group.open).toBe(true);
+    expect(document.activeElement).toBe(link('Users'));
+    press(link('Users'), 'ArrowDown');
+    expect(document.activeElement).toBe(link('Service accounts'));
+    press(link('Service accounts'), 'ArrowUp');
+    expect(document.activeElement).toBe(link('Users'));
+
+    press(link('Users'), 'Escape');
+    await fixture.whenStable();
+
+    expect(group.open).toBe(false);
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('returns focus to the collapsed group when navigation closes its flyout', async () => {
+    const { fixture, group, trigger, link } = await renderAt('/Secrets', true);
+    trigger.click();
+    await fixture.whenStable();
+    link('Users').focus();
+
+    await TestBed.inject(Router).navigateByUrl('/Admin/Users');
+    await fixture.whenStable();
+
+    expect(group.open).toBe(false);
+    expect(document.activeElement).toBe(trigger);
+    expect(trigger.getAttribute('aria-label')).toBe('Administration, current section');
+  });
+
+  it('closes an open rail group on an outside click and refocuses its trigger', async () => {
+    const { fixture, group, trigger, link } = await renderAt('/Admin/Users', true);
+    trigger.click();
+    await fixture.whenStable();
+    link('Users').focus();
+
+    document.body.click();
+    await fixture.whenStable();
+
+    expect(group.open).toBe(false);
+    expect(document.activeElement).toBe(trigger);
   });
 
   it('closes the active group disclosure while collapsed and restores it when expanded', async () => {

@@ -7,7 +7,15 @@
     }
     @for (item of section.items; track item.label) {
       @if ('children' in item) {
-        <details class="nav-group" [attr.aria-label]="item.label" [open]="groupExpanded(item)">
+        <details
+          #groupDetails
+          class="nav-group"
+          tabindex="-1"
+          [attr.aria-label]="item.label"
+          [open]="groupExpanded(item)"
+          (keydown)="groupKeydown($event, item, groupDetails)"
+          (focusout)="groupFocusOut($event, item, groupDetails)"
+        >
           <summary
             class="nav-item nav-group-summary"
             [class.has-active]="groupActive(item)"
@@ -47,15 +55,19 @@
 </nav>
 
 <ng-template #link let-entry>
+  @let current = holds(entry);
   <a
     class="nav-item"
     [routerLink]="entry.url"
-    [class.active]="holds(entry)"
-    [attr.aria-current]="active(entry) ? 'page' : holds(entry) ? 'true' : null"
+    [class.active]="current"
+    [attr.aria-current]="active(entry) ? 'page' : current ? 'true' : null"
     [attr.aria-label]="collapsed() ? entry.label : null"
     [attr.title]="collapsed() ? entry.label : null"
   >
     <app-nav-icon [icon]="entry.icon" />
     <span class="nav-label">{{ entry.label }}</span>
+    @if (current) {
+      <span class="nav-current-marker" aria-hidden="true"></span>
+    }
   </a>
 </ng-template>

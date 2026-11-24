@@ -39,6 +39,7 @@ import {
   failingRows,
   passingChecks,
   passingRows,
+  securityStatus,
   securityVerdict,
   verifySecurityCheckup,
 } from './security';
@@ -390,6 +391,27 @@ const sidebarThemes = [
   { name: 'light', switchLabel: 'Switch to dark' },
 ] as const;
 
+test('the compact rail switches theme without opening the account menu', async ({
+  page,
+  baseURL,
+}) => {
+  await openMyAccessBookmark(page, administratorCookies, baseURL, 'dark');
+  const shell = new AppShell(page);
+
+  await shell.collapseSidebar.click();
+  await expect(shell.expandSidebar).toHaveAttribute('aria-expanded', 'false');
+  await shell.lightTheme.click();
+
+  await expect(shell.darkTheme).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Profile', exact: true })).toBeHidden();
+  await expect(shell.expandSidebar).toBeVisible();
+  expect(await page.context().cookies()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ name: 'EclipsVault.Theme', value: 'light' }),
+    ]),
+  );
+});
+
 for (const account of sidebarAccounts) {
   for (const theme of sidebarThemes) {
     test(`the ${account.kind} sidebar shows its page links in ${theme.name}`, async ({
@@ -732,6 +754,7 @@ test('the palette is driven from the keyboard, traps focus, and hands it back on
   await page.context().addCookies(administratorCookies);
   await page.goto('/Access/Index');
   await expect(page.getByRole('heading', { name: 'My access', exact: true })).toBeVisible();
+  const shell = new AppShell(page);
   const options = page.locator('.palette-item');
 
   await test.step('Escape returns focus to the element that had it', async () => {
@@ -780,7 +803,7 @@ test('the palette is driven from the keyboard, traps focus, and hands it back on
     // eslint-disable-next-line playwright/no-raw-locators -- The command-palette input is the keyboard focus-trap target.
     await expect(page.locator('.palette-input')).toBeFocused();
     // A press inside the panel keeps the field focused; one on the backdrop dismisses it.
-    await page.locator('.palette-hint').click();
+    await shell.paletteCloseHint.click();
     // eslint-disable-next-line playwright/no-raw-locators -- The command-palette input is the keyboard focus-trap target.
     await expect(page.locator('.palette-input')).toBeFocused();
     await page.locator('.palette-backdrop').click({ position: { x: 5, y: 5 } });
@@ -1646,7 +1669,7 @@ test('Security checkup loads, reports a fetch failure, and retries in place', as
   const requested = page.waitForRequest('**/api/ui/security');
   await page.goto('/Security');
   await requested;
-  await expect(page.getByRole('status')).toHaveText('Loading your security checkup…');
+  await expect(securityStatus(page)).toHaveText('Loading your security checkup…');
   await expect(page.getByRole('list', { name: /^(Needs you|Passing)$/ })).toHaveCount(0);
   release();
   await expect(page.getByRole('alert')).toHaveText(
@@ -1706,9 +1729,10 @@ test('a session revoked from another browser signs in again and returns to My ac
     await signIn(second);
     const first = (await otherSessionIds(second)).filter((id) => !othersOfFirst.includes(id));
     expect(first).toHaveLength(1);
-    await new SignedInDevices(second).signOutSession(first[0]!);
+    const devices = new SignedInDevices(second);
+    await devices.signOutSession(first[0]!);
     await second.getByRole('alertdialog').getByRole('button', { name: 'Continue' }).click();
-    await expect(second.getByRole('status')).toHaveText(
+    await expect(devices.status).toHaveText(
       'That session was signed out — it loses access on its next request.',
     );
   });

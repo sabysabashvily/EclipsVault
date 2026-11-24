@@ -1,3 +1,14 @@
+@if (rail()) {
+  <button
+    type="button"
+    class="rail-control"
+    [attr.aria-label]="'Switch to ' + nextTheme()"
+    [title]="'Switch to ' + nextTheme()"
+    (click)="switchTheme()"
+  >
+    <app-nav-icon icon="theme" />
+  </button>
+}
 <details class="account-menu">
   <summary
     class="user-card"
@@ -41,22 +52,15 @@
         Profile
       </a>
     }
-    <button type="button" class="menu-item" role="menuitem" (click)="switchTheme()">
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.8"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <circle cx="12" cy="12" r="8" />
-        <path d="M12 4v16a8 8 0 0 0 0-16Z" fill="currentColor" stroke="none" />
-      </svg>
-      <span>Switch to {{ nextTheme() }}</span>
-    </button>
-    <div class="menu-sep" role="separator"></div>
+    @if (!rail()) {
+      <button type="button" class="menu-item" role="menuitem" (click)="switchTheme()">
+        <app-nav-icon icon="theme" />
+        <span>Switch to {{ nextTheme() }}</span>
+      </button>
+    }
+    @if (!rail() || me().areas.includes('profile')) {
+      <div class="menu-sep" role="separator"></div>
+    }
     <button type="button" class="menu-item danger" role="menuitem" (click)="signOut()">
       <svg
         viewBox="0 0 24 24"

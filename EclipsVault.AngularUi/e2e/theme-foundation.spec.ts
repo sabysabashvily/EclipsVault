@@ -144,7 +144,7 @@ test('the search shortcut leaves mobile navigation before opening the palette', 
   const shell = new ResponsiveShell(page);
 
   await shell.open.click();
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('ControlOrMeta+k');
   await expect(shell.navigation).not.toBeVisible();
   await expect(shell.palette).toBeFocused();
 });

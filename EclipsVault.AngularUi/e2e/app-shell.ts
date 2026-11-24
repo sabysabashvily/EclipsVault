@@ -7,9 +7,14 @@ export class AppShell {
   readonly myAccess;
   readonly secrets;
   readonly paletteQuery;
+  readonly paletteCloseHint;
   readonly navigation;
   readonly youGroup;
   readonly administrationGroup;
+  readonly collapseSidebar;
+  readonly expandSidebar;
+  readonly lightTheme;
+  readonly darkTheme;
 
   async signOut(displayName: string): Promise<void> {
     await this.page.getByText(displayName, { exact: true }).click();
@@ -31,5 +36,12 @@ export class AppShell {
     this.myAccess = page.getByRole('link', { name: 'My access', exact: true });
     this.secrets = page.getByRole('link', { name: 'Secrets', exact: true });
     this.paletteQuery = page.getByRole('combobox');
+    this.paletteCloseHint = page
+      .getByRole('dialog', { name: 'Command palette', exact: true })
+      .getByText('esc to close', { exact: true });
+    this.collapseSidebar = page.getByRole('button', { name: 'Collapse sidebar', exact: true });
+    this.expandSidebar = page.getByRole('button', { name: 'Expand sidebar', exact: true });
+    this.lightTheme = page.getByRole('button', { name: 'Switch to light', exact: true });
+    this.darkTheme = page.getByRole('button', { name: 'Switch to dark', exact: true });
   }
 }
