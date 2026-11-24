@@ -74,6 +74,38 @@ internal static class PostgresClusterGuard
         return systemIdentifier;
     }
 
+    /// <summary>
+    /// Expands a PostgreSQL connection string into one single-endpoint connection string per host listed in
+    /// <c>Host</c>, so the live cluster check probes every configured vault endpoint rather than only the
+    /// first host Npgsql happens to reach.
+    /// </summary>
+    public static IReadOnlyList<string> ExpandHostConnectionStrings(string connectionString)
+    {
+        var builder = new NpgsqlConnectionStringBuilder(connectionString);
+        if (string.IsNullOrWhiteSpace(builder.Host))
+        {
+            return [connectionString];
+        }
+
+        var segments = builder.Host.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segments.Length <= 1)
+        {
+            return [connectionString];
+        }
+
+        var expanded = new List<string>(segments.Length);
+        foreach (var segment in segments)
+        {
+            var single = new NpgsqlConnectionStringBuilder(connectionString)
+            {
+                Host = segment,
+            };
+            expanded.Add(single.ConnectionString);
+        }
+
+        return expanded;
+    }
+
     private static HashSet<PostgresEndpoint> EndpointsOf(NpgsqlConnectionStringBuilder builder)
     {
         var defaultPort = builder.Port > 0 ? builder.Port : DefaultPort;
@@ -104,6 +136,12 @@ internal static class PostgresClusterGuard
         }
 
         var trimmed = segment.Trim();
+        if (trimmed.StartsWith('@'))
+        {
+            endpoint = new PostgresEndpoint(IsUnixSocket: true, trimmed, defaultPort);
+            return true;
+        }
+
         if (trimmed.StartsWith('/'))
         {
             var socketPath = trimmed.Length > 1 ? trimmed.TrimEnd('/') : trimmed;

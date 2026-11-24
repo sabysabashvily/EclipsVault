@@ -319,7 +319,6 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
                     DateTimeOffset.UtcNow.AddMinutes(10), CancellationToken.None));
 
             Assert.True(acceptedCount > 0, "The TCP forwarder never received a connection from PostgresBackend.");
-            Assert.Empty(relayErrors);
             Assert.Contains(logger.Messages, message =>
                 message.Contains("own PostgreSQL cluster", StringComparison.Ordinal));
             Assert.Empty(await PostgresDynamicTarget.RolesOfRoleAsync(vault, "it_pg_same_cluster"));
@@ -330,6 +329,8 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
             forwarder.Stop();
             await relay;
         }
+
+        Assert.Empty(relayErrors);
     }
 
     [Fact]
@@ -379,7 +380,6 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
                     DateTimeOffset.UtcNow.AddMinutes(10), CancellationToken.None));
 
             Assert.True(acceptedCount > 0, "The TCP forwarder never received a connection from PostgresBackend.");
-            Assert.Empty(relayErrors);
             Assert.Contains(logger.Messages, message =>
                 message.Contains("own PostgreSQL cluster", StringComparison.Ordinal));
             Assert.Empty(await PostgresDynamicTarget.RolesOfRoleAsync(vault, "it_pg_shadowed"));
@@ -394,6 +394,8 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
             await using var dropShadow = new NpgsqlCommand("DROP FUNCTION IF EXISTS public.pg_control_system();", cleanup);
             await dropShadow.ExecuteNonQueryAsync();
         }
+
+        Assert.Empty(relayErrors);
     }
 
     private static ServiceProvider BuildDiPostgresVault(
@@ -453,9 +455,28 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
                             await upstream.ConnectAsync(destinationHost, destinationPort, ct);
                             var clientStream = client.GetStream();
                             var upstreamStream = upstream.GetStream();
-                            await Task.WhenAny(
-                                clientStream.CopyToAsync(upstreamStream, ct),
-                                upstreamStream.CopyToAsync(clientStream, ct));
+                            using var halfClose = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                            var clientToUpstream = clientStream.CopyToAsync(upstreamStream, halfClose.Token);
+                            var upstreamToClient = upstreamStream.CopyToAsync(clientStream, halfClose.Token);
+                            var first = await Task.WhenAny(clientToUpstream, upstreamToClient);
+                            await first;
+                            await halfClose.CancelAsync();
+                            client.Close();
+                            upstream.Close();
+                            var second = ReferenceEquals(first, clientToUpstream) ? upstreamToClient : clientToUpstream;
+                            try
+                            {
+                                await second;
+                            }
+                            catch (OperationCanceledException)
+                            {
+                            }
+                            catch (IOException)
+                            {
+                            }
+                            catch (ObjectDisposedException)
+                            {
+                            }
                         }
                     }
                     catch (OperationCanceledException) when (ct.IsCancellationRequested)

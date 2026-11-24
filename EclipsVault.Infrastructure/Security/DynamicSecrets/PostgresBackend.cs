@@ -86,43 +86,47 @@ public sealed class PostgresBackend : IDynamicSecretBackend
         var sql = CredentialStatementTemplate.Render(role.CreationStatements, identity, password, expiresAtUtc);
         await using var connection = await OpenTargetAsync(ct, _ => new MintRefusedException(role.Name), enforceDistinctEndpoint: true);
 
-        NpgsqlTransaction? transaction = null;
-        try
+        if (string.IsNullOrWhiteSpace(_vaultConnectionString))
         {
-            // Keep the live cluster identity check and the DDL inside one explicit transaction so a
-            // transaction-pooling proxy or Npgsql multiplexing cannot route them to different servers.
-            transaction = await connection.BeginTransactionAsync(ct);
-            if (!string.IsNullOrWhiteSpace(_vaultConnectionString))
-            {
-                await EnsureClusterDistinctAsync(connection, transaction, ct);
-            }
+            await RunAsync(connection, sql, ct);
         }
-        catch (Exception ex)
+        else
         {
-            if (transaction is not null)
-            {
-                await transaction.DisposeAsync();
-            }
-
-            if (ex is not InvalidOperationException || ex.Message != SameClusterMessage)
-            {
-                LogFailure(ex);
-            }
-
-            throw new MintRefusedException(role.Name);
-        }
-
-        await using (transaction)
-        {
-            await RunAsync(connection, transaction, sql, ct);
+            NpgsqlTransaction? transaction = null;
             try
             {
-                await transaction.CommitAsync(ct);
+                // Keep the live cluster identity check and the DDL inside one explicit transaction so a
+                // transaction-pooling proxy or Npgsql multiplexing cannot route them to different servers.
+                transaction = await connection.BeginTransactionAsync(ct);
+                await EnsureClusterDistinctAsync(connection, transaction, ct);
             }
             catch (Exception ex)
             {
-                LogFailure(ex);
-                throw;
+                if (transaction is not null)
+                {
+                    await transaction.DisposeAsync();
+                }
+
+                if (ex is not InvalidOperationException || ex.Message != SameClusterMessage)
+                {
+                    LogFailure(ex);
+                }
+
+                throw new MintRefusedException(role.Name);
+            }
+
+            await using (transaction)
+            {
+                await RunAsync(connection, transaction, sql, ct);
+                try
+                {
+                    await transaction.CommitAsync(ct);
+                }
+                catch (Exception ex)
+                {
+                    LogFailure(ex);
+                    throw;
+                }
             }
         }
 
@@ -365,14 +369,17 @@ public sealed class PostgresBackend : IDynamicSecretBackend
     {
         var targetClusterId = await PostgresClusterGuard.ReadSystemIdentifierAsync(targetConnection, targetTransaction, ct);
 
-        await using var vaultConnection = new NpgsqlConnection(_vaultConnectionString);
-        await vaultConnection.OpenAsync(ct);
-        var vaultClusterId = await PostgresClusterGuard.ReadSystemIdentifierAsync(vaultConnection, transaction: null, ct);
-
-        if (targetClusterId == vaultClusterId)
+        foreach (var vaultEndpointConnectionString in PostgresClusterGuard.ExpandHostConnectionStrings(_vaultConnectionString!))
         {
-            _logger.LogError(SameClusterMessage);
-            throw new InvalidOperationException(SameClusterMessage);
+            await using var vaultConnection = new NpgsqlConnection(vaultEndpointConnectionString);
+            await vaultConnection.OpenAsync(ct);
+            var vaultClusterId = await PostgresClusterGuard.ReadSystemIdentifierAsync(vaultConnection, transaction: null, ct);
+
+            if (targetClusterId == vaultClusterId)
+            {
+                _logger.LogError(SameClusterMessage);
+                throw new InvalidOperationException(SameClusterMessage);
+            }
         }
     }
 

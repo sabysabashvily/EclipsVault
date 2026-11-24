@@ -191,7 +191,8 @@ Those rights are why each target is a **separate connection string**:
   database in a cluster, and `pg_read_all_data` and `pg_write_all_data` reach every database: a lease
   on the vault's own cluster could read or change the vault's data. Revoking `CONNECT` on the vault's
   database does not separate them. When the vault runs on PostgreSQL, it refuses to mint if the target
-  shares an endpoint or PostgreSQL `system_identifier` with the vault's own cluster.
+  shares an endpoint or PostgreSQL `system_identifier` with any configured vault PostgreSQL endpoint;
+  a vault endpoint placed behind a proxy must route to a single physical PostgreSQL cluster.
 - **The PostgreSQL target must run PostgreSQL 16 or later.** Its login is set up like this, which the
   integration tests use:
 
