@@ -1,5 +1,7 @@
-import { RouterLink } from '@angular/router';
+import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { Component, DOCUMENT, ElementRef, inject, input, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { filter } from 'rxjs';
 import { Me } from '../account/me';
 import { SessionSignOut } from '../ui-api/ui-api-errors';
 import { NavIcon } from './nav-icon';
@@ -24,6 +26,15 @@ export class AccountMenu {
   protected readonly theme = signal<Theme>(currentTheme(this.document));
   protected readonly signOutFailed = signal(false);
 
+  constructor() {
+    inject(Router)
+      .events.pipe(
+        filter((event) => event instanceof NavigationEnd),
+        takeUntilDestroyed(),
+      )
+      .subscribe(() => this.close());
+  }
+
   protected nextTheme(): Theme {
     return otherTheme(this.theme());
   }
@@ -37,10 +48,14 @@ export class AccountMenu {
     this.sessionSignOut.end().subscribe({ error: () => this.signOutFailed.set(true) });
   }
 
+  /** Profile calls this too: a click on the page already open does not navigate. */
+  protected close(): void {
+    this.menu()?.removeAttribute('open');
+  }
+
   // As the Legacy UI's menus do: a click elsewhere closes it, and Escape returns focus to its summary.
   protected closeUnlessInside(event: Event): void {
-    if (!this.host.nativeElement.contains(event.target as Node))
-      this.menu()?.removeAttribute('open');
+    if (!this.host.nativeElement.contains(event.target as Node)) this.close();
   }
 
   protected closeAndRefocus(): void {
