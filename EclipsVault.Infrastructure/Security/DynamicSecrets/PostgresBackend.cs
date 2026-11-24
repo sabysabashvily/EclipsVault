@@ -1,3 +1,4 @@
+using System.Text;
 using EclipsVault.Core.Application.DynamicSecrets;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
@@ -9,21 +10,37 @@ using Npgsql;
 namespace EclipsVault.Infrastructure.Security;
 
 /// <summary>
-/// The PostgreSQL backend: mints and destroys short-lived login roles on the PostgreSQL target configured
-/// in <see cref="DynamicSecretTargetOptions.PostgresTargetConnectionString"/>, never on the vault's own
+/// The PostgreSQL backend, for both kinds of credential the vault owns:
+/// <list type="bullet">
+/// <item><see cref="IDynamicSecretBackend"/> — mints and destroys short-lived login roles of its own.</item>
+/// <item><see cref="IManagedSecretBackend"/> — re-passwords an existing login role.</item>
+/// </list>
+/// Both talk to the PostgreSQL target configured in
+/// <see cref="DynamicSecretTargetOptions.PostgresTargetConnectionString"/>, never to the vault's own
 /// database, for the reason <see cref="DynamicSecretTargetOptions"/> gives.
 ///
-/// As on SQL Server, the statements are DDL and cannot take parameters, so credentials are rendered in
-/// as text through <see cref="CredentialStatementTemplate"/>, which refuses anything but letters, digits
-/// and '_'. A role's statements must double-quote <c>"{{name}}"</c>: the minted name has capitals, and
-/// PostgreSQL folds an unquoted identifier to lower case, while a sign-in matches the name exactly.
-///
-/// One command runs a role's statements as one implicit transaction, so a recipe that fails part-way
-/// leaves nothing behind; the service still runs the revocation after such a failure.
+/// The DDL takes no parameters. <see cref="CredentialStatementTemplate"/> validates identifiers and SCRAM
+/// verifiers before inserting them into SQL. A role's statements must double-quote <c>"{{name}}"</c>
+/// because PostgreSQL folds unquoted identifiers to lower case and minted names are case-sensitive.
+/// Minting runs the creation statements in one transaction so a recipe that fails part-way rolls back.
 /// </summary>
-public sealed class PostgresBackend : IDynamicSecretBackend
+public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBackend
 {
     private const string SettingName = $"{DynamicSecretTargetOptions.SectionName}:PostgresTargetConnectionString";
+
+    /// <summary>
+    /// Fixed, not operator-supplied: rotating a managed secret must only ever change a password.
+    /// A per-secret statement would make every managed secret a place to hide arbitrary SQL.
+    /// </summary>
+    private const string RotateStatement = """ALTER ROLE "{{name}}" WITH PASSWORD '{{password}}';""";
+
+    /// <summary>
+    /// SQLSTATE codes with which PostgreSQL refuses <c>ALTER ROLE ... WITH PASSWORD</c> before changing
+    /// anything: no such role (42704), insufficient privilege (42501), invalid parameter value (22023),
+    /// and a read-only transaction (25006). Any other error leaves it unknown whether the change held.
+    /// </summary>
+    private static readonly HashSet<string> PasswordUnchangedSqlStates =
+        new(["42704", "42501", "22023", "25006"], StringComparer.Ordinal);
 
     /// <summary>
     /// How long past the target's <c>authentication_timeout</c> to wait for a connection still starting up.
@@ -56,14 +73,25 @@ public sealed class PostgresBackend : IDynamicSecretBackend
         $$;
         """;
 
+    private const string SameClusterMessage =
+        $"'{SettingName}' points at the vault's own PostgreSQL cluster. " +
+        "PostgreSQL roles and pg_read_all_data/pg_write_all_data span every database in a cluster, so dynamic " +
+        "secrets and managed rotation must target a separate PostgreSQL server.";
+
     private readonly string? _connectionString;
+    private readonly string? _vaultConnectionString;
     private readonly TimeProvider _clock;
     private readonly ILogger<PostgresBackend> _logger;
 
-    public PostgresBackend(IOptions<DynamicSecretTargetOptions> target, TimeProvider clock, ILogger<PostgresBackend> logger)
+    public PostgresBackend(
+        IOptions<DynamicSecretTargetOptions> target,
+        TimeProvider clock,
+        ILogger<PostgresBackend> logger,
+        VaultPostgresConnection? vaultConnection = null)
     {
         _clock = clock;
         _connectionString = target.Value.PostgresTargetConnectionString;
+        _vaultConnectionString = vaultConnection?.ConnectionString;
         _logger = logger;
     }
 
@@ -72,9 +100,45 @@ public sealed class PostgresBackend : IDynamicSecretBackend
     public async Task MintAsync(
         DynamicSecretRole role, string identity, string password, DateTimeOffset expiresAtUtc, CancellationToken ct)
     {
-        var sql = CredentialStatementTemplate.Render(role.CreationStatements, identity, password, expiresAtUtc);
-        await using var connection = await OpenTargetAsync(ct, _ => new MintRefusedException(role.Name));
-        await RunAsync(connection, sql, ct);
+        var verifier = ScramSha256Verifier.Create(password);
+        var sql = CredentialStatementTemplate.RenderWithScramVerifier(role.CreationStatements, identity, verifier, expiresAtUtc);
+        await using var connection = await OpenTargetAsync(ct, _ => new MintRefusedException(role.Name), enforceDistinctEndpoint: true);
+
+        if (string.IsNullOrWhiteSpace(_vaultConnectionString))
+        {
+            await RunAsync(connection, sql, ct);
+        }
+        else
+        {
+            NpgsqlTransaction transaction;
+            try
+            {
+                transaction = await BeginGuardedTransactionAsync(connection, ct);
+            }
+            catch (Exception ex)
+            {
+                if (ex is not InvalidOperationException || ex.Message != SameClusterMessage)
+                {
+                    LogFailure(ex);
+                }
+
+                throw new MintRefusedException(role.Name);
+            }
+
+            await using (transaction)
+            {
+                await RunAsync(connection, transaction, sql, ct);
+                try
+                {
+                    await transaction.CommitAsync(ct);
+                }
+                catch (Exception ex)
+                {
+                    LogFailure(ex);
+                    throw;
+                }
+            }
+        }
 
         _logger.LogInformation(
             "Minted PostgreSQL role {Identity} for role {RoleName}; lease elapses at {ExpiresAtUtc}",
@@ -116,6 +180,85 @@ public sealed class PostgresBackend : IDynamicSecretBackend
 
         _logger.LogInformation("Dropped PostgreSQL role {Identity} for role {RoleName}", identity, role.Name);
     }
+
+    public bool CanApplyPassword(ReadOnlySpan<byte> password)
+    {
+        foreach (var value in password)
+        {
+            if (!char.IsAsciiLetterOrDigit((char)value))
+            {
+                return false;
+            }
+        }
+
+        return !password.IsEmpty;
+    }
+
+    /// <summary>
+    /// Throws <see cref="UpstreamRotationRefusedException"/> only when the password certainly did not
+    /// change: the statement was never sent, the role name exceeds PostgreSQL's <c>max_identifier_length</c>,
+    /// or PostgreSQL refused it with a SQLSTATE that leaves the password untouched. Any other failure
+    /// (a timeout, a lost connection, a cancelled call) leaves it unknown whether the server ran it.
+    /// Raw driver exceptions are replaced at this boundary with type + SQLSTATE diagnostics so server
+    /// error text or connection strings never leak into caller logs.
+    /// </summary>
+    public async Task RotatePrincipalAsync(string principal, string newPassword, CancellationToken ct)
+    {
+        string sql;
+        try
+        {
+            var verifier = ScramSha256Verifier.Create(newPassword);
+            sql = CredentialStatementTemplate.RenderWithScramVerifier(RotateStatement, principal, verifier, DateTimeOffset.UnixEpoch);
+        }
+        catch (ArgumentException)
+        {
+            throw new UpstreamRotationRefusedException(
+                new ArgumentException("PostgreSQL managed rotation parameters were rejected before sending."));
+        }
+
+        await using var connection = await OpenTargetAsync(ct,
+            notSent => new UpstreamRotationRefusedException(SanitizeDriverException(notSent)), enforceDistinctEndpoint: true);
+        var alterAttempted = false;
+        var commitAttempted = false;
+        try
+        {
+            await using var transaction = await BeginGuardedTransactionAsync(connection, ct);
+            await using var lengthQuery = new NpgsqlCommand(
+                "SELECT pg_catalog.current_setting('max_identifier_length')::pg_catalog.int4", connection, transaction);
+            if (await lengthQuery.ExecuteScalarAsync(ct) is not int maxLength || Encoding.UTF8.GetByteCount(principal) > maxLength)
+            {
+                _logger.LogWarning("Cannot verify the PostgreSQL role name fits within the server's max_identifier_length");
+                throw new InvalidOperationException("PostgreSQL role name length could not be verified.");
+            }
+
+            await using var alter = new NpgsqlCommand(sql, connection, transaction);
+            alterAttempted = true;
+            await alter.ExecuteNonQueryAsync(ct);
+            commitAttempted = true;
+            await transaction.CommitAsync(ct);
+        }
+        catch (OperationCanceledException) when (alterAttempted)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            LogFailure(ex);
+            var safeFailure = SanitizeDriverException(ex);
+            if (!alterAttempted || (!commitAttempted && ex is PostgresException refused && PasswordUnchangedSqlStates.Contains(refused.SqlState)))
+            {
+                throw new UpstreamRotationRefusedException(safeFailure);
+            }
+
+            throw safeFailure;
+        }
+
+        // Never log the password — only that the principal moved.
+        _logger.LogInformation("Rotated the password of PostgreSQL role {Principal}", principal);
+    }
+
+    private static InvalidOperationException SanitizeDriverException(Exception ex)
+        => new($"PostgreSQL target failure ({ex.GetType().Name}, SQLSTATE {(ex as PostgresException)?.SqlState ?? "none"}).");
 
     /// <summary>
     /// Waits until every connection that began starting up before sign-in was turned off shows its role.
@@ -220,9 +363,14 @@ public sealed class PostgresBackend : IDynamicSecretBackend
     /// <summary>
     /// Opens the PostgreSQL target, refusing when none is configured. When <paramref name="nothingSent"/> is
     /// given, a failure before anything reached the target throws what it returns instead, so the caller
-    /// knows there is nothing to undo.
+    /// knows there is nothing to undo. When <paramref name="enforceDistinctEndpoint"/> is true and the vault
+    /// itself runs on PostgreSQL, refuses any target that statically shares an endpoint with the vault's
+    /// own PostgreSQL connection before opening a socket.
     /// </summary>
-    private async Task<NpgsqlConnection> OpenTargetAsync(CancellationToken ct, Func<Exception, Exception>? nothingSent = null)
+    private async Task<NpgsqlConnection> OpenTargetAsync(
+        CancellationToken ct,
+        Func<Exception, Exception>? nothingSent = null,
+        bool enforceDistinctEndpoint = false)
     {
         if (string.IsNullOrWhiteSpace(_connectionString))
         {
@@ -231,11 +379,10 @@ public sealed class PostgresBackend : IDynamicSecretBackend
             throw nothingSent?.Invoke(notConfigured) ?? notConfigured;
         }
 
-        NpgsqlConnection connection;
+        HashSet<PostgresClusterGuard.PostgresEndpoint> targetEndpoints;
         try
         {
-            // Npgsql parses the setting here, so a malformed one fails before anything is sent.
-            connection = new NpgsqlConnection(_connectionString);
+            targetEndpoints = PostgresClusterGuard.ReadEndpoints(new NpgsqlConnectionStringBuilder(_connectionString));
         }
         catch (Exception ex)
         {
@@ -250,15 +397,28 @@ public sealed class PostgresBackend : IDynamicSecretBackend
             throw nothingSent(ex);
         }
 
+        if (enforceDistinctEndpoint && !string.IsNullOrWhiteSpace(_vaultConnectionString))
+        {
+            EnsureEndpointsDistinct(targetEndpoints, nothingSent);
+        }
+
+        NpgsqlConnection? connection = null;
+
         try
         {
+            connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync(ct);
             return connection;
         }
         catch (Exception ex)
         {
-            await connection.DisposeAsync();
+            if (connection is not null)
+            {
+                await connection.DisposeAsync();
+            }
+
             LogFailure(ex);
+
             if (nothingSent is null)
             {
                 throw;
@@ -268,11 +428,79 @@ public sealed class PostgresBackend : IDynamicSecretBackend
         }
     }
 
-    private async Task RunAsync(NpgsqlConnection connection, string sql, CancellationToken ct)
+    private void EnsureEndpointsDistinct(
+        HashSet<PostgresClusterGuard.PostgresEndpoint> targetEndpoints, Func<Exception, Exception>? nothingSent)
+    {
+        bool sharesEndpoint;
+        try
+        {
+            var vaultBuilder = new NpgsqlConnectionStringBuilder(_vaultConnectionString);
+            sharesEndpoint = PostgresClusterGuard.ReadEndpoints(vaultBuilder).Overlaps(targetEndpoints);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError("Cannot verify PostgreSQL cluster separation because the connection endpoints failed to parse: {ExceptionType}",
+                ex.GetType().Name);
+            throw nothingSent?.Invoke(ex) ?? ex;
+        }
+
+        if (sharesEndpoint)
+        {
+            _logger.LogError(SameClusterMessage);
+            var sameCluster = new InvalidOperationException(SameClusterMessage);
+            throw nothingSent?.Invoke(sameCluster) ?? sameCluster;
+        }
+    }
+
+    // A transaction-pooling proxy could otherwise send the cluster check and the DDL to different servers.
+    private async Task<NpgsqlTransaction> BeginGuardedTransactionAsync(NpgsqlConnection connection, CancellationToken ct)
+    {
+        var transaction = await connection.BeginTransactionAsync(ct);
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(_vaultConnectionString))
+            {
+                await EnsureClusterDistinctAsync(connection, transaction, ct);
+            }
+
+            return transaction;
+        }
+        catch
+        {
+            await transaction.DisposeAsync();
+            throw;
+        }
+    }
+
+    private async Task EnsureClusterDistinctAsync(
+        NpgsqlConnection targetConnection,
+        NpgsqlTransaction targetTransaction,
+        CancellationToken ct)
+    {
+        var targetClusterId = await PostgresClusterGuard.ReadSystemIdentifierAsync(targetConnection, targetTransaction, ct);
+
+        foreach (var vaultEndpointConnectionString in PostgresClusterGuard.ExpandHostConnectionStrings(_vaultConnectionString!))
+        {
+            await using var vaultConnection = new NpgsqlConnection(vaultEndpointConnectionString);
+            await vaultConnection.OpenAsync(ct);
+            var vaultClusterId = await PostgresClusterGuard.ReadSystemIdentifierAsync(vaultConnection, transaction: null, ct);
+
+            if (targetClusterId == vaultClusterId)
+            {
+                _logger.LogError(SameClusterMessage);
+                throw new InvalidOperationException(SameClusterMessage);
+            }
+        }
+    }
+
+    private Task RunAsync(NpgsqlConnection connection, string sql, CancellationToken ct)
+        => RunAsync(connection, transaction: null, sql, ct);
+
+    private async Task RunAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction, string sql, CancellationToken ct)
     {
         try
         {
-            await using var command = new NpgsqlCommand(sql, connection);
+            await using var command = new NpgsqlCommand(sql, connection, transaction);
             await command.ExecuteNonQueryAsync(ct);
         }
         catch (Exception ex)

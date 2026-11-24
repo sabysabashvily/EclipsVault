@@ -19,6 +19,13 @@ public interface IManagedSecretBackend
     DynamicSecretBackend Backend { get; }
 
     /// <summary>
+    /// True when the UTF-8 <paramref name="password"/> can be sent through <see cref="RotatePrincipalAsync"/>.
+    /// Checked under the principal lock against the currently stored value before the first upstream write
+    /// so compensation cannot fail to restore the previous password if a later write fails.
+    /// </summary>
+    bool CanApplyPassword(ReadOnlySpan<byte> password) => true;
+
+    /// <summary>
     /// Sets <paramref name="principal"/>'s password to <paramref name="newPassword"/>. Throws
     /// <c>UpstreamRotationRefusedException</c> only when the password certainly did not change; after
     /// any other failure the caller must assume it may have.

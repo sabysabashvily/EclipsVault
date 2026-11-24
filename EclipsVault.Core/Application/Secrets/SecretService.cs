@@ -259,6 +259,12 @@ public sealed class SecretService : ISecretService
 
         try
         {
+            if (!backend.CanApplyPassword(previousPassword))
+            {
+                throw new UpstreamRotationRefusedException(
+                    new InvalidOperationException("The stored password cannot be restored by the managed rotation backend if rotation fails."));
+            }
+
             // Change the real credential first: if the backend refuses, the stored value is still the truth.
             try
             {

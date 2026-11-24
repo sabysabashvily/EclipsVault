@@ -171,10 +171,13 @@ public static class DependencyInjection
         services.AddScoped<IBlockAdministration, BlockAdministration>();
 
         // Dynamic secrets: one backend per DynamicSecretBackend value; the service picks by role.
+        services.AddSingleton(new VaultPostgresConnection(DatabaseProvider.IsPostgres(provider) ? connectionString : null));
         services.AddScoped<SqlServerBackend>();
         services.AddScoped<IDynamicSecretBackend>(sp => sp.GetRequiredService<SqlServerBackend>());
         services.AddScoped<IManagedSecretBackend>(sp => sp.GetRequiredService<SqlServerBackend>());
-        services.AddScoped<IDynamicSecretBackend, PostgresBackend>();
+        services.AddScoped<PostgresBackend>();
+        services.AddScoped<IDynamicSecretBackend>(sp => sp.GetRequiredService<PostgresBackend>());
+        services.AddScoped<IManagedSecretBackend>(sp => sp.GetRequiredService<PostgresBackend>());
         services.AddScoped<IDynamicSecretService, DynamicSecretService>();
 
         services.AddScoped<ITrustedNetworkService, TrustedNetworkService>();

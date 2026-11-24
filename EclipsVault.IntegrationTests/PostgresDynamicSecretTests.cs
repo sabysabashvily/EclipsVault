@@ -1,15 +1,26 @@
+using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using EclipsVault.Core.Application.Abstractions;
+using EclipsVault.Core.Application.Licensing;
+using EclipsVault.Core.Application.Secrets;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Core.Domain.Exceptions;
+using EclipsVault.Infrastructure;
 using EclipsVault.Infrastructure.Persistence;
 using EclipsVault.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using Serilog.Events;
+using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace EclipsVault.IntegrationTests;
@@ -172,7 +183,7 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
         var lease = Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
         // Held for up to three seconds, within the seven revocation waits here: authentication_timeout's two plus five of margin.
         var signingIn = PostgresDynamicTarget.StartSigningInAsync(vault, username, password, TimeSpan.FromSeconds(3));
-        await PostgresDynamicTarget.WaitForStartupWithoutRoleAsync(vault);
+        await PostgresDynamicTarget.WaitForAuthenticatedStartupAsync(vault);
 
         using var revoked = await DynamicSecretsApi.RevokeAsync(admin, lease.Id);
 
@@ -188,7 +199,6 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
         var admin = await vault.AdminClientAsync();
         var (username, password) = await DynamicSecretsApi.IssuedCredentialAsync(await DynamicSecretsApi.IssueAsync(admin, roleId));
         var signingIn = PostgresDynamicTarget.StartSigningInAsync(vault, username, password, TimeSpan.FromSeconds(10));
-        await PostgresDynamicTarget.WaitForStartupWithoutRoleAsync(vault);
         // The vault's own backend, on a clock that has always run out, so the startup above is still unconfirmed.
         // The service closes a lease whose revocation throws as RevocationFailed with a critical row (see the refused revoke).
         var backend = new PostgresBackend(
@@ -197,6 +207,8 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
         var role = new DynamicSecretRole { Name = "it_pg_unconfirmed", RevocationStatements = DbSeeder.PostgresRevocation };
         try
         {
+            await PostgresDynamicTarget.WaitForAuthenticatedStartupAsync(vault);
+
             await Assert.ThrowsAsync<InvalidOperationException>(() => backend.RevokeAsync(role, username, CancellationToken.None));
 
             Assert.Single(await PostgresDynamicTarget.RolesOfRoleAsync(vault, "it_pg_unconfirmed"));
@@ -272,6 +284,779 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
         Assert.Equal("The backend refused to mint a credential for 'it_pg_no_sql_target'. Nothing was issued.",
             (await DynamicSecretsApi.AssertProblemAsync(refused, 502, "mint_refused")).GetProperty("title").GetString());
         Assert.Empty(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
+    }
+
+    [Fact]
+    public async Task Managed_rotation_updates_a_postgres_role_and_stored_value_together_without_logging_the_password()
+    {
+        var admin = await vault.AdminClientAsync();
+        var password = ManagedTargetLogins.NewPassword();
+        const string role = "it_pg_managed_rotated";
+        await PostgresDynamicTarget.CreateManagedRoleAsync(vault, role, password);
+        try
+        {
+            var details = await SecretSharing.CreateSecretAsync(admin, "it-pg-managed-rotated", value: password);
+            await SecretDetailsApi.MakeManagedAsync(vault, details, role, DynamicSecretBackend.Postgres);
+            var before = await AuditTrail.HeadAsync(vault);
+
+            var response = await SecretDetailsApi.RotateUpstreamAsync(admin, details);
+
+            SecretDetailsApi.AssertNoContent(response);
+            Assert.Equal([AuditAction.SecretUpstreamRotated], await SecretDetailsApi.ActionsAfterAsync(vault, before, details));
+            var stored = await UpstreamRotationTests.StoredValueAsync(vault, details);
+            Assert.NotEqual(password, stored);
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, role, stored));
+            Assert.False(await PostgresDynamicTarget.OpensWithAsync(vault, role, password));
+            Assert.DoesNotContain(vault.Log.Lines, line => line.Text.Contains(stored, StringComparison.Ordinal));
+            var serverLog = await vault.PostgresDynamicTargetLogsAsync();
+            Assert.Contains(serverLog.Split('\n'), line =>
+                line.Contains($"ALTER ROLE \"{role}\" WITH PASSWORD 'SCRAM-SHA-256$4096:", StringComparison.Ordinal));
+            Assert.DoesNotContain(stored, serverLog, StringComparison.Ordinal);
+        }
+        finally
+        {
+            await PostgresDynamicTarget.DropRoleAsync(vault, role);
+        }
+    }
+
+    [Fact]
+    public async Task Managed_rotation_refuses_a_missing_postgres_role_and_leaves_the_stored_value_unchanged()
+    {
+        var admin = await vault.AdminClientAsync();
+        const string initialValue = "ItPgManagedMissingValue1";
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-pg-managed-missing", value: initialValue);
+        await SecretDetailsApi.MakeManagedAsync(vault, details, "it_pg_no_such_managed_role", DynamicSecretBackend.Postgres);
+        var before = await AuditTrail.HeadAsync(vault);
+        var logStart = vault.Log.Lines.Count;
+
+        var response = await SecretDetailsApi.RotateUpstreamAsync(admin, details);
+
+        var problem = await SecretsApi.AssertProblemAsync(response, 502, "upstream_refused");
+        Assert.Equal("The backend refused the rotation. The credential is unchanged.", problem.GetProperty("title").GetString());
+        Assert.Empty(await SecretDetailsApi.ActionsAfterAsync(vault, before, details));
+        Assert.Equal(initialValue, await UpstreamRotationTests.StoredValueAsync(vault, details));
+        var newLogs = vault.Log.Lines.Skip(logStart).ToList();
+        Assert.DoesNotContain(newLogs, line => MintedPassword().IsMatch(line.Text));
+        Assert.DoesNotContain(newLogs, line => line.Text.Contains("it_pg_no_such_managed_role", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Managed_rotation_refuses_an_overlong_postgres_role_binding_without_touching_the_truncated_prefix_role()
+    {
+        var admin = await vault.AdminClientAsync();
+        var password = ManagedTargetLogins.NewPassword();
+        var prefixRole63 = "it_pg_trunc_" + new string('a', 51);
+        Assert.Equal(63, prefixRole63.Length);
+        var overlongRole64 = prefixRole63 + "b";
+        await PostgresDynamicTarget.CreateManagedRoleAsync(vault, prefixRole63, password);
+        try
+        {
+            var details = await SecretSharing.CreateSecretAsync(admin, "it-pg-managed-overlong", value: password);
+            await SecretDetailsApi.MakeManagedAsync(vault, details, overlongRole64, DynamicSecretBackend.Postgres);
+
+            var response = await SecretDetailsApi.RotateUpstreamAsync(admin, details);
+
+            await SecretsApi.AssertProblemAsync(response, 502, "upstream_refused");
+            Assert.Equal(password, await UpstreamRotationTests.StoredValueAsync(vault, details));
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, prefixRole63, password));
+        }
+        finally
+        {
+            await PostgresDynamicTarget.DropRoleAsync(vault, prefixRole63);
+        }
+    }
+
+    [Fact]
+    public async Task Managed_rotation_uses_the_server_role_length_limit_when_the_search_path_shadows_current_setting()
+    {
+        const string prefixRole = "it_pg_shadow_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        var password = ManagedTargetLogins.NewPassword();
+        await PostgresDynamicTarget.CreateManagedRoleAsync(vault, prefixRole, password);
+        var target = new NpgsqlConnectionStringBuilder(vault.PostgresDynamicTargetConnectionString);
+        await using var setup = new NpgsqlConnection(target.ConnectionString);
+        await setup.OpenAsync();
+        await using var create = new NpgsqlCommand("""
+            CREATE FUNCTION public.current_setting(text) RETURNS text LANGUAGE sql AS $$ SELECT '128'::text $$;
+            """, setup);
+        await create.ExecuteNonQueryAsync();
+        try
+        {
+            target.SearchPath = "public,pg_catalog";
+            var backend = new PostgresBackend(Options.Create(new DynamicSecretTargetOptions
+            {
+                PostgresTargetConnectionString = target.ConnectionString,
+            }), TimeProvider.System, NullLogger<PostgresBackend>.Instance);
+
+            await Assert.ThrowsAsync<UpstreamRotationRefusedException>(() => backend.RotatePrincipalAsync(
+                prefixRole + "b", ManagedTargetLogins.NewPassword(), CancellationToken.None));
+
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, prefixRole, password));
+        }
+        finally
+        {
+            await using var drop = new NpgsqlCommand("DROP FUNCTION public.current_setting(text);", setup);
+            await drop.ExecuteNonQueryAsync();
+            await PostgresDynamicTarget.DropRoleAsync(vault, prefixRole);
+        }
+    }
+
+    [Fact]
+    public async Task Cancelling_the_vault_cluster_probe_refuses_managed_rotation_before_sending_a_password_change()
+    {
+        const string role = "it_pg_rotation_cancelled";
+        var password = ManagedTargetLogins.NewPassword();
+        await PostgresDynamicTarget.CreateManagedRoleAsync(vault, role, password);
+        try
+        {
+            using var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            var vaultEndpoint = new NpgsqlConnectionStringBuilder(vault.PostgresDynamicTargetConnectionString)
+            {
+                Host = IPAddress.Loopback.ToString(),
+                Port = ((IPEndPoint)listener.LocalEndpoint).Port,
+                Pooling = false,
+            };
+            using var provider = BuildDiPostgresVault(vaultEndpoint.ConnectionString,
+                vault.PostgresDynamicTargetConnectionString!, NullLogger<PostgresBackend>.Instance);
+            using var scope = provider.CreateScope();
+            var backend = scope.ServiceProvider.GetServices<IManagedSecretBackend>()
+                .Single(candidate => candidate.Backend == DynamicSecretBackend.Postgres);
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var rotation = backend.RotatePrincipalAsync(role, ManagedTargetLogins.NewPassword(), cancel.Token);
+
+            using var probe = await listener.AcceptTcpClientAsync(cancel.Token);
+            await cancel.CancelAsync();
+
+            await Assert.ThrowsAsync<UpstreamRotationRefusedException>(() => rotation);
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, role, password));
+        }
+        finally
+        {
+            await PostgresDynamicTarget.DropRoleAsync(vault, role);
+        }
+    }
+
+    [Fact]
+    public async Task Managed_rotation_refuses_before_writing_when_the_stored_password_contains_punctuation_unusable_for_compensation()
+    {
+        var admin = await vault.AdminClientAsync();
+        const string punctuatedPassword = "Old!Pass#2026-Value";
+        const string role = "it_pg_managed_punct";
+        await PostgresDynamicTarget.CreateManagedRoleAsync(vault, role, punctuatedPassword);
+        try
+        {
+            var details = await SecretSharing.CreateSecretAsync(admin, "it-pg-managed-punct", value: punctuatedPassword);
+            await SecretDetailsApi.MakeManagedAsync(vault, details, role, DynamicSecretBackend.Postgres);
+            var before = await AuditTrail.HeadAsync(vault);
+
+            var response = await SecretDetailsApi.RotateUpstreamAsync(admin, details);
+
+            await SecretsApi.AssertProblemAsync(response, 502, "upstream_refused");
+            Assert.Empty(await SecretDetailsApi.ActionsAfterAsync(vault, before, details));
+            Assert.Equal(punctuatedPassword, await UpstreamRotationTests.StoredValueAsync(vault, details));
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, role, punctuatedPassword));
+        }
+        finally
+        {
+            await PostgresDynamicTarget.DropRoleAsync(vault, role);
+        }
+    }
+
+    [Fact]
+    public async Task A_competing_postgres_managed_rotation_is_refused_with_change_in_progress_and_the_stored_value_wins()
+    {
+        var admin = await vault.AdminClientAsync();
+        var password = ManagedTargetLogins.NewPassword();
+        const string role = "it_pg_managed_race";
+        await PostgresDynamicTarget.CreateManagedRoleAsync(vault, role, password);
+        try
+        {
+            var details = await SecretSharing.CreateSecretAsync(admin, "it-pg-managed-race", value: password);
+            await SecretDetailsApi.MakeManagedAsync(vault, details, role, DynamicSecretBackend.Postgres);
+            // Warm up once so any one-time evaluation-window write does not queue behind HeldAuditChain.
+            SecretDetailsApi.AssertNoContent(await SecretDetailsApi.RotateUpstreamAsync(admin, details));
+            var secretId = SecretSharing.SecretIdOf(details);
+
+            Task first;
+            await using (var held = await HeldAuditChain.TakeAsync(vault))
+            {
+                first = Task.Run(async () =>
+                {
+                    using var scope = vault.Services.CreateScope();
+                    await scope.ServiceProvider.GetRequiredService<ISecretService>().RotateManagedAsync(secretId, null, default);
+                });
+                await held.WaitForQueuedWritersAsync(1);
+
+                var competing = await SecretDetailsApi.RotateUpstreamAsync(admin, details);
+                await SecretsApi.AssertProblemAsync(competing, 409, "change_in_progress");
+            }
+
+            await first;
+            var finalValue = await UpstreamRotationTests.StoredValueAsync(vault, details);
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, role, finalValue));
+        }
+        finally
+        {
+            await PostgresDynamicTarget.DropRoleAsync(vault, role);
+        }
+    }
+
+    [Fact]
+    public async Task A_lost_response_after_altering_a_postgres_role_compensates_and_restores_the_previous_password()
+    {
+        var admin = await vault.AdminClientAsync();
+        var initialPassword = ManagedTargetLogins.NewPassword();
+        const string role = "it_pg_managed_comp";
+        await PostgresDynamicTarget.CreateManagedRoleAsync(vault, role, initialPassword);
+        try
+        {
+            var details = await SecretSharing.CreateSecretAsync(admin, "it-pg-managed-comp", value: initialPassword);
+            await SecretDetailsApi.MakeManagedAsync(vault, details, role, DynamicSecretBackend.Postgres);
+            var secretId = SecretSharing.SecretIdOf(details);
+
+            using var scope = vault.Services.CreateScope();
+            var realPostgres = scope.ServiceProvider.GetServices<IManagedSecretBackend>()
+                .Single(b => b.Backend == DynamicSecretBackend.Postgres);
+            var lostOnce = new FailOnceAfterRotatingBackend(realPostgres);
+            var service = new SecretService(
+                scope.ServiceProvider.GetRequiredService<ISecretRepository>(),
+                scope.ServiceProvider.GetRequiredService<ICryptoEngineFactory>(),
+                scope.ServiceProvider.GetRequiredService<ISecretCache>(),
+                scope.ServiceProvider.GetRequiredService<IIntrusionResponseService>(),
+                scope.ServiceProvider.GetRequiredService<IAuditSink>(),
+                scope.ServiceProvider.GetRequiredService<IAuditContext>(),
+                [lostOnce],
+                TimeProvider.System,
+                scope.ServiceProvider.GetRequiredService<IPremiumFeatureUsage>(),
+                scope.ServiceProvider.GetRequiredService<IManagedPrincipalLock>());
+
+            await Assert.ThrowsAsync<UpstreamRotationRefusedException>(() =>
+                service.RotateManagedAsync(secretId, null, CancellationToken.None));
+
+            Assert.Equal(2, lostOnce.Calls);
+            Assert.Equal(initialPassword, await UpstreamRotationTests.StoredValueAsync(vault, details));
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, role, initialPassword));
+            var serverLog = await vault.PostgresDynamicTargetLogsAsync();
+            var alterations = serverLog.Split('\n').Where(line =>
+                line.Contains($"ALTER ROLE \"{role}\" WITH PASSWORD", StringComparison.Ordinal)).ToArray();
+            Assert.Equal(2, alterations.Length);
+            Assert.All(alterations, line =>
+            {
+                Assert.Contains("SCRAM-SHA-256$4096:", line, StringComparison.Ordinal);
+                Assert.DoesNotContain(initialPassword, line, StringComparison.Ordinal);
+            });
+        }
+        finally
+        {
+            await PostgresDynamicTarget.DropRoleAsync(vault, role);
+        }
+    }
+
+    private sealed class FailOnceAfterRotatingBackend(IManagedSecretBackend inner) : IManagedSecretBackend
+    {
+        public int Calls { get; private set; }
+
+        public DynamicSecretBackend Backend => inner.Backend;
+
+        public bool CanApplyPassword(ReadOnlySpan<byte> password) => inner.CanApplyPassword(password);
+
+        public async Task RotatePrincipalAsync(string principal, string newPassword, CancellationToken ct)
+        {
+            Calls++;
+            await inner.RotatePrincipalAsync(principal, newPassword, ct);
+            if (Calls == 1)
+            {
+                throw new IOException("Simulated lost reply after PostgreSQL committed ALTER ROLE.");
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Managed_rotation_refuses_a_vault_cluster_alias_and_leaves_the_roles_password_unchanged()
+    {
+        const string role = "it_pg_managed_same_cluster";
+        var initialPassword = ManagedTargetLogins.NewPassword();
+        await PostgresDynamicTarget.CreateManagedRoleAsync(vault, role, initialPassword);
+        var target = new NpgsqlConnectionStringBuilder(vault.PostgresDynamicTargetConnectionString!);
+        using var forwarder = new TcpListener(IPAddress.Loopback, 0);
+        forwarder.Start();
+        using var shutdown = new CancellationTokenSource();
+        var relayErrors = new ConcurrentBag<Exception>();
+        var acceptedCount = 0;
+        var relay = RelayConnectionsAsync(forwarder, target.Host!, target.Port, relayErrors,
+            () => Interlocked.Increment(ref acceptedCount), shutdown.Token);
+        try
+        {
+            var alias = new NpgsqlConnectionStringBuilder(target.ConnectionString)
+            {
+                Host = IPAddress.Loopback.ToString(),
+                Port = ((IPEndPoint)forwarder.LocalEndpoint).Port,
+                Pooling = false,
+            };
+            var logger = new CapturingLogger<PostgresBackend>();
+            using var provider = BuildDiPostgresVault(target.ConnectionString, alias.ConnectionString, logger);
+            using var scope = provider.CreateScope();
+            var backend = scope.ServiceProvider.GetServices<IManagedSecretBackend>()
+                .Single(candidate => candidate.Backend == DynamicSecretBackend.Postgres);
+
+            await Assert.ThrowsAsync<UpstreamRotationRefusedException>(() =>
+                backend.RotatePrincipalAsync(role, ManagedTargetLogins.NewPassword(), CancellationToken.None));
+
+            Assert.True(acceptedCount > 0);
+            Assert.Contains(logger.Messages, message => message.Contains("own PostgreSQL cluster", StringComparison.Ordinal));
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, role, initialPassword));
+        }
+        finally
+        {
+            await shutdown.CancelAsync();
+            forwarder.Stop();
+            await relay;
+            await PostgresDynamicTarget.DropRoleAsync(vault, role);
+        }
+
+        Assert.Empty(relayErrors);
+    }
+
+    [Fact]
+    public async Task Restoring_a_version_of_a_postgres_managed_secret_is_refused_and_keeps_the_live_password()
+    {
+        var admin = await vault.AdminClientAsync();
+        var password = ManagedTargetLogins.NewPassword();
+        const string role = "it_pg_managed_restore";
+        await PostgresDynamicTarget.CreateManagedRoleAsync(vault, role, password);
+        try
+        {
+            var details = await SecretSharing.CreateSecretAsync(admin, "it-pg-managed-restore", value: password);
+            await SecretDetailsApi.MakeManagedAsync(vault, details, role, DynamicSecretBackend.Postgres);
+            SecretDetailsApi.AssertNoContent(await SecretDetailsApi.RotateUpstreamAsync(admin, details));
+            var live = await UpstreamRotationTests.StoredValueAsync(vault, details);
+
+            var response = await SecretDetailsApi.RestoreAsync(admin, details, await SecretDetailsApi.NewestVersionAsync(vault, details));
+
+            var problem = await SecretsApi.AssertProblemAsync(response, 409, "restore_managed");
+            Assert.Contains(role, problem.GetProperty("title").GetString(), StringComparison.Ordinal);
+            Assert.Equal(live, await UpstreamRotationTests.StoredValueAsync(vault, details));
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, role, live));
+        }
+        finally
+        {
+            await PostgresDynamicTarget.DropRoleAsync(vault, role);
+        }
+    }
+
+    [Fact]
+    public async Task Minting_sends_a_scram_verifier_so_target_ddl_logs_never_record_the_plaintext_password()
+    {
+        var roleId = await PostgresDynamicTarget.AddRoleAsync(vault, "it_pg_scram_log");
+        var admin = await vault.AdminClientAsync();
+
+        var (username, password) = await DynamicSecretsApi.IssuedCredentialAsync(await DynamicSecretsApi.IssueAsync(admin, roleId));
+        var lease = Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
+        try
+        {
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, username, password));
+            var serverLog = await fixture.Vault.PostgresDynamicTargetLogsAsync();
+            Assert.Contains(
+                serverLog.Split('\n'),
+                line => line.Contains($"CREATE ROLE \"{username}\"", StringComparison.Ordinal)
+                    && line.Contains("SCRAM-SHA-256$4096:", StringComparison.Ordinal));
+            Assert.DoesNotContain(password, serverLog, StringComparison.Ordinal);
+        }
+        finally
+        {
+            await DynamicSecretsApi.RevokeAsync(admin, lease.Id);
+        }
+    }
+
+    [Fact]
+    public async Task Minting_refuses_when_the_target_reaches_the_same_postgres_cluster_through_a_different_endpoint()
+    {
+        var target = new NpgsqlConnectionStringBuilder(vault.PostgresDynamicTargetConnectionString!);
+        using var forwarder = new TcpListener(IPAddress.Loopback, 0);
+        forwarder.Start();
+        var forwardedPort = ((IPEndPoint)forwarder.LocalEndpoint).Port;
+        using var shutdown = new CancellationTokenSource();
+        var relayErrors = new ConcurrentBag<Exception>();
+        var acceptedCount = 0;
+        var relay = RelayConnectionsAsync(forwarder, target.Host!, target.Port, relayErrors, () => Interlocked.Increment(ref acceptedCount), shutdown.Token);
+        try
+        {
+            var viaDifferentPort = new NpgsqlConnectionStringBuilder(target.ConnectionString)
+            {
+                Host = IPAddress.Loopback.ToString(),
+                Port = forwardedPort,
+                Pooling = false,
+            };
+            var logger = new CapturingLogger<PostgresBackend>();
+            using var provider = BuildDiPostgresVault(target.ConnectionString, viaDifferentPort.ConnectionString, logger);
+            using var scope = provider.CreateScope();
+            var backend = scope.ServiceProvider.GetServices<IDynamicSecretBackend>()
+                .Single(candidate => candidate.Backend == DynamicSecretBackend.Postgres);
+            var role = new DynamicSecretRole
+            {
+                Name = "it_pg_same_cluster",
+                Backend = DynamicSecretBackend.Postgres,
+                CreationStatements = DbSeeder.PostgresReaderRecipe,
+                RevocationStatements = DbSeeder.PostgresRevocation,
+            };
+
+            await Assert.ThrowsAsync<MintRefusedException>(() =>
+                backend.MintAsync(role, "ev_it_pg_same_cluster_1", "Abc123Def456Ghi789Jkl012Mno345Pqr678Stu9",
+                    DateTimeOffset.UtcNow.AddMinutes(10), CancellationToken.None));
+
+            Assert.True(acceptedCount > 0, "The TCP forwarder never received a connection from PostgresBackend.");
+            Assert.Contains(logger.Messages, message =>
+                message.Contains("own PostgreSQL cluster", StringComparison.Ordinal));
+            Assert.Empty(await PostgresDynamicTarget.RolesOfRoleAsync(vault, "it_pg_same_cluster"));
+        }
+        finally
+        {
+            await shutdown.CancelAsync();
+            forwarder.Stop();
+            await relay;
+        }
+
+        Assert.Empty(relayErrors);
+    }
+
+    [Fact]
+    public async Task Minting_refuses_same_cluster_even_when_search_path_shadows_pg_control_system()
+    {
+        var target = new NpgsqlConnectionStringBuilder(vault.PostgresDynamicTargetConnectionString!);
+        await using (var setup = new NpgsqlConnection(target.ConnectionString))
+        {
+            await setup.OpenAsync();
+            await using var createShadow = new NpgsqlCommand(
+                "CREATE OR REPLACE FUNCTION public.pg_control_system() RETURNS TABLE(system_identifier bigint) LANGUAGE sql AS $$ SELECT 999999999999::bigint $$;",
+                setup);
+            await createShadow.ExecuteNonQueryAsync();
+        }
+
+        using var forwarder = new TcpListener(IPAddress.Loopback, 0);
+        forwarder.Start();
+        var forwardedPort = ((IPEndPoint)forwarder.LocalEndpoint).Port;
+        using var shutdown = new CancellationTokenSource();
+        var relayErrors = new ConcurrentBag<Exception>();
+        var acceptedCount = 0;
+        var relay = RelayConnectionsAsync(forwarder, target.Host!, target.Port, relayErrors, () => Interlocked.Increment(ref acceptedCount), shutdown.Token);
+        try
+        {
+            var viaShadowedSearchPath = new NpgsqlConnectionStringBuilder(target.ConnectionString)
+            {
+                Host = IPAddress.Loopback.ToString(),
+                Port = forwardedPort,
+                SearchPath = "public,pg_catalog",
+                Pooling = false,
+            };
+            var logger = new CapturingLogger<PostgresBackend>();
+            using var provider = BuildDiPostgresVault(target.ConnectionString, viaShadowedSearchPath.ConnectionString, logger);
+            using var scope = provider.CreateScope();
+            var backend = scope.ServiceProvider.GetServices<IDynamicSecretBackend>()
+                .Single(candidate => candidate.Backend == DynamicSecretBackend.Postgres);
+            var role = new DynamicSecretRole
+            {
+                Name = "it_pg_shadowed",
+                Backend = DynamicSecretBackend.Postgres,
+                CreationStatements = DbSeeder.PostgresReaderRecipe,
+                RevocationStatements = DbSeeder.PostgresRevocation,
+            };
+
+            await Assert.ThrowsAsync<MintRefusedException>(() =>
+                backend.MintAsync(role, "ev_it_pg_shadowed_1", "Abc123Def456Ghi789Jkl012Mno345Pqr678Stu9",
+                    DateTimeOffset.UtcNow.AddMinutes(10), CancellationToken.None));
+
+            Assert.True(acceptedCount > 0, "The TCP forwarder never received a connection from PostgresBackend.");
+            Assert.Contains(logger.Messages, message =>
+                message.Contains("own PostgreSQL cluster", StringComparison.Ordinal));
+            Assert.Empty(await PostgresDynamicTarget.RolesOfRoleAsync(vault, "it_pg_shadowed"));
+        }
+        finally
+        {
+            await shutdown.CancelAsync();
+            forwarder.Stop();
+            await relay;
+            await using var cleanup = new NpgsqlConnection(target.ConnectionString);
+            await cleanup.OpenAsync();
+            await using var dropShadow = new NpgsqlCommand("DROP FUNCTION IF EXISTS public.pg_control_system();", cleanup);
+            await dropShadow.ExecuteNonQueryAsync();
+        }
+
+        Assert.Empty(relayErrors);
+    }
+
+    [Fact]
+    public async Task Minting_succeeds_against_a_distinct_cluster_when_a_multi_host_vault_dsn_sets_target_session_attributes_read_write()
+    {
+        var vaultConnectionString = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
+        if (!string.Equals(Environment.GetEnvironmentVariable("Database__Provider"), "Postgres", StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(vaultConnectionString))
+        {
+            // When the vault runs on SQL Server, prove multi-host Target Session Attributes=read-write
+            // still probes cleanly without Npgsql single-host validation errors on a same-cluster alias.
+            var sameTarget = new NpgsqlConnectionStringBuilder(vault.PostgresDynamicTargetConnectionString!);
+            using var forwarder = new TcpListener(IPAddress.Loopback, 0);
+            forwarder.Start();
+            var forwardedPort = ((IPEndPoint)forwarder.LocalEndpoint).Port;
+            using var shutdown = new CancellationTokenSource();
+            var relayErrors = new ConcurrentBag<Exception>();
+            var acceptedCount = 0;
+            var relay = RelayConnectionsAsync(forwarder, sameTarget.Host!, sameTarget.Port, relayErrors, () => Interlocked.Increment(ref acceptedCount), shutdown.Token);
+            try
+            {
+                var multiHostVault = new NpgsqlConnectionStringBuilder(sameTarget.ConnectionString)
+                {
+                    Host = $"{sameTarget.Host}:{sameTarget.Port},{sameTarget.Host}:{sameTarget.Port}",
+                    TargetSessionAttributes = "read-write",
+                    Pooling = false,
+                };
+                var viaAlias = new NpgsqlConnectionStringBuilder(sameTarget.ConnectionString)
+                {
+                    Host = IPAddress.Loopback.ToString(),
+                    Port = forwardedPort,
+                    Pooling = false,
+                };
+                var logger = new CapturingLogger<PostgresBackend>();
+                using var provider = BuildDiPostgresVault(multiHostVault.ConnectionString, viaAlias.ConnectionString, logger);
+                using var scope = provider.CreateScope();
+                var backend = scope.ServiceProvider.GetServices<IDynamicSecretBackend>()
+                    .Single(candidate => candidate.Backend == DynamicSecretBackend.Postgres);
+                var role = new DynamicSecretRole
+                {
+                    Name = "it_pg_multihost_rw",
+                    Backend = DynamicSecretBackend.Postgres,
+                    CreationStatements = DbSeeder.PostgresReaderRecipe,
+                    RevocationStatements = DbSeeder.PostgresRevocation,
+                };
+
+                await Assert.ThrowsAsync<MintRefusedException>(() =>
+                    backend.MintAsync(role, "ev_it_pg_multihost_rw_1", "Abc123Def456Ghi789Jkl012Mno345Pqr678Stu9",
+                        DateTimeOffset.UtcNow.AddMinutes(10), CancellationToken.None));
+
+                Assert.True(acceptedCount > 0);
+                Assert.Contains(logger.Messages, message => message.Contains("own PostgreSQL cluster", StringComparison.Ordinal));
+            }
+            finally
+            {
+                await shutdown.CancelAsync();
+                forwarder.Stop();
+                await relay;
+            }
+
+            Assert.Empty(relayErrors);
+            return;
+        }
+
+        var vaultBuilder = new NpgsqlConnectionStringBuilder(vaultConnectionString);
+        var multiHostReadWriteVault = new NpgsqlConnectionStringBuilder(vaultBuilder.ConnectionString)
+        {
+            Host = $"{vaultBuilder.Host}:{vaultBuilder.Port},{vaultBuilder.Host}:{vaultBuilder.Port}",
+            TargetSessionAttributes = "read-write",
+            Pooling = false,
+        };
+        var distinctLogger = new CapturingLogger<PostgresBackend>();
+        using var distinctProvider = BuildDiPostgresVault(
+            multiHostReadWriteVault.ConnectionString,
+            vault.PostgresDynamicTargetConnectionString!,
+            distinctLogger);
+        using var distinctScope = distinctProvider.CreateScope();
+        var distinctBackend = distinctScope.ServiceProvider.GetServices<IDynamicSecretBackend>()
+            .Single(candidate => candidate.Backend == DynamicSecretBackend.Postgres);
+        var distinctRole = new DynamicSecretRole
+        {
+            Name = "it_pg_multihost_distinct",
+            Backend = DynamicSecretBackend.Postgres,
+            CreationStatements = DbSeeder.PostgresReaderRecipe,
+            RevocationStatements = DbSeeder.PostgresRevocation,
+        };
+        const string mintedUser = "ev_it_pg_multihost_distinct_1";
+        const string mintedPassword = "Abc123Def456Ghi789Jkl012Mno345Pqr678Stu9";
+        try
+        {
+            await distinctBackend.MintAsync(distinctRole, mintedUser, mintedPassword, DateTimeOffset.UtcNow.AddMinutes(10), CancellationToken.None);
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, mintedUser, mintedPassword));
+        }
+        finally
+        {
+            await distinctBackend.RevokeAsync(distinctRole, mintedUser, CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task Minting_refuses_when_only_the_second_vault_host_shares_the_targets_cluster()
+    {
+        var target = new NpgsqlConnectionStringBuilder(vault.PostgresDynamicTargetConnectionString!);
+        await using var otherCluster = new PostgreSqlBuilder(PostgresShareIssuerBackfill.PostgresImage)
+            .WithDatabase(target.Database!)
+            .WithUsername(target.Username!)
+            .WithPassword(target.Password!)
+            .Build();
+        await otherCluster.StartAsync();
+        var other = new NpgsqlConnectionStringBuilder(otherCluster.GetConnectionString());
+
+        using var forwarder = new TcpListener(IPAddress.Loopback, 0);
+        forwarder.Start();
+        var forwardedPort = ((IPEndPoint)forwarder.LocalEndpoint).Port;
+        using var shutdown = new CancellationTokenSource();
+        var relayErrors = new ConcurrentBag<Exception>();
+        var acceptedCount = 0;
+        var relay = RelayConnectionsAsync(forwarder, target.Host!, target.Port, relayErrors, () => Interlocked.Increment(ref acceptedCount), shutdown.Token);
+        try
+        {
+            // First vault host is a distinct cluster; only the second vault host matches the dynamic target's cluster.
+            var twoClusterVault = new NpgsqlConnectionStringBuilder(target.ConnectionString)
+            {
+                Host = $"{other.Host}:{other.Port},{target.Host}:{target.Port}",
+                Pooling = false,
+            };
+            var viaAlias = new NpgsqlConnectionStringBuilder(target.ConnectionString)
+            {
+                Host = IPAddress.Loopback.ToString(),
+                Port = forwardedPort,
+                Pooling = false,
+            };
+            var logger = new CapturingLogger<PostgresBackend>();
+            using var provider = BuildDiPostgresVault(twoClusterVault.ConnectionString, viaAlias.ConnectionString, logger);
+            using var scope = provider.CreateScope();
+            var backend = scope.ServiceProvider.GetServices<IDynamicSecretBackend>()
+                .Single(candidate => candidate.Backend == DynamicSecretBackend.Postgres);
+            var role = new DynamicSecretRole
+            {
+                Name = "it_pg_second_host",
+                Backend = DynamicSecretBackend.Postgres,
+                CreationStatements = DbSeeder.PostgresReaderRecipe,
+                RevocationStatements = DbSeeder.PostgresRevocation,
+            };
+
+            await Assert.ThrowsAsync<MintRefusedException>(() =>
+                backend.MintAsync(role, "ev_it_pg_second_host_1", "Abc123Def456Ghi789Jkl012Mno345Pqr678Stu9",
+                    DateTimeOffset.UtcNow.AddMinutes(10), CancellationToken.None));
+
+            Assert.True(acceptedCount > 0, "The TCP forwarder never received a connection from PostgresBackend.");
+            Assert.Contains(logger.Messages, message =>
+                message.Contains("own PostgreSQL cluster", StringComparison.Ordinal));
+            Assert.Empty(await PostgresDynamicTarget.RolesOfRoleAsync(vault, "it_pg_second_host"));
+        }
+        finally
+        {
+            await shutdown.CancelAsync();
+            forwarder.Stop();
+            await relay;
+        }
+
+        Assert.Empty(relayErrors);
+    }
+
+    private static ServiceProvider BuildDiPostgresVault(
+        string vaultConnectionString,
+        string dynamicTargetConnectionString,
+        ILogger<PostgresBackend> logger)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Database:Provider"] = "Postgres",
+                ["ConnectionStrings:DefaultConnection"] = vaultConnectionString,
+                ["DynamicSecrets:PostgresTargetConnectionString"] = dynamicTargetConnectionString,
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddEclipsVaultInfrastructure(configuration);
+        services.AddSingleton(logger);
+        return services.BuildServiceProvider();
+    }
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public ConcurrentQueue<string> Messages { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Messages.Enqueue($"{formatter(state, exception)} {exception}");
+    }
+
+    private static async Task RelayConnectionsAsync(
+        TcpListener listener,
+        string destinationHost,
+        int destinationPort,
+        ConcurrentBag<Exception> errors,
+        Action onAccepted,
+        CancellationToken ct)
+    {
+        var workers = new List<Task>();
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                var client = await listener.AcceptTcpClientAsync(ct);
+                onAccepted();
+                workers.Add(Task.Run(async () =>
+                {
+                    try
+                    {
+                        using (client)
+                        using (var upstream = new TcpClient())
+                        {
+                            await upstream.ConnectAsync(destinationHost, destinationPort, ct);
+                            var clientStream = client.GetStream();
+                            var upstreamStream = upstream.GetStream();
+                            using var halfClose = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                            var clientToUpstream = clientStream.CopyToAsync(upstreamStream, halfClose.Token);
+                            var upstreamToClient = upstreamStream.CopyToAsync(clientStream, halfClose.Token);
+                            var first = await Task.WhenAny(clientToUpstream, upstreamToClient);
+                            await first;
+                            await halfClose.CancelAsync();
+                            client.Close();
+                            upstream.Close();
+                            var second = ReferenceEquals(first, clientToUpstream) ? upstreamToClient : clientToUpstream;
+                            try
+                            {
+                                await second;
+                            }
+                            catch (OperationCanceledException)
+                            {
+                            }
+                            catch (IOException)
+                            {
+                            }
+                            catch (ObjectDisposedException)
+                            {
+                            }
+                        }
+                    }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                    {
+                    }
+                    catch (IOException) when (ct.IsCancellationRequested)
+                    {
+                    }
+                    catch (SocketException) when (ct.IsCancellationRequested)
+                    {
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add(ex);
+                    }
+                }, CancellationToken.None));
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (SocketException) when (ct.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            errors.Add(ex);
+        }
+        finally
+        {
+            await Task.WhenAll(workers);
+        }
     }
 
     /// <summary>A minted password's shape: 40 letters and digits, standing alone.</summary>

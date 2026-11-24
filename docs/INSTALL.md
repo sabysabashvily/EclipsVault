@@ -131,7 +131,7 @@ and restore, not just a new image.
 | `ECLIPSVAULT_AUDIT_SIGNING_KEY` | Base64 PKCS#8 P-256 private key for signing audit checkpoints. |
 | `DataProtection__KeyRingPath` | Durable directory shared by all nodes (the keys are sealed at rest with the KEK). |
 | `DynamicSecrets__TargetConnectionString` | **Only if you use dynamic secrets or managed rotation on SQL Server.** The database whose logins the vault manages — see [Dynamic secrets: the managed target](#dynamic-secrets-the-managed-target) below. Deliberately separate from `ConnectionStrings__DefaultConnection`. |
-| `DynamicSecrets__PostgresTargetConnectionString` | **Only if you use dynamic secrets on PostgreSQL.** The PostgreSQL database whose login roles the vault mints — see the same section. Also separate from `ConnectionStrings__DefaultConnection`. |
+| `DynamicSecrets__PostgresTargetConnectionString` | **Only if you use dynamic secrets or managed rotation on PostgreSQL.** The PostgreSQL database whose login roles the vault mints or rotates — see the same section. Also separate from `ConnectionStrings__DefaultConnection`. |
 | `ECLIPSVAULT_LICENSE` | Your license token (or place it in a `license.key` file in the content root). |
 | `ASPNETCORE_ENVIRONMENT` | Must be `Production` (anything other than `Development` disables dev seeding and fallbacks). |
 | `ForwardedHeaders__KnownProxies` | The IP(s) of your reverse proxy, so the real client IP is trusted for rate limiting, the IP blacklist, ABAC network rules, and audit. |
@@ -174,8 +174,7 @@ Each dynamic role names its backend, and each backend has its own target, whiche
 vault itself runs on:
 
 - **SQL Server** roles and managed rotation use `DynamicSecrets__TargetConnectionString`.
-- **PostgreSQL** roles use `DynamicSecrets__PostgresTargetConnectionString`. Managed rotation is
-  SQL Server only.
+- **PostgreSQL** roles and managed rotation use `DynamicSecrets__PostgresTargetConnectionString`.
 
 Those rights are why each target is a **separate connection string**:
 
@@ -191,8 +190,9 @@ Those rights are why each target is a **separate connection string**:
   another database in the same cluster. Roles and the catalogs that hold them are shared by every
   database in a cluster, and `pg_read_all_data` and `pg_write_all_data` reach every database: a lease
   on the vault's own cluster could read or change the vault's data. Revoking `CONNECT` on the vault's
-  database does not separate them. The vault does not yet refuse a target on its own cluster, so this
-  is yours to keep.
+  database does not separate them. When the vault runs on PostgreSQL, it refuses to mint or rotate if
+  the target shares an endpoint or PostgreSQL `system_identifier` with any configured vault PostgreSQL
+  endpoint. A vault endpoint behind a proxy must route to a single physical PostgreSQL cluster.
 - **The PostgreSQL target must run PostgreSQL 16 or later.** Its login is set up like this, which the
   integration tests use:
 
@@ -203,7 +203,9 @@ Those rights are why each target is a **separate connection string**:
   `ADMIN` lets it grant the roles your recipes name (the sample recipes name those two), plus whatever
   else your role statements need. `createrole_self_grant` gives it the privileges of the roles it
   creates, which revocation needs to end their sessions; without it every lease lands in
-  `RevocationFailed`. Through the roles it mints, this login can effectively read and write every
+  `RevocationFailed`. To rotate an existing non-superuser role with managed rotation, also grant
+  `ADMIN OPTION` on that role to the manager (`GRANT <role> TO eclipsvault_credmgr WITH ADMIN TRUE;`).
+  Through the roles it mints, this login can effectively read and write every
   database on the target cluster, which is one more reason that cluster holds only what you want
   managed.
 - **Minted roles are for existing objects.** The sample recipes read and write what is already there.
@@ -224,10 +226,16 @@ Those rights are why each target is a **separate connection string**:
   pending startups and session termination before dropping the role.
 - **A PostgreSQL role's statements must double-quote `"{{name}}"`**: the minted name has capitals,
   which PostgreSQL folds to lower case when unquoted.
-- **A failing statement reaches the target's own log, password included**, because PostgreSQL logs a
-  failing statement by default (`log_min_error_statement = error`), and so does `log_statement` when
-  set. A failed mint's role is rolled back, so that password never worked, but restrict who reads the
-  target's logs as you would its credentials.
+- **PostgreSQL mint statements send a pre-hashed `SCRAM-SHA-256` verifier rather than the plaintext
+  password**, so `log_statement` and `log_min_error_statement` on the target server never record the
+  minted plaintext password. The verifier uses a fixed 4096-iteration count regardless of the target's
+  `scram_iterations` setting. Before upgrading existing PostgreSQL roles, confirm that custom creation
+  recipes pass `{{password}}` unchanged inside a single-quoted `PASSWORD '{{password}}'` clause (never
+  transforming or validating it as plaintext) and that every database client supports SCRAM-SHA-256
+  authentication (MD5-only clients cannot authenticate to newly minted roles). Still restrict access to
+  the target's logs because they can contain the verifier itself.
+- **Managed rotation also sends a SCRAM verifier**, including when the vault restores the previous
+  password after a failed rotation. Check SCRAM support in the managed role's clients before rotating it.
 - **Why they are separate:** `ALTER ANY LOGIN` can re-password *any* principal on the instance that
   holds it. If the vault's own login held it, a compromise of the running application would reach
   the server that stores the audit trail — so the vault never asks for it. See
