@@ -20,7 +20,7 @@ Development walk. It does not record a production deployment or a security guara
 | [speaker-notes.md](speaker-notes.md) | What to say, and what not to claim |
 | [diagrams.md](diagrams.md) | Context, container, Web component, reveal code, deployment |
 | [diagrams.html](diagrams.html) | The same five pictures, rendered, with bilingual captions |
-| [security-flows.md](security-flows.md) | Sign-in, access, reveal, keys, checkpoint, dynamic lease |
+| [security-flows.md](security-flows.md) | Sign-in, invitation, access, reveal, keys, checkpoint, dynamic lease |
 | [demo-setup-reset.md](demo-setup-reset.md) | Disposable Development setup, the walk, and reset |
 | [rehearsal-checklist.md](rehearsal-checklist.md) | One-page run order for the presenter |
 | [questions.md](questions.md) | Likely questions, with the answer the source supports |
@@ -30,30 +30,55 @@ Development walk. It does not record a production deployment or a security guara
 
 | Name | Commit | What it is |
 |---|---|---|
-| `origin/main` | `d576dd93a30bc461183ca7b71c89f038adbff446` | Current `main` when this draft was refreshed, 21 November 2026, 22:42 Asia/Tbilisi. Merge of Area 7b secret details. |
+| `origin/main` | `1298958050e45f83aefeb4b6455d0a02169ab22a` | Current `main` when this draft was refreshed, 24 November 2026, 15:18 Asia/Tbilisi. Merge of the third UI polish pass (#217). |
 
-The earlier draft was read at `0bb59de` on 10 November 2026. That note is history. The pictures and
-the flows in this folder describe `d576dd9`.
+Earlier drafts were read at `0bb59de` on 10 November 2026 and at `d576dd9` on 21 November 2026.
+Those notes are history. The pictures, the flows, and the screenshots in this folder describe
+`1298958`.
 
-## Current, and what is still not this UI
+## Current on this revision
 
-**Current** means the code on `origin/main` at `d576dd9`. That includes:
+The code on `origin/main` at `1298958` includes:
 
-- master-key rotation in resumable batches, and the Angular Encryption keys page (`KekRotationService`, `EncryptionController`, ADR-0029)
-- checkpoint-boundary verification, atomic checkpoint recording, streamed step-up export, `AuditLogViewed`, `AuditChainVerified`, and one-at-a-time Verify and Export (`AuditChainVerifier`, `AuditCheckpointService`, `AuditController`, ADR-0030)
-- Angular Overview, Secrets, New secret, Secret details, Denied, access requests, and Dynamic secrets, with denials recorded as denials and shares that only read (ADR-0031)
+- Angular sign-in. `AngularUiRoutes` serves the browser pages `/Account/Login`, `/Account/Totp`,
+  `/Account/EnrollTotp`, `/Account/RecoveryCode`, and `/Account/Recover`. Those pages call
+  `/api/ui/auth` (ADR-0032). `AccountController` keeps only the two single sign-on redirects
+- new accounts are activated by an emailed invitation: a 256-bit token stored only as a SHA-256 hash,
+  valid for 72 hours, sent through real SMTP to a link built from `Identity:PublicUrl`. The person
+  sets the password and enrolls the authenticator in one audited transaction (ADR-0033)
+- no Razor view, `site.css`, or `site.js` is left. Failures outside the Angular UI get one of three
+  server pages, access blocked, error, or not found, written by `ServerPage` with
+  `server-page.css` (ADR-0034)
+- `Database:Provider` must be `Postgres` or `SqlServer`. Startup stops when it is missing or unknown
+- a reference production deployment in `deploy/production/`: Caddy with automatic HTTPS, the vault
+  image, and PostgreSQL, with the Data Protection key ring on a volume and
+  `ForwardedHeaders__KnownProxies` set to Caddy's address. `docs/INSTALL.md` walks through it
+- Vault Transit master keys on the Encryption keys page (`ICryptoEngine.GetMasterKeysAsync`), and a
+  rotation that fails after committing batches reports how many items moved. The response is
+  `audit_unavailable` for an audit failure or `rotation_interrupted` for another failure. The
+  Transit token needs `read` on `transit/keys/<key>` (`README.md`, ADR-0029)
+- administrators can release the guards a failed break-glass recovery left, from Networks
+  (`NetworksController` `blocks/release-guard`)
+- dynamic secrets on PostgreSQL as well as SQL Server (`PostgresBackend`,
+  `DynamicSecrets:PostgresTargetConnectionString`). Development seeds `phoenix_pg_reader` and
+  `global_pg_writer` next to the SQL Server roles
+- the `saas-design` redesign and three polish passes: a collapsible sidebar, a command palette
+  ("Search or jump to…", ⌘K), and equal light and dark themes
+
+ამ რევიზიაზე ბრაუზერის ინტერფეისი, შესვლის ჩათვლით, Angular-შია. Razor-ის ხედი აღარ დარჩა. ახალი
+ანგარიში ელფოსტით გაგზავნილი მოწვევით აქტიურდება: ადამიანი თავად აყენებს პაროლს და ავთენტიფიკატორს
+ერთ აუდიტირებულ ტრანზაქციაში. Angular-ის გარეთ წარუმატებლობას სამი სერვერული გვერდი პასუხობს.
+`Database:Provider`-ის გარეშე საცავი არ ეშვება. რეპოზიტორიას აქვს production-ის საცნობარო
+განთავსება Caddy-ით და PostgreSQL-ით, ხოლო დინამიკური საიდუმლოები PostgreSQL-ზეც მუშაობს.
+
+Master-key rotation runs in resumable batches (ADR-0029). The audit trail records refusals
+(ADR-0031). Audit bundle export streams its result after a step-up check (ADR-0030).
 
 Verify still does not prove every deletion. Deleting checkpoints, or changing rows after the latest
 checkpoint signed by the current key, can leave it quiet. See [security-flows.md](security-flows.md).
 
-**Still the Razor sign-in pages, on this revision:** `AccountController` and `Views/Account/`
-(password, authenticator, enrollment, recovery, passkey). They are not in `AngularUiRoutes`.
-
-**No invitation flow** is in this revision's source. A search for an invitation type in the C#
-projects finds none.
-
-The signed-out landing page and the shared Razor layouts also remain. The feature pages named in
-`AngularUiRoutes` are the Angular UI.
+The talk still runs on the Development demo world. It shows nothing about a production deployment,
+even though the repository now has a reference one.
 
 ## Old-verifier note, kept
 
@@ -72,12 +97,15 @@ The current verifier's refusal of an unknown format, without calling it tamperin
 `AuditBundleVerifier` together with `AuditBundleSchema` (`V1` and `V2`). The 1.0.0 sentence is the
 README's historical note. This draft did not run that old verifier.
 
-## What stays unresolved
+## Verification and open items
 
 - Presentation cap: at most 30 minutes, confirmed by the owner. Detailed slide allocation and
   marking criteria remain unconfirmed. The supplied C4 guide requires context/container diagrams
   and PDF export; it gives no timing rule.
 - The local Georgian diploma: not in this checkout. The story follows `CONTEXT.md`, the ADRs on
   `main`, and the source named in the other files.
-- `scripts/check.sh` was not run. This change does not modify the program.
+- `scripts/check.sh` passed locked restore, the Release build, and the unit suite during the draft
+  refresh. The Release build that served the screenshots finished with no warnings and no errors.
 - The 1.0.0 verifier binary was not executed. The note in the section above is the repository README's.
+- The reference production deployment was read, not started. No invitation email was sent during
+  the walk.

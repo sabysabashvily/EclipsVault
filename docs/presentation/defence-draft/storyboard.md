@@ -88,27 +88,36 @@ Timing: allocation pending within the presentation's 30-minute cap.
 ### On screen (English)
 
 The container picture has the runtime containers inside one system. The Angular UI runs in the
-browser and calls the UI API with the session cookie. The Web application, ASP.NET Core on .NET 10,
-serves the Angular files, both APIs, and the Razor sign-in pages that remain. Secrets, the audit
-log, and Encryption keys are Angular routes. One database is selected. Redis is there only when
-enabled. Core and Infrastructure are components inside Web, not containers. Node only builds the
-image.
+browser, sign-in included, and calls the UI API with the session cookie. The Web application,
+ASP.NET Core on .NET 10, serves the Angular files, both APIs, and three server pages of its own:
+access blocked, error, and not found. No Razor view is left. An explicit route table,
+`AngularUiRoutes`, lists the page routes that serve Angular. One database is selected by `Database:Provider`, which startup
+requires. Redis is there only when enabled. Core and Infrastructure are components inside Web, not
+containers. Node only builds the image.
 
-SMTP, Vault Transit, and an identity provider are present only when configured. Development and
-production are the two deployments. The talk's demonstration is a disposable Development run. The
-picture is [diagrams.md](diagrams.md).
+SMTP, Vault Transit, an identity provider, and the dynamic-secret target databases, SQL Server or
+PostgreSQL, are present only when configured. SMTP carries the invitation that activates a new
+account. Development and production are the two deployments; production is drawn as the reference
+deployment in `deploy/production/`, Caddy with automatic HTTPS in front of the vault and
+PostgreSQL. The talk's demonstration is a disposable Development run. The picture is
+[diagrams.md](diagrams.md).
 
 ### On screen (ქართული)
 
-კონტეინერის სურათში ერთი სისტემის გაშვების კონტეინერებია. Angular UI ბრაუზერში ეშვება და UI
-API-ს სესიის ქუქით იძახებს. Web აპლიკაცია, ASP.NET Core .NET 10-ზე, Angular-ის ფაილებს, ორივე
-API-ს და დარჩენილ Razor-ის შესვლის გვერდებს აწვდის. საიდუმლოები, აუდიტის ჟურნალი და Encryption
-keys Angular-ის მარშრუტებია. არჩეულია ერთი ბაზა. Redis მხოლოდ მაშინ გამოიყენება, როცა ჩართულია.
-Core და Infrastructure Web-ის კომპონენტებია, არა კონტეინერები. Node მხოლოდ იმიჯს აწყობს.
+კონტეინერის სურათში ერთი სისტემის გაშვების კონტეინერებია. Angular UI ბრაუზერში ეშვება, შესვლის
+ჩათვლით, და UI API-ს სესიის ქუქით იძახებს. Web აპლიკაცია, ASP.NET Core .NET 10-ზე, Angular-ის
+ფაილებს, ორივე API-ს და საკუთარ სამ სერვერულ გვერდს აწვდის: დაბლოკილი წვდომა, შეცდომა და „ვერ
+მოიძებნა“. Razor-ის ხედი აღარ დარჩა. ცხადი მარშრუტების ცხრილი, `AngularUiRoutes`, ჩამოთვლის
+მარშრუტებს, რომლებზეც სერვერი Angular-ის გვერდებს აწვდის. ერთ ბაზას `Database:Provider` ირჩევს, რომლის გარეშეც საცავი არ ეშვება. Redis მხოლოდ
+მაშინ გამოიყენება, როცა ჩართულია. Core და Infrastructure Web-ის კომპონენტებია, არა კონტეინერები.
+Node მხოლოდ იმიჯს აწყობს.
 
-SMTP, Vault Transit და იდენტობის მომწოდებელი მხოლოდ მაშინ არსებობენ, როცა კონფიგურაციაშია.
-Development და production ორი განთავსებაა. მოხსენების დემონსტრაცია Development-ის ერთჯერადი
-გაშვებაა. სურათი [diagrams.md](diagrams.md)-შია.
+SMTP, Vault Transit, იდენტობის მომწოდებელი და დინამიკური საიდუმლოების სამიზნე ბაზები, SQL Server
+ან PostgreSQL, მხოლოდ მაშინ არსებობენ, როცა კონფიგურაციაშია. SMTP ახალი ანგარიშის გასააქტიურებელ
+მოწვევას ატარებს. Development და production ორი განთავსებაა; production დახატულია როგორც
+`deploy/production/`-ის საცნობარო განთავსება: Caddy ავტომატური HTTPS-ით საცავისა და PostgreSQL-ის
+წინ. მოხსენების დემონსტრაცია Development-ის ერთჯერადი გაშვებაა. სურათი
+[diagrams.md](diagrams.md)-შია.
 
 ### Speaker shows
 
@@ -168,33 +177,34 @@ Timing: allocation pending within the presentation's 30-minute cap.
 
 ### On screen (English)
 
-1. Sign in as the synthetic Phoenix account at `/Account/Login`. Password, then second factor. A
-   session exists only after the second factor. Sign-in then opens `/Secrets`.
-2. Open Secrets at `/Secrets`, filter to `Phoenix_Dev_Database_Password`, and Open it. The details
-   URL is `/Secrets/Details/{id}`. Press "Reveal value".
+1. Sign in as the synthetic Phoenix account at `/Account/Login`, an Angular page. Password, then
+   second factor. A session exists only after the second factor. Sign-in then opens `/Secrets`.
+2. On Secrets, filter to `Phoenix_Dev_Database_Password` and click its name. The details URL is
+   `/Secrets/Details/{id}`. Press "Reveal value".
 3. Press "Back to list" before any capture. The value is not the point.
 4. Sign out from the account menu. Sign in as the synthetic administrator and open the audit log
-   at `/Audit`.
+   under Administration, at `/Audit`.
 5. Filter to that secret name. Find the badge `Revealed` for `dev-user`. The `Viewed` row is the
    details page.
 
 Setup and the camera rules are in [demo-setup-reset.md](demo-setup-reset.md). The click sequence
-was walked on this revision; the run record is in that file.
+was walked on this revision on 24 November; the run record is in that file.
 
 ### On screen (ქართული)
 
-1. შედით სინთეზურ Phoenix ანგარიშით მისამართზე `/Account/Login`. პაროლი, შემდეგ მეორე ფაქტორი.
-   სესია მხოლოდ მეორე ფაქტორის შემდეგ არსებობს. შესვლის შემდეგ იხსნება `/Secrets`.
-2. გახსენით Secrets მისამართზე `/Secrets`, გაფილტრეთ `Phoenix_Dev_Database_Password` და დააჭირეთ
-   Open-ს. დეტალების მისამართია `/Secrets/Details/{id}`. დააჭირეთ "Reveal value"-ს.
+1. შედით სინთეზურ Phoenix ანგარიშით მისამართზე `/Account/Login`, რომელიც Angular-ის გვერდია.
+   პაროლი, შემდეგ მეორე ფაქტორი. სესია მხოლოდ მეორე ფაქტორის შემდეგ არსებობს. შესვლის შემდეგ
+   იხსნება `/Secrets`.
+2. Secrets-ზე გაფილტრეთ `Phoenix_Dev_Database_Password` და დააწკაპუნეთ მის სახელზე. დეტალების
+   მისამართია `/Secrets/Details/{id}`. დააჭირეთ "Reveal value"-ს.
 3. ჩაწერამდე დააჭირეთ "Back to list"-ს. მნიშვნელობა არ არის მთავარი.
-4. ანგარიშის მენიუდან გამოხვიდეთ. შედით სინთეზურ ადმინისტრატორად და გახსენით აუდიტის ჟურნალი
-   მისამართზე `/Audit`.
+4. ანგარიშის მენიუდან გამოდით. შედით სინთეზურ ადმინისტრატორად და გახსენით აუდიტის ჟურნალი
+   Administration-ში, მისამართზე `/Audit`.
 5. გაფილტრეთ ამ საიდუმლოს სახელით. იპოვეთ ნიშანი `Revealed` ანგარიშზე `dev-user`. `Viewed`
    დეტალების გვერდია.
 
 მომზადება და კამერის წესები [demo-setup-reset.md](demo-setup-reset.md)-შია. დაწკაპუნების რიგი ამ
-რევიზიაზე გაიარა; გაშვების ჩანაწერი იმ ფაილშია.
+რევიზიაზე 24 ნოემბერს გაიარა; გაშვების ჩანაწერი იმ ფაილშია.
 
 ### Speaker shows
 
@@ -275,10 +285,11 @@ Fill this slide when the talk is frozen. This draft only records what was read.
 
 | Item | Value |
 |---|---|
-| Talk revision | `d576dd93a30bc461183ca7b71c89f038adbff446`, not a frozen slide deck |
-| `origin/main` read | that commit, 21 November 2026, 22:42 Asia/Tbilisi |
-| Disposable Development walk | setup, the five clicks, reset, and the same clicks again, 21 November 2026, 23:39 Asia/Tbilisi. See [demo-setup-reset.md](demo-setup-reset.md) |
-| Repository test suite | not run for this documentation change |
+| Talk revision | `1298958050e45f83aefeb4b6455d0a02169ab22a`, not a frozen slide deck |
+| `origin/main` read | that commit, 24 November 2026, 15:18 Asia/Tbilisi |
+| Disposable Development walk | setup, the live walkthrough, and five screenshots, 24 November 2026, about 16:03 Asia/Tbilisi, on a port-shifted vault. See [demo-setup-reset.md](demo-setup-reset.md) |
+| Release build for that walk | `dotnet build EclipsVault.slnx -c Release`: 0 warnings, 0 errors |
+| Repository unit checks | `scripts/check.sh` passed locked restore, Release build, and unit tests |
 | Backup recording | not made. The checklist says how |
 
 ### On screen (ქართული)
@@ -287,19 +298,19 @@ Fill this slide when the talk is frozen. This draft only records what was read.
 
 | პუნქტი | მნიშვნელობა |
 |---|---|
-| მოხსენების რევიზია | `d576dd93a30bc461183ca7b71c89f038adbff446`, გაყინული სლაიდების გარეშე |
-| წაკითხული `origin/main` | იგივე commit, 21 ნოემბერი 2026, 22:42 Asia/Tbilisi |
-| ერთჯერადი Development გავლა | მომზადება, ხუთი დაწკაპუნება, დაბრუნება და იგივე დაწკაპუნება თავიდან, 21 ნოემბერი 2026, 23:39 Asia/Tbilisi. იხილეთ [demo-setup-reset.md](demo-setup-reset.md) |
-| რეპოზიტორიის ტესტები | ამ დოკუმენტაციისთვის არ გაშვებულა |
+| მოხსენების რევიზია | `1298958050e45f83aefeb4b6455d0a02169ab22a`, გაყინული სლაიდების გარეშე |
+| წაკითხული `origin/main` | იგივე commit, 24 ნოემბერი 2026, 15:18 Asia/Tbilisi |
+| ერთჯერადი Development გავლა | მომზადება, დემონსტრაციის გავლა და ხუთი ეკრანის სურათი, 24 ნოემბერი 2026, დაახლოებით 16:03 Asia/Tbilisi, სხვა პორტზე გაშვებულ საცავზე. იხილეთ [demo-setup-reset.md](demo-setup-reset.md) |
+| ამ გავლის Release აწყობა | `dotnet build EclipsVault.slnx -c Release`: 0 გაფრთხილება, 0 შეცდომა |
+| რეპოზიტორიის ერთეულოვანი ტესტები | `scripts/check.sh`-მა წარმატებით დაასრულა ფიქსირებული დამოკიდებულებების აღდგენა, Release აწყობა და ერთეულოვანი ტესტები |
 | სარეზერვო ჩანაწერი | არ გაკეთებულა. სია ამბობს, როგორ |
 
 ### Speaker shows
 
-The revision table. If a cell still says the repository tests were not run, say that. Do not
-invent a test count. Do not call the disposable walk the repository's test suite.
+Read the revision table. Give the unit-check result and describe what the Development walk showed.
 
-რევიზიის ცხრილი. თუ უჯრა კვლავ ამბობს, რომ რეპოზიტორიის ტესტები არ გაშვებულა, ასე თქვით. ტესტების
-რაოდენობა ნუ მოიფიქრებთ. ერთჯერად გავლას რეპოზიტორიის ტესტები ნუ უწოდებთ.
+წაიკითხეთ რევიზიის ცხრილი. თქვით ერთეულოვანი ტესტების შედეგი და აღწერეთ, რა აჩვენა Development
+დემონსტრაციამ.
 
 ## Slide 8 — Lessons and limitations / დასკვნები და საზღვრები
 
@@ -319,9 +330,11 @@ Timing: allocation pending within the presentation's 30-minute cap.
   quiet. That limit is current, from ADR-0030.
 - The 1.0.0 verifier can call an honest later bundle edited. Use a verifier at least as new as the
   vault, and remember that one exception.
-- Sign-in is still the Razor pages. This revision has no invitation flow.
-- Development seeds a demo world. Production does not. This talk uses the demo world and proves
-  nothing about a production deployment.
+- The browser UI includes Angular sign-in. A new account is activated by an emailed
+  invitation; the talk does not show one, because the link carries a live token.
+- Development seeds a demo world. Production does not. The repository has a reference production
+  deployment, which this talk did not start. This talk uses the demo world and proves nothing about
+  a production deployment.
 
 ### On screen (ქართული)
 
@@ -335,9 +348,11 @@ Timing: allocation pending within the presentation's 30-minute cap.
   დატოვოს ჩუმი Verify. ეს საზღვარი მიმდინარეა, ADR-0030-იდან.
 - 1.0.0 შემმოწმებელმა უცვლელ, უფრო ახალ შეკვრას შეიძლება „შეცვლილი“ უწოდოს. გამოიყენეთ საცავის
   თანაბარი ან უფრო ახალი შემმოწმებელი და დაიმახსოვრეთ ეს ერთი გამონაკლისი.
-- შესვლა ჯერ Razor-ის გვერდებია. ამ რევიზიას მოწვევის ნაკადი არ აქვს.
-- Development სადემონსტრაციო სამყაროს ქმნის. Production — არა. ეს მოხსენება სადემონსტრაციო სამყაროს იყენებს და
-  production განთავსებაზე არაფერს ამტკიცებს.
+- ბრაუზერის ინტერფეისში შესვლის გვერდი Angular-ისაა. ახალი ანგარიში ელფოსტით გაგზავნილი
+  მოწვევით აქტიურდება; მოხსენება მას არ აჩვენებს, რადგან ბმული ცოცხალ ტოკენს ატარებს.
+- Development სადემონსტრაციო სამყაროს ქმნის. Production — არა. რეპოზიტორიას აქვს production-ის
+  საცნობარო განთავსება, რომელიც ამ მოხსენებას არ გაუშვია. ეს მოხსენება სადემონსტრაციო სამყაროს
+  იყენებს და production განთავსებაზე არაფერს ამტკიცებს.
 
 ### Speaker shows
 

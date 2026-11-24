@@ -39,10 +39,11 @@ deployed for this talk.
 
 ### English
 
-Two identities, said once. A person uses a vault account. After the password, `AccountController.Login`
-signs only an `MfaPending` cookie. `SessionIssuer.SignInAsync` creates the session after the
-authenticator code, a recovery code, enrollment, a passkey, or SSO. A passkey is both factors at
-once. An application uses a service account and an API key on `/api/v1/`. The UI API at `/api/ui/`
+Two identities, said once. A person uses a vault account. The sign-in page is Angular. After the
+password, `AuthController.Password` signs only an `MfaPending` cookie. `SessionIssuer.SignInAsync`
+creates the session after the authenticator code, a recovery code, enrollment, a passkey, or SSO.
+A passkey is both factors at once. An administrator never chooses a new account's password: an
+emailed invitation lets the person set it and enroll the authenticator (ADR-0033). An application uses a service account and an API key on `/api/v1/`. The UI API at `/api/ui/`
 does not take that key. ADR-0005 and ADR-0012 are the decisions: Angular guards are convenience.
 
 Walk the four rules on `SecretAccessPolicy.Evaluate` in the order the code checks them. Then say why
@@ -61,9 +62,12 @@ administrator is a vault account with Top Secret clearance, not a separate role.
 
 ### ქართული
 
-ორი იდენტობა, თითოჯერ. ადამიანი საცავის ანგარიშს იყენებს. პაროლის შემდეგ `AccountController.Login`
-მხოლოდ `MfaPending` ქუქის წერს. `SessionIssuer.SignInAsync` სესიას ქმნის ავთენტიფიკატორის კოდის,
-აღდგენის კოდის, ჩარიცხვის, passkey-ს ან SSO-ს შემდეგ. Passkey ორივე ფაქტორია ერთად. აპლიკაცია
+ორი იდენტობა, თითოჯერ. ადამიანი საცავის ანგარიშს იყენებს. შესვლის გვერდი Angular-ისაა. პაროლის
+შემდეგ `AuthController.Password` მხოლოდ `MfaPending` ქუქის წერს. `SessionIssuer.SignInAsync` სესიას
+ქმნის ავთენტიფიკატორის კოდის, აღდგენის კოდის, ჩარიცხვის, passkey-ს ან SSO-ს შემდეგ. Passkey
+ორივე ფაქტორია ერთად. ადმინისტრატორი ახალი ანგარიშის პაროლს არასოდეს ირჩევს: ელფოსტით
+გაგზავნილი მოწვევა ადამიანს აძლევს საშუალებას, თავად დააყენოს პაროლი და ჩარიცხოს
+ავთენტიფიკატორი (ADR-0033). აპლიკაცია
 სერვისის ანგარიშს და API გასაღებს იყენებს `/api/v1/`-ზე. `/api/ui/` ამ გასაღებს არ იღებს. ADR-0005
 და ADR-0012 გადაწყვეტილებებია: Angular-ის მცველები მოხერხებულობაა.
 
@@ -89,10 +93,11 @@ Point at the context picture first: one person, the vault, and the external syst
 application that uses a service account is an external system, not a person. Then the container
 picture. Inside the boundary, the Angular UI runs in the browser and calls the UI API with the
 session cookie. The Web application is ASP.NET Core on .NET 10 and serves those files, both APIs,
-and the Razor sign-in pages that remain. Secrets, the audit log, and Encryption keys are Angular
-routes on this revision. One database is selected. Redis appears only when enabled. Node is a
-build stage in the Dockerfile and is not a box in that picture. The Angular files are what the
-browser runs.
+and three server pages of its own: access blocked, error, and not found. No Razor view is left on
+this revision; sign-in is Angular too. `AngularUiRoutes` lists the page routes that serve
+Angular (ADR-0034). One database is selected by `Database:Provider`, and the process
+refuses to start without it. Redis appears only when enabled. Node is a build stage in the
+Dockerfile and is not a box in that picture. The Angular files are what the browser runs.
 
 Say "module" when you point at Core and Infrastructure. Web references both projects.
 Infrastructure references Core. Core references no NuGet package. `EclipsVault.AuditVerifier`
@@ -104,20 +109,27 @@ They are threads in Web, not extra containers.
 
 Close with two deployments, Development and production; the demonstration is one Development
 run, recorded in [demo-setup-reset.md](demo-setup-reset.md). Development is `docker-compose.yml`
-plus the Web process. Production is the image in the Dockerfile, behind a TLS proxy, with no demo
-seed. Redis in the compose file does nothing until `Redis:Enabled` is true; the committed
-`appsettings.json` sets it false. The copied Development file sets `Email:Sender` to `Smtp` and
-points it at Mailpit. This rehearsal did not open Mailpit. The committed default remains `Log`.
+plus the Web process. Production is drawn as the reference deployment in `deploy/production/`:
+Caddy with automatic HTTPS, the signed vault image, and PostgreSQL on an internal network, with the
+Data Protection key ring on a volume. The vault trusts forwarded client addresses only from Caddy's
+fixed address. It has no demo seed. This talk did not start it. Redis in the compose file does
+nothing until `Redis:Enabled` is true; the committed `appsettings.json` sets it false. The copied
+Development file sets `Email:Sender` to `Smtp` and points it at Mailpit; the 24 November walk used
+`Log`, the committed default, and sent no mail.
+
+If asked about dynamic secrets on PostgreSQL: a role names its backend, SQL Server or PostgreSQL,
+and each backend has its own target connection, never the vault's own database.
 
 ### ქართული
 
 ჯერ კონტექსტის სურათს მიუთითეთ: ერთი პიროვნება, საცავი და გარე სისტემები. აპლიკაცია, რომელიც
 სერვისის ანგარიშს იყენებს, გარე სისტემაა, არა პიროვნება. შემდეგ კონტეინერის სურათს. საზღვრის
 შიგნით Angular UI ბრაუზერში ეშვება და UI API-ს სესიის ქუქით იძახებს. Web აპლიკაცია ASP.NET Core-ა
-.NET 10-ზე და ამ ფაილებს, ორივე API-ს და დარჩენილ Razor-ის შესვლის გვერდებს აწვდის. საიდუმლოები,
-აუდიტის ჟურნალი და Encryption keys ამ რევიზიაზე Angular-ის მარშრუტებია. არჩეულია ერთი ბაზა.
-Redis მხოლოდ მაშინ ჩანს, როცა ჩართულია. Node Dockerfile-ის აწყობის საფეხურია და ამ სურათში უჯრა არ
-არის. Angular-ის ფაილები ისაა, რასაც ბრაუზერი უშვებს.
+.NET 10-ზე და ამ ფაილებს, ორივე API-ს და საკუთარ სამ სერვერულ გვერდს აწვდის: დაბლოკილი წვდომა,
+შეცდომა და „ვერ მოიძებნა“. ამ რევიზიაზე Razor-ის ხედი აღარ დარჩა; შესვლაც Angular-ისაა.
+`AngularUiRoutes` ჩამოთვლის მარშრუტებს, რომლებზეც სერვერი Angular-ის გვერდებს აწვდის (ADR-0034). ერთ ბაზას `Database:Provider` ირჩევს, და პროცესი მის გარეშე არ ეშვება. Redis მხოლოდ
+მაშინ ჩანს, როცა ჩართულია. Node Dockerfile-ის აწყობის საფეხურია და ამ სურათში უჯრა არ არის.
+Angular-ის ფაილები ისაა, რასაც ბრაუზერი უშვებს.
 
 Core-სა და Infrastructure-ზე თითის დაჭერისას თქვით „მოდული“. Web ორივე პროექტს იყენებს.
 Infrastructure იყენებს Core-ს. Core-ს NuGet პაკეტი არ აქვს. `EclipsVault.AuditVerifier` მხოლოდ Core-ს
@@ -129,11 +141,17 @@ Web-ის ნაკადებია, არა დამატებითი
 
 დაასრულეთ ორი განთავსებით, Development-ით და production-ით; დემონსტრაცია ერთი Development
 გაშვებაა, ჩაწერილი [demo-setup-reset.md](demo-setup-reset.md)-ში. Development არის
-`docker-compose.yml` პლუს Web პროცესი. Production არის Dockerfile-ის იმიჯი, TLS პროქსის უკან,
-სადემონსტრაციო სამყაროს გარეშე. compose ფაილში Redis არაფერს აკეთებს, სანამ `Redis:Enabled`
+`docker-compose.yml` პლუს Web პროცესი. Production დახატულია როგორც `deploy/production/`-ის
+საცნობარო განთავსება: Caddy ავტომატური HTTPS-ით, ხელმოწერილი საცავის იმიჯი და PostgreSQL შიდა
+ქსელში, Data Protection-ის გასაღებების რგოლი კი ცალკე ტომზეა. საცავი გადაგზავნილ კლიენტის
+მისამართებს მხოლოდ Caddy-ის ფიქსირებული მისამართიდან ენდობა. სადემონსტრაციო სამყარო იქ არ არის.
+ეს მოხსენება მას არ უშვებს. compose ფაილში Redis არაფერს აკეთებს, სანამ `Redis:Enabled`
 ჭეშმარიტი არ არის; ჩადებული `appsettings.json` მას მცდარზე აყენებს. გადაწერილი Development ფაილი
-`Email:Sender`-ს `Smtp`-ზე აყენებს და Mailpit-ზე მიუთითებს. ამ რეპეტიციამ Mailpit არ გახსნა.
-ჩადებული ნაგულისხმევი კვლავ `Log`-ია.
+`Email:Sender`-ს `Smtp`-ზე აყენებს და Mailpit-ზე მიუთითებს; 24 ნოემბრის გავლამ ჩადებული
+ნაგულისხმევი `Log` გამოიყენა და წერილი არ გაუგზავნია.
+
+თუ PostgreSQL-ზე დინამიკურ საიდუმლოებზე გეკითხებიან: როლი თავის ბექენდს ასახელებს, SQL Server-ს ან
+PostgreSQL-ს, და თითოეულ ბექენდს საკუთარი სამიზნე კავშირი აქვს, არასოდეს საცავის საკუთარი ბაზა.
 
 ## Slide 4 — Reveal ordering / გახსნის რიგითობა
 
@@ -157,7 +175,9 @@ configured.
 
 Master-key rotation and the Encryption keys page are on this revision. You may name them. You may
 not rotate a key in the room, and you may not say a rotation decrypts the secrets. `KekRotationService`
-moves envelopes in batches and does not open a value.
+rewraps data keys in batches. If a failure stops the pass after a batch commits, the response gives
+the counts already rewrapped. An audit failure gives `audit_unavailable`. Other failures after a
+committed batch give `rotation_interrupted`. With Vault Transit, the page lists its key versions.
 
 ### ქართული
 
@@ -178,8 +198,11 @@ moves envelopes in batches and does not open a value.
 სერვისს, რომელიც არ მოგიწყვიათ.
 
 მასტერ-გასაღების როტაცია და Encryption keys-ის გვერდი ამ რევიზიაზეა. შეგიძლიათ დაასახელოთ. ოთახში
-გასაღები ნუ დაატრიალებთ და ნუ იტყვით, რომ როტაცია საიდუმლოებს შლის. `KekRotationService` კონვერტებს
-პარტიებად გადააქვს და მნიშვნელობას არ ხსნის.
+გასაღები ნუ დაატრიალებთ და ნუ იტყვით, რომ როტაცია საიდუმლოებს შლის. `KekRotationService` მონაცემთა
+გასაღებებს ჯგუფებად ახვევს. თუ დაფიქსირებული ჯგუფის შემდეგ მუშაობა შეწყდა, პასუხში უკვე
+განახლებული მონაცემთა გასაღებების რაოდენობა ჩანს. აუდიტის შეცდომის კოდია `audit_unavailable`. ჯგუფის წარმატებით
+დასრულების შემდეგ სხვა შეცდომის კოდია `rotation_interrupted`. Vault Transit-ის გამოყენებისას
+გვერდი მისი გასაღების ვერსიებს აჩვენებს.
 
 ## Slide 5 — Live journey / ცოცხალი გზა
 
@@ -194,14 +217,18 @@ Narration while it works:
 "This account is the Phoenix member. Sign-in opens Secrets, which is an Angular page. The list
 says two active secrets right after the reset: the one I will open, and a short-lived token I will
 not. The token expires about five minutes after the reset, so the list may now say one. I filter to
-`Phoenix_Dev_Database_Password` and press Open, then Reveal value. The value appears on the page,
+`Phoenix_Dev_Database_Password` and click its name, then Reveal value. The value appears on the page,
 so I press Back to list before anyone records the screen. I sign out from the account card and
 return as the administrator. The audit log is an Angular page under Administration, and only an
-administrator can open it. It shows an unlicensed notice; that notice says the vault still runs. I
-filter to the secret name. The row I want says `Revealed` and names this account. The `Viewed` row
+administrator can open it. It shows an unlicensed notice; that notice says the vault still runs.
+The badge beside the heading says Not checked, because nobody has pressed Verify. I filter to the
+secret name. The row I want says `Revealed` and names this account. The `Viewed` row
 under it is the details page after the server allowed it, not the decryption. A `Created` row under
 those is the Development seed. Latest checkpoint says none yet. I do not press Verify integrity or
 Export signed bundle."
+
+Do not read the Attestation panel's sentence about deleted rows aloud as a promise about the live
+database. Slide 6 says what Verify proves.
 
 If the authenticator enrollment screen appears, stop the projection. That screen is first-run
 enrollment, and it does not belong in a recording. The same is true of recovery codes.
@@ -221,14 +248,18 @@ If a step-up form appears, you are not on the Internal secret. Stop. Do not type
 გადატვირთვისთანავე ორ აქტიურ საიდუმლოს აჩვენებს: იმას, რომელსაც გავხსნი, და ხანმოკლე ტოკენს,
 რომელსაც არ შევეხები. ტოკენს ვადა გადატვირთვიდან დაახლოებით ხუთ წუთში გასდის, ამიტომ სია ახლა
 შეიძლება ერთს აჩვენებდეს.
-ვფილტრავ `Phoenix_Dev_Database_Password`-ზე და ვაჭერ Open-ს, შემდეგ Reveal value-ს. მნიშვნელობა
+ვფილტრავ `Phoenix_Dev_Database_Password`-ზე და ვაწკაპუნებ მის სახელზე, შემდეგ Reveal value-ს. მნიშვნელობა
 გვერდზე ჩნდება, ამიტომ Back to list-ს ვაჭერ, სანამ ვინმე ეკრანს ჩაიწერს. ანგარიშის ბარათიდან
 გამოვდივარ და ადმინისტრატორად ვბრუნდები. აუდიტის ჟურნალი Angular-ის გვერდია Administration-ში და
 მხოლოდ ადმინისტრატორს შეუძლია მისი გახსნა. ის ულიცენზიო შეტყობინებას აჩვენებს; შეტყობინება ამბობს,
-რომ საცავი მაინც მუშაობს. საიდუმლოს სახელით ვფილტრავ. ჩანაწერი, რომელიც მჭირდება, ამბობს
+რომ საცავი მაინც მუშაობს. სათაურის გვერდით ნიშანი ამბობს Not checked, რადგან Verify ჯერ არავის
+დაუჭერია. საიდუმლოს სახელით ვფილტრავ. ჩანაწერი, რომელიც მჭირდება, ამბობს
 `Revealed` და ამ ანგარიშს ასახელებს. მის ქვეშ `Viewed` დეტალების გვერდია მას შემდეგ, რაც სერვერმა
 დაუშვა, არა გაშიფვრა. მათ ქვეშ `Created` Development-ის თესლია. Latest checkpoint ამბობს, რომ ჯერ
 არ არის. Verify integrity-სა და Export signed bundle-ს არ ვაჭერ.“
+
+Attestation-ის პანელის წინადადება წაშლილ ჩანაწერებზე ცოცხალი ბაზის დაპირებად ნუ წაიკითხავთ.
+სლაიდი 6 ამბობს, რას ამტკიცებს Verify.
 
 თუ ავთენტიფიკატორის ჩარიცხვის ეკრანი გამოჩნდება, პროექცია გააჩერეთ. ეს პირველი გაშვების ჩარიცხვაა და
 ჩანაწერში არ ეკუთვნის. იგივე ეხება აღდგენის კოდებს.
@@ -310,10 +341,11 @@ Verify-ზე დაწკაპუნების შემდეგ ნუ ი
 Read only filled cells. For an empty one, say "not recorded yet".
 
 Read the revision table. The code this talk describes is `origin/main` at
-`d576dd93a30bc461183ca7b71c89f038adbff446`. Encryption keys, the audit-log proof boundary, and the
-Angular secret and audit pages are on that revision. You cannot say this talk's own stack passed
-the repository's test suite. You can say the disposable Development walk in
-[demo-setup-reset.md](demo-setup-reset.md) was done, and only what that file records.
+`1298958050e45f83aefeb4b6455d0a02169ab22a`. Angular sign-in, invitations, the server pages,
+Encryption keys, the audit-log proof boundary, and the Angular secret and audit pages are on that
+revision. The Release build that served the walk had no warnings and no errors. During the draft
+refresh, `scripts/check.sh` passed locked restore, the Release build, and the unit suite. The
+separate Development walk is recorded in [demo-setup-reset.md](demo-setup-reset.md).
 
 If the owner later freezes a different revision, replace the hash and say the new one. Do not leave
 this hash up if the running vault is a different commit.
@@ -323,10 +355,12 @@ this hash up if the running vault is a different commit.
 მხოლოდ შევსებული უჯრები წაიკითხეთ. ცარიელზე თქვით „ჯერ ჩაწერილი არ არის“.
 
 წაიკითხეთ რევიზიის ცხრილი. კოდი, რომელსაც ეს მოხსენება აღწერს, არის `origin/main`
-`d576dd93a30bc461183ca7b71c89f038adbff446`-ზე. Encryption keys, აუდიტის ჟურნალის მტკიცებულების
-საზღვარი და Angular-ის საიდუმლოსა და აუდიტის გვერდები იმ რევიზიაზეა. ვერ იტყვით, რომ ამ მოხსენების
-საკუთარმა სტეკმა რეპოზიტორიის ტესტები გაიარა. შეგიძლიათ თქვათ, რომ ერთჯერადი Development გავლა
-[demo-setup-reset.md](demo-setup-reset.md)-ში გაკეთდა, და მხოლოდ ის, რასაც ის ფაილი წერს.
+`1298958050e45f83aefeb4b6455d0a02169ab22a`-ზე. Angular-ის შესვლა, მოწვევები, სერვერული გვერდები,
+Encryption keys, აუდიტის ჟურნალის მტკიცებულების საზღვარი და Angular-ის საიდუმლოსა და აუდიტის
+გვერდები იმ რევიზიაზეა. დემონსტრაციის Release აწყობამ გაფრთხილებისა და შეცდომის გარეშე ჩაიარა.
+მონახაზის განახლებისას `scripts/check.sh`-მა წარმატებით დაასრულა ფიქსირებული დამოკიდებულებების
+აღდგენა, Release აწყობა და ერთეულოვანი ტესტები. ცალკე Development დემონსტრაცია
+[demo-setup-reset.md](demo-setup-reset.md)-შია აღწერილი.
 
 თუ მფლობელი მოგვიანებით სხვა რევიზიას გაყინავს, ჰეში შეცვალეთ და ახალი თქვით. ეს ჰეში ნუ დატოვოთ,
 თუ გაშვებული საცავი სხვა commit-ია.
@@ -337,8 +371,8 @@ this hash up if the running vault is a different commit.
 
 Three lessons, then stop.
 
-"The interesting part is not that a person can open a password. It is that the server checked
-clearance, project, network, and time, and that the reveal row exists before the plaintext does."
+"The server checked clearance and project for this secret and wrote the reveal row before it
+decrypted the value. It also enforces the network and time rules where they apply."
 
 "The audit trail is as strong as the check you actually run. A hash walk, a signed checkpoint, and
 a bundle held by someone else are three different checks."
@@ -348,15 +382,15 @@ about production."
 
 Invite questions. The prepared answers are in [questions.md](questions.md). If a question asks
 whether every deletion is detectable, say no, and point at the latest checkpoint. If a question
-asks for invitations or an Angular sign-in page, say those pages are still the Razor sign-in flow
-and this revision has no invitation flow.
+asks about invitations, say a new account is activated by an emailed invitation (ADR-0033), and
+that the talk does not show one because the link carries a live token.
 
 ### ქართული
 
 სამი დასკვნა, შემდეგ გაჩერდით.
 
-„საინტერესო ის არ არის, რომ ადამიანმა პაროლი გახსნა. საინტერესოა, რომ სერვერმა შეამოწმა დაშვება,
-პროექტი, ქსელი და დრო, და რომ გახსნის ჩანაწერი არსებობს მანამ, სანამ ღია ტექსტი იარსებებს.“
+„ამ საიდუმლოსთვის სერვერმა შეამოწმა დაშვება და პროექტი, შემდეგ გაშიფვრამდე დააფიქსირა გახსნის
+ჩანაწერი. სერვერი ქსელისა და დროის წესებსაც ამოწმებს, როცა ისინი საიდუმლოზე ვრცელდება.“
 
 „აუდიტის კვალი იმდენად ძლიერია, რამდენადაც ის შემოწმება, რომელსაც ნამდვილად უშვებთ. ჰეშის გავლა,
 ხელმოწერილი საკონტროლო წერტილი და სხვის მიერ შენახული შეკვრა სამი განსხვავებული შემოწმებაა.“
@@ -365,6 +399,6 @@ and this revision has no invitation flow.
 არანაირი მტკიცება production-ზე.“
 
 კითხვები მიიღეთ. მომზადებული პასუხები [questions.md](questions.md)-შია. თუ გეკითხებიან, ყოველი
-წაშლა აღმოჩენადია თუ არა, თქვით არა და ბოლო საკონტროლო წერტილს მიუთითეთ. თუ გეკითხებიან მოწვევებზე
-ან Angular-ის შესვლის გვერდზე, თქვით, რომ ეს გვერდები ჯერ Razor-ის შესვლის ნაკადია და ამ რევიზიას
-მოწვევის ნაკადი არ აქვს.
+წაშლა აღმოჩენადია თუ არა, თქვით არა და ბოლო საკონტროლო წერტილს მიუთითეთ. თუ გეკითხებიან
+მოწვევებზე, თქვით, რომ ახალი ანგარიში ელფოსტით გაგზავნილი მოწვევით აქტიურდება (ADR-0033), და რომ
+მოხსენება მას არ აჩვენებს, რადგან ბმული ცოცხალ ტოკენს ატარებს.

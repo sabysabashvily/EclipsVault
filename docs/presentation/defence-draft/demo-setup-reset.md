@@ -1,20 +1,28 @@
 # Demonstration setup and reset / დემონსტრაციის მომზადება და დაბრუნება
 
 The demonstration is a disposable Development vault. It is not the production install in
-`docs/INSTALL.md`, and it is not the Playwright stack in `AGENTS.md`.
+`docs/INSTALL.md` or `deploy/production/`, and it is not the Playwright stack in `AGENTS.md`.
 
-These commands were run on `origin/main` `d576dd93a30bc461183ca7b71c89f038adbff446` on 21 November
-2026. The second walk, after reset, finished at 23:39 Asia/Tbilisi. Both walks enrolled the two
-seeded accounts, opened `Phoenix_Dev_Database_Password`, revealed it, left that page, and found
-`Revealed` and `Viewed` on `/Audit`.
+The walk below was run on `origin/main` `1298958050e45f83aefeb4b6455d0a02169ab22a` on 24 November
+2026, finishing at about 16:03 Asia/Tbilisi. That run was port-shifted: a standalone PostgreSQL
+container and Web on `https://localhost:7543`, because the owner's development vault held port 7443
+and the development Compose stack was running under its fixed container names. It signed in and
+enrolled both seeded accounts, opened `Phoenix_Dev_Database_Password`, revealed it, left that page,
+and found `Revealed` and `Viewed` on `/Audit`. The screenshots in [screens/](screens/) are from that
+run. The Compose-project setup in this file was last run on `d576dd9` on 21 November and was not
+re-run on `1298958`.
 
-დემონსტრაცია ერთჯერადი Development საცავია. ის არ არის `docs/INSTALL.md`-ის production დაყენება და
-არც `AGENTS.md`-ის Playwright სტეკი.
+დემონსტრაცია ერთჯერადი Development საცავია. ის არ არის `docs/INSTALL.md`-ის ან `deploy/production/`-ის
+production დაყენება და არც `AGENTS.md`-ის Playwright სტეკი.
 
-ეს ბრძანებები გაეშვა `origin/main` `d576dd93a30bc461183ca7b71c89f038adbff446`-ზე 21 ნოემბერს 2026.
-მეორე გავლა, დაბრუნების შემდეგ, დასრულდა 23:39 Asia/Tbilisi-ზე. ორივე გავლამ ჩარიცხა ორი დათესილი
-ანგარიში, გახსნა `Phoenix_Dev_Database_Password`, გამოაჩინა მნიშვნელობა, დატოვა ეს გვერდი და
-`/Audit`-ზე იპოვა `Revealed` და `Viewed`.
+ქვემოთ აღწერილი გავლა გაეშვა `origin/main` `1298958050e45f83aefeb4b6455d0a02169ab22a`-ზე 24 ნოემბერს
+2026 და დასრულდა დაახლოებით 16:03 Asia/Tbilisi-ზე. ეს გაშვება სხვა პორტებზე იყო: ცალკე PostgreSQL
+კონტეინერი და Web `https://localhost:7543`-ზე, რადგან 7443 პორტი მფლობელის სამუშაო საცავს ეკავა,
+ხოლო სამუშაო Compose სტეკი თავისი ფიქსირებული კონტეინერის სახელებით იყო გაშვებული. გავლამ ორივე
+დათესილი ანგარიში შეიყვანა და ჩარიცხა, გახსნა `Phoenix_Dev_Database_Password`, გამოაჩინა
+მნიშვნელობა, დატოვა ეს გვერდი და `/Audit`-ზე იპოვა `Revealed` და `Viewed`. [screens/](screens/)-ის
+სურათები ამ გაშვებიდანაა. ამ ფაილის Compose პროექტის მომზადება ბოლოს `d576dd9`-ზე 21 ნოემბერს
+გაეშვა და `1298958`-ზე თავიდან არ გაშვებულა.
 
 ## Story the stack must support
 
@@ -24,26 +32,25 @@ seeded accounts, opened `Phoenix_Dev_Database_Password`, revealed it, left that 
 | Member | username `dev-user`, display name Dev User, clearance Standard, project `PHOENIX` | same |
 | Administrator | username `vault-admin`, display name Vault Administrator, clearance Top Secret, project `GLOBAL` | same |
 | Secret | `Phoenix_Dev_Database_Password`, Development, Internal, not a honey-token | same |
-| Also on this account's list | `Phoenix_Ephemeral_Deploy_Token`, badge `soon`, until it expires about five minutes after the reset. Do not open it | same |
+| Also on this account's list | `Phoenix_Ephemeral_Deploy_Token`, until it expires five minutes after seeding. Its red expiry badge rounds up to whole hours on the last day, so it read "In 1 hour" right after the seed. Do not open it | same; `shared/expiry.ts` |
 | Do not open | `Production_AWS_Root_Key`, `Global_SQL_SA_Password` | same, `IsHoneyToken`. They are omitted from the list |
-| After sign-in | `/Secrets`, not `/` | `AccountController.RedirectAfterSignIn` defaults to `/Secrets` |
+| After sign-in | `/Secrets`, not `/` | `SignInTarget.Default`; ADR-0032 |
 
-`dev-user` sees two active secrets right after the reset, and one once the ephemeral token expires,
-about five minutes later. Right after the reset the page says "2 active secrets. Opening one records
-an audit entry." The recorded entry for opening the details page is `Viewed`, and only after the access
-check allows it.
+`dev-user` sees two active secrets right after the reset, and one once the ephemeral token expires.
+Right after the reset the page says "2 active secrets · 1 expires within 7 days. Opening one records
+an audit entry." The recorded entry for opening the details page is `Viewed`, and only after the
+access check allows it.
 
 The seeded secret values are synthetic and already in `DbSeeder.cs`. Do not copy them onto a slide
 or into a screenshot. The talk needs the name, not the value.
 
 ## Credentials
 
-Copy `EclipsVault.Web/appsettings.Development.json.template` to
-`EclipsVault.Web/appsettings.Development.json`. That copy is never committed. Generate the two
-seed passwords on the machine that will run the vault and pass `Seed__AdminPassword` and
-`Seed__DevPassword` in the process environment. The template's placeholders are not passwords to
-type in the room. Keep the generated values in that shell. Do not write them into this document, a
-slide, a ticket, or a picture.
+Generate the two seed passwords on the machine that will run the vault and pass
+`Seed__AdminPassword` and `Seed__DevPassword` in the process environment. Keep the generated values
+in that shell. Do not write them into this document, a slide, a ticket, or a picture. If you copy
+`EclipsVault.Web/appsettings.Development.json.template` to `appsettings.Development.json`, that copy
+is never committed, and its placeholders are not passwords to type in the room.
 
 The passwords published in `DbSeeder.cs` are used only when `Seed:AdminPassword` and
 `Seed:DevPassword` are absent from configuration as a whole. Unsetting the environment variables
@@ -57,24 +64,38 @@ Generate a master key in the shell and leave it there:
 export ECLIPSVAULT_KEK="$(openssl rand -base64 32)"
 ```
 
-The template turns `Crypto:AllowDevelopmentKekFallback` on, and its `DevelopmentKekBase64` is a
-placeholder, not a key. The rehearsal set `ECLIPSVAULT_KEK`. The log then said the master key
-loaded, and it did not warn that the development fallback was used. Do not print the variable.
+Do not print the variable. The template's `DevelopmentKekBase64` is a placeholder, not a key.
 
-The template also sets `AuditSigning:AllowDevelopmentEphemeralKey` to true. This rehearsal did not
-set `ECLIPSVAULT_AUDIT_SIGNING_KEY`. The audit page shows a key id. That id changes when the
-process restarts, and it is not the private key. Do not print a signing key if you set one.
+With `AuditSigning:AllowDevelopmentEphemeralKey` true (the template sets it; the 24 November run
+passed `AuditSigning__AllowDevelopmentEphemeralKey=true`), no `ECLIPSVAULT_AUDIT_SIGNING_KEY` is
+needed. The audit page then shows a key id that changes when the process restarts. That id is not the
+private key. Do not print a signing key if you set one.
+
+Two settings matter on `1298958`:
+
+- `Database__Provider=Postgres` is required. Without `Database:Provider` the process stops at
+  startup with "Database:Provider is not set"; an unknown value stops it too. The template sets it,
+  and the commands below pass it explicitly. Source: `DependencyInjection`; `DatabaseProvider`.
+- `Identity__PublicUrl` is not needed to start. It is the address invitation links are built from,
+  and New user and Resend stay unavailable without it and real SMTP. The talk sends no invitation.
+  The commands below set it to the vault's own address so the setting is visible. Source:
+  `UserAdminService`; `AccountInvitationDelivery`; ADR-0033.
 
 პაროლები და მასტერ-გასაღები ამ გაშვების გარსში დარჩეს. შაბლონის `DevelopmentKekBase64`
 ჩანაცვლებული ტექსტია, არა გასაღები, ამიტომ `ECLIPSVAULT_KEK` გარსში შექმენით. ნამდვილი გასაღები
-ან პაროლი ამ დოკუმენტში ნუ ჩაწერთ.
+ან პაროლი ამ დოკუმენტში ნუ ჩაწერთ. `Database__Provider=Postgres` აუცილებელია: მის გარეშე პროცესი
+გაშვებისთანავე ჩერდება. `Identity__PublicUrl` გაშვებისთვის საჭირო არ არის; მისგან მოწვევის ბმული
+იწყობა, ხოლო მოხსენება მოწვევას არ აგზავნის.
 
 First sign-in enrolls an authenticator. The heading is "Set up two-factor authentication" and the
 button is "Confirm enrollment". Do that with the projector off, before the room is watching. Do
 not photograph the QR code, the manual key, the recovery codes, the cookie store, or any private
-key.
+key. A later sign-in shows "Two-factor verification", the field "Authenticator code", and the
+button "Verify and sign in".
 
-## Setup that worked
+## Setup
+
+### Compose project, as run on `d576dd9`
 
 Use a compose project name that is not the checkout's default. The default project uses the volume
 `eclipsvault-postgres`. A later reset of the talk project must not delete that volume.
@@ -87,7 +108,7 @@ docker compose down
 docker compose -p eclipsvault-defence-draft up -d --wait
 ```
 
-What this rehearsal observed:
+What the 21 November rehearsal observed:
 
 - `docker compose down` exits 0 and does not stop containers that were started with
   `-p eclipsvault-defence-draft`. Run it only to stop a project that was started without `-p`.
@@ -96,10 +117,26 @@ What this rehearsal observed:
   Vault, Mailpit, and Keycloak, and waits until their health checks pass. The first run downloads
   the images.
 
-Build the Angular UI before starting Web. On this machine Node was already `24.22.0`, the version
-in `EclipsVault.AngularUi/.nvmrc`. `npm run build` stops to ask about Angular analytics unless
-`CI=true` is set. With that variable the build exits 0 and writes
-`EclipsVault.Web/AngularUi/index.html`. Without that file the Angular routes throw.
+### Standalone database, as run on `1298958`
+
+When the development stack must stay up, start one PostgreSQL container of your own, on a free
+port, with a password generated in the shell. The image is the one `docker-compose.yml` pins.
+`--rm` removes the container and its anonymous data volume when it stops.
+
+```sh
+export EV_DEMO_PG_PASSWORD="$(openssl rand -hex 16)"
+docker run -d --rm --name ev-defence-refresh-pg -p 127.0.0.1:55432:5432 \
+  -e POSTGRES_USER=eclipsvault -e POSTGRES_PASSWORD="$EV_DEMO_PG_PASSWORD" -e POSTGRES_DB=evdefence \
+  postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
+```
+
+### Build
+
+Build the Angular UI before starting Web, on the Node version in `EclipsVault.AngularUi/.nvmrc`
+(`24.22.0`; the 24 November run used it through nvm). `npm run build` stops to ask about Angular
+analytics unless `CI=true` is set. With that variable the build exits 0 and writes
+`EclipsVault.Web/AngularUi/index.html`. Without that file the Angular routes throw "The Angular UI
+is not built".
 
 ```sh
 cd EclipsVault.AngularUi
@@ -110,53 +147,82 @@ dotnet restore --locked-mode
 dotnet build EclipsVault.slnx -c Release
 ```
 
-`dotnet dev-certs https` had already created a localhost certificate here. The sign-in page is
-served on `https://localhost:7443` with that certificate.
+On 24 November the Release build finished with 0 warnings and 0 errors.
 
-Start the built dll from `EclipsVault.Web`, as Development. This rehearsal did not execute
-`dotnet run`; it used the Release dll so the start would not rebuild. Pass the provider, the
-compose connection string, the two seed passwords, and `ECLIPSVAULT_KEK` in that process's
-environment. Development migrates and seeds on startup. The log line to wait for is
-`Seeded staff accounts vault-admin and dev-user`, then `Now listening on: https://localhost:7443`.
+`dotnet dev-certs https` had already created a localhost certificate on this machine. Kestrel serves
+`https://localhost:7443`, or the port in `ASPNETCORE_URLS`, with that certificate.
 
-The copied template sets `Database:Provider` to `Postgres`, `Redis:Enabled` to false, and
-`Email:Sender` to `Smtp`. The committed `appsettings.json` still has `Crypto:Engine` `AesGcmLocal`,
-`Redis:Enabled` false, and `Email:Sender` `Log`. This run kept the template's Smtp setting.
-Mailpit was up and no message was sent. Redis was not enabled. To match the committed email
-default instead, set `Email__Sender=Log` in the same process environment before starting.
+### Start Web
+
+Start the built dll from `EclipsVault.Web`, as Development, so the start does not rebuild.
+Development migrates and seeds on startup. For the Compose project, use port 5432, the database and
+the password from `appsettings.Development.json.template`. For the standalone database, use the
+values from the `docker run` above:
+
+```sh
+cd EclipsVault.Web
+ASPNETCORE_ENVIRONMENT=Development \
+ASPNETCORE_URLS=https://localhost:7443 \
+AllowedHosts=localhost \
+Database__Provider=Postgres \
+ConnectionStrings__DefaultConnection="Host=127.0.0.1;Port=55432;Database=evdefence;Username=eclipsvault;Password=$EV_DEMO_PG_PASSWORD" \
+Identity__PublicUrl=https://localhost:7443 \
+AuditSigning__AllowDevelopmentEphemeralKey=true \
+Email__Sender=Log \
+Redis__Enabled=false \
+dotnet bin/Release/net10.0/EclipsVault.Web.dll
+```
+
+`Seed__AdminPassword`, `Seed__DevPassword`, and `ECLIPSVAULT_KEK` come from the shell's exported
+variables. The 24 November run used port 7543 in both URLs because 7443 was taken; use 7443 when it
+is free. The log lines to wait for are
+`Seeded staff accounts vault-admin and dev-user (TOTP enrollment happens on first sign-in)`, then
+`Now listening on: https://localhost:7443`. The same log also says it seeded four dynamic-secret
+roles: `phoenix_db_reader`, `global_db_writer`, `phoenix_pg_reader`, and `global_pg_writer`.
+
+`Email__Sender=Log` keeps the committed email default, so nothing reaches a Mailpit that belongs to
+another stack. The copied template sets `Smtp` instead. Redis stays off either way.
 
 ## Live clicks
 
-Light theme: the account card says "Switch to dark" when the page is already light. Set the
-`EclipsVault.Theme=light` cookie before the room if the machine opens dark. The captures in
-[screens/](screens/) are light, 1280 px wide.
+Light theme: the sign-in page has a moon button, "Switch color theme". Inside the app, the account
+menu says "Switch to dark" when the page is already light. Set the `EclipsVault.Theme=light` cookie
+before the room if the machine opens dark. The captures in [screens/](screens/) are light, 1280 px
+wide.
 
-1. Open `https://localhost:7443/Account/Login`. The heading is "Sign in". The text says step 1 of
-   2 is the password and an authenticator code is always required next. The buttons are "Continue"
+1. Open `https://localhost:7443/Account/Login`. The page is Angular. It says "Step 1 of 2", the
+   heading is "Sign in", and the text is "Enter your password first. An authenticator code is always
+   required next." The fields are "Username or email" and "Password". The buttons are "Continue"
    and "Sign in with a passkey". Sign in as `dev-user`.
 2. Complete enrollment off camera if the heading "Set up two-factor authentication" appears. The
    next page is `/Secrets`, heading "Secrets".
 3. The filter's accessible name is "Filter secrets" and its placeholder is "Filter by name,
-   project, environment…". Filter to `Phoenix_Dev_Database_Password`. One row remains: project
-   `PHOENIX`, environment `Development`, sensitivity `Internal`, expires `—`, button "Open".
-4. Open it. The URL is `/Secrets/Details/{id}`. The id changes after a reset. The visible controls
-   are "Back to list", "Reveal value", "Rotate value", "Delete", and "Share access". The value is
-   not on the page yet. Press "Reveal value". For this Internal secret the page does not ask for a
-   code.
+   project, environment…". Filter to `Phoenix_Dev_Database_Password`. One row remains: the name as
+   a link, `PHOENIX` under it, environment `Development`, sensitivity `Internal`, expires
+   "No expiry". There is no separate Open button.
+4. Click the name. The URL is `/Secrets/Details/{id}`. The id changes after a reset. The page shows
+   the round "Back to list" arrow, the chips `Development`, `Internal`, `PHOENIX`, and the controls
+   "Reveal value", "Rotate value", "Share access", and "Delete". The value is not on the page yet.
+   Press "Reveal value". For this Internal secret the page does not ask for a code.
 5. Press "Back to list" before any capture. The filter clears, so the short-lived token is visible
    again unless it has expired. Do not open it.
-6. Open the account card "Dev User" / "Standard" and press "Sign out". The next page is
-   `/Account/Login`.
-7. Sign in as `vault-admin` and complete that account's enrollment off camera. Open `/Audit`. The
-   heading is "Audit log". The sidebar group is "Administration". A notice says the vault is
-   running unlicensed and that this changes nothing about how the vault runs. "Latest checkpoint"
-   says "none yet — create one to attest the current trail". The buttons are "Verify integrity",
-   "Create signed checkpoint", and "Export signed bundle". Do not press them.
+6. Open the account card "Dev User" / "Standard" at the bottom of the sidebar and press "Sign out".
+   The next page is `/Account/Login`.
+7. Sign in as `vault-admin` and complete that account's enrollment off camera. Open "Audit log"
+   under "Administration", or `/Audit`. A notice says the vault is running unlicensed and that this
+   changes nothing about how the vault runs. Beside the heading "Audit log" a badge says
+   "Not checked". "Latest checkpoint" says "none yet — create one to attest the current trail". The
+   buttons are "Verify integrity", "Create signed checkpoint", and "Export signed bundle". Do not
+   press them.
 8. The filter's accessible name is "Filter audit entries". Filter to
    `Phoenix_Dev_Database_Password`. The rows, newest first, are `Revealed` by `dev-user`, `Viewed`
-   by `dev-user`, and `Created` by `system` with details `EntityState=Added`. The source address on
-   this machine was `::1`. The `Revealed` and `Viewed` rows have an empty details cell. Point at
-   `Revealed`.
+   by `dev-user`, and `Created` by `system` with details `EntityState=Added`. "When (UTC)" shows
+   full timestamps. The source address on this machine was `::1`. The `Revealed` and `Viewed` rows
+   have an empty details cell. Point at `Revealed`.
+
+The Attestation panel's own sentence says an outside auditor can prove the trail "even if rows were
+deleted and the hashes rewritten". Do not read it aloud as covering deleted checkpoints or rows after
+the latest checkpoint. Slide 6 states the boundary.
 
 If the secret is missing, the disposable database was not empty at seed time, or the process was
 not Development. Do not point the talk at a database you use for ordinary work.
@@ -167,15 +233,15 @@ not Development. Do not point the talk at a database you use for ordinary work.
 - No screenshot of the revealed value. The audit row is the picture.
 - No honey-token, even to show the warning.
 - No service-account key issuance. The raw key is shown once by the product.
+- No invitation link or activation page. Its fragment holds the token.
 - No production connection string, and no copy of `appsettings.Development.json`.
 - The audit page's key id is a public id. It is not `ECLIPSVAULT_AUDIT_SIGNING_KEY`.
 
-The captures from the second walk are in [screens/](screens/).
+## Reset
 
-## Reset that worked
+Stop the Web process you started, by its process id. Then reset only what was created for the talk.
 
-Stop the Web process you started, by its process id. Then reset only the compose project created
-for the talk:
+Compose project, as run on 21 November:
 
 ```sh
 docker compose -p eclipsvault-defence-draft down -v
@@ -184,21 +250,28 @@ docker compose -p eclipsvault-defence-draft down -v
 That command removed the containers and the volumes
 `eclipsvault-defence-draft_eclipsvault-postgres` and
 `eclipsvault-defence-draft_eclipsvault-redis`. It does not remove a volume belonging to a project
-started without `-p`.
+started without `-p`. `docker compose down` without `-p`, run while the named project was up,
+exited 0 and left those containers running. It is not the reset.
 
-`docker compose down` without `-p`, run while the named project was up, exited 0 and left those
-containers running. It is not the reset.
+Standalone database, as run on 24 November:
 
-Start the named project again with `up -d --wait`, start the Web process again with the same
-environment, and wait for the seed line. The second walk enrolled both accounts again and opened a
-new secret id. Unset `Seed__AdminPassword`, `Seed__DevPassword`, `ECLIPSVAULT_KEK`, and
-`ECLIPSVAULT_AUDIT_SIGNING_KEY` in that shell when the day is over. Do not delete a Docker image
-you did not build for this run.
+```sh
+docker stop ev-defence-refresh-pg
+```
+
+On 24 November that removed the container and its anonymous volume; `docker ps -a` and
+`docker volume inspect` found neither afterwards. The development stack kept running.
+
+Start again with the same environment and wait for the seed line. Each reset needs both accounts
+enrolled again and gives the secret a new id. Unset `Seed__AdminPassword`, `Seed__DevPassword`,
+`ECLIPSVAULT_KEK`, `EV_DEMO_PG_PASSWORD`, and `ECLIPSVAULT_AUDIT_SIGNING_KEY` in that shell when the
+day is over. Do not delete a Docker image you did not build for this run.
 
 ასევე გააჩერეთ Web პროცესი მისი პროცესის ნომრით და ამ გარსში მოხსენით `Seed__AdminPassword`,
-`Seed__DevPassword`, `ECLIPSVAULT_KEK` და `ECLIPSVAULT_AUDIT_SIGNING_KEY`. დაბრუნება არის
-`docker compose -p eclipsvault-defence-draft down -v`. `-p`-ის გარეშე `docker compose down` ამ
-პროექტს არ აჩერებს.
+`Seed__DevPassword`, `ECLIPSVAULT_KEK`, `EV_DEMO_PG_PASSWORD` და `ECLIPSVAULT_AUDIT_SIGNING_KEY`.
+Compose პროექტის დაბრუნება არის `docker compose -p eclipsvault-defence-draft down -v`. `-p`-ის გარეშე
+`docker compose down` ამ პროექტს არ აჩერებს. ცალკე ბაზის დაბრუნება არის
+`docker stop ev-defence-refresh-pg`: `--rm`-ის გამო კონტეინერიც და მისი მონაცემების ტომიც იშლება.
 
 If the talk was pointed at the ordinary development volume by mistake, do not run `down -v` to
 "clean the demo". That deletes the development database. Leave it, and say the reset was not done.

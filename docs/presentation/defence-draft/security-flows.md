@@ -1,35 +1,59 @@
 # Security flows / უსაფრთხოების ნაკადები
 
 Each step names the source it was read from, at `origin/main`
-`d576dd93a30bc461183ca7b71c89f038adbff446` (21 November 2026, 22:42 Asia/Tbilisi).
-The live journey is flow 3. The others are the answers around it. The disposable Development run
+`1298958050e45f83aefeb4b6455d0a02169ab22a` (24 November 2026, 15:18 Asia/Tbilisi).
+The live journey is flow 4. The others are the answers around it. The disposable Development run
 is recorded in [demo-setup-reset.md](demo-setup-reset.md).
 
 ყოველი ნაბიჯი ასახელებს წყაროს, წაკითხულს `origin/main`
-`d576dd93a30bc461183ca7b71c89f038adbff446`-ზე (21 ნოემბერი 2026, 22:42 Asia/Tbilisi).
-ცოცხალი გზა ნაკადი 3-ია. დანარჩენი მის გარშემო პასუხებია. ერთჯერადი Development გაშვება
+`1298958050e45f83aefeb4b6455d0a02169ab22a`-ზე (24 ნოემბერი 2026, 15:18 Asia/Tbilisi).
+ცოცხალი გზა ნაკადი 4-ია. დანარჩენი მის გარშემო პასუხებია. ერთჯერადი Development გაშვება
 [demo-setup-reset.md](demo-setup-reset.md)-შია ჩაწერილი.
 
 ## 1. Vault account sign-in
 
-Current. A session does not exist after the password alone. These pages are still Razor. Nothing
-in this revision is an invitation flow.
+Current. A session does not exist after the password alone. Every sign-in page is Angular
+(ADR-0032).
 
 | Step | What happens | Source |
 |---|---|---|
-| 1 | The password is checked. Failure stays on the sign-in page. | `AccountController.Login`; `Views/Account/Login.cshtml` heading "Sign in", button "Continue" |
-| 2 | Success signs an `MfaPending` cookie, not the session cookie. | `AccountController.Login`; `Program.cs` scheme `MfaPending` |
-| 3 | First use enrolls an authenticator. A later use asks for a code. A recovery code or a passkey are the other current paths. | `AccountController` redirects to `EnrollTotp` or `Totp`; `SessionIssuer.SignInAsync` call sites for TOTP, recovery, enrollment, and passkey |
-| 4 | `SessionIssuer.SignInAsync` issues the session and records the success audit. | `SessionIssuer` |
-| 5 | SSO, when enabled, proves identity at the IdP. The vault still decides admission, then uses the same issuer. | `Program.cs` SSO block; `AccountController` SSO sign-in; ADR-0002; `CONTEXT.md` identity provider |
+| 1 | `/Account/Login` is an anonymous route that serves the Angular document with an antiforgery token and `no-store`. A signed-in visitor is sent on to their target. | `AngularUiRoutes.ServeLogin`; ADR-0032 |
+| 2 | The password is checked by `POST api/ui/auth/password`. Failure answers 400 `sign_in_failed`, "Invalid username or password.", the same for an unknown account. | `AuthController.Password`; ADR-0032 "Nothing tells an anonymous caller that an account exists" |
+| 3 | Success signs an `MfaPending` cookie, not the session cookie, and names the next step: `enroll` or `totp`. | `AuthController.Password`; `AuthSchemes.MfaPending` |
+| 4 | `/Account/EnrollTotp`, `/Account/Totp`, and `/Account/RecoveryCode` are served only to that pending sign-in. Their calls are `enrollment`, `enrollment/confirm`, `totp`, and `recovery-code`. | `AngularUiRoutes` `SecondFactorPaths`; `PendingSignInController` |
+| 5 | A passkey is both factors at once. It takes no username; only a discoverable passkey can answer. | `AuthController` `passkey/begin`, `passkey/complete`; ADR-0032 |
+| 6 | `SessionIssuer.SignInAsync` issues the session and records the success audit. The server alone picks where sign-in lands: `/Secrets` by default. | `SessionIssuer`; `SignInTarget.Default`; ADR-0032 |
+| 7 | SSO, when enabled, proves identity at the IdP. The vault still decides admission, then uses the same issuer. `AccountController` keeps only those two redirects. | `AccountController` `/Account/ExternalLogin` and `/Account/ExternalCallback`; `ISsoSignInService`; ADR-0002 |
 
-Do not photograph step 3. Enrollment material and recovery codes are out of the talk.
+Do not photograph step 4. Enrollment material and recovery codes are out of the talk.
 
-Sign-in, the authenticator page, recovery, and the passkey button are the Razor views under
-`Views/Account/`. They are not listed in `AngularUiRoutes`. An invitation type is not in this
-revision's source.
+Break-glass recovery is the Angular page `/Account/Recover` and `POST api/ui/auth/recover`: all
+factors at once, Top Secret only, audited. A blocked network reaches only those two auth surfaces.
+When a recovery answers 503 `recovery_incomplete`, an administrator can release the guards it left,
+from Networks (`NetworksController` `blocks/release-guard`). Source: `AuthController`; ADR-0032.
 
-## 2. Per-request access
+A path outside the route table is not a page. A signed-in caller gets the server's not-found page;
+a signed-out caller is sent to sign-in. Access blocked and error are server pages too. They carry no
+script. Source: `AngularUiRoutes.MapAngularUi`; `ServerPage`; ADR-0034.
+
+## 2. Account activation by invitation
+
+Current, and not a live click. An administrator never chooses a new account's password (ADR-0033).
+
+| Step | What happens | Source |
+|---|---|---|
+| 1 | New user takes the person's email address, not a password. Creating the account needs fresh proof and writes `UserCreated` with the invitation address. | ADR-0033; ADR-0028 |
+| 2 | The token is 256 random bits. Only its SHA-256 hash is stored. It is valid for 72 hours. | `InvitationToken.Generate`, `Hash`, `Lifetime` |
+| 3 | The link is built only from `Identity:PublicUrl` and carries the token in its fragment, which the browser omits from the page request. The page sends the token to the activation API. It goes out only through real SMTP, never the notification outbox, a log, or audit details. | `AccountInvitationDelivery`; `InvitationLink`; `AngularUiRoutes` `/Account/Activate`; ADR-0033 |
+| 4 | Without real SMTP or `Identity:PublicUrl`, New user and Resend are unavailable with an explanation. No link is shown to the administrator instead. | `UserAdminService`; ADR-0033 |
+| 5 | Opening the link spends nothing: the page shows the username and an authenticator seed. | `AuthController.InspectActivation`; `AccountActivationService` |
+| 6 | One call sets the password under Profile's rules, enrolls the authenticator, spends the token, and writes `AccountActivated`, in one transaction. A wrong code keeps the invitation. | `AuthController.CompleteActivation`; ADR-0033 |
+| 7 | Until then the account cannot sign in by any route. Resending replaces the token. | ADR-0033 |
+
+The seeded Development accounts are not invited. They enroll at first sign-in, as before.
+Source: `DbSeeder` log line "TOTP enrollment happens on first sign-in".
+
+## 3. Per-request access
 
 Current. `SecretAccessPolicy.Evaluate` is the rule. `SecretAccessHandler` supplies the subject,
 the resource, the window, the network, and any share. An API key adds scope rules that can only
@@ -44,10 +68,10 @@ narrow access.
 | API scope | A project scope or metadata-only scope adds denials. | A session has no API-key scope. |
 
 Sources: `SecretAccessPolicy`, `ClearanceLevel`, `SensitivityLevel`, `DbSeeder.SeedDevelopmentDataAsync`,
-`AccessContext` built in `SecretAccessHandler`. The default trusted list, including loopback and the
-private ranges, is `appsettings.json` `Abac:TrustedIpCidrs`. The production window hours are
-`Abac:ProductionWindowStartUtcHour` 6 and `ProductionWindowEndUtcHour` 22, UTC unless configured
-otherwise. Those defaults are why a loopback denial is not part of the live story.
+`SecretAccessHandler` and `AccessContextProvider`. The default trusted list, including loopback
+and the private ranges, is `appsettings.json` `Abac:TrustedIpCidrs`. The default production window
+is 06:00 to 22:00 UTC, set by `Abac:ProductionWindowStartUtcHour` and `ProductionWindowEndUtcHour`.
+`Abac:TimeZoneId` can change the time zone used for those hours. Those defaults are why a loopback denial is not part of the live story.
 
 A share lets a recipient view and reveal across the project boundary only. Clearance, window, and
 network still apply. Rotate, restore, and delete need the change right: an administrator, or a
@@ -57,18 +81,18 @@ member of the secret's project. Source: ADR-0031; `SecretDetailsController.MayCh
 A refused by-id action writes `SecretAccessDenied` with the policy's reasons, not a `Viewed` row.
 Source: `SecretDetailsController.OpenAsync`; `SecretsApiController.Get`; `SecretService.RecordAccessDeniedAsync`.
 
-## 3. Reveal, audit before decryption
+## 4. Reveal, audit before decryption
 
 Current. This is the live journey. The page is Angular.
 
 | Step | What happens | Source |
 |---|---|---|
 | 1 | A session opens `/Secrets/Details/{id}`. The Angular page calls `GET api/ui/secrets/{id}`. | `secret-details-page`; `AngularUiRoutes` lists `/Secrets/Details/{id:guid}`; `SecretDetailsController.Get` |
-| 2 | `OpenAsync` calls `GetDetailsAsync`, which loads the envelope and trips a honey-token if this row is one. That load writes no audit row. | `SecretDetailsController.OpenAsync`; `SecretService.GetDetailsAsync`; ADR-0031 |
-| 3 | `AuthorizeAsync` runs flow 2. A denial writes `SecretAccessDenied` and returns 403 `access_denied`. It does not reveal. | `SecretDetailsController.OpenAsync`; `SecretService.RecordAccessDeniedAsync` |
+| 2 | `OpenAsync` calls `GetDetailsAsync` to load the envelope. For an ordinary secret, the load writes no audit row. A decoy trips the intrusion response. | `SecretDetailsController.OpenAsync`; `SecretService.GetDetailsAsync`; ADR-0031 |
+| 3 | `AuthorizeAsync` runs flow 3. A denial writes `SecretAccessDenied` and returns 403 `access_denied`. It does not reveal. | `SecretDetailsController.OpenAsync`; `SecretService.RecordAccessDeniedAsync` |
 | 4 | After allow, `Get` calls `RecordViewedAsync`, which commits `SecretMetadataViewed`. The screen label is `Viewed`. | `SecretService.RecordViewedAsync`; `AuditDisplay` |
 | 5 | `POST api/ui/secrets/{id}/reveal` runs `OpenAsync` again. Sensitivity below Secret skips step-up. Secret and above, with a stale strong sign-in, returns 403 `step_up_required` and does not decrypt. That challenge writes no denial row. | `SecretDetailsController.Reveal`; `StepUpRequiredAsync`; `appsettings.json` `StepUp:MinimumSensitivity` `Secret` |
-| 6 | `RevealAsync` commits `SecretRevealed` through `AuditSink` and returns only after that commit. | `SecretService.RevealAsync`; `AuditSink` |
+| 6 | `RevealAsync` waits for `AuditSink` to commit `SecretRevealed` before it decrypts. | `SecretService.RevealAsync`; `AuditSink` |
 | 7 | `DecryptToDtoAsync` calls `UnsealAsync`, copies the plaintext into the response, and zeroes the buffer. The Angular page shows it once. | `SecretService.DecryptToDtoAsync`; `AesGcmCryptoEngine.UnsealAsync`; `secret-details-page.html` |
 
 The audit action stored for step 6 is `SecretRevealed`. The page shows `Revealed`. Source: `AuditDisplay`.
@@ -78,7 +102,7 @@ contract that it throws `AuditWriteFailedException` rather than returning an una
 
 The button on the details page is "Reveal value". Do not capture the page after it succeeds.
 
-## 4. Envelope
+## 5. Envelope
 
 Current. Default engine `AesGcmLocal`. Master-key rotation and the Encryption keys page are on
 this revision. This talk does not rotate a key.
@@ -89,10 +113,10 @@ this revision. This talk does not rotate a key.
 | 2 | The row stores ciphertext, wrapped data key, key id, and algorithm. | `SealedSecret` returned by `SealAsync`; `SecretService.CreateAsync` copies those fields |
 | 3 | The payload's associated data is the row identity, so an envelope copied onto another row does not open. | `AesGcmCryptoEngine` class comment; `SecretBinding.ForCurrentValue` |
 | 4 | Unseal unwraps the data key with the master key named by the row, then opens the payload. | `AesGcmCryptoEngine.UnsealAsync` |
-| 5 | When `Crypto:Engine` is `VaultTransit`, the master key stays in Vault and the data key is still local to the payload. | `VaultTransitCryptoEngine` class comment; `appsettings.json` `Vault` section |
-| 6 | Rotation runs in resumable batches and does not decrypt a value. The Angular page is `/Encryption`, `AdminOnly`. | `KekRotationService`; `EncryptionController`; ADR-0029; `AngularUiRoutes` `administratorPaths` |
+| 5 | When `Crypto:Engine` is `VaultTransit`, the master key stays in Vault and the data key is still local to the payload. The Encryption keys page lists the engine's master keys; the Transit token needs `read` on `transit/keys/<key>` for that. | `VaultTransitCryptoEngine`; `ICryptoEngine.GetMasterKeysAsync`; `README.md` KMS paragraph |
+| 6 | Rotation runs in resumable batches and does not decrypt a value. If a pass fails after committing batches, its response includes the counts it rewrapped. An audit failure gives `audit_unavailable`. Other failures after a committed batch give `rotation_interrupted`. The Angular page is `/Encryption`, `AdminOnly`. | `KekRotationService`; `EncryptionController`; ADR-0029; `AngularUiRoutes` `administratorPaths` |
 
-## 5. Checkpoint and export
+## 6. Checkpoint and export
 
 Current. ADR-0030 is on this revision. Verify compares the trail with checkpoints signed by the
 current key. It still does not prove every deletion, whatever the latest checkpoint is.
@@ -114,6 +138,10 @@ holds is unchanged by a later edit of the live database. Source: ADR-0030 conseq
 `docs/THREAT_MODEL.md` item 12; the message built in `AuditChainVerifier.VerifyAsync` when the
 outcome is anchored.
 
+The Attestation panel on `/Audit` says an outside auditor can prove the trail "even if rows were
+deleted and the hashes rewritten". That holds for a bundle the auditor already exported. It does
+not widen what Verify proves on the live database.
+
 `docs/THREAT_MODEL.md` item 12 also says an insider who can read `ECLIPSVAULT_AUDIT_SIGNING_KEY`
 from the host can re-sign. Key pinning does not catch the vault's own key. This draft repeats that
 limit and does not test it.
@@ -121,35 +149,40 @@ limit and does not test it.
 The live journey does not press Verify or Export. Verify is easy to over-read, and Export
 downloads the trail and asks for a fresh code.
 
-## 6. Dynamic credential
+## 7. Dynamic credential
 
-Current, and not a live click. The page is Angular at `/DynamicSecrets`. Issuing one needs the
-separate SQL Server target connection and the licence feature gate. This rehearsal did not issue one.
+Current, and not a live click. The page is Angular at `/DynamicSecrets`. Issuing one needs a target
+connection for the role's backend and the licence feature gate. This rehearsal did not issue one.
 
 | Step | What happens | Source |
 |---|---|---|
 | 1 | The role is refused when disabled, or when the licence feature is not allowed, before any password exists. | `DynamicSecretService.IssueAsync`; `RequireAsync(LicenseFeatures.DynamicSecrets)` |
-| 2 | A name and a password are minted. The backend creates the login first. | `CredentialMint`; `DynamicSecretService.IssueAsync` |
-| 3 | The lease row stores identity, expiry, and status. It has no password field. | `DynamicSecretLease` class comment and properties |
-| 4 | The password is returned once in `IssuedCredentialDto`. | `DynamicSecretService.IssueAsync` return |
-| 5 | If the lease insert fails, removal is attempted. When that removal also fails, the caller gets `MintUnrecordedException` and `DynamicSecretsController` logs the role and login at critical. A mint that fails after the login may exist, and whose cleanup also fails, throws `MintIncompleteException`; the controller answers 502 `mint_incomplete` and logs the same way. The password is not in that log. | `DynamicSecretService.IssueAsync`; `DynamicSecretsController` catch of `MintIncompleteException` and `MintUnrecordedException`; `LogLoginMayRemain` |
-| 6 | `DynamicLeaseWorker` destroys due leases through `ReapDueLeasesAsync`. A failed destroy closes the lease as `RevocationFailed` with a fixed note, audited as critical. | `DynamicSecretService.DestroyAsync`; `AuditSaveChangesInterceptor` lease rule; ADR-0031 |
+| 2 | A role names its backend: SQL Server through `DynamicSecrets:TargetConnectionString`, or PostgreSQL through `DynamicSecrets:PostgresTargetConnectionString`. Neither is the vault's own database; on PostgreSQL the target must be a distinct cluster. | `DynamicSecretRole.Backend`; `DynamicSecretTargetOptions`; `SqlServerBackend`; `PostgresBackend`; `docs/INSTALL.md` |
+| 3 | A name and a password are minted. The backend creates the login first. | `CredentialMint`; `DynamicSecretService.IssueAsync` |
+| 4 | The lease row stores identity, expiry, and status. It has no password field. | `DynamicSecretLease` class comment and properties |
+| 5 | The password is returned once in `IssuedCredentialDto`. | `DynamicSecretService.IssueAsync` return |
+| 6 | If the lease insert fails, removal is attempted. When that removal also fails, the caller gets `MintUnrecordedException` and `DynamicSecretsController` logs the role and login at critical. A mint that fails after the login may exist, and whose cleanup also fails, throws `MintIncompleteException`; the controller answers 502 `mint_incomplete` and logs the same way. The password is not in that log. | `DynamicSecretService.IssueAsync`; `DynamicSecretsController` catch of `MintIncompleteException` and `MintUnrecordedException`; `LogLoginMayRemain` |
+| 7 | `DynamicLeaseWorker` destroys due leases through `ReapDueLeasesAsync`. On PostgreSQL, revocation first sets the role `NOLOGIN`, waits for connections still starting up, and ends the role's sessions before `DROP ROLE`. On SQL Server it kills the login's sessions before `DROP LOGIN`. A failed destroy closes the lease as `RevocationFailed` with a fixed note, audited as critical. | `DynamicSecretService.DestroyAsync`; `PostgresBackend` `AwaitStartupsAsync` and `pg_terminate_backend`; `DbSeeder` SQL Server revocation; `AuditSaveChangesInterceptor` lease rule; ADR-0031 |
 
 An attempted revocation is not proof that the temporary credential was removed. A failed cleanup
 can leave a live credential without a recorded lease. The page says so; it does not make the
 removal certain.
 
-The Development seed creates two role recipes, `phoenix_db_reader` and `global_db_writer`. They are
-not part of the live journey. Source: `DbSeeder.SeedDynamicSecretRolesAsync`.
+On a fresh Development database, the seed adds four role recipes. The SQL Server pair,
+`phoenix_db_reader` and `global_db_writer`, seeds an empty roles table. The PostgreSQL pair,
+`phoenix_pg_reader` and `global_pg_writer`, is added by name when missing. The live journey uses
+static secrets. See `DbSeeder.SeedDynamicSecretRolesAsync`.
 
-## 7. What the live journey deliberately skips
+## 8. What the live journey deliberately skips
 
 | Skipped path | Why | Source |
 |---|---|---|
 | Honey-tokens `Production_AWS_Root_Key` and `Global_SQL_SA_Password` | A by-id read trips intrusion response and bypasses the access policy. They are omitted from the secrets list. | `DbSeeder` comments; `SecretService.TripHoneyTokenIfNeededAsync`; `SecretService.ListAsync` |
-| `Phoenix_Ephemeral_Deploy_Token` | Seeded to expire about five minutes after seeding. | `DbSeeder.SeedDevelopmentDataAsync` |
+| `Phoenix_Ephemeral_Deploy_Token` | Seeded to expire five minutes after seeding. | `DbSeeder.SeedDevelopmentDataAsync` |
 | `Phoenix_Staging_Api_Key` | Confidential, so the network rule applies. Loopback is trusted by default, so it is a poor denial demo. | `DbSeeder`; `appsettings.json` `Abac:TrustedIpCidrs` |
 | Service-account reveal | Same policy, different credential. Saying it is enough; the raw key would be on screen. | `SecretsApiController` |
+| Invitation and activation | Needs real SMTP and `Identity:PublicUrl`; the link carries a live token. | ADR-0033 |
+| Break-glass recovery | It lifts an intrusion block and is audited as recovery; nothing in the walk is blocked. | `AuthController` `recover`; ADR-0032 |
 | Verify, Create signed checkpoint, and Export signed bundle | Easy to overclaim. Slide 6 explains the boundary. Export also downloads the trail and demands step-up. | `AuditController`; ADR-0030 |
 | A denial and an access request | Real, and recorded as `SecretAccessDenied`. Not rehearsed on loopback, because the trusted-network default would not be what failed. | ADR-0031; `SecretDetailsController.OpenAsync` |
-| Dynamic secret issuance | Needs a SQL Server target and the licence gate. The minted password is shown once. | `DynamicSecretService.IssueAsync` |
+| Dynamic secret issuance | Needs a target connection and the licence gate. The minted password is shown once. | `DynamicSecretService.IssueAsync` |
