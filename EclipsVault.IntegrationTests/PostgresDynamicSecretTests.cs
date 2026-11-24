@@ -286,7 +286,10 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
         {
             Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, username, password));
             var serverLog = await fixture.Vault.PostgresDynamicTargetLogsAsync();
-            Assert.Contains("SCRAM-SHA-256$4096:", serverLog, StringComparison.Ordinal);
+            Assert.Contains(
+                serverLog.Split('\n'),
+                line => line.Contains($"CREATE ROLE \"{username}\"", StringComparison.Ordinal)
+                    && line.Contains("SCRAM-SHA-256$4096:", StringComparison.Ordinal));
             Assert.DoesNotContain(password, serverLog, StringComparison.Ordinal);
         }
         finally

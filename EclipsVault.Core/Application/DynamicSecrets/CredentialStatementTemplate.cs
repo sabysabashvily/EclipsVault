@@ -48,7 +48,54 @@ public static partial class CredentialStatementTemplate
 
     /// <summary>True when the value matches PostgreSQL's <c>SCRAM-SHA-256</c> verifier format with no characters that can escape a SQL literal.</summary>
     public static bool IsRenderableScramVerifier(string value)
-        => !string.IsNullOrEmpty(value) && ScramVerifierPattern().IsMatch(value);
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return false;
+        }
+
+        var match = ScramVerifierPattern().Match(value);
+        if (!match.Success)
+        {
+            return false;
+        }
+
+        if (!int.TryParse(match.Groups["iterations"].ValueSpan, NumberStyles.None, CultureInfo.InvariantCulture, out var iterations)
+            || iterations <= 0)
+        {
+            return false;
+        }
+
+        return TryDecodeCanonicalBase64(match.Groups["salt"].Value, out var saltLength)
+            && saltLength > 0
+            && TryDecodeCanonicalBase64(match.Groups["stored"].Value, out var storedLength)
+            && storedLength == 32
+            && TryDecodeCanonicalBase64(match.Groups["server"].Value, out var serverLength)
+            && serverLength == 32;
+    }
+
+    private static bool TryDecodeCanonicalBase64(string encoded, out int decodedLength)
+    {
+        decodedLength = 0;
+        if (encoded.Length == 0 || encoded.Length % 4 != 0)
+        {
+            return false;
+        }
+
+        var buffer = new byte[(encoded.Length / 4) * 3];
+        if (!Convert.TryFromBase64String(encoded, buffer, out var written))
+        {
+            return false;
+        }
+
+        if (!string.Equals(Convert.ToBase64String(buffer, 0, written), encoded, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        decodedLength = written;
+        return true;
+    }
 
     private static string Substitute(string template, string name, string secretLiteral, DateTimeOffset expiresAtUtc)
         => template
@@ -88,6 +135,6 @@ public static partial class CredentialStatementTemplate
         }
     }
 
-    [GeneratedRegex(@"^SCRAM-SHA-256\$[1-9][0-9]*:[A-Za-z0-9+/]+=*\$[A-Za-z0-9+/]{43}=:[A-Za-z0-9+/]{43}=$")]
+    [GeneratedRegex(@"\ASCRAM-SHA-256\$(?<iterations>[1-9][0-9]*):(?<salt>[A-Za-z0-9+/]+=*)\$(?<stored>[A-Za-z0-9+/]{43}=):(?<server>[A-Za-z0-9+/]{43}=)\z")]
     private static partial Regex ScramVerifierPattern();
 }
