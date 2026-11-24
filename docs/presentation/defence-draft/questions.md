@@ -1,12 +1,11 @@
 # Likely questions / სავარაუდო კითხვები
 
-Answer from the source named here, at `origin/main` `d576dd93a30bc461183ca7b71c89f038adbff446`
-(21 November 2026, 22:42 Asia/Tbilisi). If the honest answer is "not on this revision" or "not
-rehearsed", say that and stop.
+Use the sources named below for `origin/main` `1298958050e45f83aefeb4b6455d0a02169ab22a`
+(24 November 2026, 15:18 Asia/Tbilisi). Say when a feature was outside the rehearsal.
 
-პასუხი აქ დასახელებული წყაროდან გაეცით, `origin/main` `d576dd9`-ზე (21 ნოემბერი 2026, 22:42
-Asia/Tbilisi). თუ პატიოსანი პასუხია „ამ რევიზიაზე არ არის“ ან „არ რეპეტირებულა“, ასე თქვით და
-გაჩერდით.
+დაეყრდენით ქვემოთ მითითებულ წყაროებს `origin/main`-ის რევიზიაზე
+`1298958050e45f83aefeb4b6455d0a02169ab22a` (24 ნოემბერი 2026, 15:18 Asia/Tbilisi).
+თუ რომელიმე ფუნქცია რეპეტიციაში არ გამოგიყენებიათ, ეს პირდაპირ თქვით.
 
 ## The browser decides who can see a secret, doesn't it?
 
@@ -26,20 +25,18 @@ check. A hidden link is not the control.
 
 ### English
 
-Because it was chosen not to. `Phoenix_Dev_Database_Password` is Internal and Development.
-`SecretAccessPolicy` consults the trusted network only at Confidential and above, and the production
-window only for Production. The rules are in the same method. The live path is the one a Standard
-member of `PHOENIX` can finish without depending on the clock or on moving off loopback.
-`appsettings.json` trusts `127.0.0.1/32`, so a Confidential secret from this laptop would still be
-on a trusted network.
+`Phoenix_Dev_Database_Password` is Internal and Development. `SecretAccessPolicy` requires a trusted
+network for Confidential and above, and applies the access window only to Production. A Standard
+member of `PHOENIX` can therefore run this demonstration at any time. `appsettings.json` trusts both
+loopback addresses, `127.0.0.1/32` and `::1/128`.
 
 ### ქართული
 
-იმიტომ, რომ ასეა შერჩეული. `Phoenix_Dev_Database_Password` Internal და Development არის.
-`SecretAccessPolicy` სანდო ქსელს მხოლოდ Confidential-იდან ზემოთ კითხულობს, წარმოების ფანჯარას კი
-მხოლოდ Production-ზე. წესები იმავე მეთოდშია. ცოცხალი გზა ისეთია, რომ `PHOENIX`-ის Standard წევრმა
-ის საათზე ან loopback-იდან წასვლაზე დამოკიდებულების გარეშე დაასრულოს. `appsettings.json` ენდობა
-`127.0.0.1/32`-ს, ამიტომ ამ ლეპტოპიდან Confidential საიდუმლო მაინც სანდო ქსელში იქნებოდა.
+`Phoenix_Dev_Database_Password`-ის მგრძნობელობაა Internal, გარემო კი Development.
+`SecretAccessPolicy` სანდო ქსელს Confidential და უფრო მაღალი მგრძნობელობისთვის მოითხოვს,
+დროის შეზღუდვას კი მხოლოდ Production გარემოში იყენებს. ამიტომ `PHOENIX`-ის წევრს Standard დაშვებით
+დემონსტრაციის ჩატარება ნებისმიერ დროს შეუძლია. `appsettings.json` ორივე ლოკალურ loopback
+მისამართს ენდობა: `127.0.0.1/32` და `::1/128`.
 
 ## Where is the service account in the demo?
 
@@ -90,23 +87,24 @@ plug to show it.
 ამ გამოძახებას `DecryptToDtoAsync`-მდე ელოდება. ამ მოთხოვნისთვის მნიშვნელობა არ იშიფრება. წყარო:
 `AuditSink`; `SecretService.RevealAsync`. ამ მონახაზმა ბაზის გამორთვა ამის საჩვენებლად არ სცადა.
 
-## Why are there two audit rows?
+## Why are Viewed and Revealed separate audit rows?
 
 ### English
 
-After the access check allows the details page, `RecordViewedAsync` writes `SecretMetadataViewed`.
-`GetDetailsAsync` itself writes nothing, so a refusal is `SecretAccessDenied` instead. `RevealAsync`
-writes `SecretRevealed` when the value is requested, and that write is the one ordered before
-decryption. The page labels them `Viewed`, `Access denied`, and `Revealed`. Source:
-`SecretDetailsController.OpenAsync`; `SecretService`; `AuditDisplay`; ADR-0031.
+After the access check allows the details page, `SecretDetailsController.Get` calls
+`RecordViewedAsync`, which writes `SecretMetadataViewed`. When someone requests the value,
+`RevealAsync` commits `SecretRevealed` before decryption. The audit log labels them `Viewed` and
+`Revealed`. If policy refuses access, `OpenAsync` records `SecretAccessDenied`, shown as
+`Access denied`. See `SecretService`, `AuditDisplay`, and ADR-0031.
 
 ### ქართული
 
-მას შემდეგ, რაც წვდომის შემოწმება დეტალების გვერდს უშვებს, `RecordViewedAsync` წერს
-`SecretMetadataViewed`-ს. `GetDetailsAsync` თავად არაფერს წერს, ამიტომ უარი `SecretAccessDenied`-ა.
-`RevealAsync` წერს `SecretRevealed`-ს, როცა მნიშვნელობაა მოთხოვნილი, და ეს ჩანაწერია, რომელიც
-გაშიფვრამდე დგას. გვერდი მათ `Viewed`, `Access denied` და `Revealed` ეძახის. წყარო:
-`SecretDetailsController.OpenAsync`; `SecretService`; `AuditDisplay`; ADR-0031.
+თუ წვდომის შემოწმება დეტალების ნახვის უფლებას იძლევა, `SecretDetailsController.Get` იძახებს
+`RecordViewedAsync`-ს, რომელიც `SecretMetadataViewed`-ს წერს. მნიშვნელობის მოთხოვნისას
+`RevealAsync` გაშიფვრამდე აფიქსირებს `SecretRevealed`-ს. აუდიტის ჟურნალში ისინი `Viewed` და
+`Revealed` სახელებით ჩანს. თუ წვდომის წესი მოთხოვნას უარყოფს, `OpenAsync` აფიქსირებს
+`SecretAccessDenied`-ს, რომელიც ჟურნალში `Access denied` სახელით ჩანს.
+იხილეთ `SecretService`, `AuditDisplay` და ADR-0031.
 
 ## Does Verify prove nobody deleted or rewrote the trail?
 
@@ -137,22 +135,20 @@ Verify. `AuditBundleVerifier` ამოწმებს მისთვის მ
 
 ### English
 
-Keep the README note. A current verifier reads `eclipsvault.audit-bundle/1` and `/2`, and refuses a
-newer format with the words that this is not evidence of tampering. The 1.0.0 verifier shipped
-before that check. Given a bundle from a later vault it reports `INVALID — "the row was edited"`.
-That sentence means the verifier is too old. Re-run with a verifier at least as new as the vault
-that exported the bundle. Source: `README.md` signed-checkpoint paragraph; `AuditBundleSchema`;
-`AuditBundleVerifier`. This draft did not execute the 1.0.0 binary.
+The current verifier reads `eclipsvault.audit-bundle/1` and `/2`. An unknown format gets a version
+error. The repository README records that verifier 1.0.0 predates that check and can report
+`INVALID — "the row was edited"` for an intact bundle in a later format. Re-run with a verifier at
+least as new as the vault that exported the bundle. The rehearsal used the README for the 1.0.0
+behaviour. See `AuditBundleSchema` and `AuditBundleVerifier` for the current check.
 
 ### ქართული
 
-დაიცავით README-ს შენიშვნა. მიმდინარე შემმოწმებელი კითხულობს `eclipsvault.audit-bundle/1`-ს და
-`/2`-ს და უფრო ახალ ფორმატს უარყოფს სიტყვებით, რომ ეს ხელყოფის მტკიცებულება არ არის. 1.0.0
-შემმოწმებელი ამ შემოწმებამდე გამოვიდა. გვიანი საცავის შეკვრაზე ის აჩვენებს
-`INVALID — "the row was edited"`. ეს წინადადება ნიშნავს, რომ შემმოწმებელი ძალიან ძველია. თავიდან
-გაუშვით შემმოწმებელი, რომელიც იმ საცავის ტოლი ან უფრო ახალია, რომელმაც შეკვრა გამოიტანა. წყარო:
-`README.md`-ის ხელმოწერილი საკონტროლო წერტილის აბზაცი; `AuditBundleSchema`; `AuditBundleVerifier`.
-ამ მონახაზმა 1.0.0 ბინარი არ გაუშვა.
+მიმდინარე შემმოწმებელი კითხულობს `eclipsvault.audit-bundle/1` და `/2` ფორმატებს. უცნობი ფორმატის
+შემთხვევაში ის ვერსიის შეცდომას აბრუნებს. რეპოზიტორიის README-ში წერია, რომ 1.0.0 ვერსია ამ
+შემოწმებამდე გამოვიდა და უფრო ახალ ფორმატში შენახულ უცვლელ შეკვრაზეც შეიძლება აჩვენოს
+`INVALID — "the row was edited"`. ხელახლა გაუშვით შემმოწმებელი, რომლის ვერსიაც შეკვრის
+გამომტანი საცავის ვერსიის ტოლი ან უფრო ახალია. რეპეტიციისთვის 1.0.0-ის ქცევის წყარო README იყო.
+მიმდინარე შემოწმებისთვის იხილეთ `AuditBundleSchema` და `AuditBundleVerifier`.
 
 ## Someone with the host can re-sign, can't they?
 
@@ -175,72 +171,111 @@ schedule and keep the bundles somewhere the host cannot rewrite. This draft did 
 
 ### English
 
-It is not stored. `DynamicSecretLease` says it deliberately holds no password. The mint is returned
-once. `DynamicLeaseWorker` destroys the backend login when the lease is due. The talk does not issue
-one: the seed roles target SQL Server, and issuance is behind the dynamic-secrets licence check.
-Source: `DynamicSecretLease`; `DynamicSecretService`; `DynamicLeaseWorker`.
+The vault returns the password once, at issue, and keeps no copy. `DynamicSecretLease` records the
+backend login's identity, expiry, and status. `DynamicLeaseWorker` asks `DynamicSecretService` to
+revoke due credentials. If the backend refuses, the service records `RevocationFailed`.
+
+Development's `DbSeeder` adds `phoenix_db_reader` and `global_db_writer` to an empty roles table for
+SQL Server, and adds `phoenix_pg_reader` and `global_pg_writer` for PostgreSQL when those names are
+missing. Issuance needs a configured target for the role's backend and the dynamic-secrets licence
+check. The rehearsal skipped issuance.
 
 ### ქართული
 
-არ ინახება. `DynamicSecretLease` ამბობს, რომ განზრახ არ იკავებს პაროლს. გაცემული პაროლი ერთხელ
-ბრუნდება. `DynamicLeaseWorker` ანადგურებს ბექენდის ლოგინს, როცა იჯარის ვადა მოდის. მოხსენება ამას
-არ გასცემს: დათესილი როლები SQL Server-ს ეხება და გაცემა დინამიკური საიდუმლოების ლიცენზიის
-შემოწმების უკანაა. წყარო: `DynamicSecretLease`; `DynamicSecretService`; `DynamicLeaseWorker`.
+საცავი პაროლს ერთხელ აბრუნებს, გაცემისას, და მის ასლს არ ინახავს. `DynamicSecretLease` ინახავს
+სამიზნე ბაზაში შექმნილი ანგარიშის სახელს, ვადასა და სტატუსს. ვადის გასვლისას `DynamicLeaseWorker`
+`DynamicSecretService`-ს ანგარიშის გაუქმებას სთხოვს. თუ სამიზნე ბაზა გაუქმებას ვერ ასრულებს,
+სერვისი `RevocationFailed` სტატუსს აფიქსირებს.
+
+Development რეჟიმში `DbSeeder` როლების ცარიელ ცხრილში SQL Server-ისთვის ამატებს
+`phoenix_db_reader`-სა და `global_db_writer`-ს. PostgreSQL-ისთვის ამატებს `phoenix_pg_reader`-სა და
+`global_pg_writer`-ს, თუ შესაბამისი სახელები ცხრილში ჯერ არ არის. გასაცემად საჭიროა როლის
+სამიზნე ბაზასთან კავშირის გამართვა და დინამიკური საიდუმლოების ლიცენზიის შემოწმების გავლა.
+რეპეტიციაში ეს ნაბიჯი გამოტოვეს.
 
 ## Are Core and Infrastructure separate services? Is Node running in production?
 
 ### English
 
-No, and no. Core and Infrastructure are components inside the Web application, not containers. The
-Angular UI is a container, and it runs in the browser from files Web serves; the image does not
-start a second server for it. The Dockerfile's Node stage builds those files and is not the runtime
-image. The runtime image starts `EclipsVault.Web.dll`. Redis and the other compose services are
-used only when configuration selects them. Source: [diagrams.md](diagrams.md) sections 2 and 3;
-`Dockerfile`; ADR-0008.
+Core and Infrastructure are components inside the Web application. In C4, the Angular UI is a
+container that runs in the browser, including sign-in. The Dockerfile's Node stage builds the
+Angular files. The runtime image starts `EclipsVault.Web.dll`, which serves those files and writes
+the access-blocked, error, and not-found pages on the server. See [diagrams.md](diagrams.md)
+sections 2 and 3, the `Dockerfile`, ADR-0008, and ADR-0034.
 
 ### ქართული
 
-არა და არა. Core და Infrastructure Web აპლიკაციის კომპონენტებია, არა კონტეინერები. Angular UI
-კონტეინერია და ბრაუზერში ეშვება იმ ფაილებიდან, რომლებსაც Web აწვდის; იმიჯი მისთვის მეორე სერვერს
-არ იწყებს. Dockerfile-ის Node საფეხური ამ ფაილებს აწყობს და გაშვების იმიჯი არ არის. გაშვების
-იმიჯი იწყებს `EclipsVault.Web.dll`-ს. Redis და compose-ის სხვა სერვისები მხოლოდ მაშინ
-გამოიყენება, როცა კონფიგურაცია ირჩევს მათ. წყარო: [diagrams.md](diagrams.md) ნაწილი 2 და 3;
-`Dockerfile`; ADR-0008.
+Core და Infrastructure Web აპლიკაციის კომპონენტებია. C4-ში Angular UI კონტეინერია და ბრაუზერში
+ეშვება, შესვლის გვერდის ჩათვლით. Dockerfile-ის Node ეტაპი Angular-ის ფაილებს აწყობს. გაშვების
+იმიჯი უშვებს `EclipsVault.Web.dll`-ს, რომელიც ამ ფაილებს აწვდის ბრაუზერს და სერვერზე ქმნის
+„წვდომა დაბლოკილია“, „შეცდომა“ და „ვერ მოიძებნა“ გვერდებს. იხილეთ [diagrams.md](diagrams.md)-ის
+მე-2 და მე-3 ნაწილები, `Dockerfile`, ADR-0008 და ADR-0034.
+
+## How does a new vault account get its first credentials?
+
+### English
+
+An administrator enters the person's email address. The vault emails a single-use invitation
+using `Identity:PublicUrl` and SMTP. The person chooses a password and enrols an authenticator in
+one audited activation. The seeded Development accounts enrol at first sign-in. The rehearsal
+used those accounts. See ADR-0033, `UserAdminService`, and `AccountActivationService`.
+
+### ქართული
+
+ადმინისტრატორს შეჰყავს მომხმარებლის ელფოსტის მისამართი. საცავი `Identity:PublicUrl`-იდან
+აწყობს ერთჯერადი მოწვევის ბმულს და SMTP-ით აგზავნის. მომხმარებელი ერთ აუდიტირებულ
+აქტივაციაში ირჩევს პაროლს და არეგისტრირებს ავთენტიფიკატორს. Development რეჟიმში შექმნილ
+სადემონსტრაციო ანგარიშებზე ავთენტიფიკატორის რეგისტრაცია პირველი შესვლისას ხდება.
+რეპეტიციაში ეს ანგარიშები გამოიყენეს. იხილეთ ADR-0033, `UserAdminService` და
+`AccountActivationService`.
 
 ## Is this the production deployment?
 
 ### English
 
-No. What you are being shown is Development's demo seed: two staff accounts and sample secrets
-that production refuses to create. Production bootstraps a single administrator from a password
-the operator supplies, applies schema from a deploy job, and serves the image behind TLS. Source:
-`DbSeeder`; `docs/INSTALL.md`; `Dockerfile`. The rehearsal started only the disposable Development
-vault. It did not start the production image.
+The rehearsal used a disposable Development vault with two seeded staff accounts and sample
+secrets. In Production, `DbSeeder` creates `vault-admin` on an empty vault using the operator's
+bootstrap password. Startup requires `Database:Provider` set to `Postgres` or `SqlServer`.
+
+The [reference deployment](../../../deploy/production/) runs the vault image behind Caddy for
+HTTPS on one Docker host, with PostgreSQL and migrations enabled at startup. The
+[production runbook](../../INSTALL.md) also describes applying migrations from a separate deploy
+job. The rehearsal used the Development setup in [demo-setup-reset.md](demo-setup-reset.md).
 
 ### ქართული
 
-არა. რასაც გიჩვენებენ, Development-ის სადემონსტრაციო სამყაროა: ორი თანამშრომლის ანგარიში და
-სანიმუშო საიდუმლოები, რომელთა შექმნაზეც production უარს ამბობს. Production ერთ ადმინისტრატორს
-აყენებს ოპერატორის მიერ მოწოდებული პაროლით, სქემას განთავსების სამუშაოდან იყენებს და იმიჯს TLS-ის
-უკან აწვდის. წყარო: `DbSeeder`; `docs/INSTALL.md`; `Dockerfile`. რეპეტიციამ მხოლოდ ერთჯერადი
-Development საცავი გაუშვა. Production იმიჯი არ გაუშვია.
+რეპეტიციაში გამოიყენეს ერთჯერადი Development საცავი ორი წინასწარ შექმნილი თანამშრომლის
+ანგარიშითა და სანიმუშო საიდუმლოებით. Production რეჟიმში, როცა საცავში ანგარიშები ჯერ არ არის,
+`DbSeeder` ოპერატორის მიერ მითითებული საწყისი პაროლით ქმნის `vault-admin` ანგარიშს.
+გაშვებისთვის `Database:Provider` უნდა იყოს `Postgres` ან `SqlServer`.
+
+[საცნობარო განთავსება](../../../deploy/production/) ერთ Docker ჰოსტზე უშვებს საცავის იმიჯს,
+Caddy-ს HTTPS-ისთვის და PostgreSQL-ს. ამ განთავსებაში საცავი მიგრაციებს გაშვებისას ასრულებს.
+[Production-ის დაყენების ინსტრუქცია](../../INSTALL.md) ასევე აღწერს მიგრაციების ცალკე
+განთავსების ამოცანით შესრულებას. რეპეტიციის Development გარემო აღწერილია
+[demo-setup-reset.md](demo-setup-reset.md)-ში.
 
 ## Did the encryption-keys work merge?
 
 ### English
 
-Yes. On this revision `KekRotationService` implements `IKekRotationService`, and `EncryptionController`
-serves `GET api/ui/encryption` behind the Angular page `/Encryption`. ADR-0029 is in `docs/adr/` on
-`main`. The talk does not rotate a key. Rotation moves sealed envelopes in resumable batches and
-does not decrypt a value. This answer does not recite the old PR's review list.
+Yes. The administrator's Angular page `/Encryption` reads key status from
+`GET /api/ui/encryption`. `KekRotationService` rewraps data keys for secrets and archived versions
+under the current master key in resumable batches. Secret ciphertext stays intact. With Vault
+Transit, the page shows the Transit key versions reported by the engine, which asks Transit to
+rewrap the data keys. The rehearsal did not rotate a key. See `EncryptionController` and
+[ADR-0029](../../adr/0029-master-key-rotation-runs-in-resumable-batches.md).
 
 ### ქართული
 
-დიახ. ამ რევიზიაზე `KekRotationService` ახორციელებს `IKekRotationService`-ს, და
-`EncryptionController` აწვდის `GET api/ui/encryption`-ს Angular-ის გვერდის `/Encryption` უკან.
-ADR-0029 `main`-ის `docs/adr/`-შია. მოხსენება გასაღებს არ ატრიალებს. როტაცია დალუქულ კონვერტებს
-განახლებად პარტიებად გადააქვს და მნიშვნელობას არ შლის. ეს პასუხი ძველი PR-ის განხილვების სიას არ
-იმეორებს.
+დიახ. ადმინისტრატორისთვის განკუთვნილი Angular გვერდი `/Encryption` გასაღებების მდგომარეობას
+`GET /api/ui/encryption`-იდან კითხულობს. `KekRotationService` საიდუმლოებისა და დაარქივებული
+ვერსიების მონაცემთა გასაღებებს მოქმედი მასტერ-გასაღებით ხელახლა ახვევს. სამუშაო ჯგუფებად
+სრულდება და შეწყვეტის შემდეგ შეიძლება გაგრძელდეს. საიდუმლოს დაშიფრული მნიშვნელობა უცვლელი რჩება.
+Vault Transit-ის გამოყენებისას გვერდი აჩვენებს ძრავის მიერ მოწოდებულ Transit-ის გასაღების ვერსიებს.
+ძრავა მონაცემთა გასაღებების ხელახლა შეფუთვას Transit-ს სთხოვს. რეპეტიციაში გასაღების როტაცია
+არ ჩაუტარებიათ. იხილეთ `EncryptionController` და
+[ADR-0029](../../adr/0029-master-key-rotation-runs-in-resumable-batches.md).
 
 ## How long is the talk, and what is the marking scheme?
 
