@@ -224,10 +224,14 @@ Those rights are why each target is a **separate connection string**:
   pending startups and session termination before dropping the role.
 - **A PostgreSQL role's statements must double-quote `"{{name}}"`**: the minted name has capitals,
   which PostgreSQL folds to lower case when unquoted.
-- **A failing statement reaches the target's own log, password included**, because PostgreSQL logs a
-  failing statement by default (`log_min_error_statement = error`), and so does `log_statement` when
-  set. A failed mint's role is rolled back, so that password never worked, but restrict who reads the
-  target's logs as you would its credentials.
+- **PostgreSQL mint statements send a pre-hashed `SCRAM-SHA-256` verifier rather than the plaintext
+  password**, so `log_statement` and `log_min_error_statement` on the target server never record the
+  minted plaintext password. The verifier uses a fixed 4096-iteration count regardless of the target's
+  `scram_iterations` setting. Before upgrading existing PostgreSQL roles, confirm that custom creation
+  recipes pass `{{password}}` unchanged inside a single-quoted `PASSWORD '{{password}}'` clause (never
+  transforming or validating it as plaintext) and that every database client supports SCRAM-SHA-256
+  authentication (MD5-only clients cannot authenticate to newly minted roles). Still restrict access to
+  the target's logs because they can contain the verifier itself.
 - **Why they are separate:** `ALTER ANY LOGIN` can re-password *any* principal on the instance that
   holds it. If the vault's own login held it, a compromise of the running application would reach
   the server that stores the audit trail — so the vault never asks for it. See

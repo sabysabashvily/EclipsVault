@@ -1,4 +1,6 @@
+using System.Buffers.Text;
 using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace EclipsVault.Core.Application.DynamicSecrets;
 
@@ -11,7 +13,7 @@ namespace EclipsVault.Core.Application.DynamicSecrets;
 /// <see cref="CredentialMint"/>, which only ever produces such values, that makes injection a
 /// checked invariant instead of a convention someone can quietly break later.
 /// </summary>
-public static class CredentialStatementTemplate
+public static partial class CredentialStatementTemplate
 {
     public const string NamePlaceholder = "{{name}}";
     public const string PasswordPlaceholder = "{{password}}";
@@ -22,10 +24,19 @@ public static class CredentialStatementTemplate
         GuardIdentity(name);
         GuardPassword(password);
 
-        return template
-            .Replace(NamePlaceholder, name, StringComparison.Ordinal)
-            .Replace(PasswordPlaceholder, password, StringComparison.Ordinal)
-            .Replace(ExpirationPlaceholder, expiresAtUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture), StringComparison.Ordinal);
+        return Substitute(template, name, password, expiresAtUtc);
+    }
+
+    /// <summary>
+    /// Substitutes a pre-hashed PostgreSQL <c>SCRAM-SHA-256</c> verifier into <see cref="PasswordPlaceholder"/>
+    /// instead of a plaintext password, enforcing the exact RFC 7677 verifier grammar at the DDL boundary.
+    /// </summary>
+    public static string RenderWithScramVerifier(string template, string name, string scramVerifier, DateTimeOffset expiresAtUtc)
+    {
+        GuardIdentity(name);
+        GuardScramVerifier(scramVerifier);
+
+        return Substitute(template, name, scramVerifier, expiresAtUtc);
     }
 
     /// <summary>True when the value is safe to interpolate into backend DDL.</summary>
@@ -35,6 +46,40 @@ public static class CredentialStatementTemplate
     /// <summary>True when the value is safe to interpolate into a quoted literal.</summary>
     public static bool IsRenderablePassword(string value)
         => value.Length > 0 && value.All(char.IsAsciiLetterOrDigit);
+
+    /// <summary>True when the value matches PostgreSQL's <c>SCRAM-SHA-256</c> verifier format with no characters that can escape a SQL literal.</summary>
+    public static bool IsRenderableScramVerifier(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return false;
+        }
+
+        var match = ScramVerifierPattern().Match(value);
+        if (!match.Success)
+        {
+            return false;
+        }
+
+        if (!int.TryParse(match.Groups["iterations"].ValueSpan, NumberStyles.None, CultureInfo.InvariantCulture, out var iterations)
+            || iterations <= 0)
+        {
+            return false;
+        }
+
+        return Base64.IsValid(match.Groups["salt"].ValueSpan, out var saltLength)
+            && saltLength > 0
+            && Base64.IsValid(match.Groups["stored"].ValueSpan, out var storedLength)
+            && storedLength == 32
+            && Base64.IsValid(match.Groups["server"].ValueSpan, out var serverLength)
+            && serverLength == 32;
+    }
+
+    private static string Substitute(string template, string name, string secretLiteral, DateTimeOffset expiresAtUtc)
+        => template
+            .Replace(NamePlaceholder, name, StringComparison.Ordinal)
+            .Replace(PasswordPlaceholder, secretLiteral, StringComparison.Ordinal)
+            .Replace(ExpirationPlaceholder, expiresAtUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture), StringComparison.Ordinal);
 
     private static void GuardIdentity(string name)
     {
@@ -56,4 +101,18 @@ public static class CredentialStatementTemplate
                 "it is interpolated into a quoted SQL literal.", nameof(password));
         }
     }
+
+    private static void GuardScramVerifier(string scramVerifier)
+    {
+        if (!IsRenderableScramVerifier(scramVerifier))
+        {
+            // Deliberately does not echo the value: it is authentication material.
+            throw new ArgumentException(
+                "A SCRAM-SHA-256 verifier must match PostgreSQL's SCRAM-SHA-256$<iterations>:<salt>$<storedKey>:<serverKey> format.",
+                nameof(scramVerifier));
+        }
+    }
+
+    [GeneratedRegex(@"\ASCRAM-SHA-256\$(?<iterations>[1-9][0-9]*):(?<salt>[A-Za-z0-9+/]+=*)\$(?<stored>[A-Za-z0-9+/]{43}=):(?<server>[A-Za-z0-9+/]{43}=)\z")]
+    private static partial Regex ScramVerifierPattern();
 }
