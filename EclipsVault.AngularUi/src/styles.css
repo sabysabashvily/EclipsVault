@@ -3245,6 +3245,9 @@ textarea {
   display: block;
   font-size: 0.8rem;
 }
+.dynamic-roles-table {
+  --lease-control-height: 2.15rem;
+}
 .dynamic-roles-table th,
 .dynamic-roles-table td,
 .dynamic-leases-table th,
@@ -3277,10 +3280,14 @@ textarea {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+.dynamic-roles-table .inline-form > .button {
+  flex: 0 0 auto;
+  min-height: var(--lease-control-height);
+}
 .ttl-stepper {
   display: inline-flex;
   align-items: center;
-  min-height: 2.15rem;
+  min-height: var(--lease-control-height);
   padding: 2px;
   border: 1px solid var(--border-control, var(--border-strong));
   border-radius: var(--radius-pill);
@@ -3293,7 +3300,7 @@ textarea {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
-.ttl-stepper input {
+.dynamic-roles-table .ttl-stepper input {
   width: 2.5rem;
   min-height: 0;
   padding: 0 0.1rem;
@@ -3357,19 +3364,23 @@ textarea {
   .inline-form > input {
     min-height: 2.75rem;
   }
-  .ttl-stepper {
-    min-height: 2.75rem;
+}
+@media (max-width: 1199px), (pointer: coarse) {
+  .dynamic-roles-table {
+    --ttl-touch-target: 2.75rem;
+    /* The stepper adds 2px of padding and a 1px border on each edge. */
+    --lease-control-height: calc(var(--ttl-touch-target) + 6px);
   }
-  /* 16px stops iOS zooming on focus, and 2.75rem keeps the numeric touch target >= 44px. */
-  .ttl-stepper input {
-    min-width: 2.75rem;
+  /* 16px stops iOS zooming on focus. */
+  .dynamic-roles-table .ttl-stepper input {
+    min-width: var(--ttl-touch-target);
     width: 3rem;
-    min-height: 2.75rem;
+    min-height: var(--ttl-touch-target);
     font-size: 1rem;
   }
   .ttl-step-button {
-    width: 2.75rem;
-    height: 2.75rem;
+    width: var(--ttl-touch-target);
+    height: var(--ttl-touch-target);
   }
 }
 @container rows (width < 880px) {
@@ -3386,9 +3397,6 @@ textarea {
     flex-basis: 100%;
     margin-left: 0;
     margin-top: 0.35rem;
-  }
-  .row-cards .inline-form .button {
-    flex: 1 1 7rem;
   }
 }
 @media (max-width: 520px) {
