@@ -113,6 +113,7 @@ public class PostgresBackendTargetTests
     [InlineData("Host=[::ffff:127.0.0.1]:5432;Database=vault;Password=VaultPw1", "Host=127.0.0.1;Port=5432;Database=app;Password=TargetPw2")]
     [InlineData("Host=pg-a:5432,pg-b:5433;Database=vault;Password=VaultPw1", "Host=pg-b:5433;Database=app;Password=TargetPw2")]
     [InlineData("Host=/var/run/postgresql;Port=5432;Database=vault;Password=VaultPw1", "Host=/var/run/postgresql/;Database=app;Password=TargetPw2")]
+    [InlineData("Host=/var/run/postgresql:5433,pg-b:5432;Database=vault;Password=VaultPw1", "Host=/var/run/postgresql;Port=5433;Database=app;Password=TargetPw2")]
     [InlineData("Host=@eclipsvault-pg;Port=5432;Database=vault;Password=VaultPw1", "Host=@eclipsvault-pg;Database=app;Password=TargetPw2")]
     public async Task Minting_refuses_when_the_target_shares_an_endpoint_with_the_vaults_postgres_cluster_and_logs_no_passwords(
         string vaultConnection, string targetConnection)

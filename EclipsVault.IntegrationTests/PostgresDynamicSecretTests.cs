@@ -398,6 +398,103 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
         Assert.Empty(relayErrors);
     }
 
+    [Fact]
+    public async Task Minting_succeeds_against_a_distinct_cluster_when_a_multi_host_vault_dsn_sets_target_session_attributes_read_write()
+    {
+        var vaultConnectionString = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
+        if (!string.Equals(Environment.GetEnvironmentVariable("Database__Provider"), "Postgres", StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(vaultConnectionString))
+        {
+            // When the vault runs on SQL Server, prove multi-host Target Session Attributes=read-write
+            // still probes cleanly without Npgsql single-host validation errors on a same-cluster alias.
+            var sameTarget = new NpgsqlConnectionStringBuilder(vault.PostgresDynamicTargetConnectionString!);
+            using var forwarder = new TcpListener(IPAddress.Loopback, 0);
+            forwarder.Start();
+            var forwardedPort = ((IPEndPoint)forwarder.LocalEndpoint).Port;
+            using var shutdown = new CancellationTokenSource();
+            var relayErrors = new ConcurrentBag<Exception>();
+            var acceptedCount = 0;
+            var relay = RelayConnectionsAsync(forwarder, sameTarget.Host!, sameTarget.Port, relayErrors, () => Interlocked.Increment(ref acceptedCount), shutdown.Token);
+            try
+            {
+                var multiHostVault = new NpgsqlConnectionStringBuilder(sameTarget.ConnectionString)
+                {
+                    Host = $"{sameTarget.Host}:{sameTarget.Port},{sameTarget.Host}:{sameTarget.Port}",
+                    TargetSessionAttributes = "read-write",
+                    Pooling = false,
+                };
+                var viaAlias = new NpgsqlConnectionStringBuilder(sameTarget.ConnectionString)
+                {
+                    Host = IPAddress.Loopback.ToString(),
+                    Port = forwardedPort,
+                    Pooling = false,
+                };
+                var logger = new CapturingLogger<PostgresBackend>();
+                using var provider = BuildDiPostgresVault(multiHostVault.ConnectionString, viaAlias.ConnectionString, logger);
+                using var scope = provider.CreateScope();
+                var backend = scope.ServiceProvider.GetServices<IDynamicSecretBackend>()
+                    .Single(candidate => candidate.Backend == DynamicSecretBackend.Postgres);
+                var role = new DynamicSecretRole
+                {
+                    Name = "it_pg_multihost_rw",
+                    Backend = DynamicSecretBackend.Postgres,
+                    CreationStatements = DbSeeder.PostgresReaderRecipe,
+                    RevocationStatements = DbSeeder.PostgresRevocation,
+                };
+
+                await Assert.ThrowsAsync<MintRefusedException>(() =>
+                    backend.MintAsync(role, "ev_it_pg_multihost_rw_1", "Abc123Def456Ghi789Jkl012Mno345Pqr678Stu9",
+                        DateTimeOffset.UtcNow.AddMinutes(10), CancellationToken.None));
+
+                Assert.True(acceptedCount > 0);
+                Assert.Contains(logger.Messages, message => message.Contains("own PostgreSQL cluster", StringComparison.Ordinal));
+            }
+            finally
+            {
+                await shutdown.CancelAsync();
+                forwarder.Stop();
+                await relay;
+            }
+
+            Assert.Empty(relayErrors);
+            return;
+        }
+
+        var vaultBuilder = new NpgsqlConnectionStringBuilder(vaultConnectionString);
+        var multiHostReadWriteVault = new NpgsqlConnectionStringBuilder(vaultBuilder.ConnectionString)
+        {
+            Host = $"{vaultBuilder.Host}:{vaultBuilder.Port},{vaultBuilder.Host}:{vaultBuilder.Port}",
+            TargetSessionAttributes = "read-write",
+            Pooling = false,
+        };
+        var distinctLogger = new CapturingLogger<PostgresBackend>();
+        using var distinctProvider = BuildDiPostgresVault(
+            multiHostReadWriteVault.ConnectionString,
+            vault.PostgresDynamicTargetConnectionString!,
+            distinctLogger);
+        using var distinctScope = distinctProvider.CreateScope();
+        var distinctBackend = distinctScope.ServiceProvider.GetServices<IDynamicSecretBackend>()
+            .Single(candidate => candidate.Backend == DynamicSecretBackend.Postgres);
+        var distinctRole = new DynamicSecretRole
+        {
+            Name = "it_pg_multihost_distinct",
+            Backend = DynamicSecretBackend.Postgres,
+            CreationStatements = DbSeeder.PostgresReaderRecipe,
+            RevocationStatements = DbSeeder.PostgresRevocation,
+        };
+        const string mintedUser = "ev_it_pg_multihost_distinct_1";
+        const string mintedPassword = "Abc123Def456Ghi789Jkl012Mno345Pqr678Stu9";
+        try
+        {
+            await distinctBackend.MintAsync(distinctRole, mintedUser, mintedPassword, DateTimeOffset.UtcNow.AddMinutes(10), CancellationToken.None);
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, mintedUser, mintedPassword));
+        }
+        finally
+        {
+            await distinctBackend.RevokeAsync(distinctRole, mintedUser, CancellationToken.None);
+        }
+    }
+
     private static ServiceProvider BuildDiPostgresVault(
         string vaultConnectionString,
         string dynamicTargetConnectionString,

@@ -77,7 +77,10 @@ internal static class PostgresClusterGuard
     /// <summary>
     /// Expands a PostgreSQL connection string into one single-endpoint connection string per host listed in
     /// <c>Host</c>, so the live cluster check probes every configured vault endpoint rather than only the
-    /// first host Npgsql happens to reach.
+    /// first host Npgsql happens to reach. Clears <c>Target Session Attributes</c> on the single-host probe
+    /// strings because Npgsql rejects multi-host session attributes such as <c>read-write</c> on single-host
+    /// connections, and splits inline <c>:port</c> suffixes onto <see cref="NpgsqlConnectionStringBuilder.Port"/>
+    /// (including for Unix sockets) to match Npgsql's multi-host parser.
     /// </summary>
     public static IReadOnlyList<string> ExpandHostConnectionStrings(string connectionString)
     {
@@ -87,6 +90,7 @@ internal static class PostgresClusterGuard
             return [connectionString];
         }
 
+        var defaultPort = builder.Port > 0 ? builder.Port : DefaultPort;
         var segments = builder.Host.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (segments.Length <= 1)
         {
@@ -96,10 +100,13 @@ internal static class PostgresClusterGuard
         var expanded = new List<string>(segments.Length);
         foreach (var segment in segments)
         {
+            var (hostPart, port) = SplitMultiHostSegment(segment, defaultPort);
             var single = new NpgsqlConnectionStringBuilder(connectionString)
             {
-                Host = segment,
+                Host = hostPart,
+                Port = port,
             };
+            single.Remove("Target Session Attributes");
             expanded.Add(single.ConnectionString);
         }
 
@@ -116,9 +123,11 @@ internal static class PostgresClusterGuard
             return result;
         }
 
-        foreach (var segment in rawHost.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        var segments = rawHost.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var isMultiHost = segments.Length > 1;
+        foreach (var segment in segments)
         {
-            if (TryParseEndpoint(segment, defaultPort, out var endpoint))
+            if (TryParseEndpoint(segment, defaultPort, isMultiHost, out var endpoint))
             {
                 result.Add(endpoint);
             }
@@ -127,7 +136,7 @@ internal static class PostgresClusterGuard
         return result;
     }
 
-    private static bool TryParseEndpoint(string segment, int defaultPort, out PostgresEndpoint endpoint)
+    private static bool TryParseEndpoint(string segment, int defaultPort, bool isMultiHost, out PostgresEndpoint endpoint)
     {
         endpoint = default;
         if (string.IsNullOrWhiteSpace(segment))
@@ -136,52 +145,26 @@ internal static class PostgresClusterGuard
         }
 
         var trimmed = segment.Trim();
-        if (trimmed.StartsWith('@'))
+        var (hostPart, port) = isMultiHost
+            ? SplitMultiHostSegment(trimmed, defaultPort)
+            : SplitSingleHostSegment(trimmed, defaultPort);
+
+        if (hostPart.Length == 0)
         {
-            endpoint = new PostgresEndpoint(IsUnixSocket: true, trimmed, defaultPort);
+            return false;
+        }
+
+        if (hostPart.StartsWith('@'))
+        {
+            endpoint = new PostgresEndpoint(IsUnixSocket: true, hostPart, port);
             return true;
         }
 
-        if (trimmed.StartsWith('/'))
+        if (hostPart.StartsWith('/'))
         {
-            var socketPath = trimmed.Length > 1 ? trimmed.TrimEnd('/') : trimmed;
-            endpoint = new PostgresEndpoint(IsUnixSocket: true, socketPath, defaultPort);
+            var socketPath = hostPart.Length > 1 ? hostPart.TrimEnd('/') : hostPart;
+            endpoint = new PostgresEndpoint(IsUnixSocket: true, socketPath, port);
             return true;
-        }
-
-        string hostPart;
-        var port = defaultPort;
-
-        if (trimmed.StartsWith('['))
-        {
-            var close = trimmed.IndexOf(']');
-            if (close < 0)
-            {
-                return false;
-            }
-
-            hostPart = trimmed[1..close];
-            var rest = trimmed[(close + 1)..];
-            if (rest.StartsWith(':') && int.TryParse(rest[1..], NumberStyles.None, CultureInfo.InvariantCulture, out var parsedPort))
-            {
-                port = parsedPort;
-            }
-        }
-        else
-        {
-            var firstColon = trimmed.IndexOf(':');
-            var lastColon = trimmed.LastIndexOf(':');
-            // Exactly one colon means host:port; multiple colons mean a bare IPv6 literal without a port.
-            if (firstColon > 0 && firstColon == lastColon
-                && int.TryParse(trimmed[(lastColon + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out var parsedPort))
-            {
-                hostPart = trimmed[..lastColon];
-                port = parsedPort;
-            }
-            else
-            {
-                hostPart = trimmed;
-            }
         }
 
         var normalized = NormalizeTcpHost(hostPart);
@@ -192,6 +175,68 @@ internal static class PostgresClusterGuard
 
         endpoint = new PostgresEndpoint(IsUnixSocket: false, normalized, port);
         return true;
+    }
+
+    /// <summary>
+    /// Matches Npgsql's <c>NpgsqlMultiHostDataSource</c> parsing: bracketed IPv6 splits at <c>]</c>,
+    /// while any other entry (including Unix socket paths) splits an inline <c>:port</c> at its colon.
+    /// </summary>
+    private static (string Host, int Port) SplitMultiHostSegment(string segment, int defaultPort)
+    {
+        var trimmed = segment.Trim();
+        if (trimmed.StartsWith('['))
+        {
+            var close = trimmed.IndexOf(']');
+            if (close < 0)
+            {
+                return (string.Empty, defaultPort);
+            }
+
+            var host = trimmed[1..close];
+            var rest = trimmed[(close + 1)..];
+            if (rest.StartsWith(':') && int.TryParse(rest[1..], NumberStyles.None, CultureInfo.InvariantCulture, out var bracketPort))
+            {
+                return (host, bracketPort);
+            }
+
+            return (host, defaultPort);
+        }
+
+        var firstColon = trimmed.IndexOf(':');
+        var lastColon = trimmed.LastIndexOf(':');
+        if (trimmed.StartsWith('/') || trimmed.StartsWith('@'))
+        {
+            if (lastColon > 0 && int.TryParse(trimmed[(lastColon + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out var socketPort))
+            {
+                return (trimmed[..lastColon], socketPort);
+            }
+
+            return (trimmed, defaultPort);
+        }
+
+        // Exactly one colon means host:port; multiple colons mean a bare IPv6 literal without a port.
+        if (firstColon > 0 && firstColon == lastColon
+            && int.TryParse(trimmed[(lastColon + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out var parsedPort))
+        {
+            return (trimmed[..lastColon], parsedPort);
+        }
+
+        return (trimmed, defaultPort);
+    }
+
+    /// <summary>
+    /// Matches Npgsql's single-host <c>NpgsqlConnectionStringBuilder</c> parsing: Unix socket paths and
+    /// abstract socket names keep any colons verbatim and always use <see cref="NpgsqlConnectionStringBuilder.Port"/>.
+    /// </summary>
+    private static (string Host, int Port) SplitSingleHostSegment(string segment, int defaultPort)
+    {
+        var trimmed = segment.Trim();
+        if (trimmed.StartsWith('/') || trimmed.StartsWith('@'))
+        {
+            return (trimmed, defaultPort);
+        }
+
+        return SplitMultiHostSegment(trimmed, defaultPort);
     }
 
     private static string NormalizeTcpHost(string host)
