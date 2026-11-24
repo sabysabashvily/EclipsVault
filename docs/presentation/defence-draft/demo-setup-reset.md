@@ -1,4 +1,4 @@
-# Demonstration setup and reset / დემონსტრაციის მომზადება და დაბრუნება
+# Demonstration setup and reset / დემონსტრაციის მომზადება და საწყის მდგომარეობაში დაბრუნება
 
 The demonstration is a disposable Development vault. It is not the production install in
 `docs/INSTALL.md` or `deploy/production/`, and it is not the Playwright stack in `AGENTS.md`.
@@ -12,17 +12,20 @@ and found `Revealed` and `Viewed` on `/Audit`. The screenshots in [screens/](scr
 run. The Compose-project setup in this file was last run on `d576dd9` on 21 November and was not
 re-run on `1298958`.
 
-დემონსტრაცია ერთჯერადი Development საცავია. ის არ არის `docs/INSTALL.md`-ის ან `deploy/production/`-ის
-production დაყენება და არც `AGENTS.md`-ის Playwright სტეკი.
+დემონსტრაციისთვის გამოიყენება ერთჯერადი საცავი Development გარემოში. `docs/INSTALL.md`-სა და
+`deploy/production/`-ში აღწერილი Production განთავსება და `AGENTS.md`-ში აღწერილი Playwright სტეკი
+დემონსტრაციის ფარგლებს გარეთაა.
 
-ქვემოთ აღწერილი გავლა გაეშვა `origin/main` `1298958050e45f83aefeb4b6455d0a02169ab22a`-ზე 24 ნოემბერს
-2026 და დასრულდა დაახლოებით 16:03 Asia/Tbilisi-ზე. ეს გაშვება სხვა პორტებზე იყო: ცალკე PostgreSQL
-კონტეინერი და Web `https://localhost:7543`-ზე, რადგან 7443 პორტი მფლობელის სამუშაო საცავს ეკავა,
-ხოლო სამუშაო Compose სტეკი თავისი ფიქსირებული კონტეინერის სახელებით იყო გაშვებული. გავლამ ორივე
-დათესილი ანგარიში შეიყვანა და ჩარიცხა, გახსნა `Phoenix_Dev_Database_Password`, გამოაჩინა
-მნიშვნელობა, დატოვა ეს გვერდი და `/Audit`-ზე იპოვა `Revealed` და `Viewed`. [screens/](screens/)-ის
-სურათები ამ გაშვებიდანაა. ამ ფაილის Compose პროექტის მომზადება ბოლოს `d576dd9`-ზე 21 ნოემბერს
-გაეშვა და `1298958`-ზე თავიდან არ გაშვებულა.
+ქვემოთ აღწერილი რეპეტიცია ჩატარდა 2026 წლის 24 ნოემბერს `origin/main`-ის რევიზიაზე
+`1298958050e45f83aefeb4b6455d0a02169ab22a` და დაახლოებით 16:03-ზე დასრულდა (Asia/Tbilisi).
+ამ გაშვებისთვის სხვა პორტები იყო გამოყოფილი. PostgreSQL ცალკე კონტეინერში გაეშვა, Web კი მისამართზე
+`https://localhost:7543`, რადგან პორტი 7443 მფლობელის სამუშაო საცავს ეკავა და სამუშაო Compose
+სტეკი უკვე გაშვებული იყო კონტეინერების ფიქსირებული სახელებით. რეპეტიციაზე ორივე წინასწარ შექმნილი
+ანგარიშით შესრულდა შესვლა და დარეგისტრირდა ავთენტიფიკატორი. გაიხსნა
+`Phoenix_Dev_Database_Password`-ის დეტალები. მნიშვნელობის გამოჩენის შემდეგ დეტალების გვერდი დაიხურა,
+ხოლო `/Audit`-ზე მოიძებნა `Revealed` და `Viewed` ჩანაწერები. საქაღალდეში [screens/](screens/)
+ამ გაშვების ეკრანის ანაბეჭდებია. ამ ფაილში აღწერილი Compose პროექტი ბოლოს 21 ნოემბერს გაეშვა
+`d576dd9`-ზე. `1298958`-ზე ეს გაშვება აღარ გამეორებულა.
 
 ## Story the stack must support
 
@@ -81,11 +84,12 @@ Two settings matter on `1298958`:
   The commands below set it to the vault's own address so the setting is visible. Source:
   `UserAdminService`; `AccountInvitationDelivery`; ADR-0033.
 
-პაროლები და მასტერ-გასაღები ამ გაშვების გარსში დარჩეს. შაბლონის `DevelopmentKekBase64`
-ჩანაცვლებული ტექსტია, არა გასაღები, ამიტომ `ECLIPSVAULT_KEK` გარსში შექმენით. ნამდვილი გასაღები
-ან პაროლი ამ დოკუმენტში ნუ ჩაწერთ. `Database__Provider=Postgres` აუცილებელია: მის გარეშე პროცესი
-გაშვებისთანავე ჩერდება. `Identity__PublicUrl` გაშვებისთვის საჭირო არ არის; მისგან მოწვევის ბმული
-იწყობა, ხოლო მოხსენება მოწვევას არ აგზავნის.
+პაროლები და მასტერ-გასაღები მხოლოდ ამ გაშვებისთვის გახსნილი ტერმინალის გარემოში შეინახეთ.
+შაბლონში `DevelopmentKekBase64` მხოლოდ შესავსები ადგილის აღმნიშვნელია. `ECLIPSVAULT_KEK`-ის
+მნიშვნელობა ტერმინალში შექმენით. გასაღები ან პაროლი ამ დოკუმენტში ნუ ჩაწერთ.
+`Database__Provider=Postgres` აუცილებელია. პარამეტრის გარეშე პროცესი გაშვებისას ჩერდება.
+`Identity__PublicUrl` გაშვებისთვის აუცილებელი არ არის. საცავი ამ მისამართიდან ადგენს მოწვევის
+ბმულს. დემონსტრაციისას მოწვევა არ იგზავნება.
 
 First sign-in enrolls an authenticator. The heading is "Set up two-factor authentication" and the
 button is "Confirm enrollment". Do that with the projector off, before the room is watching. Do
@@ -267,11 +271,13 @@ enrolled again and gives the secret a new id. Unset `Seed__AdminPassword`, `Seed
 `ECLIPSVAULT_KEK`, `EV_DEMO_PG_PASSWORD`, and `ECLIPSVAULT_AUDIT_SIGNING_KEY` in that shell when the
 day is over. Do not delete a Docker image you did not build for this run.
 
-ასევე გააჩერეთ Web პროცესი მისი პროცესის ნომრით და ამ გარსში მოხსენით `Seed__AdminPassword`,
-`Seed__DevPassword`, `ECLIPSVAULT_KEK`, `EV_DEMO_PG_PASSWORD` და `ECLIPSVAULT_AUDIT_SIGNING_KEY`.
-Compose პროექტის დაბრუნება არის `docker compose -p eclipsvault-defence-draft down -v`. `-p`-ის გარეშე
-`docker compose down` ამ პროექტს არ აჩერებს. ცალკე ბაზის დაბრუნება არის
-`docker stop ev-defence-refresh-pg`: `--rm`-ის გამო კონტეინერიც და მისი მონაცემების ტომიც იშლება.
+რეპეტიციისთვის გაშვებული Web პროცესი მისი იდენტიფიკატორით გააჩერეთ. დღის ბოლოს ტერმინალის
+გარემოდან ამოშალეთ `Seed__AdminPassword`, `Seed__DevPassword`, `ECLIPSVAULT_KEK`,
+`EV_DEMO_PG_PASSWORD` და `ECLIPSVAULT_AUDIT_SIGNING_KEY`. Compose პროექტის საწყის მდგომარეობაში
+დასაბრუნებლად გაუშვით `docker compose -p eclipsvault-defence-draft down -v`. `docker compose down`
+პარამეტრ `-p`-ის გარეშე ამ პროექტს არ აჩერებს. ცალკე გაშვებული ბაზისთვის გამოიყენეთ
+`docker stop ev-defence-refresh-pg`. `--rm` პარამეტრის გამო კონტეინერიც წაიშლება და მისი მონაცემების
+ტომიც.
 
 If the talk was pointed at the ordinary development volume by mistake, do not run `down -v` to
 "clean the demo". That deletes the development database. Leave it, and say the reset was not done.

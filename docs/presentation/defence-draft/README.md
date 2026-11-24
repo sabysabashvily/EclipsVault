@@ -4,10 +4,10 @@ English and Georgian storyboard for one talk about EclipsVault. The talk starts 
 Phoenix team opening one synthetic secret, then looks at that reveal in the audit log. The owner confirmed a presentation cap of 30 minutes. Detailed slide timing is still
 unallocated; the supplied C4 guide contains no timing rule.
 
-ეს არის EclipsVault-ის ერთი მოხსენების ინგლისურ-ქართული მონახაზი. მოხსენება იწყება სინთეზური Phoenix
-გუნდით, რომელიც ერთ სინთეზურ საიდუმლოს ხსნის, შემდეგ კი ამ გახსნას აუდიტის ჟურნალში ამოწმებს.
-პრეზენტაციის დადასტურებული ზედა ზღვარია 30 წუთი. სლაიდებზე დროის ზუსტი განაწილება
-ჯერ დასაზუსტებელია; მოწოდებული C4 გზამკვლევი ხანგრძლივობას არ განსაზღვრავს.
+ეს ერთი მოხსენების ინგლისურ-ქართული მონახაზია EclipsVault-ის შესახებ. ჯერ გამოგონილი გუნდი Phoenix
+ერთ სატესტო საიდუმლოს ხსნის, შემდეგ კი გახსნის ჩანაწერს აუდიტის ჟურნალში ვნახავთ.
+მფლობელმა დაადასტურა, რომ პრეზენტაცია მაქსიმუმ 30 წუთს უნდა გაგრძელდეს. სლაიდებს შორის დრო ჯერ
+არ განაწილებულა. მოწოდებული C4 გზამკვლევი პრეზენტაციის ხანგრძლივობას არ განსაზღვრავს.
 
 This folder is the rehearsal draft for the 24 November defence. It records one disposable
 Development walk. It does not record a production deployment or a security guarantee.
@@ -65,11 +65,12 @@ The code on `origin/main` at `1298958` includes:
 - the `saas-design` redesign and three polish passes: a collapsible sidebar, a command palette
   ("Search or jump to…", ⌘K), and equal light and dark themes
 
-ამ რევიზიაზე ბრაუზერის ინტერფეისი, შესვლის ჩათვლით, Angular-შია. Razor-ის ხედი აღარ დარჩა. ახალი
-ანგარიში ელფოსტით გაგზავნილი მოწვევით აქტიურდება: ადამიანი თავად აყენებს პაროლს და ავთენტიფიკატორს
-ერთ აუდიტირებულ ტრანზაქციაში. Angular-ის გარეთ წარუმატებლობას სამი სერვერული გვერდი პასუხობს.
-`Database:Provider`-ის გარეშე საცავი არ ეშვება. რეპოზიტორიას აქვს production-ის საცნობარო
-განთავსება Caddy-ით და PostgreSQL-ით, ხოლო დინამიკური საიდუმლოები PostgreSQL-ზეც მუშაობს.
+ამ რევიზიაში ბრაუზერის ინტერფეისი, შესვლის გვერდების ჩათვლით, Angular-ზე მუშაობს. Razor-ის ხედები
+სრულად ამოღებულია. ელფოსტით მიღებული მოწვევით მომხმარებელი თავად ადგენს პაროლს და არეგისტრირებს
+ავთენტიფიკატორს. ორივე მოქმედება ერთ ტრანზაქციაში სრულდება და აუდიტში აღირიცხება. Angular-ის
+გარეთ სერვერი სამიდან შესაბამის გვერდს აბრუნებს. საცავი `Database:Provider`-ის გარეშე არ ეშვება.
+რეპოზიტორიაში მოცემულია Production-ში განთავსების ნიმუში Caddy-ითა და PostgreSQL-ით.
+დინამიკური საიდუმლოები PostgreSQL-ზეც მუშაობს.
 
 Master-key rotation runs in resumable batches (ADR-0029). The audit trail records refusals
 (ADR-0031). Audit bundle export streams its result after a step-up check (ADR-0030).

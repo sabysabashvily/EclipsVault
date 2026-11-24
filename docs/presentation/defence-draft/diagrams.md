@@ -44,11 +44,11 @@ Caption / წარწერა: EclipsVault is one software system. A vault acc
 uses a session. An application that uses a service account is an external system and calls the
 Public API with an API key. A new account is activated from an invitation link sent by SMTP. The
 identity provider, SMTP, Vault Transit, and the dynamic-secret target databases exist only when that
-integration is configured. / EclipsVault ერთი პროგრამული სისტემაა. ბრაუზერში მყოფი საცავის
-ანგარიში პიროვნებაა და სესიას იყენებს. აპლიკაცია, რომელიც სერვისის ანგარიშს იყენებს, გარე
-სისტემაა და საჯარო API-ს API გასაღებით იძახებს. ახალი ანგარიში SMTP-ით გაგზავნილი მოწვევის
-ბმულით აქტიურდება. იდენტობის მომწოდებელი, SMTP, Vault Transit და დინამიკური საიდუმლოების სამიზნე
-ბაზები მხოლოდ მაშინ არსებობენ, როცა ეს ინტეგრაცია კონფიგურირებულია.
+integration is configured. / EclipsVault ერთი პროგრამული სისტემაა. მომხმარებელი ბრაუზერში
+საცავის ანგარიშითა და სესიით სარგებლობს. სერვისის ანგარიშის მქონე აპლიკაცია გარე სისტემაა და
+საჯარო API-ს API გასაღებით მიმართავს. ახალი ანგარიში SMTP-ით გაგზავნილი მოწვევის ბმულით აქტიურდება.
+იდენტობის პროვაიდერი, SMTP, Vault Transit და დინამიკური საიდუმლოების სამიზნე ბაზები მხოლოდ
+შესაბამისი ინტეგრაციის გამართვისას გამოიყენება.
 
 | Element | Source at `1298958` |
 |---|---|
@@ -106,10 +106,11 @@ Redis is a fourth container only when it is enabled. The Angular UI runs in the 
 included, and calls the UI API with the session cookie. The Web application serves the Angular
 files, the UI API, the Public API, and three server pages of its own. It refuses to start without
 `Database:Provider`. The person and the external systems stay outside the boundary. / Angular UI,
-Web აპლიკაცია და ერთი ბაზა გაშვების კონტეინერებია. Redis მეოთხე კონტეინერია მხოლოდ მაშინ, როცა
-ჩართულია. Angular UI ბრაუზერში ეშვება, შესვლის ჩათვლით, და UI API-ს სესიის ქუქით იძახებს. Web
-აპლიკაცია Angular-ის ფაილებს, UI API-ს, საჯარო API-ს და საკუთარ სამ სერვერულ გვერდს აწვდის. ის
-`Database:Provider`-ის გარეშე არ ეშვება. პიროვნება და გარე სისტემები საზღვრის გარეთ რჩებიან.
+Web აპლიკაცია და ერთი მონაცემთა ბაზა გაშვებისას ცალკე კონტეინერებია. ჩართვის შემთხვევაში Redis
+მეოთხე კონტეინერია. Angular UI ბრაუზერში მუშაობს, შესვლის გვერდების ჩათვლით, და UI API-ს სესიის
+ქუქით მიმართავს. Web აპლიკაცია აწვდის Angular-ის ფაილებს, ამუშავებს UI API-ისა და საჯარო API-ის
+მოთხოვნებს და აბრუნებს სამ საკუთარ სერვერულ გვერდს. `Database:Provider`-ის გარეშე არ ეშვება.
+მომხმარებელი და გარე სისტემები საზღვრის მიღმაა.
 
 | Element | Source at `1298958` |
 |---|---|
@@ -193,14 +194,15 @@ only after the second factor. An invitation token activates an account in one au
 `SecretDetailsController` asks `SecretAccessHandler`, records `Viewed` only after allow, and calls
 `RevealAsync` only after a later allow. The Public API reaches `SecretsApiController` through the
 API key handler and uses the same policy. `AuditController` is `AdminOnly`. / `AngularUiRoutes`
-Angular-ის დოკუმენტს მხოლოდ თავის სიაში მოცემულ მისამართებზე აწვდის, შესვლის გვერდების ჩათვლით.
-შესულ მომხმარებელს გვერდის უცნობ მისამართზე `ServerPage`-ის „ვერ მოიძებნა“ გვერდი ხვდება. შესვლა
-`AuthController`-სა და `PendingSignInController`-ს იძახებს, ხოლო `SessionIssuer` სესიას მხოლოდ
-მეორე ფაქტორის შემდეგ გასცემს. მოწვევის ტოკენი ანგარიშს ერთ აუდიტირებულ ტრანზაქციაში ააქტიურებს.
-`SecretDetailsController` ეკითხება `SecretAccessHandler`-ს, `Viewed`-ს მხოლოდ ნებართვის შემდეგ
-წერს და `RevealAsync`-ს მხოლოდ მომდევნო ნებართვის შემდეგ იძახებს. საჯარო API
-`SecretsApiController`-ს API გასაღების დამმუშავებლით აღწევს და იმავე წესს იყენებს.
-`AuditController` `AdminOnly`-ა.
+Angular-ის დოკუმენტს მხოლოდ ჩამოთვლილ მარშრუტებზე აბრუნებს, მათ შორის შესვლის გვერდებზე. თუ
+უკვე შესული მომხმარებელი სიაში არმყოფ მისამართს გახსნის, `ServerPage` აბრუნებს გვერდს „ვერ მოიძებნა“.
+შესვლის მოთხოვნებს ამუშავებს `AuthController` და `PendingSignInController`. `SessionIssuer` სესიას
+მხოლოდ მეორე ფაქტორის დადასტურების შემდეგ გასცემს. მოწვევის ტოკენით ანგარიში ერთ ტრანზაქციაში
+აქტიურდება და აქტივაცია აუდიტში აღირიცხება. `SecretDetailsController` წვდომას `SecretAccessHandler`-ით
+ამოწმებს. ნებართვის შემდეგ წერს `Viewed`-ს, ხოლო `RevealAsync`-ს მხოლოდ განმეორებითი შემოწმებით
+მიღებული ნებართვის შემდეგ იძახებს. საჯარო API-ის მოთხოვნა `SecretsApiController`-მდე API გასაღების
+დამმუშავებლის გავლით მიდის და წვდომის იმავე პოლიტიკას ექვემდებარება.
+`AuditController`-ზე მოქმედებს `AdminOnly`.
 
 | Element | Source at `1298958` |
 |---|---|
@@ -268,9 +270,9 @@ sequenceDiagram
 
 Caption / წარწერა: Opening the details page checks access before it commits `Viewed`. Reveal
 checks access again, commits `SecretRevealed`, and only then calls `UnsealAsync`. The Angular page
-shows the plaintext once. / დეტალების გვერდის გახსნა წვდომას `Viewed`-ის დაფიქსირებამდე ამოწმებს.
-გახსნა წვდომას თავიდან ამოწმებს, აფიქსირებს `SecretRevealed`-ს და მხოლოდ შემდეგ იძახებს
-`UnsealAsync`-ს. Angular-ის გვერდი ღია ტექსტს ერთხელ აჩვენებს.
+shows the plaintext once. / დეტალების გვერდის გახსნისას სერვერი `Viewed`-ის დაფიქსირებამდე ამოწმებს
+წვდომას. მნიშვნელობის გამჟღავნებისას სერვერი წვდომას ხელახლა ამოწმებს, აფიქსირებს `SecretRevealed`-ს
+და მხოლოდ ამის შემდეგ იძახებს `UnsealAsync`-ს. Angular-ის გვერდი გაშიფრულ მნიშვნელობას ერთხელ აჩვენებს.
 
 | Element | Source at `1298958` |
 |---|---|
@@ -344,11 +346,11 @@ developer machine and PostgreSQL in the Compose project. The reference productio
 Caddy, the vault image, and PostgreSQL on one Docker host: Caddy obtains the certificate, the vault
 trusts forwarded addresses only from Caddy's fixed address, and the database sits on an internal
 network. The demonstration is one disposable Development run, not another deployment. /
-Development და production განთავსების კვანძებია. Development Web-ს დეველოპერის მანქანაზე
-უშვებს, PostgreSQL-ს კი Compose პროექტში. production-ის საცნობარო განთავსება Caddy-ს, საცავის
-იმიჯს და PostgreSQL-ს ერთ Docker ჰოსტზე უშვებს: Caddy სერტიფიკატს თვითონ იღებს, საცავი
-გადაგზავნილ მისამართებს მხოლოდ Caddy-ის ფიქსირებული მისამართიდან ენდობა, ბაზა კი შიდა ქსელშია.
-დემონსტრაცია Development-ის ერთი ერთჯერადი გაშვებაა, არა სხვა განთავსება.
+Development და Production განთავსების კვანძებია. Development გარემოში Web დეველოპერის კომპიუტერზე
+ეშვება, PostgreSQL კი Compose პროექტში. Production-ში განთავსების ნიმუშში Caddy, საცავის იმიჯი და
+PostgreSQL ერთ Docker ჰოსტზე ეშვება. Caddy თავად იღებს სერტიფიკატს. საცავი გადმოცემულ მისამართებს
+მხოლოდ მაშინ ენდობა, თუ მათ Caddy-ის ფიქსირებული მისამართიდან იღებს. ბაზა შიდა ქსელშია.
+დემონსტრაცია მხოლოდ Development გარემოში ერთჯერად გაშვებას აჩვენებს.
 
 | Element | Source at `1298958` |
 |---|---|

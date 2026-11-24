@@ -1,14 +1,15 @@
-# Security flows / უსაფრთხოების ნაკადები
+# Security flows / უსაფრთხოების პროცესები
 
 Each step names the source it was read from, at `origin/main`
 `1298958050e45f83aefeb4b6455d0a02169ab22a` (24 November 2026, 15:18 Asia/Tbilisi).
 The live journey is flow 4. The others are the answers around it. The disposable Development run
 is recorded in [demo-setup-reset.md](demo-setup-reset.md).
 
-ყოველი ნაბიჯი ასახელებს წყაროს, წაკითხულს `origin/main`
-`1298958050e45f83aefeb4b6455d0a02169ab22a`-ზე (24 ნოემბერი 2026, 15:18 Asia/Tbilisi).
-ცოცხალი გზა ნაკადი 4-ია. დანარჩენი მის გარშემო პასუხებია. ერთჯერადი Development გაშვება
-[demo-setup-reset.md](demo-setup-reset.md)-შია ჩაწერილი.
+თითოეულ ნაბიჯს ახლავს მითითება წყაროზე `origin/main`-ის რევიზიიდან
+`1298958050e45f83aefeb4b6455d0a02169ab22a` (2026 წლის 24 ნოემბერი, 15:18 Asia/Tbilisi).
+დემონსტრაცია მე-4 ნაწილს მიჰყვება. დანარჩენი ნაწილები მასთან დაკავშირებულ კითხვებს პასუხობს.
+ერთჯერადი გაშვება Development გარემოში აღწერილია
+[demo-setup-reset.md](demo-setup-reset.md)-ში.
 
 ## 1. Vault account sign-in
 

@@ -1,16 +1,17 @@
-# Rehearsal checklist / რეპეტიციის სია
+# Rehearsal checklist / რეპეტიციის საკონტროლო სია
 
 One run of the 24 November talk, on `origin/main` `1298958050e45f83aefeb4b6455d0a02169ab22a`.
 The presentation cap is 30 minutes. The click path was walked on this revision on 24 November
 2026, finishing at about 16:03 Asia/Tbilisi, on a port-shifted disposable vault. Exact setup is
 [demo-setup-reset.md](demo-setup-reset.md).
 
-24 ნოემბრის მოხსენების ერთი გავლა, `origin/main`
-`1298958050e45f83aefeb4b6455d0a02169ab22a`-ზე. მოხსენების ზედა ზღვარია 30 წუთი. დაწკაპუნების გზა
-ამ რევიზიაზე გაიარა 24 ნოემბერს 2026, დასრულდა დაახლოებით 16:03 Asia/Tbilisi-ზე, სხვა პორტზე გაშვებულ ერთჯერად
-საცავზე. ზუსტი მომზადება [demo-setup-reset.md](demo-setup-reset.md)-შია.
+24 ნოემბრის მოხსენების ერთი რეპეტიცია `origin/main`-ის რევიზიაზე
+`1298958050e45f83aefeb4b6455d0a02169ab22a`. პრეზენტაციისთვის გამოყოფილია მაქსიმუმ 30 წუთი.
+დემონსტრაციის ნაბიჯები სხვა პორტზე გაშვებულ ერთჯერად საცავში შემოწმდა 2026 წლის 24 ნოემბერს.
+რეპეტიცია დაახლოებით 16:03-ზე დასრულდა (Asia/Tbilisi). მომზადების ინსტრუქცია მოცემულია
+[demo-setup-reset.md](demo-setup-reset.md)-ში.
 
-## Pre-flight / წინასწარი
+## Pre-flight / რეპეტიციამდე შესამოწმებელი საკითხები
 
 - [ ] Revision is `1298958` or the commit you will name on slide 7.
 - [ ] The talk's PostgreSQL is up and healthy: the Compose project `eclipsvault-defence-draft`, or
@@ -24,7 +25,7 @@ The presentation cap is 30 minutes. The click path was walked on this revision o
 - [ ] Theme is light. The account menu says "Switch to dark".
 - [ ] Projector is on the sign-in page, with both fields empty.
 
-## Run order / რიგი
+## Run order / დემონსტრაციის თანმიმდევრობა
 
 1. **Problem.** No product. One sentence: a shared file cannot say who opened the password.
 2. **Access.** Four rules in `SecretAccessPolicy`. This secret is Internal and Development, so
@@ -45,7 +46,7 @@ The presentation cap is 30 minutes. The click path was walked on this revision o
 7. **Revision.** Read only the filled cells in [storyboard.md](storyboard.md) slide 7.
 8. **Stop.** Three sentences, then questions. [questions.md](questions.md).
 
-## If a step fails / თუ ნაბიჯი ჩავარდა
+## If a step fails / თუ რომელიმე ნაბიჯი ვერ შესრულდა
 
 | What you see | Do |
 |---|---|
@@ -72,7 +73,7 @@ Do this the day before, not in the room. Same vault, same clicks, light theme, 1
   `01-sign-in.png`, `02-secrets-list.png`, `03-secret-details.png`, `04-secrets-after-reveal.png`,
   `05-audit-log.png`. No recording has been made.
 
-## Reset before the day / დაბრუნება დღემდე
+## Reset before the day / საწყისი მდგომარეობის აღდგენა მოხსენებამდე
 
 Stop the Web process by its process id. Then reset only the talk's database:
 
@@ -87,5 +88,7 @@ or, for the standalone container, `docker stop ev-defence-refresh-pg` and the `d
 Start Web again and enroll both accounts off camera. `docker compose down` without `-p` does not
 stop the Compose project.
 
-Web-ის პროცესი მისი ნომრით გააჩერეთ, შემდეგ მხოლოდ მოხსენების ბაზა დააბრუნეთ, ზემოთ მოცემული
-ბრძანებით. ორივე ანგარიში ისევ კამერის გარეშე ჩარიცხეთ.
+Web-ის პროცესი მისი იდენტიფიკატორით გააჩერეთ და ზემოთ მოცემული შესაბამისი ბრძანებებით მხოლოდ
+სადემონსტრაციო ბაზა აღადგინეთ საწყის მდგომარეობაში. გაუშვით Web ხელახლა და ორივე ანგარიშისთვის
+ავთენტიფიკატორი კამერის გარეშე დაარეგისტრირეთ. `docker compose down` პარამეტრ `-p`-ის გარეშე ამ
+Compose პროექტს არ აჩერებს.

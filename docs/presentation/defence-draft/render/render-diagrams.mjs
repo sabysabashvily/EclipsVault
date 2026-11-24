@@ -21,7 +21,7 @@ const georgianTitles = {
   1: 'კონტექსტი',
   2: 'კონტეინერი',
   3: 'Web-ის კომპონენტი',
-  4: 'გახსნის კოდი',
+  4: 'მნიშვნელობის გამჟღავნების კოდი',
   5: 'განთავსება',
 };
 
@@ -220,7 +220,7 @@ const html = `<!DOCTYPE html>
 <main>
   <h1>EclipsVault diagrams / დიაგრამები</h1>
   <p class="intro" lang="en">Printable copy of the five C4 pictures in diagrams.md. Colours and type follow Pele's CSS variables. This page does not show a running vault.</p>
-  <p class="intro" lang="ka">diagrams.md-ის ხუთი C4 სურათის საბეჭდი ასლი. ფერები და შრიფტი Pele-ის CSS ცვლადებს მიჰყვება. ეს გვერდი გაშვებულ საცავს არ აჩვენებს.</p>
+  <p class="intro" lang="ka">diagrams.md-ში მოცემული ხუთი C4 დიაგრამის საბეჭდი ვერსია. ფერებსა და შრიფტს Pele-ის CSS ცვლადები განსაზღვრავს. გვერდზე მოქმედი საცავი არ ჩანს.</p>
 ${figures}
 </main>
 </body>
