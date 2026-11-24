@@ -187,6 +187,7 @@ public sealed class SqlServerBackend : IDynamicSecretBackend, IManagedSecretBack
         }
 
         await RunAsync(connection, revocation, ct);
+        await EnsureNoOpenTransactionAsync(connection, role.Name, identity, ct);
 
         await EnsureCatalogVisibilityAsync(connection, ct);
         if (await LoginSidAsync(connection, identity, ct) is not null)
@@ -261,6 +262,26 @@ public sealed class SqlServerBackend : IDynamicSecretBackend, IManagedSecretBack
         }
 
         return new InvalidOperationException("A session of the revoked SQL Server login is still open.");
+    }
+
+    private async Task EnsureNoOpenTransactionAsync(
+        SqlConnection connection, string roleName, string identity, CancellationToken ct)
+    {
+        await using var check = connection.CreateCommand();
+        check.CommandText = "SELECT @@TRANCOUNT;";
+        if (Convert.ToInt32(await check.ExecuteScalarAsync(ct), System.Globalization.CultureInfo.InvariantCulture) == 0)
+        {
+            return;
+        }
+
+        await using var rollback = connection.CreateCommand();
+        rollback.CommandText = "IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;";
+        await rollback.ExecuteNonQueryAsync(ct);
+
+        _logger.LogWarning(
+            "The revocation statements of role {RoleName} left an open transaction on SQL Server for login {Identity}",
+            roleName, identity);
+        throw new InvalidOperationException("The revocation statements left an uncommitted SQL Server transaction.");
     }
 
     private static async Task EnsureCatalogVisibilityAsync(SqlConnection connection, CancellationToken ct)

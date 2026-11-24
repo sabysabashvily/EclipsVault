@@ -652,6 +652,33 @@ public sealed partial class DynamicSecretIssueTests(DynamicSecretsFixture fixtur
         }
     }
 
+    [Fact]
+    public async Task An_uncommitted_revocation_transaction_is_rolled_back_and_recorded_as_revocation_failed()
+    {
+        var roleId = await DynamicSecretsApi.AddRoleAsync(vault, "it_dyn_uncommitted_drop",
+            revocation: "BEGIN TRANSACTION; DROP USER IF EXISTS [{{name}}]; DROP LOGIN [{{name}}];");
+        var admin = await vault.AdminClientAsync();
+        var (username, password) = await DynamicSecretsApi.IssuedCredentialAsync(await DynamicSecretsApi.IssueAsync(admin, roleId));
+        var lease = Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
+        var before = await AuditTrail.HeadAsync(vault);
+        try
+        {
+            using var revoked = await DynamicSecretsApi.RevokeAsync(admin, lease.Id);
+
+            Assert.Equal("RevocationFailed", (await DynamicSecretsApi.JsonAsync(revoked)).GetProperty("status").GetString());
+            Assert.Equal(LeaseStatus.RevocationFailed, Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId)).Status);
+            var failure = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before), row => row.ResourceId == lease.Id);
+            Assert.Equal((AuditAction.DynamicCredentialRevocationFailed, true), (failure.Action, failure.IsCritical));
+            Assert.Single(await DynamicSecretsApi.LoginsOfRoleAsync(vault, "it_dyn_uncommitted_drop"));
+            Assert.True(await IsSqlLoginDisabledAsync(vault.DynamicTargetConnectionString!, username));
+            await Assert.ThrowsAnyAsync<Exception>(() => DynamicSecretsApi.SignInToTargetAsync(vault, username, password));
+        }
+        finally
+        {
+            await DropSqlLoginForceAsync(vault.DynamicTargetConnectionString!, username);
+        }
+    }
+
     private static async Task<bool> IsSqlLoginDisabledAsync(string adminConnectionString, string loginName)
     {
         await using var conn = new SqlConnection(adminConnectionString);
