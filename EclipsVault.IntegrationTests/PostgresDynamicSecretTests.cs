@@ -1,8 +1,11 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using EclipsVault.Core.Application.Abstractions;
+using EclipsVault.Core.Application.Licensing;
+using EclipsVault.Core.Application.Secrets;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
+using EclipsVault.Core.Domain.Exceptions;
 using EclipsVault.Infrastructure.Persistence;
 using EclipsVault.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
@@ -307,16 +310,173 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
     public async Task Managed_rotation_refuses_a_missing_postgres_role_and_leaves_the_stored_value_unchanged()
     {
         var admin = await vault.AdminClientAsync();
-        var details = await SecretSharing.CreateSecretAsync(admin, "it-pg-managed-missing", value: "it-pg-managed-missing-value");
+        const string initialValue = "ItPgManagedMissingValue1";
+        var details = await SecretSharing.CreateSecretAsync(admin, "it-pg-managed-missing", value: initialValue);
         await SecretDetailsApi.MakeManagedAsync(vault, details, "it_pg_no_such_managed_role", DynamicSecretBackend.Postgres);
         var before = await AuditTrail.HeadAsync(vault);
+        var logStart = vault.Log.Lines.Count;
 
         var response = await SecretDetailsApi.RotateUpstreamAsync(admin, details);
 
         var problem = await SecretsApi.AssertProblemAsync(response, 502, "upstream_refused");
         Assert.Equal("The backend refused the rotation. The credential is unchanged.", problem.GetProperty("title").GetString());
         Assert.Empty(await SecretDetailsApi.ActionsAfterAsync(vault, before, details));
-        Assert.Equal("it-pg-managed-missing-value", await UpstreamRotationTests.StoredValueAsync(vault, details));
+        Assert.Equal(initialValue, await UpstreamRotationTests.StoredValueAsync(vault, details));
+        var newLogs = vault.Log.Lines.Skip(logStart).ToList();
+        Assert.DoesNotContain(newLogs, line => MintedPassword().IsMatch(line.Text));
+        Assert.DoesNotContain(newLogs, line => line.Text.Contains("it_pg_no_such_managed_role", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Managed_rotation_refuses_an_overlong_postgres_role_binding_without_touching_the_truncated_prefix_role()
+    {
+        var admin = await vault.AdminClientAsync();
+        var password = ManagedTargetLogins.NewPassword();
+        var prefixRole63 = "it_pg_trunc_" + new string('a', 51);
+        Assert.Equal(63, prefixRole63.Length);
+        var overlongRole64 = prefixRole63 + "b";
+        await PostgresDynamicTarget.CreateManagedRoleAsync(vault, prefixRole63, password);
+        try
+        {
+            var details = await SecretSharing.CreateSecretAsync(admin, "it-pg-managed-overlong", value: password);
+            await SecretDetailsApi.MakeManagedAsync(vault, details, overlongRole64, DynamicSecretBackend.Postgres);
+
+            var response = await SecretDetailsApi.RotateUpstreamAsync(admin, details);
+
+            await SecretsApi.AssertProblemAsync(response, 502, "upstream_refused");
+            Assert.Equal(password, await UpstreamRotationTests.StoredValueAsync(vault, details));
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, prefixRole63, password));
+        }
+        finally
+        {
+            await PostgresDynamicTarget.DropRoleAsync(vault, prefixRole63);
+        }
+    }
+
+    [Fact]
+    public async Task Managed_rotation_refuses_before_writing_when_the_stored_password_contains_punctuation_unusable_for_compensation()
+    {
+        var admin = await vault.AdminClientAsync();
+        const string punctuatedPassword = "Old!Pass#2026-Value";
+        const string role = "it_pg_managed_punct";
+        await PostgresDynamicTarget.CreateManagedRoleAsync(vault, role, punctuatedPassword);
+        try
+        {
+            var details = await SecretSharing.CreateSecretAsync(admin, "it-pg-managed-punct", value: punctuatedPassword);
+            await SecretDetailsApi.MakeManagedAsync(vault, details, role, DynamicSecretBackend.Postgres);
+            var before = await AuditTrail.HeadAsync(vault);
+
+            var response = await SecretDetailsApi.RotateUpstreamAsync(admin, details);
+
+            await SecretsApi.AssertProblemAsync(response, 502, "upstream_refused");
+            Assert.Empty(await SecretDetailsApi.ActionsAfterAsync(vault, before, details));
+            Assert.Equal(punctuatedPassword, await UpstreamRotationTests.StoredValueAsync(vault, details));
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, role, punctuatedPassword));
+        }
+        finally
+        {
+            await PostgresDynamicTarget.DropRoleAsync(vault, role);
+        }
+    }
+
+    [Fact]
+    public async Task A_competing_postgres_managed_rotation_is_refused_with_change_in_progress_and_the_stored_value_wins()
+    {
+        var admin = await vault.AdminClientAsync();
+        var password = ManagedTargetLogins.NewPassword();
+        const string role = "it_pg_managed_race";
+        await PostgresDynamicTarget.CreateManagedRoleAsync(vault, role, password);
+        try
+        {
+            var details = await SecretSharing.CreateSecretAsync(admin, "it-pg-managed-race", value: password);
+            await SecretDetailsApi.MakeManagedAsync(vault, details, role, DynamicSecretBackend.Postgres);
+            // Warm up once so any one-time evaluation-window write does not queue behind HeldAuditChain.
+            SecretDetailsApi.AssertNoContent(await SecretDetailsApi.RotateUpstreamAsync(admin, details));
+            var secretId = SecretSharing.SecretIdOf(details);
+
+            Task first;
+            await using (var held = await HeldAuditChain.TakeAsync(vault))
+            {
+                first = Task.Run(async () =>
+                {
+                    using var scope = vault.Services.CreateScope();
+                    await scope.ServiceProvider.GetRequiredService<ISecretService>().RotateManagedAsync(secretId, null, default);
+                });
+                await held.WaitForQueuedWritersAsync(1);
+
+                var competing = await SecretDetailsApi.RotateUpstreamAsync(admin, details);
+                await SecretsApi.AssertProblemAsync(competing, 409, "change_in_progress");
+            }
+
+            await first;
+            var finalValue = await UpstreamRotationTests.StoredValueAsync(vault, details);
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, role, finalValue));
+        }
+        finally
+        {
+            await PostgresDynamicTarget.DropRoleAsync(vault, role);
+        }
+    }
+
+    [Fact]
+    public async Task A_lost_response_after_altering_a_postgres_role_compensates_and_restores_the_previous_password()
+    {
+        var admin = await vault.AdminClientAsync();
+        var initialPassword = ManagedTargetLogins.NewPassword();
+        const string role = "it_pg_managed_comp";
+        await PostgresDynamicTarget.CreateManagedRoleAsync(vault, role, initialPassword);
+        try
+        {
+            var details = await SecretSharing.CreateSecretAsync(admin, "it-pg-managed-comp", value: initialPassword);
+            await SecretDetailsApi.MakeManagedAsync(vault, details, role, DynamicSecretBackend.Postgres);
+            var secretId = SecretSharing.SecretIdOf(details);
+
+            using var scope = vault.Services.CreateScope();
+            var realPostgres = scope.ServiceProvider.GetServices<IManagedSecretBackend>()
+                .Single(b => b.Backend == DynamicSecretBackend.Postgres);
+            var lostOnce = new FailOnceAfterRotatingBackend(realPostgres);
+            var service = new SecretService(
+                scope.ServiceProvider.GetRequiredService<ISecretRepository>(),
+                scope.ServiceProvider.GetRequiredService<ICryptoEngineFactory>(),
+                scope.ServiceProvider.GetRequiredService<ISecretCache>(),
+                scope.ServiceProvider.GetRequiredService<IIntrusionResponseService>(),
+                scope.ServiceProvider.GetRequiredService<IAuditSink>(),
+                scope.ServiceProvider.GetRequiredService<IAuditContext>(),
+                [lostOnce],
+                TimeProvider.System,
+                scope.ServiceProvider.GetRequiredService<IPremiumFeatureUsage>(),
+                scope.ServiceProvider.GetRequiredService<IManagedPrincipalLock>());
+
+            await Assert.ThrowsAsync<UpstreamRotationRefusedException>(() =>
+                service.RotateManagedAsync(secretId, null, CancellationToken.None));
+
+            Assert.Equal(2, lostOnce.Calls);
+            Assert.Equal(initialPassword, await UpstreamRotationTests.StoredValueAsync(vault, details));
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, role, initialPassword));
+        }
+        finally
+        {
+            await PostgresDynamicTarget.DropRoleAsync(vault, role);
+        }
+    }
+
+    private sealed class FailOnceAfterRotatingBackend(IManagedSecretBackend inner) : IManagedSecretBackend
+    {
+        public int Calls { get; private set; }
+
+        public DynamicSecretBackend Backend => inner.Backend;
+
+        public bool CanApplyPassword(string password) => inner.CanApplyPassword(password);
+
+        public async Task RotatePrincipalAsync(string principal, string newPassword, CancellationToken ct)
+        {
+            Calls++;
+            await inner.RotatePrincipalAsync(principal, newPassword, ct);
+            if (Calls == 1)
+            {
+                throw new IOException("Simulated lost reply after PostgreSQL committed ALTER ROLE.");
+            }
+        }
     }
 
     [Fact]

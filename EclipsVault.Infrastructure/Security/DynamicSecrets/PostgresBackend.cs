@@ -1,3 +1,4 @@
+using System.Text;
 using EclipsVault.Core.Application.DynamicSecrets;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
@@ -136,11 +137,15 @@ public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBacke
         _logger.LogInformation("Dropped PostgreSQL role {Identity} for role {RoleName}", identity, role.Name);
     }
 
+    public bool CanApplyPassword(string password) => CredentialStatementTemplate.IsRenderablePassword(password);
+
     /// <summary>
     /// Throws <see cref="UpstreamRotationRefusedException"/> only when the password certainly did not
-    /// change: the statement was never sent, or PostgreSQL refused it with a SQLSTATE that leaves the
-    /// password untouched. Any other failure (a timeout, a lost connection, a cancelled call) leaves it
-    /// unknown whether the server ran it.
+    /// change: the statement was never sent, the role name exceeds PostgreSQL's <c>max_identifier_length</c>,
+    /// or PostgreSQL refused it with a SQLSTATE that leaves the password untouched. Any other failure
+    /// (a timeout, a lost connection, a cancelled call) leaves it unknown whether the server ran it.
+    /// Raw driver exceptions are replaced at this boundary with type + SQLSTATE diagnostics so server
+    /// error text or connection strings never leak into caller logs.
     /// </summary>
     public async Task RotatePrincipalAsync(string principal, string newPassword, CancellationToken ct)
     {
@@ -149,24 +154,60 @@ public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBacke
         {
             sql = CredentialStatementTemplate.Render(RotateStatement, principal, newPassword, DateTimeOffset.UnixEpoch);
         }
-        catch (Exception notSent)
+        catch (ArgumentException)
         {
-            throw new UpstreamRotationRefusedException(notSent);
+            throw new UpstreamRotationRefusedException(
+                new ArgumentException("PostgreSQL managed rotation parameters were rejected before sending."));
         }
 
-        await using var connection = await OpenTargetAsync(ct, notSent => new UpstreamRotationRefusedException(notSent));
+        await using var connection = await OpenTargetAsync(ct, notSent => new UpstreamRotationRefusedException(SanitizeDriverException(notSent)));
+
+        int maxIdentifierLength;
+        try
+        {
+            await using var lengthQuery = new NpgsqlCommand("SELECT current_setting('max_identifier_length')::int", connection);
+            maxIdentifierLength = Convert.ToInt32(await lengthQuery.ExecuteScalarAsync(ct), System.Globalization.CultureInfo.InvariantCulture);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            LogFailure(ex);
+            throw new UpstreamRotationRefusedException(SanitizeDriverException(ex));
+        }
+
+        if (Encoding.UTF8.GetByteCount(principal) > maxIdentifierLength)
+        {
+            _logger.LogWarning("Refused PostgreSQL managed rotation because role name length exceeds max_identifier_length ({MaxLength})", maxIdentifierLength);
+            throw new UpstreamRotationRefusedException(
+                new InvalidOperationException("PostgreSQL role name exceeds the server's max_identifier_length."));
+        }
+
         try
         {
             await RunAsync(connection, sql, ct);
         }
         catch (PostgresException refused) when (refused.SqlState is not null && PasswordUnchangedSqlStates.Contains(refused.SqlState))
         {
-            throw new UpstreamRotationRefusedException(refused);
+            throw new UpstreamRotationRefusedException(SanitizeDriverException(refused));
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception uncertain)
+        {
+            throw SanitizeDriverException(uncertain);
         }
 
         // Never log the password — only that the principal moved.
         _logger.LogInformation("Rotated the password of PostgreSQL role {Principal}", principal);
     }
+
+    private static InvalidOperationException SanitizeDriverException(Exception ex)
+        => new($"PostgreSQL target failure ({ex.GetType().Name}, SQLSTATE {(ex as PostgresException)?.SqlState ?? "none"}).");
 
     /// <summary>
     /// Waits until every connection that began starting up before sign-in was turned off shows its role.
