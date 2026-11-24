@@ -183,7 +183,7 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
         var lease = Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
         // Held for up to three seconds, within the seven revocation waits here: authentication_timeout's two plus five of margin.
         var signingIn = PostgresDynamicTarget.StartSigningInAsync(vault, username, password, TimeSpan.FromSeconds(3));
-        await PostgresDynamicTarget.WaitForStartupWithoutRoleAsync(vault);
+        await PostgresDynamicTarget.WaitForAuthenticatedStartupAsync(vault);
 
         using var revoked = await DynamicSecretsApi.RevokeAsync(admin, lease.Id);
 
@@ -199,7 +199,6 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
         var admin = await vault.AdminClientAsync();
         var (username, password) = await DynamicSecretsApi.IssuedCredentialAsync(await DynamicSecretsApi.IssueAsync(admin, roleId));
         var signingIn = PostgresDynamicTarget.StartSigningInAsync(vault, username, password, TimeSpan.FromSeconds(10));
-        await PostgresDynamicTarget.WaitForStartupWithoutRoleAsync(vault);
         // The vault's own backend, on a clock that has always run out, so the startup above is still unconfirmed.
         // The service closes a lease whose revocation throws as RevocationFailed with a critical row (see the refused revoke).
         var backend = new PostgresBackend(
@@ -208,6 +207,8 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
         var role = new DynamicSecretRole { Name = "it_pg_unconfirmed", RevocationStatements = DbSeeder.PostgresRevocation };
         try
         {
+            await PostgresDynamicTarget.WaitForAuthenticatedStartupAsync(vault);
+
             await Assert.ThrowsAsync<InvalidOperationException>(() => backend.RevokeAsync(role, username, CancellationToken.None));
 
             Assert.Single(await PostgresDynamicTarget.RolesOfRoleAsync(vault, "it_pg_unconfirmed"));
