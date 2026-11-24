@@ -1,30 +1,33 @@
-# Demonstration setup and reset / დემონსტრაციის მომზადება და დაბრუნება
+# Demonstration setup and reset / დემონსტრაციის მომზადება და საწყის მდგომარეობაში დაბრუნება
 
-The demonstration is a disposable Development vault. It is not the production install in
-`docs/INSTALL.md` or `deploy/production/`, and it is not the Playwright stack in `AGENTS.md`.
+Run the demonstration in a disposable Development vault. The production installation in
+`docs/INSTALL.md` and `deploy/production/` and the Playwright stack in `AGENTS.md` are outside
+the rehearsal scope.
 
-The walk below was run on `origin/main` `1298958050e45f83aefeb4b6455d0a02169ab22a` on 24 November
-2026, finishing at about 16:03 Asia/Tbilisi. That run was port-shifted: a standalone PostgreSQL
-container and Web on `https://localhost:7543`, because the owner's development vault held port 7443
-and the development Compose stack was running under its fixed container names. It signed in and
-enrolled both seeded accounts, opened `Phoenix_Dev_Database_Password`, revealed it, left that page,
-and found `Revealed` and `Viewed` on `/Audit`. The screenshots in [screens/](screens/) are from that
-run. The Compose-project setup in this file was last run on `d576dd9` on 21 November and was not
-re-run on `1298958`.
+The rehearsal on `origin/main` `1298958050e45f83aefeb4b6455d0a02169ab22a` ended on 24 November
+2026 at about 16:03 Asia/Tbilisi. It used a standalone PostgreSQL container and Web at
+`https://localhost:7543`. The owner's development vault occupied port 7443, and the development
+Compose stack already occupied the fixed container names. The presenter signed in with both
+seeded accounts and enrolled their authenticators. The presenter opened and revealed
+`Phoenix_Dev_Database_Password`, left the details page, and found `Revealed` and `Viewed` on
+`/Audit`. The screenshots in [screens/](screens/) are from that run. The last Compose-project
+rehearsal used `d576dd9` on 21 November. The `1298958` rehearsal used the standalone setup only.
 
-დემონსტრაცია ერთჯერადი Development საცავია. ის არ არის `docs/INSTALL.md`-ის ან `deploy/production/`-ის
-production დაყენება და არც `AGENTS.md`-ის Playwright სტეკი.
+დემონსტრაციისთვის გამოიყენება ერთჯერადი საცავი Development გარემოში. `docs/INSTALL.md`-სა და
+`deploy/production/`-ში აღწერილი Production განთავსება და `AGENTS.md`-ში აღწერილი Playwright სტეკი
+დემონსტრაციის ფარგლებს გარეთაა.
 
-ქვემოთ აღწერილი გავლა გაეშვა `origin/main` `1298958050e45f83aefeb4b6455d0a02169ab22a`-ზე 24 ნოემბერს
-2026 და დასრულდა დაახლოებით 16:03 Asia/Tbilisi-ზე. ეს გაშვება სხვა პორტებზე იყო: ცალკე PostgreSQL
-კონტეინერი და Web `https://localhost:7543`-ზე, რადგან 7443 პორტი მფლობელის სამუშაო საცავს ეკავა,
-ხოლო სამუშაო Compose სტეკი თავისი ფიქსირებული კონტეინერის სახელებით იყო გაშვებული. გავლამ ორივე
-დათესილი ანგარიში შეიყვანა და ჩარიცხა, გახსნა `Phoenix_Dev_Database_Password`, გამოაჩინა
-მნიშვნელობა, დატოვა ეს გვერდი და `/Audit`-ზე იპოვა `Revealed` და `Viewed`. [screens/](screens/)-ის
-სურათები ამ გაშვებიდანაა. ამ ფაილის Compose პროექტის მომზადება ბოლოს `d576dd9`-ზე 21 ნოემბერს
-გაეშვა და `1298958`-ზე თავიდან არ გაშვებულა.
+რეპეტიცია ჩატარდა 2026 წლის 24 ნოემბერს `origin/main`-ის რევიზიაზე
+`1298958050e45f83aefeb4b6455d0a02169ab22a` და დაახლოებით 16:03-ზე დასრულდა (Asia/Tbilisi).
+PostgreSQL ცალკე კონტეინერში გაეშვა, Web კი სხვა პორტზე, მისამართზე
+`https://localhost:7543`, რადგან პორტი 7443 მფლობელის სამუშაო საცავს ეკავა და სამუშაო Compose
+სტეკი უკვე გაშვებული იყო კონტეინერების ფიქსირებული სახელებით. მომხსენებელი ორივე წინასწარ შექმნილი
+ანგარიშით შევიდა და მათთვის ავთენტიფიკატორები დაარეგისტრირა. გახსნა `Phoenix_Dev_Database_Password`-ის
+დეტალები, გამოაჩინა მნიშვნელობა და გვერდიდან გამოვიდა. შემდეგ `/Audit`-ზე იპოვა `Revealed` და
+`Viewed`. ამ გაშვების ეკრანის ანაბეჭდები მოთავსებულია [screens/](screens/)-ში. Compose პროექტით ბოლო
+რეპეტიცია 21 ნოემბერს `d576dd9`-ზე ჩატარდა. `1298958`-ზე მხოლოდ ცალკე კონტეინერი გაეშვა.
 
-## Story the stack must support
+## Demo accounts and secrets
 
 | Item | Value | Source |
 |---|---|---|
@@ -34,15 +37,15 @@ production დაყენება და არც `AGENTS.md`-ის Playwrig
 | Secret | `Phoenix_Dev_Database_Password`, Development, Internal, not a honey-token | same |
 | Also on this account's list | `Phoenix_Ephemeral_Deploy_Token`, until it expires five minutes after seeding. Its red expiry badge rounds up to whole hours on the last day, so it read "In 1 hour" right after the seed. Do not open it | same; `shared/expiry.ts` |
 | Do not open | `Production_AWS_Root_Key`, `Global_SQL_SA_Password` | same, `IsHoneyToken`. They are omitted from the list |
-| After sign-in | `/Secrets`, not `/` | `SignInTarget.Default`; ADR-0032 |
+| Default redirect after sign-in | `/Secrets`, not `/` | `SignInTarget.Default`; ADR-0032 |
 
-`dev-user` sees two active secrets right after the reset, and one once the ephemeral token expires.
-Right after the reset the page says "2 active secrets · 1 expires within 7 days. Opening one records
+`dev-user` sees two active secrets after the reset and one once the ephemeral token expires.
+Before the expiry the page says "2 active secrets · 1 expires within 7 days. Opening one records
 an audit entry." The recorded entry for opening the details page is `Viewed`, and only after the
 access check allows it.
 
 The seeded secret values are synthetic and already in `DbSeeder.cs`. Do not copy them onto a slide
-or into a screenshot. The talk needs the name, not the value.
+or into a screenshot. Show the secret name on slides.
 
 ## Credentials
 
@@ -54,9 +57,9 @@ is never committed, and its placeholders are not passwords to type in the room.
 
 The passwords published in `DbSeeder.cs` are used only when `Seed:AdminPassword` and
 `Seed:DevPassword` are absent from configuration as a whole. Unsetting the environment variables
-is not enough: a copied `appsettings.Development.json` can still set them. Do not display the
-published passwords either. Production refuses that published administrator password. Source:
-`DbSeeder.cs`; `DbSeederTests.Production_refuses_the_development_password_published_in_this_repository`.
+can leave values set in a copied `appsettings.Development.json`. Keep the published passwords off
+screen as well. Production refuses the published administrator password. See `DbSeeder.cs` and
+`DbSeederTests.Production_refuses_the_development_password_published_in_this_repository`.
 
 Generate a master key in the shell and leave it there:
 
@@ -64,28 +67,29 @@ Generate a master key in the shell and leave it there:
 export ECLIPSVAULT_KEK="$(openssl rand -base64 32)"
 ```
 
-Do not print the variable. The template's `DevelopmentKekBase64` is a placeholder, not a key.
+Keep the generated value out of terminal output. The template's `DevelopmentKekBase64` is a placeholder.
 
 With `AuditSigning:AllowDevelopmentEphemeralKey` true (the template sets it; the 24 November run
 passed `AuditSigning__AllowDevelopmentEphemeralKey=true`), no `ECLIPSVAULT_AUDIT_SIGNING_KEY` is
-needed. The audit page then shows a key id that changes when the process restarts. That id is not the
-private key. Do not print a signing key if you set one.
+needed. The audit page shows a public key ID that changes when the process restarts. Keep any
+signing key you set out of terminal output.
 
-Two settings matter on `1298958`:
+Settings for `1298958`:
 
-- `Database__Provider=Postgres` is required. Without `Database:Provider` the process stops at
-  startup with "Database:Provider is not set"; an unknown value stops it too. The template sets it,
-  and the commands below pass it explicitly. Source: `DependencyInjection`; `DatabaseProvider`.
-- `Identity__PublicUrl` is not needed to start. It is the address invitation links are built from,
-  and New user and Resend stay unavailable without it and real SMTP. The talk sends no invitation.
-  The commands below set it to the vault's own address so the setting is visible. Source:
-  `UserAdminService`; `AccountInvitationDelivery`; ADR-0033.
+- Set `Database__Provider=Postgres`. A missing `Database:Provider` stops startup with
+  "Database:Provider is not set". An unknown value also stops startup. The template and the
+  startup command both set the provider. See `DependencyInjection` and `DatabaseProvider`.
+- Startup can proceed without `Identity__PublicUrl`. The vault builds invitation links from this
+  address. New user and Resend both require it and real SMTP. The demo sends no invitation. The
+  startup command uses the vault's address to show where to set it. See `UserAdminService`,
+  `AccountInvitationDelivery`, and ADR-0033.
 
-პაროლები და მასტერ-გასაღები ამ გაშვების გარსში დარჩეს. შაბლონის `DevelopmentKekBase64`
-ჩანაცვლებული ტექსტია, არა გასაღები, ამიტომ `ECLIPSVAULT_KEK` გარსში შექმენით. ნამდვილი გასაღები
-ან პაროლი ამ დოკუმენტში ნუ ჩაწერთ. `Database__Provider=Postgres` აუცილებელია: მის გარეშე პროცესი
-გაშვებისთანავე ჩერდება. `Identity__PublicUrl` გაშვებისთვის საჭირო არ არის; მისგან მოწვევის ბმული
-იწყობა, ხოლო მოხსენება მოწვევას არ აგზავნის.
+პაროლები და მასტერ-გასაღები მხოლოდ ამ გაშვებისთვის გახსნილი ტერმინალის გარემოში შეინახეთ.
+ტერმინალში შექმენით `ECLIPSVAULT_KEK`-ის მნიშვნელობა. `DevelopmentKekBase64` შაბლონში შესავსები
+ველის აღმნიშვნელია. გასაღები ან პაროლი ამ დოკუმენტში ნუ ჩაწერთ.
+`Database__Provider=Postgres` აუცილებელია. პარამეტრის გარეშე პროცესი გაშვებისას ჩერდება.
+`Identity__PublicUrl` გაშვებისთვის აუცილებელი არ არის. საცავი ამ მისამართიდან ადგენს მოწვევის
+ბმულს. დემონსტრაციისას მოწვევა არ იგზავნება.
 
 First sign-in enrolls an authenticator. The heading is "Set up two-factor authentication" and the
 button is "Confirm enrollment". Do that with the projector off, before the room is watching. Do
@@ -97,8 +101,8 @@ button "Verify and sign in".
 
 ### Compose project, as run on `d576dd9`
 
-Use a compose project name that is not the checkout's default. The default project uses the volume
-`eclipsvault-postgres`. A later reset of the talk project must not delete that volume.
+Choose a separate Compose project name for the rehearsal so its reset leaves the default project's
+`eclipsvault-postgres` volume intact.
 
 `docker-compose.yml` sets fixed `container_name` values, including `eclipsvault-postgres`. Those
 names are not project-scoped. A second project cannot start while those containers exist.
@@ -108,7 +112,7 @@ docker compose down
 docker compose -p eclipsvault-defence-draft up -d --wait
 ```
 
-What the 21 November rehearsal observed:
+Commands tested on 21 November:
 
 - `docker compose down` exits 0 and does not stop containers that were started with
   `-p eclipsvault-defence-draft`. Run it only to stop a project that was started without `-p`.
@@ -121,7 +125,7 @@ What the 21 November rehearsal observed:
 
 When the development stack must stay up, start one PostgreSQL container of your own, on a free
 port, with a password generated in the shell. The image is the one `docker-compose.yml` pins.
-`--rm` removes the container and its anonymous data volume when it stops.
+When the container stops, `--rm` removes it and its anonymous data volume.
 
 ```sh
 export EV_DEMO_PG_PASSWORD="$(openssl rand -hex 16)"
@@ -154,7 +158,7 @@ On 24 November the Release build finished with 0 warnings and 0 errors.
 
 ### Start Web
 
-Start the built dll from `EclipsVault.Web`, as Development, so the start does not rebuild.
+Run the built DLL from `EclipsVault.Web` in Development to reuse the existing build.
 Development migrates and seeds on startup. For the Compose project, use port 5432, the database and
 the password from `appsettings.Development.json.template`. For the standalone database, use the
 values from the `docker run` above:
@@ -174,8 +178,8 @@ dotnet bin/Release/net10.0/EclipsVault.Web.dll
 ```
 
 `Seed__AdminPassword`, `Seed__DevPassword`, and `ECLIPSVAULT_KEK` come from the shell's exported
-variables. The 24 November run used port 7543 in both URLs because 7443 was taken; use 7443 when it
-is free. The log lines to wait for are
+variables. Use port 7443 when it is free. On 24 November the rehearsal used port 7543 in both
+URLs because 7443 was occupied. Wait for the log lines
 `Seeded staff accounts vault-admin and dev-user (TOTP enrollment happens on first sign-in)`, then
 `Now listening on: https://localhost:7443`. The same log also says it seeded four dynamic-secret
 roles: `phoenix_db_reader`, `global_db_writer`, `phoenix_pg_reader`, and `global_pg_writer`.
@@ -183,11 +187,11 @@ roles: `phoenix_db_reader`, `global_db_writer`, `phoenix_pg_reader`, and `global
 `Email__Sender=Log` keeps the committed email default, so nothing reaches a Mailpit that belongs to
 another stack. The copied template sets `Smtp` instead. Redis stays off either way.
 
-## Live clicks
+## Demo steps
 
-Light theme: the sign-in page has a moon button, "Switch color theme". Inside the app, the account
+Use the light theme. The sign-in page has a moon button, "Switch color theme". Inside the app, the account
 menu says "Switch to dark" when the page is already light. Set the `EclipsVault.Theme=light` cookie
-before the room if the machine opens dark. The captures in [screens/](screens/) are light, 1280 px
+before the audience arrives if the machine opens in dark mode. The screenshots in [screens/](screens/) use the light theme and are 1280 px
 wide.
 
 1. Open `https://localhost:7443/Account/Login`. The page is Angular. It says "Step 1 of 2", the
@@ -229,13 +233,13 @@ not Development. Do not point the talk at a database you use for ordinary work.
 
 ## Capture rules
 
-- No screenshot or recording of enrollment, recovery codes, cookies, or key material.
-- No screenshot of the revealed value. The audit row is the picture.
-- No honey-token, even to show the warning.
-- No service-account key issuance. The raw key is shown once by the product.
-- No invitation link or activation page. Its fragment holds the token.
-- No production connection string, and no copy of `appsettings.Development.json`.
-- The audit page's key id is a public id. It is not `ECLIPSVAULT_AUDIT_SIGNING_KEY`.
+- Keep enrollment, recovery codes, cookies, and key material out of screenshots and recordings.
+- Capture the audit row and leave the revealed value off camera.
+- Skip honey-tokens and their warning.
+- Skip service-account key issuance because the vault shows the raw key once.
+- Keep the invitation link and activation page off screen. The link fragment holds the token.
+- Keep production connection strings and copies of `appsettings.Development.json` out of the capture.
+- The audit page shows a public key ID. Keep `ECLIPSVAULT_AUDIT_SIGNING_KEY` out of the capture.
 
 ## Reset
 
@@ -251,7 +255,7 @@ That command removed the containers and the volumes
 `eclipsvault-defence-draft_eclipsvault-postgres` and
 `eclipsvault-defence-draft_eclipsvault-redis`. It does not remove a volume belonging to a project
 started without `-p`. `docker compose down` without `-p`, run while the named project was up,
-exited 0 and left those containers running. It is not the reset.
+exited 0 and left those containers running.
 
 Standalone database, as run on 24 November:
 
@@ -259,19 +263,21 @@ Standalone database, as run on 24 November:
 docker stop ev-defence-refresh-pg
 ```
 
-On 24 November that removed the container and its anonymous volume; `docker ps -a` and
-`docker volume inspect` found neither afterwards. The development stack kept running.
+On 24 November that removed the container and its anonymous volume. Neither appeared in
+`docker ps -a` or `docker volume inspect`. The development stack kept running.
 
 Start again with the same environment and wait for the seed line. Each reset needs both accounts
 enrolled again and gives the secret a new id. Unset `Seed__AdminPassword`, `Seed__DevPassword`,
 `ECLIPSVAULT_KEK`, `EV_DEMO_PG_PASSWORD`, and `ECLIPSVAULT_AUDIT_SIGNING_KEY` in that shell when the
 day is over. Do not delete a Docker image you did not build for this run.
 
-ასევე გააჩერეთ Web პროცესი მისი პროცესის ნომრით და ამ გარსში მოხსენით `Seed__AdminPassword`,
-`Seed__DevPassword`, `ECLIPSVAULT_KEK`, `EV_DEMO_PG_PASSWORD` და `ECLIPSVAULT_AUDIT_SIGNING_KEY`.
-Compose პროექტის დაბრუნება არის `docker compose -p eclipsvault-defence-draft down -v`. `-p`-ის გარეშე
-`docker compose down` ამ პროექტს არ აჩერებს. ცალკე ბაზის დაბრუნება არის
-`docker stop ev-defence-refresh-pg`: `--rm`-ის გამო კონტეინერიც და მისი მონაცემების ტომიც იშლება.
+რეპეტიციისთვის გაშვებული Web პროცესი მისი იდენტიფიკატორით გააჩერეთ. დღის ბოლოს ტერმინალის
+გარემოდან ამოშალეთ `Seed__AdminPassword`, `Seed__DevPassword`, `ECLIPSVAULT_KEK`,
+`EV_DEMO_PG_PASSWORD` და `ECLIPSVAULT_AUDIT_SIGNING_KEY`. Compose პროექტის საწყის მდგომარეობაში
+დასაბრუნებლად გაუშვით `docker compose -p eclipsvault-defence-draft down -v`. `docker compose down`
+პარამეტრ `-p`-ის გარეშე ამ პროექტს არ აჩერებს. ცალკე გაშვებული ბაზისთვის გამოიყენეთ
+`docker stop ev-defence-refresh-pg`. `--rm` პარამეტრის გამო კონტეინერიც წაიშლება და მისი მონაცემების
+ტომიც.
 
 If the talk was pointed at the ordinary development volume by mistake, do not run `down -v` to
 "clean the demo". That deletes the development database. Leave it, and say the reset was not done.

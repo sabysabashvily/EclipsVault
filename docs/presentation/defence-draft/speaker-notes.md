@@ -1,103 +1,105 @@
-# Speaker notes / მომხსენებლის შენიშვნები
+# Speaker notes / ჩანაწერები მომხსენებლისთვის
 
-Read these with the matching slide in [storyboard.md](storyboard.md). Say the Georgian block when
-the room is Georgian, and the English block when it is not. Do not translate a term that
-[CONTEXT.md](../../../CONTEXT.md) defines by inventing a second product name: vault account is
+Use the notes in the audience's language with the matching slide in [storyboard.md](storyboard.md).
+Use the Georgian equivalents for terms defined in [CONTEXT.md](../../../CONTEXT.md). Vault account is
 საცავის ანგარიში, session is სესია, second factor is მეორე ფაქტორი, service account is სერვისის
 ანგარიში, API key is API გასაღები, trusted network is სანდო ქსელი, share is გაზიარება.
 
-Names such as `SecretAccessPolicy` stay in Latin in both languages. They are the source identifiers.
+Keep source identifiers such as `SecretAccessPolicy` in Latin script in both languages.
 
-## Slide 1 — Problem / პრობლემა
+## Slide 1: Problem / პრობლემა
 
 ### English
 
-Start with the team, not with the framework. "Phoenix keeps one database password that several
+Start with the Phoenix example. Save the framework for the architecture slide. "Phoenix keeps one database password that several
 people need. If it lives in a file, possession of the file is the only control, and the file cannot
 tell us who read it."
 
-Then one sentence of what the vault is: self-hosted, the operator holds the keys and the database,
-and each open is a request the server can refuse and record. Do not list every feature. The next
-seven slides follow this one secret.
+Describe the vault in one sentence. The operator hosts EclipsVault and holds the keys and the
+database. The server can refuse and record each request to open a secret. Follow that one secret
+through the remaining seven slides and skip the feature list.
 
 Do not quote a price, a licence tier, or a compliance certificate. Do not say the product has been
 deployed for this talk.
 
 ### ქართული
 
-დაიწყეთ გუნდით, არა ფრეიმვორკით. „Phoenix-ს სჭირდება ერთი ბაზის პაროლი, რომელიც რამდენიმე ადამიანს
-ჭირდება. თუ ის ფაილში დევს, ფაილის ფლობა ერთადერთი კონტროლია და ფაილი ვერ გვეტყვის, ვინ წაიკითხა.“
+დაიწყეთ გუნდის მაგალითით. ფრეიმვორკი არქიტექტურის სლაიდზე ახსენეთ. „Phoenix-ის რამდენიმე წევრს მონაცემთა ბაზის
+ერთი და იგივე პაროლი სჭირდება. თუ პაროლი ფაილშია, მის დაცვას მხოლოდ ფაილზე წვდომა განსაზღვრავს.
+შემდეგ ვეღარ გავიგებთ, ვინ წაიკითხა პაროლი.“
 
-შემდეგ ერთი წინადადება, რა არის საცავი: თვითჰოსტირებულია, გასაღებები და ბაზა ოპერატორს აქვს, და
-ყოველი გახსნა მოთხოვნაა, რომელიც სერვერმა შეიძლება უარყოს და ჩაიწეროს. ყველა ფუნქცია არ ჩამოთვალოთ.
-დარჩენილი შვიდი სლაიდი ამ ერთ საიდუმლოს მისდევს.
+საცავი ერთი წინადადებით აღწერეთ. ოპერატორი საკუთარ ინფრასტრუქტურაზე მართავს EclipsVault-ს,
+გასაღებებსა და ბაზას. საიდუმლოს გახსნის თითოეული მოთხოვნის უარყოფა და აღრიცხვა სერვერს შეუძლია.
+შემდეგ შვიდ სლაიდზე ამ საიდუმლოს მიჰყევით და ფუნქციების ჩამონათვალი გამოტოვეთ.
 
-ფასი, ლიცენზიის საფეხური ან შესაბამისობის სერტიფიკატი არ ციტიროთ. არ თქვათ, რომ პროდუქტი ამ
+ფასი, ლიცენზიის კატეგორია და შესაბამისობის სერტიფიკატი გამოტოვეთ. ნუ იტყვით, რომ პროდუქტი ამ
 მოხსენებისთვის განთავსდა.
 
-## Slide 2 — Server-enforced access / სერვერის მიერ დაცული წვდომა
+## Slide 2: Server-enforced access / წვდომის კონტროლი სერვერზე
 
 ### English
 
-Two identities, said once. A person uses a vault account. The sign-in page is Angular. After the
+Describe each account type once. A person signs in with a vault account on an Angular page. After the
 password, `AuthController.Password` signs only an `MfaPending` cookie. `SessionIssuer.SignInAsync`
 creates the session after the authenticator code, a recovery code, enrollment, a passkey, or SSO.
-A passkey is both factors at once. An administrator never chooses a new account's password: an
-emailed invitation lets the person set it and enroll the authenticator (ADR-0033). An application uses a service account and an API key on `/api/v1/`. The UI API at `/api/ui/`
-does not take that key. ADR-0005 and ADR-0012 are the decisions: Angular guards are convenience.
+A passkey satisfies both factors. The user sets their own password and enrolls an authenticator
+through an emailed invitation (ADR-0033). An application uses a service account and an API key on
+`/api/v1/`. The UI API at `/api/ui/` does not accept that key. Angular route guards help with
+navigation. See ADR-0005 and ADR-0012 for the access decisions.
 
-Walk the four rules on `SecretAccessPolicy.Evaluate` in the order the code checks them. Then say why
-the live secret is dull on purpose. `dev-user` is Standard on `PHOENIX`. The secret is Internal,
-which is the same numeric level, Development, so the production window does not apply, and Internal,
-so the trusted-network rule does not apply. Step-up starts at Secret, so this reveal does not ask
-for a fresh code.
+Explain the four rules in the order `SecretAccessPolicy.Evaluate` checks them. The demo uses a
+secret for which clearance and project suffice. `dev-user` has Standard clearance on `PHOENIX`,
+and Standard and Internal have the same numeric level. The secret is in Development, so the
+production window does not apply. The trusted-network rule starts above Internal, and step-up
+starts at Secret, so the reveal requires no fresh code.
 
-If someone asks "show me a denial", do not improvise one on loopback. The default trusted list
-includes `127.0.0.1/32`, so a Confidential secret opened from this laptop is still on a trusted
-network. A denial needs an account, a project, a sensitivity, or a window that actually fails. That
-variant was not rehearsed.
+If someone asks "show me a denial", explain that `127.0.0.1/32` is trusted by default. A
+Confidential request from this laptop over loopback therefore satisfies the network rule. A live
+denial would require a failing account, project, sensitivity, or time-window check. That case was
+outside the rehearsal.
 
-The words Top Secret, Standard, Internal, Confidential, and Production are the enum names. An
-administrator is a vault account with Top Secret clearance, not a separate role.
+Top Secret, Standard, Internal, Confidential, and Production are the enum names used here. A
+vault account gets administrator rights from Top Secret clearance alone.
 
 ### ქართული
 
-ორი იდენტობა, თითოჯერ. ადამიანი საცავის ანგარიშს იყენებს. შესვლის გვერდი Angular-ისაა. პაროლის
-შემდეგ `AuthController.Password` მხოლოდ `MfaPending` ქუქის წერს. `SessionIssuer.SignInAsync` სესიას
-ქმნის ავთენტიფიკატორის კოდის, აღდგენის კოდის, ჩარიცხვის, passkey-ს ან SSO-ს შემდეგ. Passkey
-ორივე ფაქტორია ერთად. ადმინისტრატორი ახალი ანგარიშის პაროლს არასოდეს ირჩევს: ელფოსტით
-გაგზავნილი მოწვევა ადამიანს აძლევს საშუალებას, თავად დააყენოს პაროლი და ჩარიცხოს
-ავთენტიფიკატორი (ADR-0033). აპლიკაცია
-სერვისის ანგარიშს და API გასაღებს იყენებს `/api/v1/`-ზე. `/api/ui/` ამ გასაღებს არ იღებს. ADR-0005
-და ADR-0012 გადაწყვეტილებებია: Angular-ის მცველები მოხერხებულობაა.
+ორივე ტიპის ანგარიში ერთხელ აღწერეთ. მომხმარებელი საცავის ანგარიშით შედის Angular-ის გვერდიდან.
+პაროლის შემოწმების შემდეგ `AuthController.Password` ხელს აწერს მხოლოდ `MfaPending` ქუქის.
+`SessionIssuer.SignInAsync` სესიას ქმნის ავთენტიფიკატორის ან აღდგენის კოდის დადასტურების,
+ავთენტიფიკატორის რეგისტრაციის, passkey-ით ან SSO-ით შესვლის შემდეგ. passkey ორივე ფაქტორს ერთად
+ადასტურებს. ელფოსტით მიღებული მოწვევით მომხმარებელი თავად ადგენს პაროლს და არეგისტრირებს
+ავთენტიფიკატორს (ADR-0033). აპლიკაცია სერვისის ანგარიშითა და API გასაღებით მიმართავს `/api/v1/`-ს.
+`/api/ui/` ამ გასაღებს არ იღებს. Angular-ის მარშრუტების შემოწმებები ნავიგაციას ამარტივებს. წვდომის
+შესახებ არქიტექტურული გადაწყვეტილებები აღწერილია ADR-0005-სა და ADR-0012-ში.
 
-ოთხი წესი გაიარეთ იმ რიგით, რომლითაც `SecretAccessPolicy.Evaluate` ამოწმებს. შემდეგ თქვით, რატომ არის
-ცოცხალი საიდუმლო განზრახ მარტივი. `dev-user` არის Standard პროექტზე `PHOENIX`. საიდუმლო Internal-ია,
-იგივე რიცხვითი დონე, Development-ია, ამიტომ წარმოების ფანჯარა არ ეხება, და Internal-ია, ამიტომ სანდო
-ქსლის წესი არ ეხება. გაძლიერებული დადასტურება Secret-იდან იწყება, ამიტომ ეს გახსნა ახალ კოდს არ
-ითხოვს.
+ოთხი წესი `SecretAccessPolicy.Evaluate`-ში მოცემული თანმიმდევრობით ახსენით. შემდეგ აჩვენეთ, რატომ
+კმარა ამ მაგალითში დაშვებისა და პროექტის შემოწმება. `dev-user`-ს პროექტ `PHOENIX`-ზე Standard
+დაშვება აქვს. Standard და Internal ერთსა და იმავე რიცხვით დონეზეა. საიდუმლო Development გარემოს ეკუთვნის,
+ამიტომ მასზე Production-ის წვდომის დროითი ფანჯარა არ ვრცელდება. Internal დონეზე სანდო ქსელის წესიც არ
+მოქმედებს. გაძლიერებული ავთენტიფიკაცია Secret დონიდან მოითხოვება, ამიტომ ამ მნიშვნელობის
+საჩვენებლად ახალი კოდი საჭირო არ არის.
 
-თუ გეკითხებიან „უარი მაჩვენე“, loopback-ზე ნუ მოიფიქრებთ. ნაგულისხმევ სანდო სიაში `127.0.0.1/32`
-შედის, ამიტომ ამ ლეპტოპიდან გახსნილი Confidential საიდუმლო მაინც სანდო ქსელშია. უარს სჭირდება
-ანგარიში, პროექტი, მგრძნობელობა ან ფანჯარა, რომელიც ნამდვილად ვერ გადის. ეს ვარიანტი არ
-რეპეტირებულა.
+თუ წვდომაზე უარის ჩვენებას გთხოვენ, აუხსენით, რომ loopback-ზე `127.0.0.1/32` ნაგულისხმევად სანდო
+მისამართია. ამიტომ ამ ლეპტოპიდან Confidential საიდუმლოზე მოთხოვნაც სანდო
+ქსელიდან მოდის. უარის საჩვენებლად საჭიროა შემთხვევა, როცა ანგარიშის დაშვება, პროექტი, საიდუმლოს
+მგრძნობელობა ან წვდომის დროითი ფანჯარა წესს ვერ აკმაყოფილებს. ეს ვარიანტი რეპეტიციაზე არ შემოწმებულა.
 
-სიტყვები Top Secret, Standard, Internal, Confidential და Production ენამების სახელებია.
-ადმინისტრატორი არის საცავის ანგარიში Top Secret დაშვებით, არა ცალკე როლი.
+Top Secret, Standard, Internal, Confidential და Production ჩამონათვალების (enum) მნიშვნელობების
+სახელებია. საცავის ანგარიშს ადმინისტრატორის უფლებებისთვის მხოლოდ Top Secret დაშვება სჭირდება.
 
-## Slide 3 — Architecture / არქიტექტურა
+## Slide 3: Architecture / არქიტექტურა
 
 ### English
 
-Point at the context picture first: one person, the vault, and the external systems. The
-application that uses a service account is an external system, not a person. Then the container
-picture. Inside the boundary, the Angular UI runs in the browser and calls the UI API with the
+Start with the person, the vault, and the external systems on the context diagram. The application
+that uses a service account is one of those external systems. Switch to the container diagram.
+The Angular UI runs in the browser inside the system boundary and calls the UI API with the
 session cookie. The Web application is ASP.NET Core on .NET 10 and serves those files, both APIs,
-and three server pages of its own: access blocked, error, and not found. No Razor view is left on
-this revision; sign-in is Angular too. `AngularUiRoutes` lists the page routes that serve
-Angular (ADR-0034). One database is selected by `Database:Provider`, and the process
-refuses to start without it. Redis appears only when enabled. Node is a build stage in the
-Dockerfile and is not a box in that picture. The Angular files are what the browser runs.
+and three server pages for access blocked, error, and not found. Sign-in also runs in Angular.
+The revision has no Razor views. `AngularUiRoutes` lists the page routes that serve Angular
+(ADR-0034). The process requires `Database:Provider` to select one database at startup. Redis appears
+when enabled. Node runs in the Dockerfile's build stage, outside the runtime diagram. The browser
+executes the Angular files that Web serves.
 
 Say "module" when you point at Core and Infrastructure. Web references both projects.
 Infrastructure references Core. Core references no NuGet package. `EclipsVault.AuditVerifier`
@@ -105,59 +107,65 @@ references Core only, so the offline check does not need the database or the pri
 
 Name the hosted workers that `Program.cs` and `DependencyInjection` actually register:
 `AuditGroupCommitter`, `SecretLifecycleWorker`, `DynamicLeaseWorker`, and `LicenseStartupCheck`.
-They are threads in Web, not extra containers.
+The diagram keeps these threads inside the Web container.
 
-Close with two deployments, Development and production; the demonstration is one Development
-run, recorded in [demo-setup-reset.md](demo-setup-reset.md). Development is `docker-compose.yml`
-plus the Web process. Production is drawn as the reference deployment in `deploy/production/`:
-Caddy with automatic HTTPS, the signed vault image, and PostgreSQL on an internal network, with the
-Data Protection key ring on a volume. The vault trusts forwarded client addresses only from Caddy's
-fixed address. It has no demo seed. This talk did not start it. Redis in the compose file does
-nothing until `Redis:Enabled` is true; the committed `appsettings.json` sets it false. The copied
-Development file sets `Email:Sender` to `Smtp` and points it at Mailpit; the 24 November walk used
-`Log`, the committed default, and sent no mail.
+Show Development and the production reference. The one Development run used for the demo is
+in [demo-setup-reset.md](demo-setup-reset.md). Development runs the services in `docker-compose.yml`
+alongside the Web process. The reference in `deploy/production/` uses Caddy for automatic HTTPS,
+the signed vault image, and PostgreSQL on an internal network. A volume holds the Data Protection
+key ring. The vault trusts forwarded client addresses only from Caddy's fixed address. Production
+does not seed demo data, and the rehearsal did not start the reference deployment. Web uses Redis
+only when `Redis:Enabled` is true. The committed `appsettings.json` sets it to false. The copied
+Development file sets `Email:Sender` to `Smtp` and points at Mailpit. The 24 November rehearsal used
+the committed default, `Log`, and sent no mail.
 
-If asked about dynamic secrets on PostgreSQL: a role names its backend, SQL Server or PostgreSQL,
-and each backend has its own target connection, never the vault's own database.
+For questions about dynamic secrets on PostgreSQL, explain that the role selects SQL Server or
+PostgreSQL. Each backend connects to a target database separate from the vault's database.
 
 ### ქართული
 
-ჯერ კონტექსტის სურათს მიუთითეთ: ერთი პიროვნება, საცავი და გარე სისტემები. აპლიკაცია, რომელიც
-სერვისის ანგარიშს იყენებს, გარე სისტემაა, არა პიროვნება. შემდეგ კონტეინერის სურათს. საზღვრის
-შიგნით Angular UI ბრაუზერში ეშვება და UI API-ს სესიის ქუქით იძახებს. Web აპლიკაცია ASP.NET Core-ა
-.NET 10-ზე და ამ ფაილებს, ორივე API-ს და საკუთარ სამ სერვერულ გვერდს აწვდის: დაბლოკილი წვდომა,
-შეცდომა და „ვერ მოიძებნა“. ამ რევიზიაზე Razor-ის ხედი აღარ დარჩა; შესვლაც Angular-ისაა.
-`AngularUiRoutes` ჩამოთვლის მარშრუტებს, რომლებზეც სერვერი Angular-ის გვერდებს აწვდის (ADR-0034). ერთ ბაზას `Database:Provider` ირჩევს, და პროცესი მის გარეშე არ ეშვება. Redis მხოლოდ
-მაშინ ჩანს, როცა ჩართულია. Node Dockerfile-ის აწყობის საფეხურია და ამ სურათში უჯრა არ არის.
-Angular-ის ფაილები ისაა, რასაც ბრაუზერი უშვებს.
+ჯერ კონტექსტის დიაგრამაზე მიუთითეთ მომხმარებელზე, საცავსა და გარე სისტემებზე. სერვისის ანგარიშის
+მქონე აპლიკაცია გარე სისტემად არის წარმოდგენილი. შემდეგ კონტეინერების დიაგრამაზე გადადით.
+Angular UI სისტემის ნაწილია. ის ბრაუზერში მუშაობს და UI API-ს სესიის ქუქით მიმართავს. Web აპლიკაცია
+ASP.NET Core-ზეა აგებული და .NET 10-ზე მუშაობს. ის აწვდის Angular-ის ფაილებს, ამუშავებს ორივე API-ის
+მოთხოვნებს და აბრუნებს სამ საკუთარ სერვერულ გვერდს: „წვდომა დაბლოკილია“, „შეცდომა“ და „ვერ მოიძებნა“.
+ამ რევიზიაში Razor-ის ხედები სრულად ამოღებულია. შესვლის გვერდებიც Angular-ზე მუშაობს.
+`AngularUiRoutes` ჩამოთვლის მარშრუტებს, რომლებზეც სერვერი Angular-ის გვერდებს აბრუნებს (ADR-0034).
+`Database:Provider` ერთ მონაცემთა ბაზას განსაზღვრავს. ამ პარამეტრის გარეშე პროცესი არ ეშვება.
+Redis მხოლოდ ჩართვის შემთხვევაში ჩანს. Node Dockerfile-ში მხოლოდ აგების ეტაპზე გამოიყენება და
+დიაგრამაზე ცალკე არ არის გამოყოფილი. ბრაუზერი Angular-ის ფაილებს ასრულებს.
 
-Core-სა და Infrastructure-ზე თითის დაჭერისას თქვით „მოდული“. Web ორივე პროექტს იყენებს.
-Infrastructure იყენებს Core-ს. Core-ს NuGet პაკეტი არ აქვს. `EclipsVault.AuditVerifier` მხოლოდ Core-ს
-იყენებს, ამიტომ ხაზგარეშე შემოწმებას ბაზა ან პირადი გასაღები არ სჭირდება.
+Core-სა და Infrastructure-ზე მიუთითეთ და ორივეს მოდული უწოდეთ. Web ორივე პროექტზეა დამოკიდებული,
+Infrastructure კი Core-ზე. Core არცერთ NuGet პაკეტზე არ არის დამოკიდებული.
+`EclipsVault.AuditVerifier` მხოლოდ Core-ს იყენებს, ამიტომ ოფლაინ შემოწმებას არც მონაცემთა ბაზა
+სჭირდება და არც კერძო გასაღები.
 
-დაასახელეთ ფონური მუშაკები, რომლებსაც `Program.cs` და `DependencyInjection` ნამდვილად არეგისტრირებს:
-`AuditGroupCommitter`, `SecretLifecycleWorker`, `DynamicLeaseWorker` და `LicenseStartupCheck`. ისინი
-Web-ის ნაკადებია, არა დამატებითი კონტეინერები.
+ფონური პროცესების რეგისტრაცია `Program.cs`-სა და `DependencyInjection`-ში ხდება:
+`AuditGroupCommitter`, `SecretLifecycleWorker`, `DynamicLeaseWorker` და `LicenseStartupCheck`.
+დიაგრამაზე შესრულების ეს ნაკადები Web-ის კონტეინერში დატოვეთ.
 
-დაასრულეთ ორი განთავსებით, Development-ით და production-ით; დემონსტრაცია ერთი Development
-გაშვებაა, ჩაწერილი [demo-setup-reset.md](demo-setup-reset.md)-ში. Development არის
-`docker-compose.yml` პლუს Web პროცესი. Production დახატულია როგორც `deploy/production/`-ის
-საცნობარო განთავსება: Caddy ავტომატური HTTPS-ით, ხელმოწერილი საცავის იმიჯი და PostgreSQL შიდა
-ქსელში, Data Protection-ის გასაღებების რგოლი კი ცალკე ტომზეა. საცავი გადაგზავნილ კლიენტის
-მისამართებს მხოლოდ Caddy-ის ფიქსირებული მისამართიდან ენდობა. სადემონსტრაციო სამყარო იქ არ არის.
-ეს მოხსენება მას არ უშვებს. compose ფაილში Redis არაფერს აკეთებს, სანამ `Redis:Enabled`
-ჭეშმარიტი არ არის; ჩადებული `appsettings.json` მას მცდარზე აყენებს. გადაწერილი Development ფაილი
-`Email:Sender`-ს `Smtp`-ზე აყენებს და Mailpit-ზე მიუთითებს; 24 ნოემბრის გავლამ ჩადებული
-ნაგულისხმევი `Log` გამოიყენა და წერილი არ გაუგზავნია.
+აჩვენეთ Development და Production განთავსება. დემონსტრაცია Development გარემოში ერთხელ ჩატარდა.
+გაშვების აღწერა მოცემულია [demo-setup-reset.md](demo-setup-reset.md)-ში. Development
+გარემო შედგება `docker-compose.yml`-ით გაშვებული სერვისებისა და Web პროცესისგან. Production
+ნაჩვენებია `deploy/production/`-ში აღწერილი ნიმუშით. მასში შედის Caddy ავტომატური HTTPS-ით,
+საცავის ხელმოწერილი იმიჯი და შიდა ქსელში გაშვებული PostgreSQL. Data Protection-ის გასაღებების
+ნაკრები მონაცემთა ტომზე ინახება. საცავი კლიენტის გადმოცემულ მისამართს მხოლოდ მაშინ ენდობა,
+თუ მას Caddy-ის ფიქსირებული მისამართიდან იღებს. ამ გარემოში სადემონსტრაციო მონაცემები არ იქმნება.
+Production განთავსება ამ მოხსენებისთვის არ გაშვებულა. Compose ფაილში აღწერილი Redis მხოლოდ
+`Redis:Enabled`-ის ჩართვისას გამოიყენება. რეპოზიტორიაში შენახულ `appsettings.json`-ში პარამეტრი
+გამორთულია. დაკოპირებულ Development ფაილში `Email:Sender`-ის მნიშვნელობაა `Smtp` და მითითებულია
+Mailpit. 24 ნოემბრის რეპეტიციაზე გამოყენებული იყო რეპოზიტორიის ნაგულისხმევი მნიშვნელობა `Log`
+და წერილი არ გაგზავნილა.
 
-თუ PostgreSQL-ზე დინამიკურ საიდუმლოებზე გეკითხებიან: როლი თავის ბექენდს ასახელებს, SQL Server-ს ან
-PostgreSQL-ს, და თითოეულ ბექენდს საკუთარი სამიზნე კავშირი აქვს, არასოდეს საცავის საკუთარი ბაზა.
+თუ PostgreSQL-ზე დინამიკურ საიდუმლოებზე გკითხავენ, ახსენით, რომ როლი განსაზღვრავს ბექენდს, SQL Server-ს
+ან PostgreSQL-ს. თითოეულ ბექენდს სამიზნე ბაზასთან საკუთარი კავშირი აქვს. საცავის მონაცემთა ბაზა
+სამიზნედ არ გამოიყენება.
 
-## Slide 4 — Reveal ordering / გახსნის რიგითობა
+## Slide 4: Reveal ordering / მნიშვნელობის გამჟღავნების თანმიმდევრობა
 
 ### English
 
-Read the order off the diagram, slowly.
+Use the sequence diagram to explain the order of calls.
 
 "The details request loads the envelope and writes nothing. Then it asks `SecretAccessPolicy`. If
 the answer is no, it records `Access denied` and does not call `RevealAsync`. If the answer is yes,
@@ -165,54 +173,56 @@ it commits `Viewed`. When the person presses Reveal value, the check runs again,
 asks `AuditSink` to commit `SecretRevealed`. The sink waits until that row is committed. Only the
 code after that wait unwraps the data key and opens the value."
 
-That wait is the whole claim. `AuditSink.WriteAsync` throws `AuditWriteFailedException` when the
-commit fails, and `RevealAsync` does not catch it before `DecryptToDtoAsync`.
+If the commit fails, `AuditSink.WriteAsync` throws `AuditWriteFailedException`, and
+`RevealAsync` does not catch it before `DecryptToDtoAsync`.
 
-Say the engine name you are actually running. The committed default is `AesGcmLocal`: a fresh data
-key seals the value, and the master key wraps the data key. `VaultTransit` is a different engine,
-used only when `Crypto:Engine` says so. Do not describe a key-management service you have not
-configured.
+Name the engine configured for the demo. With the committed default, `AesGcmLocal`, a fresh data
+key seals the value and the master key wraps the data key. The vault uses `VaultTransit` only when
+`Crypto:Engine` selects it. Describe only the key-management service you configured.
 
-Master-key rotation and the Encryption keys page are on this revision. You may name them. You may
-not rotate a key in the room, and you may not say a rotation decrypts the secrets. `KekRotationService`
-rewraps data keys in batches. If a failure stops the pass after a batch commits, the response gives
+Mention master-key rotation and the Encryption keys page without running a rotation. On this
+revision, `KekRotationService` rewraps data keys in batches without decrypting secret values.
+If a failure stops the pass after a batch commits, the response gives
 the counts already rewrapped. An audit failure gives `audit_unavailable`. Other failures after a
 committed batch give `rotation_interrupted`. With Vault Transit, the page lists its key versions.
 
 ### ქართული
 
-რიგი დიაგრამიდან წაიკითხეთ, ნელა.
+დიაგრამაზე ნაჩვენები თანმიმდევრობა ნელა წაიკითხეთ.
 
-„დეტალების მოთხოვნა კონვერტს ტვირთავს და არაფერს წერს. შემდეგ `SecretAccessPolicy`-ს ეკითხება. თუ
-პასუხი უარყოფითია, წერს `Access denied`-ს და `RevealAsync`-ს არ იძახებს. თუ პასუხი დადებითია,
-აფიქსირებს `Viewed`-ს. როცა ადამიანი Reveal value-ს აჭერს, შემოწმება თავიდან ეშვება და `RevealAsync`
-`AuditSink`-ს სთხოვს, დააფიქსიროს `SecretRevealed`. Sink ელოდება, სანამ ჩანაწერი დაფიქსირდება.
-მხოლოდ ამ ლოდინის შემდეგ კოდი ხსნის მონაცემთა გასაღებს და მნიშვნელობას.“
+„დეტალების მოთხოვნისას სერვერი ტვირთავს დაშიფვრის კონვერტს და ამ ეტაპზე არაფერს წერს. შემდეგ
+წვდომას `SecretAccessPolicy`-ით ამოწმებს. უარის შემთხვევაში წერს `Access denied`-ს და `RevealAsync`-ს
+არ იძახებს. ნებართვის შემთხვევაში აფიქსირებს `Viewed`-ს. როცა მომხმარებელი Reveal value-ს აჭერს,
+სერვერი წვდომას ხელახლა ამოწმებს. `RevealAsync` `AuditSink`-ს `SecretRevealed`-ის ჩაწერას სთხოვს.
+`AuditSink` ჩანაწერის დაფიქსირებას ელოდება. მხოლოდ ამის შემდეგ ხსნის კოდი შეფუთულ მონაცემთა
+გასაღებს და მნიშვნელობის გასაშიფრად იყენებს.“
 
-ეს ლოდინი მთელი მტკიცებაა. `AuditSink.WriteAsync` ისვრის `AuditWriteFailedException`-ს, როცა
-დაფიქსირება ვერ ხერხდება, და `RevealAsync` ამას `DecryptToDtoAsync`-მდე არ იჭერს.
+თუ აუდიტის ჩანაწერი ვერ დაფიქსირდა,
+`AuditSink.WriteAsync` იწვევს `AuditWriteFailedException` გამონაკლისს. `RevealAsync` ამ გამონაკლისს
+`DecryptToDtoAsync`-ის გამოძახებამდე არ ამუშავებს.
 
-დაასახელეთ ის ძრავი, რომელსაც ნამდვილად უშვებთ. ჩადებული ნაგულისხმევი `AesGcmLocal`-ია: ახალი
-მონაცემთა გასაღები მნიშვნელობას ბეჭდავს, მასტერ-გასაღები კი მონაცემთა გასაღებს ახვევს. `VaultTransit`
-სხვა ძრავია და მხოლოდ მაშინ გამოიყენება, როცა `Crypto:Engine` ასე ამბობს. ნუ აღწერთ გასაღებების
-სერვისს, რომელიც არ მოგიწყვიათ.
+დაასახელეთ დაშიფვრის ძრავა, რომელსაც დემონსტრაციისას იყენებთ. რეპოზიტორიაში ნაგულისხმევია
+`AesGcmLocal`. მნიშვნელობა ახალი მონაცემთა გასაღებით იშიფრება, მონაცემთა გასაღები კი მასტერ-გასაღებით
+იფუთება. `VaultTransit` სხვა ძრავაა და მხოლოდ მაშინ გამოიყენება, როცა ამას `Crypto:Engine` განსაზღვრავს.
+ისაუბრეთ მხოლოდ კონფიგურირებულ გასაღებების მართვის სერვისზე.
 
-მასტერ-გასაღების როტაცია და Encryption keys-ის გვერდი ამ რევიზიაზეა. შეგიძლიათ დაასახელოთ. ოთახში
-გასაღები ნუ დაატრიალებთ და ნუ იტყვით, რომ როტაცია საიდუმლოებს შლის. `KekRotationService` მონაცემთა
-გასაღებებს ჯგუფებად ახვევს. თუ დაფიქსირებული ჯგუფის შემდეგ მუშაობა შეწყდა, პასუხში უკვე
-განახლებული მონაცემთა გასაღებების რაოდენობა ჩანს. აუდიტის შეცდომის კოდია `audit_unavailable`. ჯგუფის წარმატებით
-დასრულების შემდეგ სხვა შეცდომის კოდია `rotation_interrupted`. Vault Transit-ის გამოყენებისას
-გვერდი მისი გასაღების ვერსიებს აჩვენებს.
+ახსენეთ ამ რევიზიაში ხელმისაწვდომი მასტერ-გასაღების როტაცია და Encryption keys-ის გვერდი.
+დემონსტრაციისას როტაცია არ გაუშვათ. `KekRotationService` მონაცემთა გასაღებებს ჯგუფებად ხელახლა
+ფუთავს საიდუმლოების მნიშვნელობების გაშიფვრის გარეშე.
+თუ როტაცია უკვე დაფიქსირებული ჯგუფის შემდეგ შეფერხდა, პასუხში ჩანს, რამდენი მონაცემთა გასაღები
+შეიფუთა ხელახლა. აუდიტის შეცდომის კოდია `audit_unavailable`. ჯგუფის წარმატებით დაფიქსირების შემდეგ
+სხვა შეცდომის კოდია `rotation_interrupted`. Vault Transit-ის გამოყენებისას გვერდზე მისი გასაღების
+ვერსიები ჩანს.
 
-## Slide 5 — Live journey / ცოცხალი გზა
+## Slide 5: Live journey / დემონსტრაცია
 
 ### English
 
 Follow [demo-setup-reset.md](demo-setup-reset.md) and [rehearsal-checklist.md](rehearsal-checklist.md).
-If the disposable vault is not already up from a checked run, skip the live clicks and talk through
-the five steps. Do not start a stack for the first time in front of the room.
+Use a disposable vault that is already running and has passed rehearsal. Otherwise, describe the
+five steps aloud. Start and check the stack before the audience arrives.
 
-Narration while it works:
+Demo narration
 
 "This account is the Phoenix member. Sign-in opens Secrets, which is an Angular page. The list
 says two active secrets right after the reset: the one I will open, and a short-lived token I will
@@ -227,149 +237,142 @@ under it is the details page after the server allowed it, not the decryption. A 
 those is the Development seed. Latest checkpoint says none yet. I do not press Verify integrity or
 Export signed bundle."
 
-Do not read the Attestation panel's sentence about deleted rows aloud as a promise about the live
-database. Slide 6 says what Verify proves.
+Use slide 6 to explain what Verify covers on the live database. The Attestation panel's sentence
+about deleted rows applies to a retained export.
 
-If the authenticator enrollment screen appears, stop the projection. That screen is first-run
-enrollment, and it does not belong in a recording. The same is true of recovery codes.
-
-If a step-up form appears, you are not on the Internal secret. Stop. Do not type a code on camera.
+If the first-run authenticator enrollment screen appears, turn off the projector. Keep that
+screen and recovery codes out of the recording. If a step-up form appears, stop and check which
+secret you opened. This Internal secret does not ask for a code. Keep code entry off camera.
 
 ### ქართული
 
-გაჰყევით [demo-setup-reset.md](demo-setup-reset.md)-ს და
-[rehearsal-checklist.md](rehearsal-checklist.md)-ს. თუ ერთჯერადი საცავი შემოწმებული გაშვებიდან უკვე
-არ დგას, ცოცხალი დაწკაპუნება გამოტოვეთ და ხუთი ნაბიჯი სიტყვიერად გაიარეთ. ოთახის წინ პირველად სტეკი
-ნუ ჩართოთ.
+მიჰყევით [demo-setup-reset.md](demo-setup-reset.md)-სა და
+[rehearsal-checklist.md](rehearsal-checklist.md)-ში მოცემულ ინსტრუქციებს. სტეკი აუდიტორიის მოსვლამდე
+გაუშვით და შეამოწმეთ. თუ შემოწმებული ერთჯერადი საცავი მზად არ არის, ხუთივე ნაბიჯი ზეპირად აღწერეთ.
 
-ტექსტი, სანამ მუშაობს:
+დემონსტრაციის ტექსტი
 
-„ეს ანგარიში Phoenix-ის წევრია. შესვლა ხსნის Secrets-ს, რომელიც Angular-ის გვერდია. სია
-გადატვირთვისთანავე ორ აქტიურ საიდუმლოს აჩვენებს: იმას, რომელსაც გავხსნი, და ხანმოკლე ტოკენს,
-რომელსაც არ შევეხები. ტოკენს ვადა გადატვირთვიდან დაახლოებით ხუთ წუთში გასდის, ამიტომ სია ახლა
-შეიძლება ერთს აჩვენებდეს.
-ვფილტრავ `Phoenix_Dev_Database_Password`-ზე და ვაწკაპუნებ მის სახელზე, შემდეგ Reveal value-ს. მნიშვნელობა
-გვერდზე ჩნდება, ამიტომ Back to list-ს ვაჭერ, სანამ ვინმე ეკრანს ჩაიწერს. ანგარიშის ბარათიდან
-გამოვდივარ და ადმინისტრატორად ვბრუნდები. აუდიტის ჟურნალი Angular-ის გვერდია Administration-ში და
-მხოლოდ ადმინისტრატორს შეუძლია მისი გახსნა. ის ულიცენზიო შეტყობინებას აჩვენებს; შეტყობინება ამბობს,
-რომ საცავი მაინც მუშაობს. სათაურის გვერდით ნიშანი ამბობს Not checked, რადგან Verify ჯერ არავის
-დაუჭერია. საიდუმლოს სახელით ვფილტრავ. ჩანაწერი, რომელიც მჭირდება, ამბობს
-`Revealed` და ამ ანგარიშს ასახელებს. მის ქვეშ `Viewed` დეტალების გვერდია მას შემდეგ, რაც სერვერმა
-დაუშვა, არა გაშიფვრა. მათ ქვეშ `Created` Development-ის თესლია. Latest checkpoint ამბობს, რომ ჯერ
-არ არის. Verify integrity-სა და Export signed bundle-ს არ ვაჭერ.“
+„ეს ანგარიში Phoenix-ის წევრს ეკუთვნის. შესვლის შემდეგ იხსნება Angular-ის გვერდი Secrets.
+საწყისი მდგომარეობის აღდგენისთანავე სიაში ორი აქტიური საიდუმლოა: ის, რომელსაც გავხსნი, და
+მოკლევადიანი ტოკენი, რომელსაც არ გავხსნი. ტოკენს ვადა აღდგენიდან დაახლოებით ხუთ წუთში გასდის,
+ამიტომ სიაში შეიძლება უკვე მხოლოდ ერთი აქტიური საიდუმლო ჩანდეს.
+სიას `Phoenix_Dev_Database_Password`-ის სახელით ვფილტრავ. ვაჭერ სახელს, შემდეგ კი Reveal value-ს.
+მნიშვნელობა გვერდზე ჩნდება. ეკრანის გადაღებამდე Back to list-ს ვაჭერ. ანგარიშის ბარათიდან გამოვდივარ
+და ადმინისტრატორის ანგარიშით შევდივარ. აუდიტის ჟურნალი Angular-ის გვერდია Administration-ში.
+მისი გახსნა მხოლოდ ადმინისტრატორს შეუძლია. შეტყობინებაში წერია, რომ საცავს ლიცენზია არ აქვს და
+მუშაობას მაინც აგრძელებს. სათაურთან ჩანს Not checked, რადგან Verify ჯერ არ გაშვებულა.
+ჟურნალს საიდუმლოს სახელით ვფილტრავ. საჭირო ჩანაწერს აწერია `Revealed` და მითითებულია მოქმედების
+შემსრულებელი ანგარიში. ქვემოთ `Viewed` აღნიშნავს დეტალების ნახვას სერვერის ნებართვის შემდეგ. ამ დროს მნიშვნელობის
+გაშიფვრა არ ხდება. მის ქვემოთ `Created` აღნიშნავს Development გარემოში სადემონსტრაციო ჩანაწერის
+წინასწარ შექმნას. Latest checkpoint ველში წერია, რომ საკონტროლო წერტილი ჯერ არ არსებობს.
+Verify integrity-სა და Export signed bundle-ს არ ვაჭერ.“
 
-Attestation-ის პანელის წინადადება წაშლილ ჩანაწერებზე ცოცხალი ბაზის დაპირებად ნუ წაიკითხავთ.
-სლაიდი 6 ამბობს, რას ამტკიცებს Verify.
+მოქმედ მონაცემთა ბაზაზე Verify-ის შემოწმების ფარგლები მე-6 სლაიდზეა. Attestation პანელში
+წაშლილი ჩანაწერების შესახებ წინადადება უკვე შენახულ ექსპორტს ეხება.
 
-თუ ავთენტიფიკატორის ჩარიცხვის ეკრანი გამოჩნდება, პროექცია გააჩერეთ. ეს პირველი გაშვების ჩარიცხვაა და
-ჩანაწერში არ ეკუთვნის. იგივე ეხება აღდგენის კოდებს.
+თუ პირველი შესვლისას ავთენტიფიკატორის რეგისტრაციის გვერდი გამოჩნდა, პროექტორი გამორთეთ.
+ვიდეოში არ უნდა მოხვდეს არც ეს გვერდი და არც აღდგენის კოდები. თუ გაძლიერებული ავთენტიფიკაციის
+ფორმა გამოჩნდა, შეჩერდით და გადაამოწმეთ, რომელი საიდუმლო გახსენით. ამ Internal საიდუმლოსთვის
+კოდი საჭირო არ არის. კოდი მხოლოდ კამერის მიღმა შეიყვანეთ.
 
-თუ გაძლიერებული დადასტურების ფორმა გამოჩნდება, Internal საიდუმლოზე არ ხართ. გაჩერდით. კოდი კამერაზე
-ნუ აკრიფოთ.
-
-## Slide 6 — Checkpoint proof boundary / საკონტროლო წერტილის მტკიცებულების საზღვარი
+## Slide 6: Checkpoint proof boundary / რას ადასტურებს საკონტროლო წერტილი
 
 ### English
 
-This is the slide where a careless sentence is too strong. Verify now does compare the trail with
-checkpoints signed by the current key. That is `AuditChainVerifier.VerifyAsync`, called from
-`AuditCheckpointService.VerifyAsync`. Do not go back to the old sentence that Verify ignores
-checkpoints. Do not jump to the other old sentence either: that every deletion is detectable.
+Verify compares the trail with checkpoints signed by the current key.
+`AuditCheckpointService.VerifyAsync` calls `AuditChainVerifier.VerifyAsync` for this check.
+Some deletions can escape detection even with the latest checkpoint.
 
-Say instead: "Verify answers a question about the rows up to the latest checkpoint this key signed.
+"Verify answers a question about the rows up to the latest checkpoint this key signed.
 Entries after that checkpoint are only the hash chain. Deleting the checkpoints, or editing only
 those later rows and recomputing their hashes, can still look fine. The offline verifier checks the
 bundle in its hand. A bundle an auditor already stored still disagrees with a later rewrite. That
 is why a retained export matters, and it is also why I will not say every deletion is detectable
 whatever the latest checkpoint is."
 
-The behaviours that used to be described as planned are on this revision: `AuditLogViewed` when the
-log opens, `AuditChainVerified` when Verify finishes, `AuditCheckpointCreated` in the same
-transaction as the checkpoint, streamed export after `AuditBundleExported` and a fresh step-up, and
-one verification and one export at a time. `AuditController.Export` calls `AdministratorStepUp`
+The vault writes `AuditLogViewed` when the log opens and `AuditChainVerified` when Verify finishes.
+It saves a checkpoint and `AuditCheckpointCreated` in one transaction. Export requires a fresh
+step-up and streams after `AuditBundleExported` commits. The vault allows one verification and
+one export at a time. `AuditController.Export` calls `AdministratorStepUp`
 before `ExportAsync`. `CreateCheckpointAsync` saves the checkpoint through `SaveChangesAsync`, and
 `DescribeCheckpointChange` adds the audit row to that same batch.
 
-Keep the old-verifier note. A current verifier accepts bundle formats `eclipsvault.audit-bundle/1`
+A current verifier accepts bundle formats `eclipsvault.audit-bundle/1`
 and `/2`, and refuses a newer format without saying the row was edited. The 1.0.0 verifier, which
 predates that refusal, reports `INVALID — "the row was edited"` for a later bundle. That report is
-the old tool, not proof of tampering.
+a compatibility error in the old tool.
 
-Do not click Verify and then say "intact" as if it covered rows after the latest checkpoint, or as
-if deleted checkpoints would still show. If you do click it, read the message it actually returns.
-With no checkpoint yet, that message says the chain is intact and that a database writer could
-still delete the newest entries or recompute hashes. After a checkpoint, it names the sequence the
-signature covers and tells the room to export a bundle for an outside party.
+If you click Verify, read the returned message. With no checkpoint, it says the chain is intact
+and warns that a database writer could still delete the newest entries or recompute hashes.
+With a checkpoint, it names the sequence covered by the signature and recommends exporting a
+bundle for an outside party. Keep "intact" within the reported scope. Rows after the latest
+checkpoint lack signature coverage, and Verify can miss deleted checkpoints.
 
 ### ქართული
 
-ეს ის სლაიდია, სადაც დაუდევარი წინადადება ზედმეტად ძლიერია. Verify ახლა ადარებს კვალს მიმდინარე
-გასაღებით ხელმოწერილ საკონტროლო წერტილებს. ეს არის `AuditChainVerifier.VerifyAsync`, რომელსაც
-იძახებს `AuditCheckpointService.VerifyAsync`. ნუ დაუბრუნდებით ძველ წინადადებას, რომ Verify
-საკონტროლო წერტილებს არ უყურებს. მეორე ძველ წინადადებაზეც ნუ გადახვალთ: რომ ყოველი წაშლა აღმოჩენადია.
+Verify აუდიტის ჯაჭვს მოქმედი გასაღებით ხელმოწერილ საკონტროლო წერტილებს ადარებს.
+`AuditCheckpointService.VerifyAsync` ამ შემოწმებისთვის `AuditChainVerifier.VerifyAsync`-ს იძახებს.
+ბოლო საკონტროლო წერტილის არსებობის შემთხვევაშიც შეიძლება ზოგიერთი წაშლა შეუმჩნეველი დარჩეს.
 
-სანაცვლოდ თქვით: „Verify პასუხობს კითხვას იმ ჩანაწერებზე, რომლებიც ამ გასაღების ბოლო საკონტროლო
-წერტილამდეა. ამ წერტილის შემდეგ ჩანაწერები მხოლოდ ჰეშის ჯაჭვია. საკონტროლო წერტილების წაშლამ, ან
-მხოლოდ იმ გვიანი ჩანაწერების შეცვლამ და მათი ჰეშების თავიდან დათვლამ, შეიძლება მაინც კარგად
-გამოიყურებოდეს. ხაზგარეშე შემმოწმებელი იმ შეკვრას ამოწმებს, რომელიც ხელში აქვს. აუდიტორის მიერ უკვე
-შენახული შეკვრა გვიან გადაწერას მაინც არ დაემთხვევა. ამიტომ შენახული ექსპორტი მნიშვნელოვანია, და
-ამიტომაც არ ვიტყვი, რომ ყოველი წაშლა აღმოჩენადია, როგორიც უნდა იყოს ბოლო საკონტროლო წერტილი.“
+„Verify ჩანაწერებს ამ გასაღებით ხელმოწერილი ბოლო საკონტროლო წერტილის ჩათვლით ადასტურებს.
+შემდეგ ჩანაწერებს მხოლოდ ჰეშების ჯაჭვი აკავშირებს. საკონტროლო წერტილების წაშლა შეიძლება შეუმჩნეველი
+დარჩეს. იგივე ეხება ბოლო წერტილის შემდეგ ჩანაწერების შეცვლას, თუ მათი ჰეშებიც ხელახლა გამოითვალა.
+ოფლაინ შემმოწმებელი მხოლოდ მისთვის გადაცემულ პაკეტს ამოწმებს. აუდიტორთან უკვე შენახული პაკეტი
+მოგვიანებით გადაწერილ ჩანაწერებს აღარ დაემთხვევა. ამიტომ შენახულ ექსპორტს მნიშვნელობა აქვს.
+ბოლო საკონტროლო წერტილის არსებობაც კი არ იძლევა ყოველი წაშლის აღმოჩენის გარანტიას.“
 
-ქცევები, რომლებიც ადრე დაგეგმილად იყო აღწერილი, ამ რევიზიაზეა: `AuditLogViewed`, როცა ჟურნალი
-იხსნება, `AuditChainVerified`, როცა Verify სრულდება, `AuditCheckpointCreated` იმავე ტრანზაქციაში,
-რომელშიც საკონტროლო წერტილი, ნაკადური ექსპორტი `AuditBundleExported`-ისა და ახალი გაძლიერებული
-დადასტურების შემდეგ, და თითო შემოწმება და თითო ექსპორტი ერთდროულად. `AuditController.Export`
-`ExportAsync`-მდე იძახებს `AdministratorStepUp`-ს. `CreateCheckpointAsync` საკონტროლო წერტილს
-`SaveChangesAsync`-ით ინახავს, და `DescribeCheckpointChange` აუდიტის ჩანაწერს იმავე პარტიას ამატებს.
+ჟურნალის გახსნისას იწერება `AuditLogViewed`,
+Verify-ის დასრულებისას კი `AuditChainVerified`. `AuditCheckpointCreated` საკონტროლო წერტილთან
+ერთად იმავე ტრანზაქციაში ფიქსირდება. ნაკადური ექსპორტისთვის საჭიროა ახლახან გავლილი გაძლიერებული
+ავთენტიფიკაცია და `AuditBundleExported`-ის დაფიქსირება. ერთდროულად მხოლოდ ერთი შემოწმება და ერთი
+ექსპორტი შეიძლება შესრულდეს. `AuditController.Export` `ExportAsync`-მდე `AdministratorStepUp`-ს
+იძახებს. `CreateCheckpointAsync` საკონტროლო წერტილს `SaveChangesAsync`-ით ინახავს.
+`DescribeCheckpointChange` აუდიტის ჩანაწერს იმავე ჯგუფს ამატებს.
 
-დაიცავით ძველი შემმოწმებლის შენიშვნა. მიმდინარე შემმოწმებელი იღებს შეკვრის ფორმატებს
-`eclipsvault.audit-bundle/1` და `/2`, და უფრო ახალ ფორმატს უარყოფს ისე, რომ ჩანაწერს შეცვლილს არ
-ეძახის. 1.0.0 შემმოწმებელი, რომელიც ამ უარზე ადრე გამოვიდა, უფრო ახალ შეკვრაზე აჩვენებს
-`INVALID — "the row was edited"`. ეს ანგარიში ძველი ხელსაწყოა, არა ხელყოფის მტკიცებულება.
+მიმდინარე შემმოწმებელი იღებს პაკეტის ფორმატებს
+`eclipsvault.audit-bundle/1` და `/2`. უფრო ახალ ფორმატს უარყოფს ისე, რომ ჩანაწერს შეცვლილად არ
+აცხადებს. 1.0.0 ვერსია ამ შემოწმების დამატებამდე გამოვიდა და უფრო ახალ პაკეტზე აჩვენებს
+`INVALID — "the row was edited"`. ეს ძველი ვერსიის თავსებადობის შეცდომაა.
 
-Verify-ზე დაწკაპუნების შემდეგ ნუ იტყვით „intact“ ისე, თითქოს ბოლო საკონტროლო წერტილის შემდეგ
-ჩანაწერებსაც ფარავდეს, ან თითქოს წაშლილი საკონტროლო წერტილები მაინც გამოჩნდებოდეს. თუ მაინც
-დააწკაპუნებთ, წაიკითხეთ ის შეტყობინება, რომელსაც ნამდვილად აბრუნებს. სანამ საკონტროლო წერტილი არ
-არსებობს, შეტყობინება ამბობს, რომ ჯაჭვი მთლიანია და რომ ბაზის დამწერს მაინც შეუძლია უახლესი
-ჩანაწერები წაშალოს ან ჰეშები თავიდან დათვალოს. საკონტროლო წერტილის შემდეგ ის ასახელებს მიმდევრობას,
-რომელსაც ხელმოწერა ფარავს, და ოთახს ეუბნება, გარე მხარისთვის შეკვრა გაიტანოს.
+თუ Verify-ს გაუშვებთ, წაიკითხეთ ეკრანზე ნაჩვენები შეტყობინება. საკონტროლო წერტილის გარეშე შეტყობინება
+ადასტურებს ჯაჭვის მთლიანობას და გაფრთხილებთ, რომ ბაზაში ჩაწერის უფლების მქონე პირს მაინც შეუძლია
+უახლესი ჩანაწერების წაშლა ან ჰეშების ხელახლა გამოთვლა. საკონტროლო წერტილის შექმნის შემდეგ
+შეტყობინება ასახელებს, მიმდევრობის რომელ ნომრამდე ვრცელდება ხელმოწერა, და გარე მხარისთვის პაკეტის
+ექსპორტს გთავაზობთ. „intact“ ამ შეტყობინებაში აღწერილ შემოწმებას ეხება. ბოლო საკონტროლო წერტილის
+შემდეგ ჩანაწერებზე ხელმოწერა არ ვრცელდება, ხოლო წაშლილი საკონტროლო წერტილები Verify-მ შეიძლება ვერ შენიშნოს.
 
-## Slide 7 — Final revision and test evidence / საბოლოო რევიზია და ტესტის მტკიცებულება
+## Slide 7: Final revision and test evidence / საბოლოო რევიზია და ტესტების შედეგები
 
 ### English
 
-Read only filled cells. For an empty one, say "not recorded yet".
-
-Read the revision table. The code this talk describes is `origin/main` at
+Read the filled cells in the revision table and say "not recorded yet" for an empty cell. The rehearsal used `origin/main` at
 `1298958050e45f83aefeb4b6455d0a02169ab22a`. Angular sign-in, invitations, the server pages,
 Encryption keys, the audit-log proof boundary, and the Angular secret and audit pages are on that
-revision. The Release build that served the walk had no warnings and no errors. During the draft
+revision. The Release build for the demo had no warnings or errors. During the draft
 refresh, `scripts/check.sh` passed locked restore, the Release build, and the unit suite. The
-separate Development walk is recorded in [demo-setup-reset.md](demo-setup-reset.md).
+separate Development run is recorded in [demo-setup-reset.md](demo-setup-reset.md).
 
-If the owner later freezes a different revision, replace the hash and say the new one. Do not leave
-this hash up if the running vault is a different commit.
+If the owner settles on a different revision, replace the hash on the slide and read the hash of the
+commit the vault is running.
 
 ### ქართული
 
-მხოლოდ შევსებული უჯრები წაიკითხეთ. ცარიელზე თქვით „ჯერ ჩაწერილი არ არის“.
-
-წაიკითხეთ რევიზიის ცხრილი. კოდი, რომელსაც ეს მოხსენება აღწერს, არის `origin/main`
-`1298958050e45f83aefeb4b6455d0a02169ab22a`-ზე. Angular-ის შესვლა, მოწვევები, სერვერული გვერდები,
-Encryption keys, აუდიტის ჟურნალის მტკიცებულების საზღვარი და Angular-ის საიდუმლოსა და აუდიტის
-გვერდები იმ რევიზიაზეა. დემონსტრაციის Release აწყობამ გაფრთხილებისა და შეცდომის გარეშე ჩაიარა.
-მონახაზის განახლებისას `scripts/check.sh`-მა წარმატებით დაასრულა ფიქსირებული დამოკიდებულებების
-აღდგენა, Release აწყობა და ერთეულოვანი ტესტები. ცალკე Development დემონსტრაცია
+რევიზიის ცხრილში წაიკითხეთ შევსებული უჯრები. ცარიელ უჯრაზე თქვით „ჯერ არ არის დაფიქსირებული“.
+რეპეტიცია ჩატარდა `origin/main`-ის რევიზიაზე
+`1298958050e45f83aefeb4b6455d0a02169ab22a`. ამ რევიზიაში ხელმისაწვდომია Angular-ის შესვლის,
+საიდუმლოებისა და აუდიტის გვერდები, მოწვევები, სერვერული გვერდები და Encryption keys. ამავე
+რევიზიას ეხება აუდიტის ჟურნალის შემოწმების აღწერილი ფარგლები. დემონსტრაციისთვის Release რეჟიმში
+აგება გაფრთხილებისა და შეცდომის გარეშე დასრულდა. მონახაზის განახლებისას `scripts/check.sh`-ით
+წარმატებით დასრულდა დამოკიდებულებების ფიქსირებული ვერსიებით აღდგენა, Release რეჟიმში აგება და
+ერთეულოვანი ტესტები. Development გარემოში ცალკე ჩატარებული დემონსტრაცია
 [demo-setup-reset.md](demo-setup-reset.md)-შია აღწერილი.
 
-თუ მფლობელი მოგვიანებით სხვა რევიზიას გაყინავს, ჰეში შეცვალეთ და ახალი თქვით. ეს ჰეში ნუ დატოვოთ,
-თუ გაშვებული საცავი სხვა commit-ია.
+თუ მფლობელი საბოლოოდ სხვა რევიზიას აირჩევს, განაახლეთ ჰეში და მოხსენებაზე ახალი მნიშვნელობა
+დაასახელეთ. სლაიდზე გაშვებული საცავის კომიტის ჰეში უნდა ჩანდეს.
 
-## Slide 8 — Lessons and limitations / დასკვნები და საზღვრები
+## Slide 8: Lessons and limitations / დასკვნები და შეზღუდვები
 
 ### English
-
-Three lessons, then stop.
 
 "The server checked clearance and project for this secret and wrote the reveal row before it
 decrypted the value. It also enforces the network and time rules where they apply."
@@ -387,18 +390,18 @@ that the talk does not show one because the link carries a live token.
 
 ### ქართული
 
-სამი დასკვნა, შემდეგ გაჩერდით.
+„ამ საიდუმლოზე სერვერმა დაშვების დონე და პროექტი შეამოწმა. მნიშვნელობის გაშიფვრამდე სერვერმა
+გამჟღავნების ჩანაწერი დააფიქსირა. სერვერი ქსელისა და დროის წესებსაც ამოწმებს, როცა ისინი ვრცელდება.“
 
-„ამ საიდუმლოსთვის სერვერმა შეამოწმა დაშვება და პროექტი, შემდეგ გაშიფვრამდე დააფიქსირა გახსნის
-ჩანაწერი. სერვერი ქსელისა და დროის წესებსაც ამოწმებს, როცა ისინი საიდუმლოზე ვრცელდება.“
+„რას ადასტურებს აუდიტის ჟურნალი, ჩატარებულ შემოწმებაზეა დამოკიდებული. ჰეშების ჯაჭვის შემოწმება,
+ხელმოწერილი საკონტროლო წერტილის შემოწმება და სხვა პირის მიერ შენახული პაკეტის შემოწმება სამი
+განსხვავებული პროცედურაა.“
 
-„აუდიტის კვალი იმდენად ძლიერია, რამდენადაც ის შემოწმება, რომელსაც ნამდვილად უშვებთ. ჰეშის გავლა,
-ხელმოწერილი საკონტროლო წერტილი და სხვის მიერ შენახული შეკვრა სამი განსხვავებული შემოწმებაა.“
+„ნახეთ Development გარემოში ჩატარებული დემონსტრაცია, სატესტო ანგარიშებითა და ერთი სატესტო
+საიდუმლოთი. ეს დემონსტრაცია Production გარემოზე დასკვნის საფუძველს არ იძლევა.“
 
-„რაც ნახეთ, Development-ის სადემონსტრაციო სამყარო იყო: სინთეზური ანგარიშები, ერთი სინთეზური საიდუმლო, და
-არანაირი მტკიცება production-ზე.“
-
-კითხვები მიიღეთ. მომზადებული პასუხები [questions.md](questions.md)-შია. თუ გეკითხებიან, ყოველი
-წაშლა აღმოჩენადია თუ არა, თქვით არა და ბოლო საკონტროლო წერტილს მიუთითეთ. თუ გეკითხებიან
-მოწვევებზე, თქვით, რომ ახალი ანგარიში ელფოსტით გაგზავნილი მოწვევით აქტიურდება (ADR-0033), და რომ
-მოხსენება მას არ აჩვენებს, რადგან ბმული ცოცხალ ტოკენს ატარებს.
+მსმენელებს კითხვების დასმა შესთავაზეთ. მომზადებული პასუხები [questions.md](questions.md)-შია.
+თუ გკითხავენ, შესაძლებელია თუ არა ყოველი წაშლის აღმოჩენა, უპასუხეთ უარყოფითად და ბოლო
+საკონტროლო წერტილზე მიუთითეთ. მოწვევებზე კითხვის შემთხვევაში თქვით, რომ ახალი ანგარიში ელფოსტით
+გაგზავნილი მოწვევით აქტიურდება (ADR-0033). დემონსტრაციისას ამ ბმულს არ აჩვენებთ, რადგან ის მოქმედ
+ტოკენს შეიცავს.

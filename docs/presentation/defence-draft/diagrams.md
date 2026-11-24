@@ -1,24 +1,22 @@
 # Diagrams / დიაგრამები
 
-These are C4 views of `origin/main` at `1298958050e45f83aefeb4b6455d0a02169ab22a`
-(24 November 2026, 15:18 Asia/Tbilisi). Every box names its C4 type in brackets.
-A container box is `[Container: technology]` plus a short technology line. A component box is
-`[Component]` plus a short technology line. People, the software system, and external systems carry
-the type only.
+C4 views of `origin/main` at `1298958050e45f83aefeb4b6455d0a02169ab22a`
+(24 November 2026, 15:18 Asia/Tbilisi). Every box has a bracketed C4 type. Containers use
+`[Container: technology]` and components use `[Component]`, each with a short technology line.
+People, the software system, and external systems carry only the type.
 
-The Angular UI is a container that runs in the browser, including sign-in. Section 2 draws it.
-Web writes three server pages for access blocked, error, and not found. No Razor view is left in
-the source. Section 3 draws Core and Infrastructure as components inside the Web application.
-Node and the .NET SDK build the image. Section 5 names them. Section 2 draws the database and
-Redis as runtime containers.
+The Angular UI, including sign-in, is a container that runs in the browser. Section 2 also shows
+the database and Redis as runtime containers. The Web application contains Core
+and Infrastructure (section 3) and writes three server pages for access blocked, error, and not
+found. This revision has no Razor views. Node and the .NET SDK build the image (section 5).
 
 The rendered pages are [diagrams.html](diagrams.html) and the files in [svg/](svg/). Regenerate
 them with `npm run render` in [render/](render/).
 
 ## 1. Context
 
-Who is outside the vault. EclipsVault is one software system in the centre. The database and Redis
-are inside that system, so they are not drawn here.
+EclipsVault is the software system at the centre of the context diagram. The diagram shows who
+connects to it. The database and Redis are internal and appear in the container view.
 
 ```mermaid
 %%{init: {"flowchart": {"wrappingWidth": 560}} }%%
@@ -40,15 +38,15 @@ flowchart TB
   vault -.->|mint and revoke logins, when configured| targets
 ```
 
-Caption / წარწერა: EclipsVault is one software system. A vault account in a browser is a person and
-uses a session. An application that uses a service account is an external system and calls the
-Public API with an API key. A new account is activated from an invitation link sent by SMTP. The
-identity provider, SMTP, Vault Transit, and the dynamic-secret target databases exist only when that
-integration is configured. / EclipsVault ერთი პროგრამული სისტემაა. ბრაუზერში მყოფი საცავის
-ანგარიში პიროვნებაა და სესიას იყენებს. აპლიკაცია, რომელიც სერვისის ანგარიშს იყენებს, გარე
-სისტემაა და საჯარო API-ს API გასაღებით იძახებს. ახალი ანგარიში SMTP-ით გაგზავნილი მოწვევის
-ბმულით აქტიურდება. იდენტობის მომწოდებელი, SMTP, Vault Transit და დინამიკური საიდუმლოების სამიზნე
-ბაზები მხოლოდ მაშინ არსებობენ, როცა ეს ინტეგრაცია კონფიგურირებულია.
+Caption / წარწერა: EclipsVault is one software system. A person uses a vault account and a session
+in the browser. An application with a service account is an external system and calls the Public
+API with an API key. The vault sends invitation links through SMTP, and recipients use them to
+activate their accounts. The identity provider, SMTP, Vault Transit, and the dynamic-secret target
+databases are available only when their respective integrations are configured. / EclipsVault ერთი
+პროგრამული სისტემაა. ბრაუზერში მომხმარებელი საცავის ანგარიშითა და სესიით სარგებლობს. სერვისის ანგარიშის
+მქონე აპლიკაცია გარე სისტემაა და საჯარო API-ს API გასაღებით მიმართავს. საცავი მოწვევის ბმულს SMTP-ით
+აგზავნის, ადრესატი კი ამ ბმულით ანგარიშს ააქტიურებს. იდენტობის პროვაიდერი, SMTP, Vault Transit და
+დინამიკური საიდუმლოების სამიზნე ბაზები შესაბამისი ინტეგრაციის გამართვის შემდეგ გამოიყენება.
 
 | Element | Source at `1298958` |
 |---|---|
@@ -63,15 +61,15 @@ integration is configured. / EclipsVault ერთი პროგრამუ�
 | Invitation link to the person | ADR-0033: single-use, 72 hours, token in the link's fragment; `InvitationToken` |
 | Vault Transit `[External system]`, when selected | `appsettings.json` `Crypto:Engine` is `AesGcmLocal`; `VaultTransitCryptoEngine` is used when the engine is `VaultTransit` |
 | Dynamic-secret target databases `[External system]`, when configured | `SqlServerBackend` with `DynamicSecrets:TargetConnectionString`; `PostgresBackend` with `DynamicSecrets:PostgresTargetConnectionString`. `docs/INSTALL.md`: never the vault's own database, and on PostgreSQL a distinct cluster |
-| Angular UI, not a second software system | ADR-0008: Web serves it from the same origin. It is a container inside this system, drawn in section 2 |
+| Angular UI container | ADR-0008: Web serves it from the same origin. The container is part of EclipsVault and appears in section 2 |
 | Database and Redis | Drawn in section 2. `DependencyInjection` requires one `Database:Provider`. `appsettings.json` sets `Redis:Enabled` false |
 
 ## 2. Container
 
-Runtime containers inside the one software system. The people and external systems from section 1
-stay outside the boundary. Image-build stages are not runtime containers; section 5 names them and
-does not draw them. Core, Infrastructure, the route table, the server pages, and the hosted workers
-are components of the Web application; section 3 draws those.
+The system boundary contains the runtime containers. The people and external systems from section 1
+stay outside it. Section 3 shows the Web application's components: Core, Infrastructure, the route
+table, the server pages, and the hosted workers. Section 5 names the image-build stages and omits
+them from the diagram.
 
 ```mermaid
 %%{init: {"flowchart": {"wrappingWidth": 560}} }%%
@@ -101,15 +99,16 @@ flowchart TB
   web -.->|when configured| targets
 ```
 
-Caption / წარწერა: The Angular UI, the Web application, and one database are runtime containers.
-Redis is a fourth container only when it is enabled. The Angular UI runs in the browser, sign-in
-included, and calls the UI API with the session cookie. The Web application serves the Angular
-files, the UI API, the Public API, and three server pages of its own. It refuses to start without
-`Database:Provider`. The person and the external systems stay outside the boundary. / Angular UI,
-Web აპლიკაცია და ერთი ბაზა გაშვების კონტეინერებია. Redis მეოთხე კონტეინერია მხოლოდ მაშინ, როცა
-ჩართულია. Angular UI ბრაუზერში ეშვება, შესვლის ჩათვლით, და UI API-ს სესიის ქუქით იძახებს. Web
-აპლიკაცია Angular-ის ფაილებს, UI API-ს, საჯარო API-ს და საკუთარ სამ სერვერულ გვერდს აწვდის. ის
-`Database:Provider`-ის გარეშე არ ეშვება. პიროვნება და გარე სისტემები საზღვრის გარეთ რჩებიან.
+Caption / წარწერა: The Angular UI, Web application, and one database are separate runtime containers.
+Redis is a fourth container when enabled. In the browser, the Angular UI handles sign-in and calls
+the UI API with the session cookie. The Web application serves the Angular files, handles the UI
+API and the Public API, and returns three server pages. It requires `Database:Provider` at startup.
+The person and external systems are outside the system boundary. / გაშვებისას Angular UI, Web
+აპლიკაცია და ერთი მონაცემთა ბაზა ცალკე კონტეინერებია. თუ Redis ჩართულია, ის მეოთხე კონტეინერია.
+Angular UI ბრაუზერში ამუშავებს შესვლას და UI API-ს სესიის ქუქით მიმართავს. Web აპლიკაცია Angular-ის
+ფაილებს აწვდის ბრაუზერს, ამუშავებს UI API-ისა და საჯარო API-ის მოთხოვნებს და აბრუნებს სამ სერვერულ
+გვერდს. გასაშვებად მას `Database:Provider` სჭირდება. მომხმარებელი და გარე სისტემები სისტემის საზღვრის
+მიღმაა.
 
 | Element | Source at `1298958` |
 |---|---|
@@ -122,16 +121,15 @@ Web აპლიკაცია და ერთი ბაზა გაშვე
 | Web application `[Container: ASP.NET Core, .NET 10]` | `Dockerfile` runtime stage, `ENTRYPOINT` `EclipsVault.Web.dll`. It serves the Angular files, `/api/ui/`, `/api/v1/`, and `ServerPage` for access blocked, error, and not found. `EclipsVault.Web` has no `Views` folder, no `site.css`, and no `site.js` |
 | Database `[Container: PostgreSQL or SQL Server]` | `DependencyInjection` throws "Database:Provider is not set" when it is missing; `DatabaseProvider` refuses an unknown value |
 | Redis `[Container: Redis]`, when enabled | `appsettings.json` `Redis:Enabled` false; `DependencyInjection` registers Redis implementations only when it is true |
-| Core, Infrastructure, route table, server pages, hosted workers | Not boxes here. Section 3 draws them inside the Web application |
-| Node and .NET SDK build stages | Not boxes here. `Dockerfile` stages `ui` and `build`. Section 5 records them as image build, not runtime |
+| Core, Infrastructure, route table, server pages, hosted workers | Section 3 shows them as components of the Web application |
+| Node and .NET SDK build stages | Section 5 lists the `Dockerfile` stages `ui` and `build` for image assembly only |
 
 ## 3. Web component
 
-Components inside the Web application container from section 2. The vault account loads the
-Angular document from the route table, then calls the UI API: first the sign-in calls, then, with
-a session, the secret and audit calls. An application that uses a service account is the only
-caller of the Public API. The database stays outside the boundary. SecretService and AuditSink reach
-it through EF Core. Controllers stay thin; the access rule lives in Core.
+A person with a vault account loads the Angular document from a route in the table. The UI calls
+the UI API to sign in, then uses the session for secret and audit requests. Only applications with
+a service account call the Public API. The database is outside the Web container. SecretService
+and AuditSink reach it through EF Core. The controllers delegate access decisions to Core.
 
 ```mermaid
 %%{init: {"flowchart": {"wrappingWidth": 560}} }%%
@@ -186,21 +184,22 @@ flowchart TB
   sink -->|EF Core| db
 ```
 
-Caption / წარწერა: `AngularUiRoutes` serves the Angular document only for the paths it lists, the
-sign-in pages included. A signed-in caller on an unmatched page URL gets the `ServerPage` not-found page.
-Sign-in calls `AuthController` and `PendingSignInController`, and `SessionIssuer` issues the session
-only after the second factor. An invitation token activates an account in one audited transaction.
-`SecretDetailsController` asks `SecretAccessHandler`, records `Viewed` only after allow, and calls
-`RevealAsync` only after a later allow. The Public API reaches `SecretsApiController` through the
-API key handler and uses the same policy. `AuditController` is `AdminOnly`. / `AngularUiRoutes`
-Angular-ის დოკუმენტს მხოლოდ თავის სიაში მოცემულ მისამართებზე აწვდის, შესვლის გვერდების ჩათვლით.
-შესულ მომხმარებელს გვერდის უცნობ მისამართზე `ServerPage`-ის „ვერ მოიძებნა“ გვერდი ხვდება. შესვლა
-`AuthController`-სა და `PendingSignInController`-ს იძახებს, ხოლო `SessionIssuer` სესიას მხოლოდ
-მეორე ფაქტორის შემდეგ გასცემს. მოწვევის ტოკენი ანგარიშს ერთ აუდიტირებულ ტრანზაქციაში ააქტიურებს.
-`SecretDetailsController` ეკითხება `SecretAccessHandler`-ს, `Viewed`-ს მხოლოდ ნებართვის შემდეგ
-წერს და `RevealAsync`-ს მხოლოდ მომდევნო ნებართვის შემდეგ იძახებს. საჯარო API
-`SecretsApiController`-ს API გასაღების დამმუშავებლით აღწევს და იმავე წესს იყენებს.
-`AuditController` `AdminOnly`-ა.
+Caption / წარწერა: `AngularUiRoutes` serves the Angular document only on listed paths, including
+sign-in. If a signed-in user requests an unlisted path, `ServerPage` returns the not-found page.
+`AuthController` and `PendingSignInController` handle sign-in. `SessionIssuer` issues a session
+after the second factor. The vault activates an account with its invitation token in one audited
+transaction. `SecretDetailsController` checks access through `SecretAccessHandler`. It records
+`Viewed` after access is allowed and calls `RevealAsync` only if the later check allows it too.
+Public API requests reach `SecretsApiController` through the API key handler and use the same
+access policy. `AuditController` is `AdminOnly`. / `AngularUiRoutes` Angular-ის დოკუმენტს მხოლოდ
+ჩამოთვლილ მარშრუტებზე აბრუნებს, მათ შორის შესვლის გვერდებზე. თუ უკვე შესული მომხმარებელი სიაში
+არმყოფ მისამართს მიმართავს, `ServerPage` აბრუნებს გვერდს „ვერ მოიძებნა“. შესვლის მოთხოვნებს
+`AuthController` და `PendingSignInController` ამუშავებს. `SessionIssuer` სესიას მეორე ფაქტორის
+დადასტურების შემდეგ გასცემს. საცავი მოწვევის ტოკენით ანგარიშს ერთ ტრანზაქციაში ააქტიურებს და
+აქტივაციას აუდიტში აღრიცხავს. `SecretDetailsController` წვდომას `SecretAccessHandler`-ით ამოწმებს.
+ნებართვის შემდეგ წერს `Viewed`-ს და განმეორებითი შემოწმების წარმატებით გავლის შემდეგ იძახებს
+`RevealAsync`-ს. საჯარო API-ის მოთხოვნა `SecretsApiController`-მდე API გასაღების დამმუშავებლის
+გავლით მიდის და წვდომის იმავე პოლიტიკას ექვემდებარება. `AuditController`-ზე მოქმედებს `AdminOnly`.
 
 | Element | Source at `1298958` |
 |---|---|
@@ -221,17 +220,16 @@ Angular-ის დოკუმენტს მხოლოდ თავის �
 | `AuditCheckpointService` `[Component]` | `AuditCheckpointService.VerifyAsync` and `ExportAsync`; `AuditChainVerifier.VerifyAsync` |
 | `AuditController` `[Component]` | `AuditController` on `api/ui/audit`, `VaultPolicies.AdminOnly`. `Get` writes `AuditLogViewed` before listing |
 | Crypto engine `[Component]` | `CryptoEngineFactory`; `AesGcmCryptoEngine`; `VaultTransitCryptoEngine`. `ICryptoEngine.GetMasterKeysAsync`. `IKekRotationService` is `KekRotationService`, reached from `EncryptionController` |
-| Hosted workers `[Component]` | `Program.cs` registers `SecretLifecycleWorker`, `DynamicLeaseWorker`, and `LicenseStartupCheck`; `DependencyInjection` hosts `AuditGroupCommitter`. Threads in the Web application, not containers |
+| Hosted workers `[Component]` | `Program.cs` registers `SecretLifecycleWorker`, `DynamicLeaseWorker`, and `LicenseStartupCheck`. `DependencyInjection` hosts `AuditGroupCommitter`. These threads run inside the Web container |
 | Server decides what the UI may show | ADR-0012 |
 | Database `[Container: PostgreSQL or SQL Server]`, outside Web | `DependencyInjection` `AddDbContext`; `DatabaseProvider.UseVaultDatabase` |
 | SecretService and AuditSink to the database, EF Core | `SecretService` writes through its repository; `AuditSink` commits through `AuditGroupCommitter`. Both use the EF Core `EclipsVaultDbContext`. `AuditSaveChangesInterceptor` stamps every audit insert into the hash chain |
 
 ## 4. Focused code: reveal
 
-Success path for an Internal secret that does not need step-up. This is the talk's secret. Each
-participant is a component of that path, except the vault account, which is the person. In a
-sequence diagram `#` starts a comment, so the technology line is written `C#35;`, which renders
-as `C#`.
+The demo's Internal secret follows this sequence without step-up. The vault account is the person
+in the sequence, and the other participants are components. Mermaid treats `#` as a comment on
+this sequence line, so the label uses `C#35;` to render `C#`.
 
 ```mermaid
 sequenceDiagram
@@ -266,11 +264,11 @@ sequenceDiagram
   Crypto-->>Account: plaintext, shown once
 ```
 
-Caption / წარწერა: Opening the details page checks access before it commits `Viewed`. Reveal
-checks access again, commits `SecretRevealed`, and only then calls `UnsealAsync`. The Angular page
-shows the plaintext once. / დეტალების გვერდის გახსნა წვდომას `Viewed`-ის დაფიქსირებამდე ამოწმებს.
-გახსნა წვდომას თავიდან ამოწმებს, აფიქსირებს `SecretRevealed`-ს და მხოლოდ შემდეგ იძახებს
-`UnsealAsync`-ს. Angular-ის გვერდი ღია ტექსტს ერთხელ აჩვენებს.
+Caption / წარწერა: The server checks access to the details page before committing `Viewed`. For a
+reveal, it checks access again and commits `SecretRevealed` before calling `UnsealAsync`. The
+Angular page displays the plaintext once. / სერვერი დეტალების გვერდზე წვდომას `Viewed`-ის
+დაფიქსირებამდე ამოწმებს. გამჟღავნებამდე წვდომას ხელახლა ამოწმებს და `UnsealAsync`-ის გამოძახებამდე
+`SecretRevealed`-ს აფიქსირებს. Angular-ის გვერდი გაშიფრულ მნიშვნელობას ერთხელ აჩვენებს.
 
 | Element | Source at `1298958` |
 |---|---|
@@ -283,24 +281,24 @@ shows the plaintext once. / დეტალების გვერდის �
 | Denial writes `SecretAccessDenied` and does not reveal | `OpenAsync` calls `RecordAccessDeniedAsync` and returns 403 `access_denied`. `Reveal` is not called |
 | Step-up skipped below Secret | `appsettings.json` `StepUp:MinimumSensitivity` `Secret`; `SecretDetailsController.StepUpRequiredAsync` |
 | `RevealAsync` then `AuditSink` `[Component]` | `SecretService.RevealAsync` awaits `AuditSecretAsync` for `SecretRevealed` before `DecryptToDtoAsync` |
-| Sink waits for commit | `AuditSink` throws `AuditWriteFailedException` rather than returning an unaudited success |
+| Audit commit failure | `AuditSink` throws `AuditWriteFailedException` and returns no success |
 | `UnsealAsync` `[Component]` | `AesGcmCryptoEngine.UnsealAsync` unwraps the data key with the master key, then opens the payload. `DecryptToDtoAsync` zeroes the buffer |
 | Screen label `Revealed` | `AuditDisplay` for `AuditAction.SecretRevealed` |
 | Plaintext on the Angular page, once | `secret-details-page.html`: "This reveal was recorded in the audit trail before decryption. The value is shown once…". Do not record that screen |
 
-Honey-token trips are not in this sequence. `GetDetailsAsync` and `RevealAsync` call
-`TripHoneyTokenIfNeededAsync` before any audit write on that path. The talk never uses that path.
-The decoy names are in the demo draft so they can be avoided.
+The demo skips honey-tokens. On that path, `GetDetailsAsync` and `RevealAsync` call
+`TripHoneyTokenIfNeededAsync` before any audit write. Check the decoy names in the demo setup
+before selecting the secret.
 
 ## 5. Deployment
 
-Two places the section 2 containers run. Each place is a deployment node. The containers sit
-inside the node where they run. The Angular UI runs in a browser. In Development the Web
-application runs on the developer machine, and the database runs in a Compose project on Docker.
-Production is drawn as the reference deployment in `deploy/production/`: Caddy for automatic HTTPS,
-the vault image, and PostgreSQL on one Docker host, with the Data Protection key ring on a named
-volume. The talk's demonstration is a disposable Development run, not a third deployment. The
-Dockerfile's Node stage and .NET SDK stage build the image and are not boxes here.
+Development and production are deployment nodes for the containers in section 2. Each node
+contains the containers that run there. The Angular UI runs in a browser in either environment.
+In Development, Web runs on the developer machine and the database runs in a Docker Compose
+project. The reference in `deploy/production/` puts Caddy, the vault image, and PostgreSQL on one
+Docker host. Caddy provides automatic HTTPS, and a named volume holds the Data Protection key
+ring. The demo uses a disposable Development vault. The Dockerfile's Node and .NET SDK stages
+build the image and sit outside the runtime diagram.
 
 ```mermaid
 %%{init: {"flowchart": {"wrappingWidth": 560}} }%%
@@ -339,22 +337,21 @@ flowchart TB
   webProd --- keyring
 ```
 
-Caption / წარწერა: Development and production are deployment nodes. Development runs Web on the
-developer machine and PostgreSQL in the Compose project. The reference production deployment runs
-Caddy, the vault image, and PostgreSQL on one Docker host: Caddy obtains the certificate, the vault
-trusts forwarded addresses only from Caddy's fixed address, and the database sits on an internal
-network. The demonstration is one disposable Development run, not another deployment. /
-Development და production განთავსების კვანძებია. Development Web-ს დეველოპერის მანქანაზე
-უშვებს, PostgreSQL-ს კი Compose პროექტში. production-ის საცნობარო განთავსება Caddy-ს, საცავის
-იმიჯს და PostgreSQL-ს ერთ Docker ჰოსტზე უშვებს: Caddy სერტიფიკატს თვითონ იღებს, საცავი
-გადაგზავნილ მისამართებს მხოლოდ Caddy-ის ფიქსირებული მისამართიდან ენდობა, ბაზა კი შიდა ქსელშია.
-დემონსტრაცია Development-ის ერთი ერთჯერადი გაშვებაა, არა სხვა განთავსება.
+Caption / წარწერა: Development and production are the two deployment nodes. In Development, Web
+runs on the developer machine and PostgreSQL runs in Compose. The production reference runs Caddy,
+the vault image, and PostgreSQL on one Docker host. Caddy obtains the certificate. The vault trusts
+forwarded addresses only from Caddy's fixed address, and the database runs on an internal network.
+The demo is one disposable run in Development. / Development და Production განთავსების ორი
+კვანძია. Development გარემოში Web დეველოპერის კომპიუტერზე ეშვება, PostgreSQL კი Compose პროექტში.
+Production-ის ნიმუშში Caddy, საცავის იმიჯი და PostgreSQL ერთ Docker ჰოსტზე ეშვება. სერტიფიკატს Caddy
+იღებს. საცავი გადმოცემულ მისამართებს მხოლოდ Caddy-ის ფიქსირებული მისამართიდან ენდობა. მონაცემთა ბაზა
+შიდა ქსელშია. დემონსტრაცია Development გარემოში ერთხელ ჩატარდა, ერთჯერად საცავში.
 
 | Element | Source at `1298958` |
 |---|---|
 | Developer browser `[Deployment node]` and Angular UI container | ADR-0008: the Angular UI runs in the browser. Same container as section 2 |
 | Developer machine `[Deployment node]` and Web application container | `README.md` `dotnet run --project EclipsVault.Web`. Web is not a compose service; ADR-0008 |
-| Docker host `[Deployment node: Docker Engine]` | `docker-compose.yml` header: laptop, loopback ports, not a deployment of Web |
+| Docker host `[Deployment node: Docker Engine]` | The `docker-compose.yml` header describes a laptop with loopback ports. Web runs directly on the laptop |
 | Compose project `[Deployment node: Docker Compose]` | `docker-compose.yml` services `db` and `redis`. Also starts `vault`, `mailpit`, and `keycloak`, which this picture does not draw. Present does not mean the process uses them |
 | Development database `[Container: PostgreSQL]` | Compose service `db` is PostgreSQL only. `appsettings.Development.json.template` sets `Database:Provider` to `Postgres` |
 | Development Redis container, when enabled | Compose service `redis`; `appsettings.json` `Redis:Enabled` false |
@@ -362,14 +359,12 @@ Development და production განთავსების კვანძ�
 | Caddy, automatic HTTPS | `deploy/production/Caddyfile`: `reverse_proxy vault:8080` for `{$EV_DOMAIN}`; ports 80 and 443; fixed address `172.31.255.2` on network `front` |
 | Web application, signed image digest | `compose.yaml` `vault`: `EV_IMAGE` is the verified digest; `ASPNETCORE_ENVIRONMENT` Production; `ForwardedHeaders__KnownProxies__0` `172.31.255.2`; `Identity__PublicUrl` `https://${EV_DOMAIN}`; `Database__Provider` `Postgres`; `Database__MigrateOnStartup` true |
 | Data Protection key ring, named volume | `compose.yaml` `DataProtection__KeyRingPath: /keyring`, volume `keyring` |
-| Production database `[Container: PostgreSQL]` | `compose.yaml` `db`, `postgres:17` pinned by digest, network `back` with `internal: true`; the vault signs in as `eclipsvault_app`, not the superuser |
-| Secrets for this deployment | `.env` beside `compose.yaml` (start from `.env.example`). Values are the operator's, not in this draft |
+| Production database `[Container: PostgreSQL]` | In `compose.yaml`, `db` uses `postgres:17` pinned by digest and the `back` network with `internal: true`. The vault signs in under the non-superuser account `eclipsvault_app` |
+| Secrets for this deployment | The operator supplies the values in `.env` beside `compose.yaml`, starting from `.env.example` |
 | `down -v` deletes every secret | `compose.yaml` header: `down` keeps the volumes; `down -v` deletes them |
 | SQL Server in production | Still supported by `Database:Provider` `SqlServer` and `docs/INSTALL.md`; the reference compose file uses PostgreSQL |
-| Demonstration, not a third deployment | [demo-setup-reset.md](demo-setup-reset.md): one disposable Development run on this revision |
-| Node image-build stage, not drawn | `Dockerfile` `AS ui`, `npm run build` |
-| .NET SDK image-build stage, not drawn | `Dockerfile` `AS build`, `dotnet publish` |
+| Development demonstration | [demo-setup-reset.md](demo-setup-reset.md): one disposable Development run on this revision |
+| Node image-build stage, omitted | `Dockerfile` `AS ui`, `npm run build` |
+| .NET SDK image-build stage, omitted | `Dockerfile` `AS build`, `dotnet publish` |
 | Production bootstraps one administrator and no sample secrets | `DbSeeder` production path; `DbSeederTests` names that behaviour |
-| Browser end-to-end stack | `AGENTS.md` browser section: production image, SQL Server, Redis, SMTP capture, TLS proxy. A test harness, not the talk and not production |
-
-The end-to-end harness is omitted. It is a Playwright shape, not Development and not production.
+| Browser end-to-end stack, omitted | `AGENTS.md` browser section: Playwright test stack with a production image, SQL Server, Redis, SMTP capture, and a TLS proxy. It runs separately from Development, production, and the talk |
