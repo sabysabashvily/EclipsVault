@@ -259,7 +259,7 @@ public sealed class SecretService : ISecretService
 
         try
         {
-            if (!backend.CanApplyPassword(Encoding.UTF8.GetString(previousPassword)))
+            if (!backend.CanApplyPassword(previousPassword))
             {
                 throw new UpstreamRotationRefusedException(
                     new InvalidOperationException("The stored password cannot be restored by the managed rotation backend if rotation fails."));

@@ -181,7 +181,18 @@ public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBacke
         _logger.LogInformation("Dropped PostgreSQL role {Identity} for role {RoleName}", identity, role.Name);
     }
 
-    public bool CanApplyPassword(string password) => CredentialStatementTemplate.IsRenderablePassword(password);
+    public bool CanApplyPassword(ReadOnlySpan<byte> password)
+    {
+        foreach (var value in password)
+        {
+            if (!char.IsAsciiLetterOrDigit((char)value))
+            {
+                return false;
+            }
+        }
+
+        return !password.IsEmpty;
+    }
 
     /// <summary>
     /// Throws <see cref="UpstreamRotationRefusedException"/> only when the password certainly did not
@@ -212,7 +223,8 @@ public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBacke
         try
         {
             await using var transaction = await BeginGuardedTransactionAsync(connection, ct);
-            await using var lengthQuery = new NpgsqlCommand("SELECT current_setting('max_identifier_length')::int", connection, transaction);
+            await using var lengthQuery = new NpgsqlCommand(
+                "SELECT pg_catalog.current_setting('max_identifier_length')::pg_catalog.int4", connection, transaction);
             if (await lengthQuery.ExecuteScalarAsync(ct) is not int maxLength || Encoding.UTF8.GetByteCount(principal) > maxLength)
             {
                 _logger.LogWarning("Cannot verify the PostgreSQL role name fits within the server's max_identifier_length");
@@ -225,7 +237,7 @@ public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBacke
             commitAttempted = true;
             await transaction.CommitAsync(ct);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (alterAttempted)
         {
             throw;
         }

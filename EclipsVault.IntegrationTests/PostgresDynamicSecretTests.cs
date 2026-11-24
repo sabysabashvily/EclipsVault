@@ -366,6 +366,76 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
     }
 
     [Fact]
+    public async Task Managed_rotation_uses_the_server_role_length_limit_when_the_search_path_shadows_current_setting()
+    {
+        const string prefixRole = "it_pg_shadow_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        var password = ManagedTargetLogins.NewPassword();
+        await PostgresDynamicTarget.CreateManagedRoleAsync(vault, prefixRole, password);
+        var target = new NpgsqlConnectionStringBuilder(vault.PostgresDynamicTargetConnectionString);
+        await using var setup = new NpgsqlConnection(target.ConnectionString);
+        await setup.OpenAsync();
+        await using var create = new NpgsqlCommand("""
+            CREATE FUNCTION public.current_setting(text) RETURNS text LANGUAGE sql AS $$ SELECT '128'::text $$;
+            """, setup);
+        await create.ExecuteNonQueryAsync();
+        try
+        {
+            target.SearchPath = "public,pg_catalog";
+            var backend = new PostgresBackend(Options.Create(new DynamicSecretTargetOptions
+            {
+                PostgresTargetConnectionString = target.ConnectionString,
+            }), TimeProvider.System, NullLogger<PostgresBackend>.Instance);
+
+            await Assert.ThrowsAsync<UpstreamRotationRefusedException>(() => backend.RotatePrincipalAsync(
+                prefixRole + "b", ManagedTargetLogins.NewPassword(), CancellationToken.None));
+
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, prefixRole, password));
+        }
+        finally
+        {
+            await using var drop = new NpgsqlCommand("DROP FUNCTION public.current_setting(text);", setup);
+            await drop.ExecuteNonQueryAsync();
+            await PostgresDynamicTarget.DropRoleAsync(vault, prefixRole);
+        }
+    }
+
+    [Fact]
+    public async Task Cancelling_the_vault_cluster_probe_refuses_managed_rotation_before_sending_a_password_change()
+    {
+        const string role = "it_pg_rotation_cancelled";
+        var password = ManagedTargetLogins.NewPassword();
+        await PostgresDynamicTarget.CreateManagedRoleAsync(vault, role, password);
+        try
+        {
+            using var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            var vaultEndpoint = new NpgsqlConnectionStringBuilder(vault.PostgresDynamicTargetConnectionString)
+            {
+                Host = IPAddress.Loopback.ToString(),
+                Port = ((IPEndPoint)listener.LocalEndpoint).Port,
+                Pooling = false,
+            };
+            using var provider = BuildDiPostgresVault(vaultEndpoint.ConnectionString,
+                vault.PostgresDynamicTargetConnectionString!, NullLogger<PostgresBackend>.Instance);
+            using var scope = provider.CreateScope();
+            var backend = scope.ServiceProvider.GetServices<IManagedSecretBackend>()
+                .Single(candidate => candidate.Backend == DynamicSecretBackend.Postgres);
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var rotation = backend.RotatePrincipalAsync(role, ManagedTargetLogins.NewPassword(), cancel.Token);
+
+            using var probe = await listener.AcceptTcpClientAsync(cancel.Token);
+            await cancel.CancelAsync();
+
+            await Assert.ThrowsAsync<UpstreamRotationRefusedException>(() => rotation);
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, role, password));
+        }
+        finally
+        {
+            await PostgresDynamicTarget.DropRoleAsync(vault, role);
+        }
+    }
+
+    [Fact]
     public async Task Managed_rotation_refuses_before_writing_when_the_stored_password_contains_punctuation_unusable_for_compensation()
     {
         var admin = await vault.AdminClientAsync();
@@ -487,7 +557,7 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
 
         public DynamicSecretBackend Backend => inner.Backend;
 
-        public bool CanApplyPassword(string password) => inner.CanApplyPassword(password);
+        public bool CanApplyPassword(ReadOnlySpan<byte> password) => inner.CanApplyPassword(password);
 
         public async Task RotatePrincipalAsync(string principal, string newPassword, CancellationToken ct)
         {
