@@ -1,3 +1,4 @@
+using System.Data;
 using EclipsVault.Core.Application.DynamicSecrets;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
@@ -47,8 +48,7 @@ public sealed class SqlServerBackend : IDynamicSecretBackend, IManagedSecretBack
     /// cannot open a new session while existing ones are killed and confirmed closed, and stays shut
     /// if the subsequent drop fails.
     /// </summary>
-    private const string DisableSignInStatement =
-        "IF EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'{{name}}') ALTER LOGIN [{{name}}] DISABLE;";
+    private const string DisableSignInStatement = "ALTER LOGIN [{{name}}] DISABLE;";
 
     /// <summary>
     /// Errors SQL Server raises when a session already closed between reading <c>sys.dm_exec_sessions</c>
@@ -161,10 +161,12 @@ public sealed class SqlServerBackend : IDynamicSecretBackend, IManagedSecretBack
     }
 
     /// <summary>
-    /// Ends the credential: disables sign-in, kills every active session for the login and polls
-    /// <c>sys.dm_exec_sessions</c> until none remains, runs the role's revocation statements, and
-    /// confirms the login is gone. Throws, leaving the login disabled, if sessions cannot be confirmed
-    /// closed within the bounded wait or if revocation leaves the login behind.
+    /// Ends the credential: confirms catalog visibility, resolves the login's SID, disables sign-in,
+    /// kills every active session opened by that SID and polls <c>sys.dm_exec_sessions</c> under one
+    /// bounded <see cref="TimeProvider"/> deadline until none remains, runs the role's revocation
+    /// statements, and re-confirms catalog visibility plus login removal. Throws, leaving the login
+    /// disabled, if visibility is missing, sessions cannot be confirmed closed within the deadline,
+    /// or revocation leaves the login behind.
     /// </summary>
     public async Task RevokeAsync(DynamicSecretRole role, string identity, CancellationToken ct)
     {
@@ -174,11 +176,18 @@ public sealed class SqlServerBackend : IDynamicSecretBackend, IManagedSecretBack
         var revocation = CredentialStatementTemplate.Render(role.RevocationStatements, identity, "unused", DateTimeOffset.UnixEpoch);
 
         await using var connection = await OpenTargetAsync(ct);
-        await RunAsync(connection, disableSignIn, ct);
-        await EndSessionsAndConfirmClosedAsync(connection, identity, ct);
+        await EnsureCatalogVisibilityAsync(connection, ct);
+        var loginSid = await LoginSidAsync(connection, identity, ct);
+        if (loginSid is not null)
+        {
+            await RunAsync(connection, disableSignIn, ct);
+            await EndSessionsAndConfirmClosedAsync(connection, identity, loginSid, ct);
+        }
+
         await RunAsync(connection, revocation, ct);
 
-        if (await LoginExistsAsync(connection, identity, ct))
+        await EnsureCatalogVisibilityAsync(connection, ct);
+        if (await LoginSidAsync(connection, identity, ct) is not null)
         {
             _logger.LogWarning("The revocation statements of role {RoleName} left SQL Server login {Identity} in place", role.Name, identity);
             throw new InvalidOperationException("The revocation statements did not drop the SQL Server login.");
@@ -187,61 +196,143 @@ public sealed class SqlServerBackend : IDynamicSecretBackend, IManagedSecretBack
         _logger.LogInformation("Dropped SQL Server login {Identity} for role {RoleName}", identity, role.Name);
     }
 
-    private async Task EndSessionsAndConfirmClosedAsync(SqlConnection connection, string identity, CancellationToken ct)
+    private async Task EndSessionsAndConfirmClosedAsync(
+        SqlConnection connection, string identity, byte[] loginSid, CancellationToken ct)
     {
         var started = _clock.GetTimestamp();
-        var killed = new HashSet<short>();
+        using var drainBudget = new CancellationTokenSource(SessionDrainTimeout, _clock);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, drainBudget.Token);
+        var drainCt = linked.Token;
+        var killed = new HashSet<(short SessionId, DateTime LoginTime)>();
 
-        while (true)
+        try
         {
-            var activeSessions = await ActiveSessionsAsync(connection, identity, ct);
-            if (activeSessions.Count == 0)
+            while (true)
             {
-                return;
-            }
-
-            foreach (var sessionId in activeSessions)
-            {
-                if (killed.Add(sessionId))
+                await EnsureSessionVisibilityAsync(connection, drainCt);
+                var activeSessions = await ActiveSessionsAsync(connection, loginSid, drainCt);
+                if (_clock.GetElapsedTime(started) >= SessionDrainTimeout || drainBudget.IsCancellationRequested)
                 {
-                    await KillSessionAsync(connection, sessionId, ct);
+                    throw CreateDrainTimeoutException(identity, activeSessions.Count);
                 }
-            }
 
-            if (_clock.GetElapsedTime(started) >= SessionDrainTimeout)
-            {
-                _logger.LogWarning(
-                    "SQL Server login {Identity} still has {SessionCount} open session(s) after the revocation drain deadline",
-                    identity, activeSessions.Count);
-                throw new InvalidOperationException("A session of the revoked SQL Server login is still open.");
-            }
+                if (activeSessions.Count == 0)
+                {
+                    return;
+                }
 
-            await Task.Delay(SessionPollInterval, _clock, ct);
+                foreach (var session in activeSessions)
+                {
+                    if (killed.Add(session))
+                    {
+                        await KillSessionAsync(connection, session.SessionId, session.LoginTime, loginSid, drainCt);
+                    }
+                }
+
+                if (_clock.GetElapsedTime(started) >= SessionDrainTimeout || drainBudget.IsCancellationRequested)
+                {
+                    throw CreateDrainTimeoutException(identity, activeSessions.Count);
+                }
+
+                await Task.Delay(SessionPollInterval, _clock, drainCt);
+            }
+        }
+        catch (Exception) when (drainBudget.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            throw CreateDrainTimeoutException(identity, sessionCount: null);
         }
     }
 
-    private static async Task<List<short>> ActiveSessionsAsync(SqlConnection connection, string identity, CancellationToken ct)
+    private InvalidOperationException CreateDrainTimeoutException(string identity, int? sessionCount)
+    {
+        if (sessionCount is { } count)
+        {
+            _logger.LogWarning(
+                "SQL Server login {Identity} still has {SessionCount} open session(s) after the revocation drain deadline",
+                identity, count);
+        }
+        else
+        {
+            _logger.LogWarning(
+                "SQL Server login {Identity} did not finish draining sessions before the revocation drain deadline",
+                identity);
+        }
+
+        return new InvalidOperationException("A session of the revoked SQL Server login is still open.");
+    }
+
+    private static async Task EnsureCatalogVisibilityAsync(SqlConnection connection, CancellationToken ct)
     {
         await using var query = connection.CreateCommand();
-        query.CommandText = "SELECT session_id FROM sys.dm_exec_sessions WHERE login_name = @login AND session_id <> @@SPID";
-        query.Parameters.AddWithValue("@login", identity);
+        query.CommandText = """
+            SELECT CAST(
+                CASE WHEN HAS_PERMS_BY_NAME(NULL, NULL, 'ALTER ANY LOGIN') = 1
+                       OR HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW ANY DEFINITION') = 1
+                     THEN 1 ELSE 0 END AS bit);
+            """;
+        if (await query.ExecuteScalarAsync(ct) is not true)
+        {
+            throw new InvalidOperationException(
+                "The SQL Server target login lacks catalog visibility to verify login state.");
+        }
+    }
 
-        var sessions = new List<short>();
+    private static async Task EnsureSessionVisibilityAsync(SqlConnection connection, CancellationToken ct)
+    {
+        await using var query = connection.CreateCommand();
+        query.CommandText = """
+            SELECT CAST(
+                CASE WHEN HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER STATE') = 1
+                       OR HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER PERFORMANCE STATE') = 1
+                     THEN 1 ELSE 0 END AS bit);
+            """;
+        if (await query.ExecuteScalarAsync(ct) is not true)
+        {
+            throw new InvalidOperationException(
+                "The SQL Server target login lacks session visibility to confirm active sessions have closed.");
+        }
+    }
+
+    private static async Task<List<(short SessionId, DateTime LoginTime)>> ActiveSessionsAsync(
+        SqlConnection connection, byte[] loginSid, CancellationToken ct)
+    {
+        await using var query = connection.CreateCommand();
+        query.CommandText = """
+            SELECT session_id, login_time
+            FROM sys.dm_exec_sessions
+            WHERE original_security_id = @sid AND session_id <> @@SPID;
+            """;
+        query.Parameters.Add("@sid", SqlDbType.VarBinary, 85).Value = loginSid;
+
+        var sessions = new List<(short SessionId, DateTime LoginTime)>();
         await using var rows = await query.ExecuteReaderAsync(ct);
         while (await rows.ReadAsync(ct))
         {
-            sessions.Add(rows.GetInt16(0));
+            sessions.Add((rows.GetInt16(0), rows.GetDateTime(1)));
         }
 
         return sessions;
     }
 
-    private async Task KillSessionAsync(SqlConnection connection, short sessionId, CancellationToken ct)
+    private async Task KillSessionAsync(
+        SqlConnection connection, short sessionId, DateTime loginTime, byte[] loginSid, CancellationToken ct)
     {
         try
         {
             await using var kill = connection.CreateCommand();
-            kill.CommandText = $"KILL {sessionId};";
+            kill.CommandText = $"""
+                IF EXISTS (
+                    SELECT 1 FROM sys.dm_exec_sessions
+                    WHERE session_id = @spid
+                      AND original_security_id = @sid
+                      AND login_time = @loginTime
+                      AND session_id <> @@SPID
+                )
+                    KILL {sessionId};
+                """;
+            kill.Parameters.Add("@spid", SqlDbType.SmallInt).Value = sessionId;
+            kill.Parameters.Add("@sid", SqlDbType.VarBinary, 85).Value = loginSid;
+            kill.Parameters.Add("@loginTime", SqlDbType.DateTime).Value = loginTime;
             await kill.ExecuteNonQueryAsync(ct);
         }
         catch (SqlException ex) when (SessionAlreadyGoneErrors.Contains(ex.Number))
@@ -255,12 +346,12 @@ public sealed class SqlServerBackend : IDynamicSecretBackend, IManagedSecretBack
         }
     }
 
-    private static async Task<bool> LoginExistsAsync(SqlConnection connection, string identity, CancellationToken ct)
+    private static async Task<byte[]?> LoginSidAsync(SqlConnection connection, string identity, CancellationToken ct)
     {
         await using var query = connection.CreateCommand();
-        query.CommandText = "SELECT 1 FROM sys.server_principals WHERE name = @login";
-        query.Parameters.AddWithValue("@login", identity);
-        return await query.ExecuteScalarAsync(ct) is not null;
+        query.CommandText = "SELECT sid FROM sys.server_principals WHERE name = @login AND type = 'S';";
+        query.Parameters.Add("@login", SqlDbType.NVarChar, 128).Value = identity;
+        return await query.ExecuteScalarAsync(ct) as byte[];
     }
 
     /// <summary>

@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using EclipsVault.Core.Application.Abstractions;
 using EclipsVault.Core.Application.Auditing;
+using EclipsVault.Core.Application.DynamicSecrets;
 using EclipsVault.Core.Application.Licensing;
 using EclipsVault.Core.Domain.Entities;
 using EclipsVault.Core.Domain.Enums;
@@ -492,6 +493,7 @@ public sealed partial class DynamicSecretIssueTests(DynamicSecretsFixture fixtur
         var admin = await vault.AdminClientAsync();
         var (username, password) = await DynamicSecretsApi.IssuedCredentialAsync(await DynamicSecretsApi.IssueAsync(admin, roleId));
         var lease = Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
+        var before = await AuditTrail.HeadAsync(vault);
         var sessionBuilder = new SqlConnectionStringBuilder(vault.DynamicTargetConnectionString)
         {
             UserID = username,
@@ -506,22 +508,127 @@ public sealed partial class DynamicSecretIssueTests(DynamicSecretsFixture fixtur
                 Options.Create(new DynamicSecretTargetOptions { TargetConnectionString = vault.DynamicTargetConnectionString }),
                 NullLogger<SqlServerBackend>.Instance,
                 new MinuteEveryReadClock());
-            var role = new DynamicSecretRole
+            using var scope = vault.Services.CreateScope();
+            var service = new DynamicSecretService(
+                scope.ServiceProvider.GetRequiredService<IDynamicSecretRepository>(),
+                [backend],
+                scope.ServiceProvider.GetRequiredService<IAuditContext>(),
+                TimeProvider.System,
+                scope.ServiceProvider.GetRequiredService<IPremiumFeatureUsage>(),
+                scope.ServiceProvider.GetRequiredService<IAuditSink>());
+
+            var status = await service.RevokeAsync(lease.Id, lease.UserId, isAdmin: true, CancellationToken.None);
+
+            Assert.Equal(LeaseStatus.RevocationFailed, status);
+            Assert.Equal(LeaseStatus.RevocationFailed, Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId)).Status);
+            var failure = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before), row => row.ResourceId == lease.Id);
+            Assert.Equal((AuditAction.DynamicCredentialRevocationFailed, true), (failure.Action, failure.IsCritical));
+
+            // Prove the session was genuinely still open at the deadline, while sign-in is disabled.
+            await using (var stillLive = activeSession.CreateCommand())
             {
-                Name = "it_dyn_drain_timeout",
-                RevocationStatements = DynamicSecretsApi.RepeatableRevocation,
-            };
+                stillLive.CommandText = "SELECT 1";
+                Assert.Equal(1, await stillLive.ExecuteScalarAsync());
+            }
 
-            await Assert.ThrowsAsync<InvalidOperationException>(() => backend.RevokeAsync(role, username, CancellationToken.None));
-
+            Assert.True(await IsSqlLoginDisabledAsync(vault.DynamicTargetConnectionString!, username));
             Assert.Single(await DynamicSecretsApi.LoginsOfRoleAsync(vault, "it_dyn_drain_timeout"));
             await Assert.ThrowsAnyAsync<Exception>(() => DynamicSecretsApi.SignInToTargetAsync(vault, username, password));
         }
         finally
         {
             await activeSession.DisposeAsync();
-            await DynamicSecretsApi.RevokeAsync(admin, lease.Id);
+            await DropSqlLoginForceAsync(vault.DynamicTargetConnectionString!, username);
         }
+    }
+
+    [Fact]
+    public async Task A_restricted_target_login_lacking_catalog_visibility_fails_revocation_instead_of_reporting_revoked()
+    {
+        var roleId = await DynamicSecretsApi.AddRoleAsync(vault, "it_dyn_restricted_vis");
+        var admin = await vault.AdminClientAsync();
+        var (username, password) = await DynamicSecretsApi.IssuedCredentialAsync(await DynamicSecretsApi.IssueAsync(admin, roleId));
+        var lease = Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId));
+        var before = await AuditTrail.HeadAsync(vault);
+
+        const string restrictedLogin = "it_dyn_restricted_revoker";
+        const string restrictedPassword = "Restr1ctedRevokerPw9!";
+        await using (var setup = new SqlConnection(vault.DynamicTargetConnectionString))
+        {
+            await setup.OpenAsync();
+            await using var cmd = setup.CreateCommand();
+            cmd.CommandText = $"""
+                IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'{restrictedLogin}')
+                    CREATE LOGIN [{restrictedLogin}] WITH PASSWORD = N'{restrictedPassword}', CHECK_POLICY = OFF;
+                """;
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        try
+        {
+            var restrictedBuilder = new SqlConnectionStringBuilder(vault.DynamicTargetConnectionString)
+            {
+                UserID = restrictedLogin,
+                Password = restrictedPassword,
+                InitialCatalog = "master",
+                Pooling = false,
+            };
+            var backend = new SqlServerBackend(
+                Options.Create(new DynamicSecretTargetOptions { TargetConnectionString = restrictedBuilder.ConnectionString }),
+                NullLogger<SqlServerBackend>.Instance,
+                TimeProvider.System);
+            using var scope = vault.Services.CreateScope();
+            var service = new DynamicSecretService(
+                scope.ServiceProvider.GetRequiredService<IDynamicSecretRepository>(),
+                [backend],
+                scope.ServiceProvider.GetRequiredService<IAuditContext>(),
+                TimeProvider.System,
+                scope.ServiceProvider.GetRequiredService<IPremiumFeatureUsage>(),
+                scope.ServiceProvider.GetRequiredService<IAuditSink>());
+
+            var status = await service.RevokeAsync(lease.Id, lease.UserId, isAdmin: true, CancellationToken.None);
+
+            Assert.Equal(LeaseStatus.RevocationFailed, status);
+            Assert.Equal(LeaseStatus.RevocationFailed, Assert.Single(await DynamicSecretsApi.LeasesOfRoleAsync(vault, roleId)).Status);
+            var failure = Assert.Single(await AuditTrail.RowsAfterAsync(vault, before), row => row.ResourceId == lease.Id);
+            Assert.Equal((AuditAction.DynamicCredentialRevocationFailed, true), (failure.Action, failure.IsCritical));
+            Assert.False(await IsSqlLoginDisabledAsync(vault.DynamicTargetConnectionString!, username));
+            Assert.Single(await DynamicSecretsApi.LoginsOfRoleAsync(vault, "it_dyn_restricted_vis"));
+        }
+        finally
+        {
+            await DropSqlLoginForceAsync(vault.DynamicTargetConnectionString!, username);
+            await DropSqlLoginForceAsync(vault.DynamicTargetConnectionString!, restrictedLogin);
+        }
+    }
+
+    private static async Task<bool> IsSqlLoginDisabledAsync(string adminConnectionString, string loginName)
+    {
+        await using var conn = new SqlConnection(adminConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT is_disabled FROM sys.sql_logins WHERE name = @login";
+        cmd.Parameters.AddWithValue("@login", loginName);
+        return Assert.IsType<bool>(await cmd.ExecuteScalarAsync());
+    }
+
+    private static async Task DropSqlLoginForceAsync(string adminConnectionString, string loginName)
+    {
+        await using var conn = new SqlConnection(adminConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"""
+            DECLARE @sql nvarchar(max) = N'';
+            SELECT @sql = @sql + N'KILL ' + CAST(session_id AS nvarchar(10)) + N';'
+            FROM sys.dm_exec_sessions
+            WHERE login_name = @login AND session_id <> @@SPID;
+            IF LEN(@sql) > 0 EXEC(@sql);
+            DROP USER IF EXISTS [{loginName}];
+            IF EXISTS (SELECT 1 FROM sys.server_principals WHERE name = @login)
+                DROP LOGIN [{loginName}];
+            """;
+        cmd.Parameters.AddWithValue("@login", loginName);
+        await cmd.ExecuteNonQueryAsync();
     }
 
     /// <summary>A clock a minute further on at every read, so the drain deadline expires immediately.</summary>
