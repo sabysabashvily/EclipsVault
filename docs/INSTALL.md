@@ -189,9 +189,9 @@ Those rights are why each target is a **separate connection string**:
   another database in the same cluster. Roles and the catalogs that hold them are shared by every
   database in a cluster, and `pg_read_all_data` and `pg_write_all_data` reach every database: a lease
   on the vault's own cluster could read or change the vault's data. Revoking `CONNECT` on the vault's
-  database does not separate them. When the vault runs on PostgreSQL, it refuses to mint if the target
-  shares an endpoint or PostgreSQL `system_identifier` with any configured vault PostgreSQL endpoint;
-  a vault endpoint placed behind a proxy must route to a single physical PostgreSQL cluster.
+  database does not separate them. When the vault runs on PostgreSQL, it refuses to mint or rotate if
+  the target shares an endpoint or PostgreSQL `system_identifier` with any configured vault PostgreSQL
+  endpoint. A vault endpoint behind a proxy must route to a single physical PostgreSQL cluster.
 - **The PostgreSQL target must run PostgreSQL 16 or later.** Its login is set up like this, which the
   integration tests use:
 
@@ -233,6 +233,8 @@ Those rights are why each target is a **separate connection string**:
   transforming or validating it as plaintext) and that every database client supports SCRAM-SHA-256
   authentication (MD5-only clients cannot authenticate to newly minted roles). Still restrict access to
   the target's logs because they can contain the verifier itself.
+- **Managed rotation also sends a SCRAM verifier**, including when the vault restores the previous
+  password after a failed rotation. Check SCRAM support in the managed role's clients before rotating it.
 - **Why they are separate:** `ALTER ANY LOGIN` can re-password *any* principal on the instance that
   holds it. If the vault's own login held it, a compromise of the running application would reach
   the server that stores the audit trail — so the vault never asks for it. See

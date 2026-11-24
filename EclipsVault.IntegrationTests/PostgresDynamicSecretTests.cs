@@ -307,6 +307,10 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
             Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, role, stored));
             Assert.False(await PostgresDynamicTarget.OpensWithAsync(vault, role, password));
             Assert.DoesNotContain(vault.Log.Lines, line => line.Text.Contains(stored, StringComparison.Ordinal));
+            var serverLog = await vault.PostgresDynamicTargetLogsAsync();
+            Assert.Contains(serverLog.Split('\n'), line =>
+                line.Contains($"ALTER ROLE \"{role}\" WITH PASSWORD 'SCRAM-SHA-256$4096:", StringComparison.Ordinal));
+            Assert.DoesNotContain(stored, serverLog, StringComparison.Ordinal);
         }
         finally
         {
@@ -461,6 +465,15 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
             Assert.Equal(2, lostOnce.Calls);
             Assert.Equal(initialPassword, await UpstreamRotationTests.StoredValueAsync(vault, details));
             Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, role, initialPassword));
+            var serverLog = await vault.PostgresDynamicTargetLogsAsync();
+            var alterations = serverLog.Split('\n').Where(line =>
+                line.Contains($"ALTER ROLE \"{role}\" WITH PASSWORD", StringComparison.Ordinal)).ToArray();
+            Assert.Equal(2, alterations.Length);
+            Assert.All(alterations, line =>
+            {
+                Assert.Contains("SCRAM-SHA-256$4096:", line, StringComparison.Ordinal);
+                Assert.DoesNotContain(initialPassword, line, StringComparison.Ordinal);
+            });
         }
         finally
         {
@@ -485,6 +498,52 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
                 throw new IOException("Simulated lost reply after PostgreSQL committed ALTER ROLE.");
             }
         }
+    }
+
+    [Fact]
+    public async Task Managed_rotation_refuses_a_vault_cluster_alias_and_leaves_the_roles_password_unchanged()
+    {
+        const string role = "it_pg_managed_same_cluster";
+        var initialPassword = ManagedTargetLogins.NewPassword();
+        await PostgresDynamicTarget.CreateManagedRoleAsync(vault, role, initialPassword);
+        var target = new NpgsqlConnectionStringBuilder(vault.PostgresDynamicTargetConnectionString!);
+        using var forwarder = new TcpListener(IPAddress.Loopback, 0);
+        forwarder.Start();
+        using var shutdown = new CancellationTokenSource();
+        var relayErrors = new ConcurrentBag<Exception>();
+        var acceptedCount = 0;
+        var relay = RelayConnectionsAsync(forwarder, target.Host!, target.Port, relayErrors,
+            () => Interlocked.Increment(ref acceptedCount), shutdown.Token);
+        try
+        {
+            var alias = new NpgsqlConnectionStringBuilder(target.ConnectionString)
+            {
+                Host = IPAddress.Loopback.ToString(),
+                Port = ((IPEndPoint)forwarder.LocalEndpoint).Port,
+                Pooling = false,
+            };
+            var logger = new CapturingLogger<PostgresBackend>();
+            using var provider = BuildDiPostgresVault(target.ConnectionString, alias.ConnectionString, logger);
+            using var scope = provider.CreateScope();
+            var backend = scope.ServiceProvider.GetServices<IManagedSecretBackend>()
+                .Single(candidate => candidate.Backend == DynamicSecretBackend.Postgres);
+
+            await Assert.ThrowsAsync<UpstreamRotationRefusedException>(() =>
+                backend.RotatePrincipalAsync(role, ManagedTargetLogins.NewPassword(), CancellationToken.None));
+
+            Assert.True(acceptedCount > 0);
+            Assert.Contains(logger.Messages, message => message.Contains("own PostgreSQL cluster", StringComparison.Ordinal));
+            Assert.True(await PostgresDynamicTarget.OpensWithAsync(vault, role, initialPassword));
+        }
+        finally
+        {
+            await shutdown.CancelAsync();
+            forwarder.Stop();
+            await relay;
+            await PostgresDynamicTarget.DropRoleAsync(vault, role);
+        }
+
+        Assert.Empty(relayErrors);
     }
 
     [Fact]

@@ -19,13 +19,10 @@ namespace EclipsVault.Infrastructure.Security;
 /// <see cref="DynamicSecretTargetOptions.PostgresTargetConnectionString"/>, never to the vault's own
 /// database, for the reason <see cref="DynamicSecretTargetOptions"/> gives.
 ///
-/// As on SQL Server, the statements are DDL and cannot take parameters, so credentials are rendered in
-/// as text through <see cref="CredentialStatementTemplate"/>, which refuses anything but letters, digits
-/// and '_'. A role's statements must double-quote <c>"{{name}}"</c>: the minted name has capitals, and
-/// PostgreSQL folds an unquoted identifier to lower case, while a sign-in matches the name exactly.
-///
-/// One command runs a role's statements as one implicit transaction, so a recipe that fails part-way
-/// leaves nothing behind; the service still runs the revocation after such a failure.
+/// The DDL takes no parameters. <see cref="CredentialStatementTemplate"/> validates identifiers and SCRAM
+/// verifiers before inserting them into SQL. A role's statements must double-quote <c>"{{name}}"</c>
+/// because PostgreSQL folds unquoted identifiers to lower case and minted names are case-sensitive.
+/// Minting runs the creation statements in one transaction so a recipe that fails part-way rolls back.
 /// </summary>
 public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBackend
 {
@@ -79,7 +76,7 @@ public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBacke
     private const string SameClusterMessage =
         $"'{SettingName}' points at the vault's own PostgreSQL cluster. " +
         "PostgreSQL roles and pg_read_all_data/pg_write_all_data span every database in a cluster, so dynamic " +
-        "secrets must target a separate PostgreSQL server.";
+        "secrets and managed rotation must target a separate PostgreSQL server.";
 
     private readonly string? _connectionString;
     private readonly string? _vaultConnectionString;
@@ -113,21 +110,13 @@ public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBacke
         }
         else
         {
-            NpgsqlTransaction? transaction = null;
+            NpgsqlTransaction transaction;
             try
             {
-                // Keep the live cluster identity check and the DDL inside one explicit transaction so a
-                // transaction-pooling proxy or Npgsql multiplexing cannot route them to different servers.
-                transaction = await connection.BeginTransactionAsync(ct);
-                await EnsureClusterDistinctAsync(connection, transaction, ct);
+                transaction = await BeginGuardedTransactionAsync(connection, ct);
             }
             catch (Exception ex)
             {
-                if (transaction is not null)
-                {
-                    await transaction.DisposeAsync();
-                }
-
                 if (ex is not InvalidOperationException || ex.Message != SameClusterMessage)
                 {
                     LogFailure(ex);
@@ -207,7 +196,8 @@ public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBacke
         string sql;
         try
         {
-            sql = CredentialStatementTemplate.Render(RotateStatement, principal, newPassword, DateTimeOffset.UnixEpoch);
+            var verifier = ScramSha256Verifier.Create(newPassword);
+            sql = CredentialStatementTemplate.RenderWithScramVerifier(RotateStatement, principal, verifier, DateTimeOffset.UnixEpoch);
         }
         catch (ArgumentException)
         {
@@ -215,13 +205,25 @@ public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBacke
                 new ArgumentException("PostgreSQL managed rotation parameters were rejected before sending."));
         }
 
-        await using var connection = await OpenTargetAsync(ct, notSent => new UpstreamRotationRefusedException(SanitizeDriverException(notSent)));
-
-        int maxIdentifierLength;
+        await using var connection = await OpenTargetAsync(ct,
+            notSent => new UpstreamRotationRefusedException(SanitizeDriverException(notSent)), enforceDistinctEndpoint: true);
+        var alterAttempted = false;
+        var commitAttempted = false;
         try
         {
-            await using var lengthQuery = new NpgsqlCommand("SELECT current_setting('max_identifier_length')::int", connection);
-            maxIdentifierLength = Convert.ToInt32(await lengthQuery.ExecuteScalarAsync(ct), System.Globalization.CultureInfo.InvariantCulture);
+            await using var transaction = await BeginGuardedTransactionAsync(connection, ct);
+            await using var lengthQuery = new NpgsqlCommand("SELECT current_setting('max_identifier_length')::int", connection, transaction);
+            if (await lengthQuery.ExecuteScalarAsync(ct) is not int maxLength || Encoding.UTF8.GetByteCount(principal) > maxLength)
+            {
+                _logger.LogWarning("Cannot verify the PostgreSQL role name fits within the server's max_identifier_length");
+                throw new InvalidOperationException("PostgreSQL role name length could not be verified.");
+            }
+
+            await using var alter = new NpgsqlCommand(sql, connection, transaction);
+            alterAttempted = true;
+            await alter.ExecuteNonQueryAsync(ct);
+            commitAttempted = true;
+            await transaction.CommitAsync(ct);
         }
         catch (OperationCanceledException)
         {
@@ -230,31 +232,13 @@ public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBacke
         catch (Exception ex)
         {
             LogFailure(ex);
-            throw new UpstreamRotationRefusedException(SanitizeDriverException(ex));
-        }
+            var safeFailure = SanitizeDriverException(ex);
+            if (!alterAttempted || (!commitAttempted && ex is PostgresException refused && PasswordUnchangedSqlStates.Contains(refused.SqlState)))
+            {
+                throw new UpstreamRotationRefusedException(safeFailure);
+            }
 
-        if (Encoding.UTF8.GetByteCount(principal) > maxIdentifierLength)
-        {
-            _logger.LogWarning("Refused PostgreSQL managed rotation because role name length exceeds max_identifier_length ({MaxLength})", maxIdentifierLength);
-            throw new UpstreamRotationRefusedException(
-                new InvalidOperationException("PostgreSQL role name exceeds the server's max_identifier_length."));
-        }
-
-        try
-        {
-            await RunAsync(connection, sql, ct);
-        }
-        catch (PostgresException refused) when (refused.SqlState is not null && PasswordUnchangedSqlStates.Contains(refused.SqlState))
-        {
-            throw new UpstreamRotationRefusedException(SanitizeDriverException(refused));
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception uncertain)
-        {
-            throw SanitizeDriverException(uncertain);
+            throw safeFailure;
         }
 
         // Never log the password — only that the principal moved.
@@ -453,6 +437,26 @@ public sealed class PostgresBackend : IDynamicSecretBackend, IManagedSecretBacke
             _logger.LogError(SameClusterMessage);
             var sameCluster = new InvalidOperationException(SameClusterMessage);
             throw nothingSent?.Invoke(sameCluster) ?? sameCluster;
+        }
+    }
+
+    // A transaction-pooling proxy could otherwise send the cluster check and the DDL to different servers.
+    private async Task<NpgsqlTransaction> BeginGuardedTransactionAsync(NpgsqlConnection connection, CancellationToken ct)
+    {
+        var transaction = await connection.BeginTransactionAsync(ct);
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(_vaultConnectionString))
+            {
+                await EnsureClusterDistinctAsync(connection, transaction, ct);
+            }
+
+            return transaction;
+        }
+        catch
+        {
+            await transaction.DisposeAsync();
+            throw;
         }
     }
 
