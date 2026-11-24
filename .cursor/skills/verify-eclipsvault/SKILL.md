@@ -5,7 +5,7 @@ description: Launch a disposable EclipsVault web vault and drive the signed-in U
 
 # Verify EclipsVault
 
-EclipsVault's primary surface is the web UI on one host: Legacy MVC pages such as Secrets, and the Angular UI on the same origin (My access, Sign-in history, Security checkup, and the other routes in `EclipsVault.AngularUi/src/app/app.routes.ts`). The UI API at `/api/ui` is the same session, not a second app. The licence forge and audit verifier are separate CLIs; this skill does not drive them.
+EclipsVault's primary surface is the Angular web UI, sign-in included (the routes in `EclipsVault.AngularUi/src/app/app.routes.ts`). The UI API at `/api/ui` is the same session, not a second app. The licence forge and audit verifier are separate CLIs; this skill does not drive them.
 
 Read `features/README.md` before driving, then follow the feature file. Run the commands below from the repository root. The harness is `.cursor/skills/verify-eclipsvault/verify-eclipsvault`.
 
@@ -13,25 +13,27 @@ Read `features/README.md` before driving, then follow the feature file. Run the 
 
 Launch creates an empty PostgreSQL database named `evverify` plus 8 hex characters, migrates it, and seeds the Development demo world. It does not touch `EclipsVaultUmbraDb`. Ports `7443` and `5080` are the vault's fixed dev ports: if either is already taken, launch refuses. Two vaults cannot share them.
 
-Docker must already be running (`docker info`). Launch starts only the compose `db` service and leaves it up.
+Docker must already be running (`docker info`). Launch reuses the `eclipsvault-postgres` container whichever compose project created it. A stopped container needs a configured health check before launch starts it. If the check is missing or the container stays unhealthy, launch names the compose project in its error. When Docker confirms the container is absent, launch starts the compose `db` service under the main checkout's project name `eclipsevault` so a worktree does not create a second volume or network. It leaves PostgreSQL up.
+
+Launch and the browser commands use the Node version in `EclipsVault.AngularUi/.nvmrc`, from `~/.nvm/versions/node/` when it is installed there. They refuse any other version.
 
 ```bash
 .cursor/skills/verify-eclipsvault/verify-eclipsvault launch
 ```
 
-Ready means `https://localhost:7443/Account/Login` returns the Sign in page. That page is served only after migrations and seeding finish. Launch prints the base URL, pid, and database name. It writes the administrator password, the KEK, and the audit signing key to `logs/verify/instance/env` and does not print them.
+Ready means `https://localhost:7443/Account/Login` and `/api/ui/auth/options` both return complete HTTP 200 responses in valid UTF-8. The sign-in document contains `<app-root` and the API returns a JSON object with a boolean `ssoEnabled`. The host serves neither until migrations and seeding finish. Launch prints the base URL, pid, and database name. It writes the administrator password, the KEK, and the audit signing key to `logs/verify/instance/env` and does not print them.
 
 The Development host uses a throwaway KEK and a throwaway audit signing key generated for this process. The dev HTTPS certificate is created with `dotnet dev-certs https` when the machine does not have one. The Angular UI is built into `EclipsVault.Web/AngularUi/index.html` before the process starts; without that file the Angular routes cannot load.
 
 ## Doctor
 
-Run this first whenever the vault looks wrong. It only reads. It checks that the pid still runs `EclipsVault.Web.dll`, that this pid owns port `7443`, that Sign in is being served, that the Angular document exists, and that the disposable database has both seeded accounts.
+Run this first whenever the vault looks wrong. It only reads. It checks that the pid still runs `EclipsVault.Web.dll`, that this pid owns port `7443`, that the Angular sign-in and its API answer, that the Angular document exists, and that the disposable database has both seeded accounts.
 
 ```bash
 .cursor/skills/verify-eclipsvault/verify-eclipsvault doctor
 ```
 
-A healthy run prints `ok vault`, the base URL, the pid, the `evverify…` database name, `accounts 2`, and `login Sign in`. Anything else means do not drive it.
+A healthy run prints `ok vault`, the base URL, the pid, the `evverify…` database name, `accounts 2`, and `sign-in ready`. Anything else means do not drive it.
 
 ## Drive
 
@@ -40,16 +42,17 @@ Sign in once, through the real password form and the authenticator enrollment pa
 ```bash
 .cursor/skills/verify-eclipsvault/verify-eclipsvault sign-in
 .cursor/skills/verify-eclipsvault/verify-eclipsvault browser goto /Secrets
-.cursor/skills/verify-eclipsvault/verify-eclipsvault browser click --text "Security" --exact
+.cursor/skills/verify-eclipsvault/verify-eclipsvault browser click --text "You" --exact
 .cursor/skills/verify-eclipsvault/verify-eclipsvault browser click --role link --name "Sign-in history" --exact
 .cursor/skills/verify-eclipsvault/verify-eclipsvault browser expect --role heading --name "Sign-in history" --exact
+.cursor/skills/verify-eclipsvault/verify-eclipsvault browser click --role button --name "Search secrets or jump to a page" --exact
 .cursor/skills/verify-eclipsvault/verify-eclipsvault browser fill --role combobox --name "Search secrets, or jump to a page" --value "sign-in history"
-.cursor/skills/verify-eclipsvault/verify-eclipsvault browser press --key Control+k
+.cursor/skills/verify-eclipsvault/verify-eclipsvault browser press --key Enter
 .cursor/skills/verify-eclipsvault/verify-eclipsvault browser screenshot --path logs/verify/evidence/sign-in-history/history.png
 .cursor/skills/verify-eclipsvault/verify-eclipsvault browser snapshot --path logs/verify/evidence/sign-in-history/history.aria.txt
 ```
 
-`--row <text>` limits a click to the table row whose accessible name contains that text. Use it on Secrets, where every row has an Open link. The feature files list the exact sequence for each journey.
+`--row <text>` limits a click to the table row whose accessible name contains that text, for a table where every row repeats the same link or button name. The feature files list the exact sequence for each journey.
 
 The account is `vault-admin` (Top Secret, project GLOBAL). `dev-user` is seeded and is not signed in by this harness. A journey that needs `dev-user` fails here; do not borrow the administrator session and call it the Standard one.
 
@@ -75,4 +78,4 @@ Run cleanup after a failed launch too, so the next launch is not blocked by the 
 
 ## Helpers
 
-`.cursor/skills/verify-eclipsvault/verify-eclipsvault` is the only command. It launches, checks, signs in, drives the browser, and cleans up. `.cursor/skills/verify-eclipsvault/browser.mjs` is the Chromium session it starts; call it only through the shell script so `VERIFY_ROOT` is set.
+`.cursor/skills/verify-eclipsvault/verify-eclipsvault` is the only command. It launches, checks, signs in, drives the browser, and cleans up. `.cursor/skills/verify-eclipsvault/browser.mjs` is the Chromium session it starts. Call it through the shell script so `VERIFY_ROOT` and `VERIFY_SOCKET` are set. The socket lives in an owner-only directory created by `mktemp -d /tmp/evv.XXXXXX` to fit the macOS socket path limit. Later commands read the path from `logs/verify/instance/browser.sockpath`. Daemon shutdown and cleanup remove the temporary directory.

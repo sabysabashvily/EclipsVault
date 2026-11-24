@@ -8,9 +8,11 @@ instance="$root/logs/verify/instance"
 evidence="$root/logs/verify/evidence"
 state="$instance/state.json"
 env_file="$instance/env"
+socket_path_file="$instance/browser.sockpath"
 base_url="https://localhost:7443"
 dll="$root/EclipsVault.Web/bin/Release/net10.0/EclipsVault.Web.dll"
-compose=(docker compose --file "$root/docker-compose.yml")
+# The main checkout's project name, so a worktree reuses its eclipsvault-postgres volume and network.
+compose=(docker compose --project-name eclipsevault --file "$root/docker-compose.yml")
 
 die() { printf '%s\n' "$1" >&2; exit 1; }
 
@@ -42,6 +44,101 @@ listening_pid() {
   ss -ltnp "sport = :$port" 2>/dev/null | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -n 1
 }
 
+# The Angular build and Playwright expect the Node version in .nvmrc.
+use_pinned_node() {
+  local wanted
+  wanted="v$(cat "$root/EclipsVault.AngularUi/.nvmrc")"
+  if [[ -d "$HOME/.nvm/versions/node/$wanted/bin" ]]; then
+    PATH="$HOME/.nvm/versions/node/$wanted/bin:$PATH"
+  fi
+  [[ "$(node --version 2>/dev/null)" == "$wanted" ]] \
+    || die "Node $wanted is required (EclipsVault.AngularUi/.nvmrc); found $(node --version 2>/dev/null || echo none). Install it with nvm."
+}
+
+# Login is the Angular document and the sign-in steps call the UI API, so both must answer.
+# The host serves nothing until migrations and seeding finish.
+sign_in_ready() {
+  python3 -I - "$base_url" <<'PY'
+import json
+import subprocess
+import sys
+
+
+def body_of_200(url):
+    # curl only skips .curlrc when -q is its first option. Keep the body out of the shell
+    # because command substitution strips NUL bytes.
+    response = subprocess.run(
+        ["curl", "-q", "-sk", "--max-time", "10", "--write-out", "\n%{http_code}", url],
+        stdout=subprocess.PIPE,
+        check=True,
+    )
+    body, _, status = response.stdout.rpartition(b"\n")
+    if status != b"200" or b"\0" in body:
+        raise ValueError("Expected HTTP 200 and a body without NUL bytes")
+    return body.decode("utf-8")
+
+
+def reject_constant(value):
+    raise ValueError(f"Invalid JSON constant: {value}")
+
+
+base_url = sys.argv[1]
+try:
+    document = body_of_200(f"{base_url}/Account/Login")
+    if "<app-root" not in document:
+        sys.exit(1)
+    options = body_of_200(f"{base_url}/api/ui/auth/options")
+    answer = json.loads(options, parse_constant=reject_constant)
+except (OSError, subprocess.CalledProcessError, ValueError):
+    sys.exit(1)
+
+sys.exit(0 if isinstance(answer, dict) and isinstance(answer.get("ssoEnabled"), bool) else 1)
+PY
+}
+
+# Reuses the dev PostgreSQL container whoever started it; compose creates it only when it is absent.
+ensure_postgres() {
+  local container=eclipsvault-postgres inspect_error details status health_check project health
+  # Docker reports an absent container on stderr. A failed inspect by itself says nothing about it.
+  if ! inspect_error="$(docker container inspect "$container" 2>&1 >/dev/null)"; then
+    inspect_error="${inspect_error#Error response from daemon: }"
+    inspect_error="${inspect_error#Error: }"
+    case "$inspect_error" in
+      "No such container: $container" | "No such object: $container")
+        "${compose[@]}" up -d --wait db
+        return
+        ;;
+      *) die "Could not inspect $container: ${inspect_error:-Docker returned no error details.}" ;;
+    esac
+  fi
+  local health_check_format='{{if and .Config.Healthcheck .Config.Healthcheck.Test (ne (index .Config.Healthcheck.Test 0) "NONE")}}yes{{else}}no{{end}}'
+  details="$(docker container inspect --format \
+    "{{.State.Status}} $health_check_format {{index .Config.Labels \"com.docker.compose.project\"}}" "$container")" \
+    || die "Could not inspect the configuration of $container."
+  read -r status health_check project <<<"$details"
+  project="${project:-none}"
+  case "$status" in
+    running) ;;
+    created | exited)
+      [[ "$health_check" == yes ]] \
+        || die "$container (compose project $project) has no health check and cannot be started by this skill."
+      docker start "$container" >/dev/null || die "Could not start $container (compose project $project)."
+      ;;
+    *) die "$container (compose project $project) is $status. Fix it by hand; this skill will not replace it." ;;
+  esac
+  local deadline=$((SECONDS + 90))
+  while (( SECONDS < deadline )); do
+    # A container only has a health state once it runs, so this is read after any start.
+    health="$(docker container inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container")" \
+      || die "Could not inspect the health of $container (compose project $project)."
+    [[ "$health" == healthy ]] && return
+    [[ "$health" == none ]] && die "$container (compose project $project) has no health check, so it cannot be trusted as the dev database."
+    [[ "$health" == unhealthy ]] && break
+    sleep 2
+  done
+  die "$container (compose project $project) is $health, not healthy. Fix it by hand; this skill will not replace it."
+}
+
 require_instance() {
   [[ -f "$state" ]] || die "No verification vault. Run verify-eclipsvault launch first."
 }
@@ -70,6 +167,38 @@ browser_process() {
   process_args "$pid" | grep -q 'browser.mjs daemon'
 }
 
+start_browser() {
+  local socket_dir socket
+  # A socket inside a worktree can exceed the macOS Unix socket path limit.
+  socket_dir="$(umask 077 && mktemp -d /tmp/evv.XXXXXX)" || die "Could not create the browser socket directory."
+  socket="$socket_dir/s"
+  if ! printf '%s\n' "$socket" >"$socket_path_file"; then
+    rmdir "$socket_dir"
+    die "Could not record the browser socket path."
+  fi
+  VERIFY_ROOT="$root" VERIFY_SOCKET="$socket" node "$root/.cursor/skills/verify-eclipsvault/browser.mjs" start \
+    || die "The browser session did not start. Run cleanup, then launch again."
+}
+
+read_browser_socket() {
+  local socket socket_dir
+  [[ -f "$socket_path_file" ]] || return 1
+  socket="$(cat "$socket_path_file")" || return 1
+  [[ "$socket" =~ ^/tmp/evv\.[a-zA-Z0-9]{6}/s$ ]] || return 1
+  socket_dir="${socket%/s}"
+  [[ -d "$socket_dir" && ! -L "$socket_dir" && -O "$socket_dir" ]] || return 1
+  printf '%s\n' "$socket"
+}
+
+remove_browser_socket() {
+  local socket
+  socket="$(read_browser_socket)" || return 0
+  if [[ -S "$socket" ]]; then
+    rm -f "$socket"
+  fi
+  rmdir "${socket%/s}" 2>/dev/null || true
+}
+
 launch() {
   if [[ -f "$state" ]]; then
     local existing
@@ -88,10 +217,11 @@ launch() {
     fi
   done
 
+  use_pinned_node
   mkdir -p "$instance" "$evidence"
   chmod 700 "$instance"
 
-  "${compose[@]}" up -d --wait db
+  ensure_postgres
   psql EclipsVaultUmbraDb -c 'SELECT 1' >/dev/null
 
   local database password_admin password_dev kek audit_key
@@ -120,6 +250,7 @@ values = {
     "Seed__DevPassword": dev,
     "ECLIPSVAULT_KEK": kek,
     "ECLIPSVAULT_AUDIT_SIGNING_KEY": audit,
+    "Identity__PublicUrl": "https://localhost:7443",
 }
 with open(path, "w") as env:
     for key, value in values.items():
@@ -163,12 +294,8 @@ PY
       tail -n 40 "$instance/vault.log" >&2 || true
       die "The vault exited before sign-in was ready. See logs/verify/instance/vault.log."
     fi
-    local code
-    code="$(curl -sk -o "$instance/login.body" -w '%{http_code}' "$base_url/Account/Login" || true)"
-    if [[ "$code" == "200" ]] && grep -q 'Sign in' "$instance/login.body"; then
-      rm -f "$instance/login.body"
-      VERIFY_ROOT="$root" node "$root/.cursor/skills/verify-eclipsvault/browser.mjs" start \
-        || die "The browser session did not start. Run cleanup, then launch again."
+    if sign_in_ready; then
+      start_browser
       printf 'launched %s pid %s database %s\n' "$base_url" "$vault_pid" "$database"
       return
     fi
@@ -187,16 +314,13 @@ doctor() {
   our_process "$pid" || die "Vault pid $pid is not the dll recorded for this run."
   listener="$(listening_pid 7443 || true)"
   [[ "$listener" == "$pid" ]] || die "Port 7443 is owned by pid ${listener:-nobody}, not the verification vault pid $pid."
-  local code
-  code="$(curl -sk -o "$instance/login.body" -w '%{http_code}' --max-time 10 "$base_url/Account/Login" || true)"
-  [[ "$code" == "200" ]] && grep -q 'Sign in' "$instance/login.body" \
-    || die "https://localhost:7443/Account/Login did not serve the sign-in page (HTTP ${code:-none})."
-  rm -f "$instance/login.body"
+  sign_in_ready \
+    || die "$base_url/Account/Login did not serve the Angular sign-in, or /api/ui/auth/options did not answer."
   [[ -f "$root/EclipsVault.Web/AngularUi/index.html" ]] \
     || die "Angular UI document is missing, so /SignIns cannot be served."
   users="$(psql "$database" -tA -c 'SELECT COUNT(*) FROM "Users"')"
   [[ "$users" -ge 2 ]] || die "The disposable database has $users accounts. Seed has not finished."
-  printf 'ok vault\nbase %s\npid %s\ndatabase %s\naccounts %s\nlogin Sign in\n' \
+  printf 'ok vault\nbase %s\npid %s\ndatabase %s\naccounts %s\nsign-in ready\n' \
     "$base_url" "$pid" "$database" "$users"
 }
 
@@ -224,6 +348,7 @@ cleanup() {
   browser_pid=""
   [[ -f "$instance/browser.pid" ]] && browser_pid="$(cat "$instance/browser.pid")"
   stop_pid "$browser_pid" browser_process
+  remove_browser_socket
   pid="$(pid_from_state || true)"
   database="$(database_name || true)"
   stop_pid "$pid" our_process
@@ -239,7 +364,10 @@ cleanup() {
 
 drive() {
   require_instance
-  VERIFY_ROOT="$root" node "$root/.cursor/skills/verify-eclipsvault/browser.mjs" "$@"
+  use_pinned_node
+  local socket
+  socket="$(read_browser_socket)" || die "No browser socket directory. Run cleanup, then launch again."
+  VERIFY_ROOT="$root" VERIFY_SOCKET="$socket" node "$root/.cursor/skills/verify-eclipsvault/browser.mjs" "$@"
 }
 
 usage() {
