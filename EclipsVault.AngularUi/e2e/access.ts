@@ -25,7 +25,7 @@ export async function verifyMyAccess(
     'GLOBAL',
     account === 'administrator' ? 'Any project' : 'Only GLOBAL, unless shared with you',
     `${access.sourceIp} Trusted`,
-    'Open now 00:00–24:00 UTC',
+    '00:00–24:00 UTC Open now',
   ]);
   const rows = page.locator('.access-matrix tbody tr');
   await expect(page.locator('.access-matrix thead th')).toHaveText([

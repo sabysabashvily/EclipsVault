@@ -1783,7 +1783,7 @@ app-command-palette {
 }
 
 /* ---- My access (permission matrix) ------------------------------------ */
-/* Read-only: a tinted tile per verdict, the word beside it while the card has room. */
+/* Read-only: a tinted tile per verdict, the word below it while the card has room. */
 .matrix-card {
   container: matrix / inline-size;
 }
