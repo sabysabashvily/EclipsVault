@@ -219,8 +219,8 @@ const html = `<!DOCTYPE html>
 <body>
 <main>
   <h1>EclipsVault diagrams / დიაგრამები</h1>
-  <p class="intro" lang="en">Printable copy of the five C4 pictures in diagrams.md. Colours and type follow Pele's CSS variables. This page does not show a running vault.</p>
-  <p class="intro" lang="ka">diagrams.md-ში მოცემული ხუთი C4 დიაგრამის საბეჭდი ვერსია. ფერებსა და შრიფტს Pele-ის CSS ცვლადები განსაზღვრავს. გვერდზე მოქმედი საცავი არ ჩანს.</p>
+  <p class="intro" lang="en">Print the five C4 diagrams from diagrams.md. Pele's CSS variables set the colours and font. The diagrams are static and show no live vault.</p>
+  <p class="intro" lang="ka">დასაბეჭდად გამოიყენეთ diagrams.md-ში მოცემული ხუთი C4 დიაგრამა. ფერებსა და შრიფტს Pele-ის CSS ცვლადები განსაზღვრავს. დიაგრამები სტატიკურია და გაშვებულ საცავს არ აჩვენებს.</p>
 ${figures}
 </main>
 </body>

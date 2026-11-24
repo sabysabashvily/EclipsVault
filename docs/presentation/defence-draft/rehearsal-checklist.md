@@ -1,14 +1,14 @@
 # Rehearsal checklist / რეპეტიციის საკონტროლო სია
 
-One run of the 24 November talk, on `origin/main` `1298958050e45f83aefeb4b6455d0a02169ab22a`.
-The presentation cap is 30 minutes. The click path was walked on this revision on 24 November
-2026, finishing at about 16:03 Asia/Tbilisi, on a port-shifted disposable vault. Exact setup is
+The 24 November rehearsal ran on `origin/main` `1298958050e45f83aefeb4b6455d0a02169ab22a`.
+The presentation limit is 30 minutes. The demo used a disposable vault on a different port and
+finished on 24 November 2026 at about 16:03 Asia/Tbilisi. See
 [demo-setup-reset.md](demo-setup-reset.md).
 
-24 ნოემბრის მოხსენების ერთი რეპეტიცია `origin/main`-ის რევიზიაზე
-`1298958050e45f83aefeb4b6455d0a02169ab22a`. პრეზენტაციისთვის გამოყოფილია მაქსიმუმ 30 წუთი.
-დემონსტრაციის ნაბიჯები სხვა პორტზე გაშვებულ ერთჯერად საცავში შემოწმდა 2026 წლის 24 ნოემბერს.
-რეპეტიცია დაახლოებით 16:03-ზე დასრულდა (Asia/Tbilisi). მომზადების ინსტრუქცია მოცემულია
+24 ნოემბრის რეპეტიცია ჩატარდა `origin/main`-ის რევიზიაზე
+`1298958050e45f83aefeb4b6455d0a02169ab22a`. პრეზენტაციისთვის მაქსიმუმ 30 წუთია გამოყოფილი.
+დემონსტრაციისთვის ერთჯერადი საცავი სხვა პორტზე გაეშვა. რეპეტიცია 2026 წლის 24 ნოემბერს,
+დაახლოებით 16:03-ზე დასრულდა (Asia/Tbilisi). მომზადების ინსტრუქცია მოცემულია
 [demo-setup-reset.md](demo-setup-reset.md)-ში.
 
 ## Pre-flight / რეპეტიციამდე შესამოწმებელი საკითხები
@@ -27,31 +27,35 @@ The presentation cap is 30 minutes. The click path was walked on this revision o
 
 ## Run order / დემონსტრაციის თანმიმდევრობა
 
-1. **Problem.** No product. One sentence: a shared file cannot say who opened the password.
-2. **Access.** Four rules in `SecretAccessPolicy`. This secret is Internal and Development, so
-   network and the production window do not apply. Do not invent a denial on loopback.
-3. **Architecture.** Context, then container, then the Web component picture in
-   [diagrams.html](diagrams.html). The browser UI, including sign-in, runs on Angular. Core and
+1. Explain in one sentence why a shared file cannot show who opened a password. Keep the product
+   off screen.
+2. Explain the four rules in `SecretAccessPolicy`. The time and network rules do not apply to
+   this Internal Development secret. Skip any improvised denial on loopback.
+3. Show the context, container, and Web component diagrams in that order in
+   [diagrams.html](diagrams.html). The browser UI and sign-in run on Angular. Core and
    Infrastructure are modules inside Web.
-4. **Order.** Access, then `Viewed`, then "Reveal value", then `Revealed`, then decryption.
-5. **Live.**
-   - `dev-user` → Continue → authenticator code → Verify and sign in → `/Secrets`.
-   - Filter `Phoenix_Dev_Database_Password` → click the name → Reveal value → Back to list.
-   - Account card → Sign out.
-   - `vault-admin` → Continue → authenticator code → Verify and sign in → Administration → Audit log.
+4. Explain that the server checks access before writing `Viewed`. After "Reveal value", it
+   writes `Revealed` before decryption.
+5. Run the demo.
+   - Enter `dev-user`, press Continue, enter the authenticator code, and press Verify and sign in.
+     The vault opens `/Secrets`.
+   - Filter for `Phoenix_Dev_Database_Password`. Click the name, press Reveal value, and press Back to list.
+   - Open the account card and press Sign out.
+   - Enter `vault-admin`, press Continue, enter the authenticator code, and press Verify and sign in.
+     Under Administration, open Audit log.
    - Filter the same name. Point at `Revealed` for `dev-user`, then `Viewed` under it.
-6. **Boundary.** Latest checkpoint is "none yet". Proof to an outsider is a bundle they already
-   hold. Do not say every deletion is detectable. Do not press Verify integrity, Create signed
-   checkpoint, or Export signed bundle.
-7. **Revision.** Read only the filled cells in [storyboard.md](storyboard.md) slide 7.
-8. **Stop.** Three sentences, then questions. [questions.md](questions.md).
+6. Point out that Latest checkpoint says "none yet". An outside auditor can verify a bundle they
+   already hold. Some deletions can escape detection. Leave Verify integrity, Create signed
+   checkpoint, and Export signed bundle alone.
+7. Read only the filled cells on slide 7 of [storyboard.md](storyboard.md).
+8. Give the three closing points and take questions. See [questions.md](questions.md).
 
 ## If a step fails / თუ რომელიმე ნაბიჯი ვერ შესრულდა
 
 | What you see | Do |
 |---|---|
 | "Set up two-factor authentication" | Stop the projector, enroll, return to the empty sign-in page, then continue. |
-| A step-up form on this secret | You are not on the Internal secret. Stop. Do not type a code on camera. |
+| A step-up form on this secret | Stop and check which secret you opened. The Internal secret does not require step-up. Keep code entry off camera. |
 | The secret is missing | The database was not empty, or the process is not Development. Talk the five steps. Do not point at another database. |
 | Web stops with "Database:Provider is not set" | Add `Database__Provider=Postgres` to the process environment. Skip the live clicks if it is too late to restart. |
 | A page says "The Angular UI is not built" | The index file is missing. Skip the live clicks. |
@@ -62,16 +66,16 @@ The presentation cap is 30 minutes. The click path was walked on this revision o
 
 ## Backup recording / სარეზერვო ჩანაწერი
 
-Do this the day before, not in the room. Same vault, same clicks, light theme, 1280 px wide.
+Record the day before the talk. Use the same vault and demo steps, with the light theme at 1280 px.
 
 - Record from the empty sign-in page through the filtered audit log.
-- Cut out enrollment. No QR code, no manual key, no recovery codes, no password field with a value.
+- Cut out enrollment and any frames with a QR code, manual key, recovery code, or populated password field.
 - Cut out the page after "Reveal value" and before "Back to list".
 - Keep the `Revealed` row, the `Viewed` row, and "Latest checkpoint: none yet".
 - Do not record Verify or Export.
 - The stills in [screens/](screens/) are the same frames, from the 24 November walk:
   `01-sign-in.png`, `02-secrets-list.png`, `03-secret-details.png`, `04-secrets-after-reveal.png`,
-  `05-audit-log.png`. No recording has been made.
+  `05-audit-log.png`. The backup recording is still pending.
 
 ## Reset before the day / საწყისი მდგომარეობის აღდგენა მოხსენებამდე
 

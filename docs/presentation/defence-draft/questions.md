@@ -1,26 +1,26 @@
 # Likely questions / სავარაუდო კითხვები
 
-Use the sources named below for `origin/main` `1298958050e45f83aefeb4b6455d0a02169ab22a`
+Source revision: `origin/main` `1298958050e45f83aefeb4b6455d0a02169ab22a`
 (24 November 2026, 15:18 Asia/Tbilisi). Say when a feature was outside the rehearsal.
 
-დაეყრდენით ქვემოთ მითითებულ წყაროებს `origin/main`-ის რევიზიიდან
+წყაროების რევიზიაა `origin/main`
 `1298958050e45f83aefeb4b6455d0a02169ab22a` (2026 წლის 24 ნოემბერი, 15:18 Asia/Tbilisi).
 თუ რომელიმე ფუნქცია რეპეტიციაზე არ შემოწმებულა, ეს პირდაპირ თქვით.
 
-## The browser decides who can see a secret, doesn't it?
+## Who decides whether a user can see a secret?
 
 ### English
 
-No. Angular route guards are convenience. `SecretAccessPolicy` runs on the server for the UI API
-reveal and for the Public API. ADR-0012 says the UI does not decide from a hard-coded clearance
-check. A hidden link is not the control.
+The server checks `SecretAccessPolicy` for UI API reveals and Public API requests. Angular route
+guards and hidden links affect navigation. ADR-0012 leaves clearance decisions to the server
+and rules out hard-coded clearance checks in the UI.
 
 ### ქართული
 
-არა. Angular-ის მარშრუტების შემოწმებები მხოლოდ ნავიგაციას ამარტივებს. სერვერი წვდომას
-`SecretAccessPolicy`-ით ამოწმებს როგორც UI API-ით მნიშვნელობის გამჟღავნებისას, ისე საჯარო API-ზე
-მოთხოვნისას. ADR-0012-ის მიხედვით, ინტერფეისი წვდომაზე გადაწყვეტილებას კოდში ფიქსირებული დაშვების
-შემოწმებით არ იღებს. ბმულის დამალვა წვდომას ვერ აკონტროლებს.
+სერვერი `SecretAccessPolicy`-ით ამოწმებს როგორც UI API-ით მნიშვნელობის გამჟღავნების, ისე საჯარო API-ის
+მოთხოვნებს. Angular-ის მარშრუტების შემოწმება და ბმულების დამალვა ნავიგაციას ეხება. ADR-0012-ის
+მიხედვით, დაშვებაზე გადაწყვეტილებას სერვერი იღებს. ინტერფეისში დაშვების შემოწმება ფიქსირებული
+წესით არ ხდება.
 
 ## Why does this secret not show the network and time checks?
 
@@ -43,28 +43,26 @@ loopback addresses, `127.0.0.1/32` and `::1/128`.
 
 ### English
 
-In the explanation, not on screen. A service account has no session and calls `/api/v1/secrets`
+Describe the service account aloud. It has no session and calls `/api/v1/secrets`
 with an API key. `ApiKeyAuthenticationHandler` builds the same kind of subject, and
-`SecretsApiController` uses the same authorisation policy. Issuing a key shows the raw secret once.
-That does not belong in a recording. Source: `CONTEXT.md`; ADR-0005; `SecretsApiController`.
+`SecretsApiController` uses the same authorisation policy. Keep key issuance off camera because
+the vault shows the raw key once. Sources are `CONTEXT.md`, ADR-0005, and `SecretsApiController`.
 
 ### ქართული
 
 სერვისის ანგარიშს მხოლოდ სიტყვიერად ვახსენებთ. მას სესია არ აქვს და `/api/v1/secrets`-ს API
 გასაღებით მიმართავს. `ApiKeyAuthenticationHandler` იმავე ტიპის სუბიექტს ქმნის და
 `SecretsApiController` ავტორიზაციის იმავე პოლიტიკას იყენებს. გაცემისას საცავი API გასაღების
-სრულ მნიშვნელობას ერთხელ აჩვენებს. ეს მომენტი ვიდეოში არ უნდა მოხვდეს.
+სრულ მნიშვნელობას ერთხელ აჩვენებს, ამიტომ გასაღების გაცემა კამერის მიღმა დატოვეთ.
 წყაროებია `CONTEXT.md`, ADR-0005 და `SecretsApiController`.
 
 ## Does the server ever see the plaintext?
 
 ### English
 
-Yes. This is a server-side vault, not a design where the browser alone can decrypt. After the audit
-row commits, `AesGcmCryptoEngine.UnsealAsync` opens the value in the Web process, and the Angular
-details page renders it once. The data key is wrapped by the master key so a database copy of the
-ciphertext is not the plaintext. It is not a claim that the operator's process cannot read a secret
-it is serving.
+Yes. After the audit row commits, `AesGcmCryptoEngine.UnsealAsync` decrypts the value in the Web
+process. The Angular details page displays it once. The database holds ciphertext, and the master
+key wraps the data key. The operator's process can read the secrets it serves.
 
 ### ქართული
 
@@ -80,8 +78,8 @@ Angular-ის დეტალების გვერდი გაშიფრ
 
 `AuditSink.WriteAsync` throws `AuditWriteFailedException` and does not report success.
 `RevealAsync` awaits that call before `DecryptToDtoAsync`. The value is not decrypted for that
-request. Source: `AuditSink`; `SecretService.RevealAsync`. This draft did not pull the database
-plug to show it.
+request. The rehearsal did not simulate this failure by disconnecting the database. Sources are
+`AuditSink` and `SecretService.RevealAsync`.
 
 ### ქართული
 
@@ -113,18 +111,17 @@ After the access check allows the details page, `SecretDetailsController.Get` ca
 
 ### English
 
-No. Not for every deletion, and not regardless of the latest signed checkpoint.
-`AuditChainVerifier.VerifyAsync` streams the rows and checks checkpoints signed by the current key.
-It reports a gap, a broken link, a checkpoint that does not match, or a tail missing before the
-latest such checkpoint. Deleting the checkpoints, or changing only the rows after that checkpoint
-and recomputing their hashes, can still leave Verify quiet. `AuditBundleVerifier` checks a bundle
-it is given. A bundle an auditor already keeps is unchanged by a later edit of the live database.
-Source: `AuditChainVerifier`; `AuditCheckpointService.VerifyAsync`; `AuditBundleVerifier`;
-ADR-0030; `docs/THREAT_MODEL.md` item 12.
+Verify's coverage depends on the latest signed checkpoint. `AuditChainVerifier.VerifyAsync` streams
+the rows and checks checkpoints signed by the current key. It reports a gap, a broken link, a
+mismatched checkpoint, or missing final rows within the latest such checkpoint. Verify can miss
+deleted checkpoints or changes limited to later rows if their hashes are recomputed.
+`AuditBundleVerifier` checks the bundle it receives. Later edits to the live database leave the
+auditor's saved copy intact. See `AuditChainVerifier`, `AuditCheckpointService.VerifyAsync`,
+`AuditBundleVerifier`, ADR-0030, and item 12 in `docs/THREAT_MODEL.md`.
 
 ### ქართული
 
-არა. ყველა წაშლის გამოვლენა შეუძლებელია. შემოწმების ფარგლებს ბოლო ხელმოწერილი საკონტროლო წერტილი
+შემოწმების ფარგლებს ბოლო ხელმოწერილი საკონტროლო წერტილი
 განსაზღვრავს. `AuditChainVerifier.VerifyAsync` ჩანაწერებს ნაკადად კითხულობს და მოქმედი გასაღებით
 ხელმოწერილ საკონტროლო წერტილებს ამოწმებს. ის მიუთითებს მიმდევრობაში გამოტოვებულ ჩანაწერზე,
 ჯაჭვის გაწყვეტილ ბმაზე, საკონტროლო წერტილის შეუსაბამობაზე ან ბოლო ასეთი წერტილით მოცულ მონაკვეთში
@@ -160,16 +157,16 @@ behaviour. See `AuditBundleSchema` and `AuditBundleVerifier` for the current che
 
 Yes, if they can read `ECLIPSVAULT_AUDIT_SIGNING_KEY`. `docs/THREAT_MODEL.md` item 12 says a rewrite
 re-signed with the vault's own key still verifies, including against a pinned copy of that key.
-Pinning catches a different key, not this one. The mitigation recorded there is to export on a
-schedule and keep the bundles somewhere the host cannot rewrite. This draft did not do that export.
+Pinning detects only a key mismatch. Item 12 recommends scheduled exports to storage the host
+cannot rewrite. The rehearsal did not export a bundle.
 
 ### ქართული
 
 დიახ, თუ `ECLIPSVAULT_AUDIT_SIGNING_KEY`-ის წაკითხვა შეუძლიათ. `docs/THREAT_MODEL.md`-ის მე-12
 პუნქტის მიხედვით, გადაწერილი ჩანაწერები შემოწმებას მაინც გაივლის, თუ ისინი საცავისავე გასაღებითაა
-ხელახლა ხელმოწერილი. ეს იმ შემთხვევაშიც ასეა, როცა შემმოწმებელი ამ გასაღების წინასწარ შენახულ
-ასლს იყენებს. ასეთი შედარება მხოლოდ სხვა გასაღებით ხელმოწერას გამოავლენს. რისკის შესამცირებლად
-იქვე აღწერილია პერიოდული ექსპორტი და პაკეტების შენახვა იქ, სადაც ჰოსტს მათი გადაწერა არ შეუძლია.
+ხელახლა ხელმოწერილი. წინასწარ შენახულ ასლთან შედარება მხოლოდ განსხვავებული გასაღების გამოყენებას
+ავლენს. მე-12 პუნქტი რისკის შესამცირებლად პერიოდულ ექსპორტს და პაკეტების ისეთ საცავში შენახვას
+გვირჩევს, სადაც ჰოსტს მათი გადაწერა არ შეუძლია.
 რეპეტიციაზე ეს ექსპორტი არ ჩატარებულა.
 
 ## Where is the dynamic password stored?
@@ -229,7 +226,8 @@ used those accounts. See ADR-0033, `UserAdminService`, and `AccountActivationSer
 
 ადმინისტრატორს შეჰყავს მომხმარებლის ელფოსტის მისამართი. საცავი `Identity:PublicUrl`-ის მიხედვით
 ადგენს ერთჯერადი მოწვევის ბმულს და SMTP-ით აგზავნის. მომხმარებელი ანგარიშის გააქტიურებისას
-ირჩევს პაროლს და არეგისტრირებს ავთენტიფიკატორს. ეს ერთი აქტივაციაა და აუდიტში აღირიცხება.
+ირჩევს პაროლს და არეგისტრირებს ავთენტიფიკატორს. საცავი ორივე მოქმედებას ერთ აქტივაციად აღრიცხავს
+აუდიტში.
 Development გარემოში წინასწარ შექმნილი ანგარიშებისთვის ავთენტიფიკატორის რეგისტრაცია პირველი
 შესვლისას ხდება. რეპეტიციაზე სწორედ ეს ანგარიშებია გამოყენებული. იხილეთ ADR-0033, `UserAdminService` და
 `AccountActivationService`.
@@ -286,8 +284,8 @@ rewrap the data keys. The rehearsal did not rotate a key. See `EncryptionControl
 
 ### English
 
-The owner confirmed a presentation cap of 30 minutes. Detailed slide allocation and marking
-criteria are still unconfirmed. The supplied C4 guide sets diagram requirements, not talk timing.
+The owner confirmed a 30-minute limit. Slide timings and marking criteria remain unconfirmed.
+The supplied C4 guide specifies the diagram requirements and gives no timing rule.
 
 ### ქართული
 
