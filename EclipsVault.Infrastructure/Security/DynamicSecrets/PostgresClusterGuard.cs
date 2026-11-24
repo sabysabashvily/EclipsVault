@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Net;
 using EclipsVault.Core.Application.Networks;
 using Npgsql;
@@ -24,8 +23,6 @@ public sealed class VaultPostgresConnection(string? connectionString)
 /// </summary>
 internal static class PostgresClusterGuard
 {
-    private const int DefaultPort = 5432;
-
     /// <summary>
     /// True when the two PostgreSQL connection strings name any common endpoint, after normalising DNS case,
     /// trailing DNS dots, IPv6 brackets, IPv4-mapped IPv6 addresses, and default port 5432 while preserving
@@ -35,11 +32,6 @@ internal static class PostgresClusterGuard
     public static bool SharesEndpoint(NpgsqlConnectionStringBuilder vault, NpgsqlConnectionStringBuilder target)
     {
         var vaultEndpoints = EndpointsOf(vault);
-        if (vaultEndpoints.Count == 0)
-        {
-            return false;
-        }
-
         foreach (var endpoint in EndpointsOf(target))
         {
             if (vaultEndpoints.Contains(endpoint))
@@ -85,14 +77,8 @@ internal static class PostgresClusterGuard
     public static IReadOnlyList<string> ExpandHostConnectionStrings(string connectionString)
     {
         var builder = new NpgsqlConnectionStringBuilder(connectionString);
-        if (string.IsNullOrWhiteSpace(builder.Host))
-        {
-            return [connectionString];
-        }
-
-        var defaultPort = builder.Port > 0 ? builder.Port : DefaultPort;
-        var segments = builder.Host.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (segments.Length <= 1)
+        var segments = HostSegments(builder);
+        if (segments.Length == 1)
         {
             return [connectionString];
         }
@@ -100,7 +86,7 @@ internal static class PostgresClusterGuard
         var expanded = new List<string>(segments.Length);
         foreach (var segment in segments)
         {
-            var (hostPart, port) = SplitMultiHostSegment(segment, defaultPort);
+            var (hostPart, port) = SplitHostPort(segment, builder.Port);
             var single = new NpgsqlConnectionStringBuilder(connectionString)
             {
                 Host = hostPart,
@@ -115,124 +101,75 @@ internal static class PostgresClusterGuard
 
     private static HashSet<PostgresEndpoint> EndpointsOf(NpgsqlConnectionStringBuilder builder)
     {
-        var defaultPort = builder.Port > 0 ? builder.Port : DefaultPort;
-        var rawHost = builder.Host;
+        var segments = HostSegments(builder);
         var result = new HashSet<PostgresEndpoint>();
-        if (string.IsNullOrWhiteSpace(rawHost))
-        {
-            return result;
-        }
-
-        var segments = rawHost.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var isMultiHost = segments.Length > 1;
         foreach (var segment in segments)
         {
-            if (TryParseEndpoint(segment, defaultPort, isMultiHost, out var endpoint))
-            {
-                result.Add(endpoint);
-            }
+            var (host, port) = isMultiHost || !IsUnixSocket(segment)
+                ? SplitHostPort(segment, builder.Port)
+                : (segment, builder.Port);
+            result.Add(NormalizeEndpoint(host, port));
         }
 
         return result;
     }
 
-    private static bool TryParseEndpoint(string segment, int defaultPort, bool isMultiHost, out PostgresEndpoint endpoint)
+    private static string[] HostSegments(NpgsqlConnectionStringBuilder builder)
     {
-        endpoint = default;
-        if (string.IsNullOrWhiteSpace(segment))
+        var host = builder.Host ?? string.Empty;
+        var segments = host.Contains(',') ? host.Split(',', StringSplitOptions.TrimEntries) : [host];
+        // Dropping an empty entry could skip a local endpoint that the driver tries.
+        if (Array.Exists(segments, string.IsNullOrWhiteSpace))
         {
-            return false;
+            throw new InvalidOperationException("A PostgreSQL connection string has an empty host entry.");
         }
 
-        var trimmed = segment.Trim();
-        var (hostPart, port) = isMultiHost
-            ? SplitMultiHostSegment(trimmed, defaultPort)
-            : SplitSingleHostSegment(trimmed, defaultPort);
-
-        if (hostPart.Length == 0)
-        {
-            return false;
-        }
-
-        if (hostPart.StartsWith('@'))
-        {
-            endpoint = new PostgresEndpoint(IsUnixSocket: true, hostPart, port);
-            return true;
-        }
-
-        if (hostPart.StartsWith('/'))
-        {
-            var socketPath = hostPart.Length > 1 ? hostPart.TrimEnd('/') : hostPart;
-            endpoint = new PostgresEndpoint(IsUnixSocket: true, socketPath, port);
-            return true;
-        }
-
-        var normalized = NormalizeTcpHost(hostPart);
-        if (normalized.Length == 0)
-        {
-            return false;
-        }
-
-        endpoint = new PostgresEndpoint(IsUnixSocket: false, normalized, port);
-        return true;
+        return segments;
     }
 
-    /// <summary>
-    /// Matches Npgsql's <c>NpgsqlMultiHostDataSource</c> / <c>NpgsqlConnectionStringBuilder</c> port-splitting
-    /// rules: bracketed IPv6 splits at <c>]</c>, while any other entry (including Unix socket paths) splits an
-    /// inline <c>:port</c> only when there is a single colon and the suffix parses as a positive integer using
-    /// <see cref="NumberStyles.Integer"/> (which also accepts a leading <c>+</c>). A socket path containing
-    /// multiple colons is preserved verbatim with <paramref name="defaultPort"/>.
-    /// </summary>
-    private static (string Host, int Port) SplitMultiHostSegment(string segment, int defaultPort)
+    private static PostgresEndpoint NormalizeEndpoint(string host, int port)
     {
-        var trimmed = segment.Trim();
-        if (trimmed.StartsWith('['))
+        if (host.StartsWith('@'))
         {
-            var close = trimmed.IndexOf(']');
-            if (close < 0)
-            {
-                return (string.Empty, defaultPort);
-            }
+            return new PostgresEndpoint(IsUnixSocket: true, host, port);
+        }
 
-            var host = trimmed[1..close];
-            var rest = trimmed[(close + 1)..];
-            if (rest.StartsWith(':') && TryParseInlinePort(rest[1..], out var bracketPort))
-            {
-                return (host, bracketPort);
-            }
+        if (Path.IsPathRooted(host))
+        {
+            var socketPath = host.Length > 1 ? host.TrimEnd('/') : host;
+            return new PostgresEndpoint(IsUnixSocket: true, socketPath, port);
+        }
 
+        return new PostgresEndpoint(IsUnixSocket: false, NormalizeTcpHost(host), port);
+    }
+
+    private static bool IsUnixSocket(string host) => host.StartsWith('@') || Path.IsPathRooted(host);
+
+    private static (string Host, int Port) SplitHostPort(string host, int defaultPort)
+    {
+        var portSeparator = host.LastIndexOf(':');
+        if (portSeparator < 0)
+        {
             return (host, defaultPort);
         }
 
-        var firstColon = trimmed.IndexOf(':');
-        var lastColon = trimmed.LastIndexOf(':');
-        // Exactly one colon means host:port (including Unix socket paths); multiple colons mean a bare
-        // IPv6 literal or a multi-colon Unix socket path, both of which Npgsql keeps verbatim.
-        if (firstColon > 0 && firstColon == lastColon && TryParseInlinePort(trimmed[(firstColon + 1)..], out var parsedPort))
+        // Npgsql applies the same closing-bracket rule to every multi-host entry, including socket paths.
+        var previousColon = host.AsSpan(0, portSeparator).LastIndexOf(':');
+        var closingBracket = host.LastIndexOf(']');
+        var hasPort = previousColon < 0 || (previousColon < closingBracket && closingBracket < portSeparator);
+        if (!hasPort)
         {
-            return (trimmed[..firstColon], parsedPort);
+            return (host, defaultPort);
         }
 
-        return (trimmed, defaultPort);
-    }
-
-    private static bool TryParseInlinePort(string text, out int port)
-        => int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out port) && port > 0;
-
-    /// <summary>
-    /// Matches Npgsql's single-host <c>NpgsqlConnectionStringBuilder</c> parsing: Unix socket paths and
-    /// abstract socket names keep any colons verbatim and always use <see cref="NpgsqlConnectionStringBuilder.Port"/>.
-    /// </summary>
-    private static (string Host, int Port) SplitSingleHostSegment(string segment, int defaultPort)
-    {
-        var trimmed = segment.Trim();
-        if (trimmed.StartsWith('/') || trimmed.StartsWith('@'))
+        if (host.AsSpan(0, portSeparator).IsWhiteSpace()
+            || !int.TryParse(host.AsSpan(portSeparator + 1), out var port) || port <= 0)
         {
-            return (trimmed, defaultPort);
+            throw new InvalidOperationException("A PostgreSQL connection string has an invalid host or port.");
         }
 
-        return SplitMultiHostSegment(trimmed, defaultPort);
+        return (host[..portSeparator], port);
     }
 
     private static string NormalizeTcpHost(string host)

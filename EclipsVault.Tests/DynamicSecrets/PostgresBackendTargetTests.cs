@@ -116,6 +116,7 @@ public class PostgresBackendTargetTests
     [InlineData("Host=/var/run/postgresql:5433,pg-b:5432;Database=vault;Password=VaultPw1", "Host=/var/run/postgresql;Port=5433;Database=app;Password=TargetPw2")]
     [InlineData("Host=/var/run/postgresql:+5433,pg-b:+5434;Database=vault;Password=VaultPw1", "Host=pg-b;Port=5434;Database=app;Password=TargetPw2")]
     [InlineData("Host=/tmp/pg:a:5433,pg-b:5432;Port=5432;Database=vault;Password=VaultPw1", "Host=/tmp/pg:a:5433;Port=5432;Database=app;Password=TargetPw2")]
+    [InlineData("Host=/tmp/pg[a:b]:5433,pg-b:5432;Database=vault;Password=VaultPw1", "Host=/tmp/pg[a:b];Port=5433;Database=app;Password=TargetPw2")]
     [InlineData("Host=@eclipsvault-pg;Port=5432;Database=vault;Password=VaultPw1", "Host=@eclipsvault-pg;Database=app;Password=TargetPw2")]
     public async Task Minting_refuses_when_the_target_shares_an_endpoint_with_the_vaults_postgres_cluster_and_logs_no_passwords(
         string vaultConnection, string targetConnection)
@@ -159,15 +160,22 @@ public class PostgresBackendTargetTests
         Assert.DoesNotContain("TopSecretVaultPassword", holder.ToString(), StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task Minting_refuses_fail_closed_when_the_vault_postgres_connection_cannot_be_parsed_without_logging_it()
+    [Theory]
+    [InlineData("Host=vault-pg;Colour=blue;Password=VaultPw1")]
+    [InlineData("Host=vault-pg,;Password=VaultPw1")]
+    [InlineData("Host=vault-pg,   ,other-pg;Password=VaultPw1")]
+    [InlineData("Host=vault-pg,:5432;Password=VaultPw1")]
+    public async Task Minting_refuses_when_the_vault_postgres_endpoints_cannot_be_parsed_without_logging_credentials(
+        string vaultConnection)
     {
         var logger = new RecordingLogger();
 
         await Assert.ThrowsAsync<MintRefusedException>(() =>
-            Backend("Host=app-pg;Port=5432;Password=TargetPw2", logger: logger, vaultPostgres: "Host=vault-pg;Colour=blue;Password=VaultPw1")
+            Backend("Host=app-pg;Port=5432;Password=TargetPw2", logger: logger, vaultPostgres: vaultConnection)
                 .MintAsync(Role(), "svc_reporting", "Abc123", DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None));
 
+        Assert.Contains(logger.Messages, message =>
+            message.Contains("connection endpoints failed to parse", StringComparison.Ordinal));
         Assert.DoesNotContain(logger.Messages, message => message.Contains("VaultPw1", StringComparison.Ordinal));
         Assert.DoesNotContain(logger.Messages, message => message.Contains("TargetPw2", StringComparison.Ordinal));
     }

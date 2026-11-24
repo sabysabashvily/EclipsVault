@@ -342,19 +342,20 @@ public sealed class PostgresBackend : IDynamicSecretBackend
 
     private void EnsureEndpointsDistinct(NpgsqlConnectionStringBuilder targetBuilder, Func<Exception, Exception>? nothingSent)
     {
-        NpgsqlConnectionStringBuilder vaultBuilder;
+        bool sharesEndpoint;
         try
         {
-            vaultBuilder = new NpgsqlConnectionStringBuilder(_vaultConnectionString);
+            var vaultBuilder = new NpgsqlConnectionStringBuilder(_vaultConnectionString);
+            sharesEndpoint = PostgresClusterGuard.SharesEndpoint(vaultBuilder, targetBuilder);
         }
         catch (Exception ex)
         {
-            _logger.LogError("Cannot verify PostgreSQL cluster separation because the vault connection string failed to parse: {ExceptionType}",
+            _logger.LogError("Cannot verify PostgreSQL cluster separation because the connection endpoints failed to parse: {ExceptionType}",
                 ex.GetType().Name);
             throw nothingSent?.Invoke(ex) ?? ex;
         }
 
-        if (PostgresClusterGuard.SharesEndpoint(vaultBuilder, targetBuilder))
+        if (sharesEndpoint)
         {
             _logger.LogError(SameClusterMessage);
             var sameCluster = new InvalidOperationException(SameClusterMessage);
