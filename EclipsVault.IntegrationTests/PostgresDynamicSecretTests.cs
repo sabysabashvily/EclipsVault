@@ -18,6 +18,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using Serilog.Events;
+using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace EclipsVault.IntegrationTests;
@@ -493,6 +494,71 @@ public sealed partial class PostgresDynamicSecretTests(PostgresDynamicSecretsFix
         {
             await distinctBackend.RevokeAsync(distinctRole, mintedUser, CancellationToken.None);
         }
+    }
+
+    [Fact]
+    public async Task Minting_refuses_when_only_the_second_vault_host_shares_the_targets_cluster()
+    {
+        var target = new NpgsqlConnectionStringBuilder(vault.PostgresDynamicTargetConnectionString!);
+        await using var otherCluster = new PostgreSqlBuilder(PostgresShareIssuerBackfill.PostgresImage)
+            .WithDatabase(target.Database!)
+            .WithUsername(target.Username!)
+            .WithPassword(target.Password!)
+            .Build();
+        await otherCluster.StartAsync();
+        var other = new NpgsqlConnectionStringBuilder(otherCluster.GetConnectionString());
+
+        using var forwarder = new TcpListener(IPAddress.Loopback, 0);
+        forwarder.Start();
+        var forwardedPort = ((IPEndPoint)forwarder.LocalEndpoint).Port;
+        using var shutdown = new CancellationTokenSource();
+        var relayErrors = new ConcurrentBag<Exception>();
+        var acceptedCount = 0;
+        var relay = RelayConnectionsAsync(forwarder, target.Host!, target.Port, relayErrors, () => Interlocked.Increment(ref acceptedCount), shutdown.Token);
+        try
+        {
+            // First vault host is a distinct cluster; only the second vault host matches the dynamic target's cluster.
+            var twoClusterVault = new NpgsqlConnectionStringBuilder(target.ConnectionString)
+            {
+                Host = $"{other.Host}:{other.Port},{target.Host}:{target.Port}",
+                Pooling = false,
+            };
+            var viaAlias = new NpgsqlConnectionStringBuilder(target.ConnectionString)
+            {
+                Host = IPAddress.Loopback.ToString(),
+                Port = forwardedPort,
+                Pooling = false,
+            };
+            var logger = new CapturingLogger<PostgresBackend>();
+            using var provider = BuildDiPostgresVault(twoClusterVault.ConnectionString, viaAlias.ConnectionString, logger);
+            using var scope = provider.CreateScope();
+            var backend = scope.ServiceProvider.GetServices<IDynamicSecretBackend>()
+                .Single(candidate => candidate.Backend == DynamicSecretBackend.Postgres);
+            var role = new DynamicSecretRole
+            {
+                Name = "it_pg_second_host",
+                Backend = DynamicSecretBackend.Postgres,
+                CreationStatements = DbSeeder.PostgresReaderRecipe,
+                RevocationStatements = DbSeeder.PostgresRevocation,
+            };
+
+            await Assert.ThrowsAsync<MintRefusedException>(() =>
+                backend.MintAsync(role, "ev_it_pg_second_host_1", "Abc123Def456Ghi789Jkl012Mno345Pqr678Stu9",
+                    DateTimeOffset.UtcNow.AddMinutes(10), CancellationToken.None));
+
+            Assert.True(acceptedCount > 0, "The TCP forwarder never received a connection from PostgresBackend.");
+            Assert.Contains(logger.Messages, message =>
+                message.Contains("own PostgreSQL cluster", StringComparison.Ordinal));
+            Assert.Empty(await PostgresDynamicTarget.RolesOfRoleAsync(vault, "it_pg_second_host"));
+        }
+        finally
+        {
+            await shutdown.CancelAsync();
+            forwarder.Stop();
+            await relay;
+        }
+
+        Assert.Empty(relayErrors);
     }
 
     private static ServiceProvider BuildDiPostgresVault(

@@ -178,8 +178,11 @@ internal static class PostgresClusterGuard
     }
 
     /// <summary>
-    /// Matches Npgsql's <c>NpgsqlMultiHostDataSource</c> parsing: bracketed IPv6 splits at <c>]</c>,
-    /// while any other entry (including Unix socket paths) splits an inline <c>:port</c> at its colon.
+    /// Matches Npgsql's <c>NpgsqlMultiHostDataSource</c> / <c>NpgsqlConnectionStringBuilder</c> port-splitting
+    /// rules: bracketed IPv6 splits at <c>]</c>, while any other entry (including Unix socket paths) splits an
+    /// inline <c>:port</c> only when there is a single colon and the suffix parses as a positive integer using
+    /// <see cref="NumberStyles.Integer"/> (which also accepts a leading <c>+</c>). A socket path containing
+    /// multiple colons is preserved verbatim with <paramref name="defaultPort"/>.
     /// </summary>
     private static (string Host, int Port) SplitMultiHostSegment(string segment, int defaultPort)
     {
@@ -194,7 +197,7 @@ internal static class PostgresClusterGuard
 
             var host = trimmed[1..close];
             var rest = trimmed[(close + 1)..];
-            if (rest.StartsWith(':') && int.TryParse(rest[1..], NumberStyles.None, CultureInfo.InvariantCulture, out var bracketPort))
+            if (rest.StartsWith(':') && TryParseInlinePort(rest[1..], out var bracketPort))
             {
                 return (host, bracketPort);
             }
@@ -204,25 +207,18 @@ internal static class PostgresClusterGuard
 
         var firstColon = trimmed.IndexOf(':');
         var lastColon = trimmed.LastIndexOf(':');
-        if (trimmed.StartsWith('/') || trimmed.StartsWith('@'))
+        // Exactly one colon means host:port (including Unix socket paths); multiple colons mean a bare
+        // IPv6 literal or a multi-colon Unix socket path, both of which Npgsql keeps verbatim.
+        if (firstColon > 0 && firstColon == lastColon && TryParseInlinePort(trimmed[(firstColon + 1)..], out var parsedPort))
         {
-            if (lastColon > 0 && int.TryParse(trimmed[(lastColon + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out var socketPort))
-            {
-                return (trimmed[..lastColon], socketPort);
-            }
-
-            return (trimmed, defaultPort);
-        }
-
-        // Exactly one colon means host:port; multiple colons mean a bare IPv6 literal without a port.
-        if (firstColon > 0 && firstColon == lastColon
-            && int.TryParse(trimmed[(lastColon + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out var parsedPort))
-        {
-            return (trimmed[..lastColon], parsedPort);
+            return (trimmed[..firstColon], parsedPort);
         }
 
         return (trimmed, defaultPort);
     }
+
+    private static bool TryParseInlinePort(string text, out int port)
+        => int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out port) && port > 0;
 
     /// <summary>
     /// Matches Npgsql's single-host <c>NpgsqlConnectionStringBuilder</c> parsing: Unix socket paths and

@@ -114,6 +114,8 @@ public class PostgresBackendTargetTests
     [InlineData("Host=pg-a:5432,pg-b:5433;Database=vault;Password=VaultPw1", "Host=pg-b:5433;Database=app;Password=TargetPw2")]
     [InlineData("Host=/var/run/postgresql;Port=5432;Database=vault;Password=VaultPw1", "Host=/var/run/postgresql/;Database=app;Password=TargetPw2")]
     [InlineData("Host=/var/run/postgresql:5433,pg-b:5432;Database=vault;Password=VaultPw1", "Host=/var/run/postgresql;Port=5433;Database=app;Password=TargetPw2")]
+    [InlineData("Host=/var/run/postgresql:+5433,pg-b:+5434;Database=vault;Password=VaultPw1", "Host=pg-b;Port=5434;Database=app;Password=TargetPw2")]
+    [InlineData("Host=/tmp/pg:a:5433,pg-b:5432;Port=5432;Database=vault;Password=VaultPw1", "Host=/tmp/pg:a:5433;Port=5432;Database=app;Password=TargetPw2")]
     [InlineData("Host=@eclipsvault-pg;Port=5432;Database=vault;Password=VaultPw1", "Host=@eclipsvault-pg;Database=app;Password=TargetPw2")]
     public async Task Minting_refuses_when_the_target_shares_an_endpoint_with_the_vaults_postgres_cluster_and_logs_no_passwords(
         string vaultConnection, string targetConnection)
@@ -135,6 +137,7 @@ public class PostgresBackendTargetTests
     [InlineData("Host=127.0.0.1;Port=1;Database=vault", "Host=[::1]:1;Database=app;Timeout=1")]
     [InlineData("Host=/nonexistent-eclipsvault-A;Port=5432;Database=vault", "Host=/nonexistent-eclipsvault-a;Port=5432;Database=app;Timeout=1")]
     [InlineData("Host=/nonexistent-eclipsvault-sock;Port=5432;Database=vault", "Host=/nonexistent-eclipsvault-sock;Port=5433;Database=app;Timeout=1")]
+    [InlineData("Host=/nonexistent:a:5433,pg-b:5432;Port=5432;Database=vault", "Host=/nonexistent:a;Port=5433;Database=app;Timeout=1")]
     [InlineData("Host=@nonexistent-eclipsvault-A;Port=5432;Database=vault", "Host=@nonexistent-eclipsvault-a;Port=5432;Database=app;Timeout=1")]
     public async Task Distinct_loopback_addresses_and_case_distinct_unix_sockets_do_not_collide_statically(
         string vaultConnection, string targetConnection)
