@@ -1,3 +1,4 @@
+using System.Buffers.Text;
 using System.Globalization;
 using System.Text.RegularExpressions;
 
@@ -66,35 +67,12 @@ public static partial class CredentialStatementTemplate
             return false;
         }
 
-        return TryDecodeCanonicalBase64(match.Groups["salt"].Value, out var saltLength)
+        return Base64.IsValid(match.Groups["salt"].ValueSpan, out var saltLength)
             && saltLength > 0
-            && TryDecodeCanonicalBase64(match.Groups["stored"].Value, out var storedLength)
+            && Base64.IsValid(match.Groups["stored"].ValueSpan, out var storedLength)
             && storedLength == 32
-            && TryDecodeCanonicalBase64(match.Groups["server"].Value, out var serverLength)
+            && Base64.IsValid(match.Groups["server"].ValueSpan, out var serverLength)
             && serverLength == 32;
-    }
-
-    private static bool TryDecodeCanonicalBase64(string encoded, out int decodedLength)
-    {
-        decodedLength = 0;
-        if (encoded.Length == 0 || encoded.Length % 4 != 0)
-        {
-            return false;
-        }
-
-        var buffer = new byte[(encoded.Length / 4) * 3];
-        if (!Convert.TryFromBase64String(encoded, buffer, out var written))
-        {
-            return false;
-        }
-
-        if (!string.Equals(Convert.ToBase64String(buffer, 0, written), encoded, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        decodedLength = written;
-        return true;
     }
 
     private static string Substitute(string template, string name, string secretLiteral, DateTimeOffset expiresAtUtc)
